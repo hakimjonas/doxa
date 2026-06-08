@@ -1,0 +1,23 @@
+// Vec.head via `match` on an indexed family: the scrutinee's type
+// `Vec[A] (succ n)` forces the `vnil` arm unreachable by index refinement
+// (zero != succ n), so only `vcons` is required.
+
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+data Vec[A: Type] : Nat -> Type {
+  vnil  : Vec[A] zero;
+  vcons : (n: Nat) -> A -> Vec[A] n -> Vec[A] (succ n);
+}
+
+fun vhead[A: Type](n: Nat, v: Vec[A] (succ n)): A = match v {
+  case vcons m x xs => x
+}
+
+val one_two : Vec[Nat] (succ (succ zero)) =
+  vcons (succ zero) (succ zero)
+    (vcons zero zero (vnil))
+
+val head : Nat = vhead Nat (succ zero) one_two

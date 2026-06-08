@@ -1,0 +1,20 @@
+// Doxa prelude.
+//
+// Loaded ambiently by the CLI and test harness before user code,
+// matching Lean 4's prelude discipline. Users do not import this
+// file; they reference the names directly.
+//
+// Contents are deliberately minimal: the bare kernel primitives every
+// Doxa program relies on. Larger library code lives in `eq.doxa`,
+// `nat.doxa`, etc., to be loaded when the user imports them (imports
+// are not yet implemented).
+//
+// SPEC §8.9, Eq is an ordinary indexed inductive, not a kernel
+// primitive. Its recursor `Eq.rec` is auto-synthesised; large-
+// elimination into Type follows from SPEC §8.2's singleton rule
+// (one ctor with no informative args, `refl`'s single arg `x` is
+// index-determined, non-informative).
+
+data Eq[A: Type] : A -> A -> Prop {
+  refl : (x: A) -> Eq[A] x x;
+}

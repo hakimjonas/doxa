@@ -1,0 +1,9 @@
+// Rejected: auto-`refl` against `Eq[Nat] zero (succ zero)` where the two
+// sides don't convert, so a direct TypeMismatch on x vs y must fire.
+
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+val p : Eq[Nat] zero (succ zero) = refl

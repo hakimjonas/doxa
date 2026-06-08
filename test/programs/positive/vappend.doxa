@@ -1,0 +1,21 @@
+// Regression: `vappend` on length-indexed Vec type-checks. Each match arm's
+// expected type (`Vec[A] (plus n m)`) must be index-refined and re-evaluated
+// in the correct binder scope, not the match's captured environment.
+
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+
+data Vec[A: Type] : Nat -> Type {
+  vnil : Vec[A] zero;
+  vcons : (n: Nat) -> A -> Vec[A] n -> Vec[A] (succ n);
+}
+
+fun plus(m: Nat, n: Nat): Nat = match m {
+  case zero => n
+  case succ m_ => succ (plus m_ n)
+}
+
+fun vappend{A: Type}{n: Nat}{m: Nat}(xs: Vec[A] n, ys: Vec[A] m): Vec[A] (plus n m) =
+  match xs {
+    case vnil => ys
+    case vcons k x rest => vcons (plus k m) x (vappend rest ys)
+  }

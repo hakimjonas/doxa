@@ -1,0 +1,47 @@
+// Length-indexed vectors.
+//
+// `Vec[A] n` is a list-like container whose type encodes its length
+// as an index. `vhead` + `vtail` rely on the kernel's first-order
+// index refinement: the `succ n` scrutinee index clashes with
+// `vnil`'s `zero`, so the vnil arm is unreachable and may be omitted
+// without an explicit annotation.
+//
+// Standalone: self-contained Nat + Vec.
+
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+data Vec[A: Type] : Nat -> Type {
+  vnil : Vec[A] zero;
+  vcons : (n: Nat) -> A -> Vec[A] n -> Vec[A] (succ n);
+}
+
+// Head of a non-empty vector. The `succ n` index forces the vnil arm
+// unreachable; kernel-side refinement makes the vcons arm body type
+// correctly against `A`.
+fun vhead{A: Type}{n: Nat}(v: Vec[A] (succ n)): A = match v {
+  case vcons _ x _ => x
+}
+
+// Tail of a non-empty vector. Returns a `Vec[A] n`, the inner rest
+// binder has type `Vec[A] m` where m refines to n via scrutinee
+// index unification.
+fun vtail{A: Type}{n: Nat}(v: Vec[A] (succ n)): Vec[A] n = match v {
+  case vcons _ _ rest => rest
+}
+
+// Append vectors. Length sums: `Vec[A] n ++ Vec[A] m : Vec[A]
+// (plus n m)`. `plus` is defined locally so the file stays
+// standalone; imports would let it share a single definition.
+fun plus(m: Nat, n: Nat): Nat = match m {
+  case zero => n
+  case succ m_ => succ (plus m_ n)
+}
+
+fun vappend{A: Type}{n: Nat}{m: Nat}(xs: Vec[A] n, ys: Vec[A] m): Vec[A] (plus n m) =
+  match xs {
+    case vnil => ys
+    case vcons k x rest => vcons (plus k m) x (vappend rest ys)
+  }

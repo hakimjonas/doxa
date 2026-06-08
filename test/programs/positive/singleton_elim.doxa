@@ -1,0 +1,33 @@
+// Singleton elimination: Prop -> Type elimination is admitted when the
+// inductive has at most one constructor with no informative args. Exercised
+// here by Unit (zero args) and And (both args Prop-sorted), keyed on data
+// shape rather than the name Eq.
+
+data Bool : Type {
+  t : Bool;
+  f : Bool;
+}
+
+data Unit : Prop {
+  mkUnit : Unit;
+}
+
+// Single-ctor Prop, zero args → admits Prop → Type elim.
+fun unitToBool(u: Unit): Bool = match u {
+  case mkUnit => t
+}
+
+val b1 : Bool = unitToBool mkUnit
+
+// Two-param Prop-sorted conjunction.
+data And[A: Prop, B: Prop] : Prop {
+  conj : A -> B -> And[A, B];
+}
+
+// Single-ctor Prop with both ctor args Prop-sorted, eliminated into a
+// Type-sorted Bool: the multi-arg Prop-carrying singleton case.
+fun andToT(pq: And[Unit, Unit]): Bool = match pq {
+  case conj _ _ => t
+}
+
+val b2 : Bool = andToT (conj mkUnit mkUnit)

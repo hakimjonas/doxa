@@ -1,0 +1,6 @@
+// Rejected (NotAType): `f` has type `Type -> Type`, which is not a
+// universe, so using `f` as the domain of a Pi is illegal.
+
+val f: Type -> Type = (x: Type) => x
+
+val bad: f -> Type = (x: f) => Type

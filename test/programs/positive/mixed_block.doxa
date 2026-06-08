@@ -1,0 +1,15 @@
+// Regression: a block mixing a non-recursive member (f, using an outer
+// Bool.rec) with a self-recursive sibling (g) must type-check without the
+// members' bindings shifting each other's variable indices.
+
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+data Bool : Type { true_ : Bool; false_ : Bool; }
+
+fun f(b: Bool): Nat = Bool.rec ((_: Bool) => Nat) zero (succ zero) b
+and g(x: Nat): Nat = match x {
+  case zero => zero
+  case succ m => g m
+}
+
+val y : Nat = f true_
+val z : Nat = g (succ zero)

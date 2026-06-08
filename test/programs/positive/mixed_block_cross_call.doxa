@@ -1,0 +1,21 @@
+// Regression: a `fun ... and ...` block where neither member is
+// self-recursive or calls its sibling, but both call a separately-declared
+// recursive top-level (`plus`); the external recursive binding must still
+// resolve from inside the block body.
+
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+fun plus(m: Nat, n: Nat): Nat = match m {
+  case zero => n
+  case succ m_ => succ (plus m_ n)
+}
+
+fun double(x: Nat): Nat = plus x x
+and triple(x: Nat): Nat = plus x (plus x x)
+
+val two  : Nat = succ (succ zero)
+val four : Nat = double two
+val six  : Nat = triple two

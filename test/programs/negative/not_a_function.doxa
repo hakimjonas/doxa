@@ -1,0 +1,5 @@
+// Expects: NotAFunction.
+//
+// Applies Type (a universe, not a function value) to Type.
+
+val bad = Type Type

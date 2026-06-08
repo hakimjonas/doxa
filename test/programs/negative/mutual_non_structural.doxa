@@ -1,0 +1,22 @@
+// Rejected (NonStructuralRecursion): in a mutual block, `isEven` calls
+// `isOdd n` passing the original `n` rather than the sub-term `m`, so
+// the recursion does not decrease and would not terminate (SPEC §8.6).
+
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+data Bool : Type {
+  t_ : Bool;
+  f_ : Bool;
+}
+
+fun isEven(n: Nat): Bool = match n {
+  case zero => t_
+  case succ m => isOdd n
+}
+and isOdd(n: Nat): Bool = match n {
+  case zero => f_
+  case succ m => isEven m
+}

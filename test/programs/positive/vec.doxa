@@ -1,0 +1,22 @@
+// Indexed inductive family Vec[A] : Nat -> Type, the type of length-n lists.
+// The length is a type index (not a parameter) that varies per constructor:
+// `vnil` has length zero, `vcons n x xs` has length `succ n`.
+
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+data Vec[A: Type] : Nat -> Type {
+  vnil  : Vec[A] zero;
+  vcons : (n: Nat) -> A -> Vec[A] n -> Vec[A] (succ n);
+}
+
+val empty : Vec[Nat] zero = vnil
+
+val singleton : Vec[Nat] (succ zero) =
+  vcons zero zero (vnil)
+
+val pair : Vec[Nat] (succ (succ zero)) =
+  vcons (succ zero) (succ zero)
+    (vcons zero zero (vnil))

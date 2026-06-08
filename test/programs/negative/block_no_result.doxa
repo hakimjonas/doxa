@@ -1,0 +1,9 @@
+// Rejected (parse error): a block with only bindings and no trailing
+// result expression has no value.
+
+data N : Type {
+  z : N;
+  s : N -> N;
+}
+
+val bad: N = { val a: N = z; }

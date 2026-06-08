@@ -1,0 +1,4 @@
+// S combinator: given f : A -> B -> C, g : A -> B, and x : A, returns f x (g x).
+
+fun s[A: Type, B: Type, C: Type](f: A -> B -> C, g: A -> B, x: A): C =
+  f x (g x)

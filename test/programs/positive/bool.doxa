@@ -1,0 +1,17 @@
+// Native Bool with `if_` built from the auto-generated eliminator Bool.rec.
+
+data Bool : Type {
+  true_  : Bool;
+  false_ : Bool;
+}
+
+fun if_[A: Type](b: Bool, t: A, f: A): A =
+  Bool.rec ((_: Bool) => A) t f b
+
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+val y : Nat = if_ Nat true_ (succ zero) zero
+val n : Nat = if_ Nat false_ (succ zero) zero

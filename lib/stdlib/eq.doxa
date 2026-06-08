@@ -1,0 +1,93 @@
+// Derived equality operations.
+//
+// Written in implicit style (`fun sym{A: Type}{x: A}{y: A}(p)`): call
+// sites elide the type and index arguments, and pattern unification
+// solves them against the explicit proof argument's inferred type.
+//
+// Each lemma's body is an explicit `Eq.rec` / `Eq.rect` invocation,
+// no new kernel machinery, just SPEC §8.2's singleton-elim rule
+// admitting `Eq.rec` to eliminate into a Type-sorted motive. `Eq.rect`
+// is the auto-emitted Type-motive variant; a sort-polymorphic recursor
+// under universe polymorphism would collapse both into one.
+//
+// This file is NOT part of the prelude. Users who want these lemmas
+// include the file explicitly (imports are not yet implemented).
+
+// Symmetry: Eq A x y -> Eq A y x.
+//
+// Eq.rec on a proof `p : Eq A x y` with motive
+//   (a: A) => (b: A) => (_: Eq A a b) => Eq A b a
+// and refl-case `(z: A) => refl z : Eq A z z` yields
+//   motive x y p = Eq A y x.
+fun sym{A: Type}{x: A}{y: A}(p: Eq[A] x y): Eq[A] y x =
+  Eq.rec A
+    ((a: A) => (b: A) => (_: Eq[A] a b) => Eq[A] b a)
+    ((z: A) => refl z)
+    x y p
+
+// Transitivity: Eq A x y -> Eq A y z -> Eq A x z.
+//
+// Induct on the first proof. When the first proof is `refl A x`,
+// the goal `Eq A x z` reduces to `Eq A x z` (unchanged, using the
+// second proof directly).
+fun trans{A: Type}{x: A}{y: A}{z: A}(p: Eq[A] x y, q: Eq[A] y z): Eq[A] x z =
+  Eq.rec A
+    ((a: A) => (b: A) => (_: Eq[A] a b) => Eq[A] b z -> Eq[A] a z)
+    ((w: A) => (r: Eq[A] w z) => r)
+    x y p q
+
+// Congruence: if x = y, then f x = f y.
+//
+// Induct on the proof. When it's `refl`, the goal `Eq B (f x) (f x)`
+// is solved by `refl (f x)`.
+//
+// Note: `f` must be eta-wrapped if it's a constructor. Doxa's ctor
+// representation folds args via `TConstr(name, args)` rather than
+// `TApp(TConstr, arg)`; bare `succ` as `f` fails with an arity-
+// mismatch diagnostic. Users write `cong ((n: Nat) => succ n) p`
+// unless auto-η for constructors in higher-order slots is added.
+fun cong{A: Type}{B: Type}{x: A}{y: A}(f: A -> B, p: Eq[A] x y): Eq[B] (f x) (f y) =
+  Eq.rec A
+    ((a: A) => (b: A) => (_: Eq[A] a b) => Eq[B] (f a) (f b))
+    ((z: A) => refl (f z))
+    x y p
+
+// Binary congruence: if x1 = y1 and x2 = y2, then f x1 x2 = f y1 y2.
+//
+// Proved by composing two single-arg `cong` steps through `trans`:
+// start at `f x1 x2`; rewrite the first arg via p1 to reach
+// `f y1 x2`; rewrite the second arg via p2 to reach `f y1 y2`.
+//
+// `f` must be eta-wrapped if it's a binary constructor (same ctor-
+// folding caveat as `cong`).
+fun cong2
+  {A: Type}{B: Type}{C: Type}
+  {x1: A}{y1: A}{x2: B}{y2: B}
+  (f: A -> B -> C,
+   p1: Eq[A] x1 y1,
+   p2: Eq[B] x2 y2)
+  : Eq[C] (f x1 x2) (f y1 y2) =
+  trans
+    (cong ((a: A) => f a x2) p1)
+    (cong ((b: B) => f y1 b) p2)
+
+// Substitution: if x = y, transport a P x to a P y.
+//
+// Uses `Eq.rect`, the large-elim variant of `Eq.rec` with motive
+// target `Type 0`. Auto-emitted alongside `Eq.rec` because Eq
+// satisfies SPEC §8.2's singleton-elim condition (one ctor, no
+// informative args, `refl`'s `x` is index-determined).
+//
+// `P` stays as an explicit value-parameter rather than implicit,
+// because pattern unification can't solve higher-order motive
+// metas (motive-as-function is beyond the pattern fragment). If
+// `P` became implicit the unifier would see `?P x ≡ T`-shape
+// equations that need higher-order matching. Users pass
+// `subst motive p px`; a typeclass-resolution path or abstracted-
+// motive metas could admit implicit `P` in restricted cases, but
+// explicit is the shape that works under the pattern fragment.
+fun subst{A: Type}{x: A}{y: A}(P: A -> Type, p: Eq[A] x y, px: P x): P y =
+  Eq.rect A
+    ((a: A) => (b: A) => (_: Eq[A] a b) => P a -> P b)
+    ((z: A) => (pz: P z) => pz)
+    x y p px

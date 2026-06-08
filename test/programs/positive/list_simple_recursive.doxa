@@ -1,0 +1,20 @@
+// Simple recursive list functions in implicit style: a recursive call like
+// `dup rest` (rest : List[A], A an outer binder) requires pattern unification
+// to solve an inserted meta applied to outer binders.
+
+data List[A: Type] : Type {
+  nil : List[A];
+  cons : A -> List[A] -> List[A];
+}
+
+// Trivial: returns its arg.
+fun dup{A: Type}(xs: List[A]): List[A] = match xs {
+  case nil => nil
+  case cons x rest => dup rest
+}
+
+// Two implicits, single-arg rec.
+fun dupTwo{A: Type}{B: Type}(xs: List[A]): List[A] = match xs {
+  case nil => nil
+  case cons x rest => dupTwo rest
+}

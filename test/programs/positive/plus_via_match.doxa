@@ -1,0 +1,15 @@
+// `plus` on native Nat via structural recursion on `match`: the recursive
+// call decreases on m's strict sub-term m_, satisfying the structural rule.
+
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+fun plus(m: Nat, n: Nat): Nat = match m {
+  case zero => n
+  case succ m_ => succ (plus m_ n)
+}
+
+val two  : Nat = succ (succ zero)
+val four : Nat = plus two two

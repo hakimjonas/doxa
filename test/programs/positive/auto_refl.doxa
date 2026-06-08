@@ -1,0 +1,31 @@
+// Auto-`refl`: a bare `refl` at an expected `Eq[A] x y` type synthesizes
+// its arguments when `conv(A, x, y)` succeeds (like Lean 4's `rfl`).
+
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+// Bare `refl`, auto-synthesis fills in (Nat, zero).
+val p1 : Eq[Nat] zero zero = refl
+
+// At a non-trivial index (syntactically equal).
+val p2 : Eq[Nat] (succ zero) (succ zero) = refl
+
+// Equality that holds by reduction, not syntax. Auto-refl relies on
+// `conv` (not surface equality) so β + ι-reduction via `plus` admit
+// this as an Eq witness.
+fun plus(m: Nat, n: Nat): Nat = match m {
+  case zero => n
+  case succ m_ => succ (plus m_ n)
+}
+
+val two : Nat = succ (succ zero)
+val three : Nat = succ two
+val five : Nat = succ (succ three)
+
+val p3 : Eq[Nat] (plus two three) five = refl
+
+// Mixed: explicit `refl zero` and auto-refl work side-by-side.
+val p4 : Eq[Nat] zero zero = refl zero
+val p5 : Eq[Nat] zero zero = refl

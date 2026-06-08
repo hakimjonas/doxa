@@ -1,0 +1,21 @@
+// First-order index refinement for dependent match: `vtail` on
+// `Vec[A] (succ n)` refines n := m in the vcons arm so the body
+// `rest : Vec[A] m` checks against the expected `Vec[A] n`, with no explicit
+// motive needed.
+
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+data Vec[A: Type] : Nat -> Type {
+  vnil : Vec[A] zero;
+  vcons : (n: Nat) -> A -> Vec[A] n -> Vec[A] (succ n);
+}
+
+fun vtail{A: Type}{n: Nat}(v: Vec[A] (succ n)): Vec[A] n = match v {
+  case vcons _ _ rest => rest
+}
+
+val v1 : Vec[Nat] (succ zero) = vcons zero (succ zero) (vnil)
+val t : Vec[Nat] zero = vtail v1

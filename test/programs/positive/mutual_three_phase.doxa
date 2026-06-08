@@ -1,0 +1,32 @@
+// Three-member mutual block with a cyclic call graph (a -> b -> c -> a),
+// each calling the next on a strict sub-term: stresses the block-wide
+// structural-recursion rule for more than two members.
+
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+data Phase : Type {
+  pA : Phase;
+  pB : Phase;
+  pC : Phase;
+}
+
+fun a(n: Nat): Phase = match n {
+  case zero => pA
+  case succ m => b m
+}
+and b(n: Nat): Phase = match n {
+  case zero => pB
+  case succ m => c m
+}
+and c(n: Nat): Phase = match n {
+  case zero => pC
+  case succ m => a m
+}
+
+val one   : Nat   = succ zero
+val three : Nat   = succ (succ one)
+val rA    : Phase = a one
+val rC    : Phase = c three

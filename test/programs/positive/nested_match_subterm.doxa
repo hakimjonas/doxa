@@ -1,0 +1,21 @@
+// Regression: structural recursion on a sub-pattern of a sub-pattern. A
+// binder from an inner match (whose scrutinee is a sub-term of the outer
+// match's binder) must itself count as a sub-term of the designated arg,
+// so the recursive call `sub2 m_` is accepted.
+
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+fun sub2(n: Nat): Nat = match n {
+  case zero => zero
+  case succ m => match m {
+    case zero => zero
+    case succ m_ => sub2 m_
+  }
+}
+
+val four  : Nat = succ (succ (succ (succ zero)))
+val two_  : Nat = sub2 four
+val zero_ : Nat = sub2 two_

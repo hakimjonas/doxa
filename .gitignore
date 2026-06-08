@@ -1,0 +1,27 @@
+# Dart
+.dart_tool/
+.packages
+pubspec.lock
+pubspec_overrides.yaml
+build/
+
+# Wasm build artifacts
+*.wasm
+*.mjs
+*.wasm.map
+*.support.js
+
+# IDE / agent tooling
+.idea/
+*.iml
+.vscode/
+.claude/
+
+# Internal session handover (never public)
+HANDOVER.md
+HANDOVER_*.md
+
+# OS
+.DS_Store
+Thumbs.db
+doc/

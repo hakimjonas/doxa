@@ -1,0 +1,13 @@
+// Church-encoded booleans (pure CoC, no inductive types): a boolean is a
+// function taking a type and two values and selecting one of them.
+
+type Bool = (A: Type) -> A -> A -> A
+
+val true_: Bool =
+  (A: Type) => (t: A) => (f: A) => t
+
+val false_: Bool =
+  (A: Type) => (t: A) => (f: A) => f
+
+// `if_` is just the Church boolean applied.
+fun if_[A: Type](b: Bool, t: A, f: A): A = b A t f
