@@ -43,6 +43,10 @@ Result<ParseError, SProgram> parseProgram(String input) => _program.run(input);
 Result<ParseError, SExpr> parseExpr(String input) =>
     _ws.skipThen(_expr).thenSkip(_ws).thenSkip(eof()).run(input);
 
+/// Parse a single declaration. Useful for REPL-style use.
+Result<ParseError, SDecl> parseDecl(String input) =>
+    _ws.skipThen(_decl).thenSkip(_ws).thenSkip(eof()).run(input);
+
 // ===========================================================================
 // Whitespace and comments.
 // ===========================================================================

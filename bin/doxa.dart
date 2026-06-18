@@ -1,4 +1,4 @@
-/// Doxa CLI: `doxa check FILE` or `doxa check --json FILE`.
+/// Doxa CLI: `doxa check [--json] FILE` or `doxa repl`.
 ///
 /// Parses a Doxa source file, elaborates each top-level declaration,
 /// and type-checks each declaration's body against its declared type.
@@ -7,6 +7,8 @@
 ///
 /// When `--json` is passed, the output is structured JSON (same exit
 /// code discipline).
+///
+/// The `repl` subcommand starts an interactive read-eval-print loop.
 library;
 
 import 'dart:io';
@@ -14,6 +16,7 @@ import 'dart:io';
 import 'package:doxa/src/check.dart';
 import 'package:doxa/src/elab.dart';
 import 'package:doxa/src/parse.dart';
+import 'package:doxa/src/repl.dart';
 import 'package:doxa/src/report.dart';
 import 'package:doxa/src/source.dart';
 import 'package:doxa/src/surface.dart';
@@ -21,6 +24,11 @@ import 'package:doxa/src/web_check.dart';
 import 'package:rumil/rumil.dart';
 
 void main(List<String> args) {
+  if (args.isNotEmpty && args[0] == 'repl') {
+    _runRepl();
+    return;
+  }
+
   var jsonFlag = false;
   String path;
 
@@ -59,7 +67,59 @@ void _usage() {
   stderr.writeln('  Exits 0 on success, 1 on type or parse errors, 2 on');
   stderr.writeln('  usage errors.');
   stderr.writeln('');
-  stderr.writeln('  --json    Output structured JSON instead of human-readable text.');
+  stderr.writeln(
+    '  --json    Output structured JSON instead of human-readable text.',
+  );
+  stderr.writeln('');
+  stderr.writeln('  doxa repl');
+  stderr.writeln('');
+  stderr.writeln('  Start an interactive REPL session.');
+}
+
+/// Run the REPL.
+///
+/// In piped mode (stdin is not a terminal), reads all lines and processes
+/// each one, printing only results. In interactive mode, shows a prompt
+/// and banner.
+void _runRepl() {
+  final prelude = _loadPrelude();
+  var session = ReplSession(
+    bindings: prelude.bindings,
+    dataDecls: prelude.dataDecls,
+  );
+  final isInteractive = stdin.hasTerminal;
+
+  if (isInteractive) {
+    stderr.writeln('Doxa REPL');
+    stderr.writeln('Type :quit to exit.');
+    stderr.writeln('');
+  }
+
+  while (true) {
+    if (isInteractive) {
+      stderr.write('> ');
+    }
+
+    final line = stdin.readLineSync();
+    if (line == null) break; // EOF
+
+    // Interactive commands.
+    final trimmed = line.trim();
+    if (trimmed == ':quit') break;
+
+    final (result, nextSession) = session.processInput(trimmed);
+    session = nextSession;
+    if (result is ReplExprResult) {
+      stdout.writeln(': ${result.type}');
+      stdout.writeln('= ${result.normalForm}');
+    } else if (result is ReplDeclResult) {
+      stdout.writeln('${result.name} : ${result.type}');
+    } else if (result is ReplError) {
+      if (result.message.isNotEmpty) {
+        stderr.writeln(result.message);
+      }
+    }
+  }
 }
 
 /// The Doxa prelude, ambient declarations loaded before user code.
