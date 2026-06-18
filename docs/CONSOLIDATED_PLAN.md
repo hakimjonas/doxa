@@ -20,8 +20,50 @@ The tooling stack (Phases 0–3c, see `docs/TOOLING_PLAN.md`) is complete:
 - LSP server (`doxa lsp`) — diagnostics, hover, go-to-definition, completion
 - Package split: `doxa` (kernel), `doxa_tooling` (CLI + WASM + LSP + REPL)
 
-What follows covers kernel hardening, benchmarking, and the language features
+What follows covers benchmarking, kernel hardening, and the language features
 that build Doxa from a proof-checker kernel into a practical proof assistant.
+
+This document is the **overview roadmap**. The detailed per-step breakdown
+for Phases 15-22 (with prior-work study requirements, risk assessments, and
+sub-step exit criteria) lives in the `develop` branch at `PLAN.md`. This
+document adds new phases (14.5-14.7, benchmarking) and frames the overall
+arc; the `develop` PLAN.md remains authoritative for implementation-level
+detail on the phases it covers.
+
+### Cross-cutting invariants
+
+Every phase must preserve:
+
+- **Backward compatibility.** No phase breaks existing checked proofs.
+  `example/proofs.doxa` and `lib/stdlib/proofs.doxa` must type-check after
+  every phase lands.
+- **Test count.** The 766-test suite may grow but never shrinks.
+- **Performance.** The checker must stay within its current 6-15ms band
+  for the stdlib workload. The benchmarking interlude establishes the
+  baseline; each subsequent phase's exit criteria include re-running the
+  relevant benchmarks.
+- **Analyze + format.** `dart analyze` 0 issues, `dart format` clean, in
+  both `doxa/` and `doxa_tooling/`.
+
+### Cross-cutting concern: Educational content
+
+The tutorial (Phase 22 Step 3) is the final deliverable, but educational
+material should grow continuously, not wait for the end. Each phase that
+adds a user-visible feature (quotients in 14.5, tactics in 20, typeclasses
+in 21) should include an educational fragment: an example `.doxa` file in
+`docs/tutorial_examples/` that exercises the new feature with comments
+explaining it. These accumulate into the final tutorial rather than being
+written from scratch at Phase 22.
+
+---
+
+## Benchmarking Interlude (before kernel changes)
+
+Before adding any kernel features or optimizations, measure the kernel
+as it exists today. The goal is to know what Doxa *actually* needs, not
+what it might hypothetically need. This runs in parallel with Phase 14.5-14.7
+design work but measures the **pre-14.5 kernel** — the baseline before
+quotients, injectivity, or reducibility hints are added.
 
 ## Phase 14.5 — Kernel Hardening
 
@@ -105,58 +147,37 @@ functions. 14.7 generalizes this to ALL definitions.
 
 ---
 
-## Benchmarking Interlude
+### Re-benchmark after 14.5-14.7
 
-Before adding optimizations or more kernel features, measure the kernel
-as it exists. The goal is to know what Doxa *actually* needs, not what it
-might hypothetically need.
+After all three kernel-hardening phases land, re-run the benchmarking
+suite to measure the impact of the new conversion rules and term forms.
+Update `docs/BENCHMARKS.md` with a post-14.7 column.
 
-### What to measure
+---
 
-1. **Checker throughput on real workloads.**
-   - `lib/stdlib/proofs.doxa` (324 lines, 42 decls) — the regression baseline.
-   - A synthetic file with 10×, 50×, 100× the stdlib — scaling behavior.
-   - Church-encoded naturals at depth 100, 1000, 10000 — β-reduction stress.
+## Timeline Estimate
 
-2. **Per-phase cost breakdown.**
-   - Parse time vs elaborate time vs check time.
-   - Where does the checker spend its cycles? Profile `eval.dart` hot paths.
+Rough sizing for planning purposes. "Session" = a focused work block
+(2-4 hours). Multiply by 2-3 for part-time / interrupted work.
 
-3. **Memory usage.**
-   - Peak heap during stdlib check.
-   - Closure allocation rate during β-reduction chains.
-   - Metavariable context growth during elaboration of implicit-style proofs.
+| Phase | Sessions | Rationale |
+|---|---|---|
+| Benchmarking (no kernel changes) | 2-3 | Running measurements, writing BENCHMARKS.md |
+| 14.5 (quotients) | 8-12 | Design note + 200 lines + tests + negative regression for Lean 3 bug |
+| 14.6 (injectivity) | 1-2 | 30 lines + update indexed-match tests |
+| 14.7 (reducibility) | 1-2 | 10 lines + verify `plus_zero` fix + add `opaque` surface syntax |
+| 15 (universe polymorphism) | 15-25 | Design fork (algebraic vs per-decl) + kernel reshape + migrator |
+| 16 (SProp) | 4-6 | New sort + conversion arm + SProp inductive tests |
+| 17 (records + η) | 6-10 | New term/value forms + η conversion + stdlib migration |
+| 18 (modules) | 10-15 | Import resolution + multi-file checker + stdlib reorganisation |
+| 19 (ergonomic edges) | 5-8 | Several small items, each 1-3 sessions |
+| 20 (tactics) | 20-30 | Meta-context protocol + 7 tactics + surface syntax + tests |
+| 21 (typeclasses) | 10-15 | Instance table + resolution + stdlib instances |
+| 22 (polish + release) | 10-15 | Audit + diagnostics + tutorial + demo + release notes |
 
-4. **WASM vs AOT comparison.**
-   - Checker throughput on the same workload, both runtimes.
-   - WasmGC closure allocation vs AOT GC.
-   - Tree-shaking effectiveness (how much of the kernel survives WASM compile).
-
-5. **Tooling overhead.**
-   - Cost of SemInfo collection during elaboration (Phase 3a).
-   - Cost of producing the GreenNode CST (Phase 1) alongside the SExpr AST.
-   - LSP full-file recheck latency on stdlib-scale files.
-
-### What to do with the data
-
-- If the checker runs the stdlib in 6-15ms (current estimate), kernel
-  optimization is not urgent. Focus on language features.
-- If Church-encoded `Nat` at depth 10000 triggers nonlinear behavior,
-  investigate before adding quotients (which introduce new term forms).
-- If SemInfo collection adds measurable overhead, optimize before Phase 20
-  (tactics), which will generate more identifier positions.
-
-### Deliverable
-
-A `docs/BENCHMARKS.md` file with:
-- Methodology (Dart runtime, flags, machine specs).
-- Tables: time per phase, memory per workload, WASM vs AOT.
-- Recommendations: what to optimize, what to leave alone, what to
-  re-benchmark after each subsequent phase lands.
-
-**Exit:** A data-driven answer to "does Doxa need native numerics, or is
-inductive `Nat` fine at this scale?" and "does the tooling stack regress
-checker performance?"
+**Total (14.5-22):** roughly 95-140 sessions. At 3 sessions/week, ~8-12 months.
+At full-time pace, ~2-3 months. These are conservative — someone who knows the
+kernel intimately (the author) will be faster on the kernel-heavy phases.
 
 ---
 
@@ -322,8 +343,11 @@ instances where it helps.
    binder-name propagation (user names in error messages instead of
    placeholders). Manual walkthrough of all negative-program diagnostics.
 3. **Tutorial.** `docs/tutorial.md` — ML-family-programmer-aimed, runnable
-   example code, covering declarations → inductives → match → Eq → tactics.
-   Every code block is a verified `.doxa` file.
+    example code, covering declarations → inductives → match → Eq → tactics.
+    Every code block is a verified `.doxa` file. Educational fragments from
+    earlier phases (quotient examples from 14.5, record examples from 17,
+    tactic examples from 20) are woven in — the tutorial is assembled from
+    accumulated material, not written from scratch.
 4. **Browser demo.** Refresh arda-web with WASM compiled from `doxa_tooling`.
    Expandable declaration view, structured error display, share-link support.
 5. **Release.** Release notes. Tag `v1.0.0`. Update documentation.
@@ -400,11 +424,15 @@ scope. Revisit if a concrete application emerges.
 ```
 14 (kernel complete)
  │
- ├─ 14.5 (quotients) ──┐
- ├─ 14.6 (injectivity)─┤  all three in parallel or any order
- └─ 14.7 (reducibility)┘
-        │
-        ├─ Benchmarking Interlude (measure what Doxa actually needs)
+ ├─ Benchmarking (measures pre-14.5 kernel, runs in parallel with design work)
+ │   │
+ │   └── results inform implementation of 14.5-14.7 ──┐
+ │                                                     │
+ ├─ 14.5 (quotients) ──┐                              │
+ ├─ 14.6 (injectivity)─┤  all three in parallel       │
+ └─ 14.7 (reducibility)┘  or any order                │
+        │                                              │
+        ├── Re-benchmark (measure post-14.7 kernel) ───┘
         │
         ├─ 15 (universe polymorphism)
         │   └─ 16 (SProp)
@@ -421,8 +449,10 @@ scope. Revisit if a concrete application emerges.
 
 Phases 14.5–14.7 are independent of each other. Phases 15–22 are linear
 (the original plan's dependency chain is correct). The benchmarking
-interlude can run concurrently with 14.5–14.7 since it measures the
-existing kernel, not the new features.
+interlude happens before 14.5 touches the kernel — it establishes the
+baseline. A re-benchmark after 14.7 measures the impact of the new
+conversion rules. Each subsequent phase re-runs relevant benchmarks as
+part of its exit criteria.
 
 ---
 
