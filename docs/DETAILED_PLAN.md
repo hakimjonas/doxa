@@ -808,7 +808,294 @@ Each file is both a library and a regression test. No ancillary test infrastruct
 
 ---
 
-## Phase 15 — Universe polymorphism
+## Phase 14.5 — Quotient Types
+
+**Goal.** Add quotient types as kernel primitives: `Quot(A: Type)(R: A → A → Prop)`,
+`Quot.mk(a)`, `Quot.lift(f, proof)`. Two elements of a quotient are definitionally
+equal when the quotient was constructed from the same equivalence class.
+
+**Why this phase exists.** The original plan (Phases 15-22) assumed Doxa would stay
+intensional and quotient-free. The kernel is now verified through Phase 14 and the
+tooling stack is complete. Quotients are the single biggest capability gap between
+Doxa and Lean/Coq/Agda — they unlock real numbers, finite sets, modular arithmetic,
+and any construction that needs equivalence classes. Adding them after Phase 15's
+universe polymorphism would require retrofitting the Level datatype through quotient
+code; adding them before Phase 15 lets quotient terms benefit from the Level upgrade
+during Phase 15. They are orthogonal to Phases 15-22.
+
+**Prior work.**
+- Lean 4 `Quot` in `Init/Prelude.lean` and `kernel/quot.cpp` — the single-constructor
+  quotient with `lift` + `mk` computation rule. Lean's `Quotient` typeclass is built
+  on top of kernel `Quot`.
+- Coq's `Setoid` infrastructure (older) + built-in `Quot` (since 8.17). Coq's
+  quotient is a `Prop`-erased construction; the lifting rule uses `match`-style
+  elimination.
+- Agda's `Quotient` postulate (older) or built-in `Quot` with `--cubical`-free
+  semantics (newer). The non-cubical `Quot` matches what Doxa needs.
+- Lean 3 soundness bug (2017-2019): `Quot` + unrestricted `Prop`-elimination
+  into `Type` produced an inconsistency. The fix: singleton-elimination restriction.
+  Doxa already enforces this (Phase 12) — the guard rail exists.
+
+All three systems converge on the same kernel shapes: a formation rule, an
+introduction rule (`mk`), and an elimination rule (`lift` with a compatibility
+proof obligation).
+
+### Step 0 — Design note (before code)
+
+- Read Lean 4's `kernel/quot.cpp` and `Init/Prelude.lean` (the `Quot` section).
+- Read Coq 8.17+ `kernel/quotient.ml`.
+- Deliverable: confirm Doxa's singleton-elim check (Phase 12 Step 0) covers `Quot`
+  without modification. If the check needs extending, document the extension here.
+- Confirm the chosen surface syntax: `Quot(A, R)`, `mk a`, `lift f proof` (or
+  equivalent — match existing Doxa syntax conventions from SYNTAX.md).
+
+### Step 1 — Kernel term forms (`term.dart`, `value.dart`)
+
+- `TQuot(A: Term, R: Term)` — quotient type formation. `A` is the carrier type,
+  `R` is the equivalence relation, type `A → A → Prop`.
+- `TQuotMk(a: Term)` — inject an element into the quotient. `a` has type `A`.
+- `TQuotLift(quot: Term, f: Term, proof: Term)` — eliminate from a quotient. `f`
+  is the function being lifted (type `A → B`), `proof` is evidence that `f`
+  respects the equivalence `R` (type `(x y: A) → R x y → Eq B (f x) (f y)`).
+- Corresponding `Value` forms: `VQuot(A, R)`, `VQuotMk(a)`, `VQuotLift(quot, f, proof)`.
+- `openTerm` / `closeTerm` handlers for the three new forms.
+- Add to the `Term` / `Value` sealed hierarchies.
+
+### Step 2 — Evaluation and conversion (`eval.dart`, `conv.dart`)
+
+- `eval(TQuot(A, R), env)` → `VQuot(eval(A, env), eval(R, env))`.
+- `eval(TQuotMk(a), env)` → `VQuotMk(eval(a, env))`.
+- `eval(TQuotLift(q, f, p), env)` → apply the lift by evaluating `q`, `f`, `p`
+  in `env`, then dispatching on the `q` value.
+- `apply(VQuotLift(quot, f, proof), arg)` — quotients are types, not functions.
+  This is a type error; unreachable post-checking.
+- **The key β-like reduction:** `apply(VQuotLift(VQuotMk(a), f, proof))` where
+  the lift is applied (not just a value sitting there). Actually, `Quot.lift`
+  takes no argument — the elimination is `lift(quot, f, proof)` producing a `B`.
+  The reduction rule is: when `quot` evaluates to `VQuotMk(a)`, `Quot.lift`
+  reduces to `f(a)`. In the defunctionalized driver, this goes in `apply` or
+  the `_Eval` step.
+
+  Concretely in `eval.dart`'s apply path: when the head is `VQuotLift(VQuotMk(a), f, proof)`
+  and there are zero remaining arguments to apply, reduce to `apply(VLam(..., f), a)`.
+  If there are remaining arguments (unusual — quotients aren't functions), the
+  lift reduces first, then the arguments apply to the result.
+
+  This can be implemented as a new `_SubstLift` frame: push onto the stack the
+  instruction "apply `f` to `a`", mirroring the existing `_Apply(VLam)` path.
+
+- `quote(VQuot(...))` — reconstructs a `TQuot(...)` at the given level.
+- `quote(VQuotMk(a))` — reconstructs `TQuotMk(quote(a))`.
+- `quote(VQuotLift(q, f, proof))` — reconstructs `TQuotLift(...)`.
+- `conv(VQuot(A1,R1), VQuot(A2,R2))` — compare carriers and relations pointwise.
+- `conv(VQuotMk(a1), VQuotMk(a2))` — `VQuotMk` does NOT directly conv. Two
+  `mk` terms with different `a` values are in different equivalence classes —
+  don't compare equality pointwise. Let `conv` be strict: only `mk(a) ≡ mk(a)`
+  by identity (same term pointer), otherwise fall through to mismatch. The
+  `VQuotLift` reduction is what makes quotient reasoning work, not the mk
+  comparison.
+
+### Step 3 — Type inference and checking (`eval.dart` infer/check paths)
+
+- `infer(TQuot(A, R))` → check `A : Type n`, check `R : A → A → Prop`. Result
+  sort is `max(n, 0)` (conservative: quotients over any carrier type land in
+  the carrier's universe).
+- `infer(TQuotMk(a))` → infer `a`, resolve the quotient type `Quot(A,R)` from
+  context (this constructor is never inferred alone — always in a checking
+  context that provides the expected `Quot` type). If the expected type is not
+  a `VQuot`, error: `NotAQuotient`.
+- `infer(TQuotLift(q, f, proof))` → infer `q` to get `Quot(A,R)`. Check `f`
+  has type `A → B` for some `B`. Check `proof` has type
+  `(x:A)(y:A) → R x y → Eq B (f x) (f y)`. Result type is `B`.
+  **Soundness-critical:** the proof obligation ensures `f` respects the
+  equivalence. This must be checked — a user can't claim `lift` without
+  providing the proof.
+
+### Step 4 — Elaboration (`elab.dart`)
+
+- Surface syntax: `Quot(A, R)`, `mk a`, `lift f proof` (or tokens that match
+  the existing style — the elaborator desugars to kernel terms).
+- The elaborator synthesizes the compatibility proof through the existing
+  `_elabExpr` pipeline. The user writes the proof like any other proof;
+  the elaborator doesn't auto-generate it.
+- `parse.dart` grammar additions for the new surface tokens.
+
+### Step 5 — Tests
+
+- **Positive:** construct a quotient `Nat/≡2` (equivalence mod 2). Prove that
+  `mk 0` and `mk 2` represent the same equivalence class (via `Quot.lift` with
+  a compatibility proof). Prove basic quotient algebraic properties.
+- **Negative:** `Quot` elimination into Type without singleton-elim guard
+  (should be rejected — confirm existing Phase 12 guard catches this).
+- **Negative:** Quotient where the carrier is `Prop` — ensure the sort
+  computation is correct (Prop-sorted quotients exist, Type-sorted quotients
+  exist, no cross-sort confusion).
+- **Negative:** Regression test for the Lean 3 `Quot` inconsistency (even if
+  Doxa's singleton-elim guard already prevents it — capture as a regression pin).
+- **Stress:** `Quot` inside other quotient constructions (nested equivalence
+  classes). `Quot` inside `match` patterns. `Quot` applied to an indexed
+  inductive family. Each exercises a different kernel path.
+
+### Step 6 — Exit
+
+- `val mod2 : Type = Quot(Nat, (a b: Nat) => ...)` typechecks.
+- A proof that `mk 0 = mk 2` under mod-2 equivalence typechecks.
+- All existing tests (766) pass.
+- The Lean 3 soundness regression pin passes.
+- `dart analyze` 0 issues, `dart format` clean.
+
+**Risk assessment.** The Lean 3 inconsistency is the main soundness risk.
+Mitigation: Doxa's singleton-elim check already prevents it, and the negative
+regression test confirms. The second risk is interaction with `VRec` ι-reduction:
+if a recursor's motive involves a quotient, the ι-reduction must not incorrectly
+apply quotient-lift reduction before the recursor fires. Test with `VRec` over
+`VQuotMk` scrutinees. Risk: Medium. Mitigation: dedicated test cases in Step 5.
+
+---
+
+## Phase 14.6 — Definitional Constructor Injectivity
+
+**Goal.** `VConstr(c, args1) ≡ VConstr(c, args2)` → `args1[i] ≡ args2[i]` for all `i`.
+Constructor injectivity becomes definitional — the conversion check handles it
+directly rather than requiring `Eq.rec` chains in the elaborator.
+
+**Why this phase exists.** Constructor injectivity is a conservative extension of
+CIC that every major system (Lean 4, Coq, Agda) has at the kernel level. It is
+~30 lines of code. Without it, indexed-family reasoning generates large `Eq.rec`
+proof terms that could be avoided. With it, conversion handles index refinement
+directly — smaller proof terms, faster checking.
+
+**Prior work.** Lean 4's `kernel/inductive.cpp` injectivity check. Coq's
+`kernel/inductive.ml` `check_constructor_injectivity`. Agda's built-in
+`noConfusion` principle. The conversion rule is the same in all three: same
+constructor → compare arguments pointwise.
+
+### Step 0 — Kernel (`conv.dart`)
+
+- One new dispatch arm in the `_Conv` step of the defunctionalized driver:
+  when both sides are `VConstr` with the same `dataName` and `ctorName`,
+  push frames to compare each pair of arguments pointwise (left-to-right).
+  If any pair fails to conv, return mismatch. If all pairs conv, return Ok.
+- No new term forms, value forms, or surface syntax. Pure kernel change.
+- `conv` for `VConstr` with *different* constructor names continues to
+  return mismatch (no injectivity across constructors — that would be
+  a soundness violation for disjoint unions like `Nat.zero ≠ Nat.succ`).
+
+### Step 1 — Tests
+
+- **Positive:** `conv` of `VConstr("Nat", "succ", [VNeutral(NVar(0))])`
+  on both sides should succeed (same stuck neutral argument).
+- **Negative:** `conv` of `VConstr("Nat", "zero", [])` with
+  `VConstr("Nat", "succ", [])` must fail (different constructors).
+- **Negative:** `conv` of `VConstr("Nat", "succ", [a])` with
+  `VConstr("Nat", "succ", [b])` where `conv(a, b)` fails → mismatch.
+- **Regression:** existing indexed-family proofs (`vlength_index`,
+  `vec_head_unreachable`) still type-check (should be smaller/faster
+  but semantically identical).
+- **Regression:** `succ_ne_zero` (Phase 12 negative) still rejects —
+  constructor injectivity does NOT make distinct constructors equal.
+- **Regression:** `succ_injective` proof via `Nat.rec` still works
+  (it's now both *provable* and *definitional* for same-constructor cases).
+
+### Step 2 — Exit
+
+- All 766 existing tests pass.
+- New injectivity tests pass.
+- No performance regression on the stdlib benchmark.
+- `dart analyze` 0 issues.
+
+**Risk assessment.** The only risk is accidentally making *different* constructors
+equal. The guard is the `dataName` + `ctorName` equality check before comparing
+arguments. Different constructors always mismatch. Risk: Very Low.
+
+---
+
+## Phase 14.7 — Reducibility Hints
+
+**Goal.** A per-definition flag controlling whether a definition unfolds during
+conversion: `transparent` (default, unfolds) or `opaque` (never unfolds). Surface
+syntax: `opaque val name` or similar.
+
+**Why this phase exists.** Three things: (1) the `plus_zero` normalization bug
+(Phase 19 carry-forward) may be fixable by marking a recursive function opaque
+during its own body's check; (2) postulated axioms should never unfold during
+conversion; (3) large derived definitions can be hidden from the type-checker
+to speed up conversion. `VFun` (guarded delta-reduction, Phase 13 Part F-II)
+already implements a specialized form — 14.7 generalizes it to all definitions.
+
+**Prior work.** Lean 4's `opaque` / `irreducible` attributes. Coq's `Qed` (opaque)
+vs `Defined` (transparent). The mechanism is a boolean flag on the definition's
+kernel entry.
+
+### Step 0 — Kernel (`env.dart`, `conv.dart`, `eval.dart`)
+
+- Add `bool isOpaque` field to `TopBindingEntry` (default `false`).
+- In `conv.dart`'s `_Conv(TTop)` path: before unfolding a `TTop(name)` reference,
+  check if the resolved `TopBindingEntry.isOpaque` is `true`. If so, treat the
+  reference as stuck (compare identity only, don't unfold). If `false`, unfold
+  as currently (evaluate the binding's body and conv the result).
+- In `eval.dart`: opaque bindings still evaluate normally (for `nf`, `quote`,
+  and `infer` purposes) — the restriction is ONLY in `conv`. Reasoning:
+  normal forms should show the actual values; conversion is where "pretend
+  this doesn't unfold" matters.
+- `VFun` (guarded delta-reduction) is a separate code path — it remains
+  unchanged. `VFun` controls WHEN a recursive function unfolds (on canonical
+  constructors). `isOpaque` controls WHETHER any definition unfolds at all.
+  An opaque recursive function that is also a `VFun` would be guarded on
+  `VFun` semantics AND never unfold in `conv` — both restrictions apply.
+  In practice, marking a recursive `fun` as opaque would prevent its
+  unfolding entirely, which is probably what you want for a postulated
+  recursive axiom.
+
+### Step 1 — Surface syntax + elaboration (`elab.dart`, `surface.dart`)
+
+- `SValKind` / `SFunKind` gain an optional `isOpaque` flag.
+- `parse.dart`: `opaque val name : T = body` and `opaque fun name(...): ...`
+  tokens.
+- `_elabVal` / `_elabFun` propagate the flag to `TopBinding`.
+- `checkDeclResult` installs it into `TopBindingEntry`.
+
+### Step 2 — Tests
+
+- **Positive:** an `opaque val x : Nat = zero` where `x` is used in a type
+  annotation that expects `Nat`. Without opacity, `x` unfolds to `zero` and
+  `Nat` convs with `Nat`. With opacity, `x` stays as `x` and `Nat` convs
+  with `Nat` (identity on `TTop` names). Both should work.
+- **Negative:** an `opaque val x : Nat = zero` used where `zero` is expected
+  — the type should still check because the *types* match, not the values.
+  The opacity only prevents unfolding of the *value*, not the *type*.
+- **Negative:** an `opaque axiom LEM : (A: Prop) -> ... (a user-postulated
+  classical axiom). Attempting to unfold LEM during conversion should fail
+  (treated as stuck / identity only).
+- **Regression:** existing non-opaque proofs work identically (all 766 tests
+  pass).
+- **`plus_zero` bug:** verify the infinite-normalization bug from
+  Phase 19 carry-forward is resolved by marking the offending function opaque
+  during its own check. (May require additional refinement — flag this as
+  "verify, don't claim fixed." The opacity mechanism provides the tool;
+  whether the bug's root cause is unfolding-at-wrong-time is TBD.)
+
+### Step 3 — Exit
+
+- All 766 existing tests pass.
+- `opaque val` parses, elaborates, and prevents unfolding during conv.
+- `dart analyze` 0 issues.
+- `plus_zero` bug status documented (fixed or confirmed as separate issue).
+
+**Risk assessment.** The main risk is accidentally making existing proofs fail
+because a definition they relied on being transparent becomes opaque. Mitigation:
+the default is `transparent` (isOpaque = false), so existing code behavior is
+unchanged. Only explicit `opaque` annotations change behavior. Risk: Very Low.
+
+---
+
+## Phase 14.8 — Re-benchmark
+
+After all three kernel-hardening phases land, re-run the benchmarking suite
+(see `docs/CONSOLIDATED_PLAN.md` Phase "Benchmarking Interlude") to measure
+the impact of the new conversion rules and term forms. Update `docs/BENCHMARKS.md`
+with a post-14.7 column. If any phase introduced a measurable regression,
+investigate before proceeding to Phase 15.
 
 **Goal:** Lift Doxa's sort hierarchy from the sort-monomorphic v1/v2 shape to full universe polymorphism. Library code (`cong`, `subst`, and every stdlib lemma) is written once over any universe level instead of re-specialized per sort.
 
@@ -1065,17 +1352,26 @@ Same discipline as Phase 10 step 7's audit, but extended to the whole specificat
                                        → 12 (Eq) + interlude (stack-safety audit)
                                          → 13 (metas + implicits + pattern unif)
                                            → 14 (stdlib)
-                                             → 15 (universe polymorphism)
-                                               → 16 (SProp)
-                                                 → 17 (records + η)
-                                                   → 18 (modules + imports)
-                                                     → 19 (ergonomic edges)
-                                                       → 20 (tactics)
-                                                         → 21 (typeclasses)
-                                                           → 22 (audit + polish + release)
+                                             ├─ 14.5 (quotients) ──┐
+                                             ├─ 14.6 (injectivity)─┤  in parallel
+                                             └─ 14.7 (reducibility)┘
+                                                   │
+                                                   ├─ 14.8 (re-benchmark)
+                                                   │
+                                                   └─ 15 (universe polymorphism)
+                                                      → 16 (SProp)
+                                                        → 17 (records + η)
+                                                          → 18 (modules + imports)
+                                                            → 19 (ergonomic edges)
+                                                              → 20 (tactics)
+                                                                → 21 (typeclasses)
+                                                                  → 22 (audit + polish + release)
 ```
 
-Strict linear. Earlier phases unblock later; no feature arrives before its prerequisites. Phase 8 (dart2wasm harness) lands inside Phase 22 as part of release prep, not as its own phase.
+Phases 0-14 are linear (original plan). Phases 14.5-14.7 are independent
+of each other — they can be built in parallel or any order. Phase 14.8
+(re-benchmark) runs after 14.5-14.7 and before 15. Phases 15-22 remain
+strictly linear.
 
 ---
 
