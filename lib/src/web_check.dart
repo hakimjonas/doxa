@@ -1,28 +1,37 @@
-/// Pure `String -> String` driver for the full Doxa pipeline.
+/// Pure pipeline driver for the full Doxa parse → elaborate → check
+/// pipeline, producing structured [CheckOutput].
 ///
 /// This is the I/O-free core used by the WasmGC browser entry
 /// (`web/doxa_check.dart`) and by native harnesses/tests that want to
-/// exercise the whole parse -> elaborate -> check pipeline without
-/// spawning a subprocess or wiring up [IOSink]s.
+/// exercise the whole pipeline without spawning a subprocess or wiring
+/// up [IOSink]s.
 ///
-/// It mirrors `bin/doxa.dart`'s `checkSource`, but instead of writing
-/// diagnostics to sinks and returning an exit code, it returns the
-/// formatted result string directly:
-///   * on success: `OK: N declarations checked`
-///   * on failure: the formatted parse / elab / check diagnostic.
+/// Three entry points:
+///
+///   * [checkSourceString] — returns a human-readable diagnostic string
+///     (kept for backward compat with existing callers).
+///   * [checkSourceJson] — returns the result serialised as JSON.
+///   * [checkSourceOutput] — returns the structured [CheckOutput].
 ///
 /// The prelude is embedded as a const string so the artifact is
 /// self-contained (no runtime file resolution). The canonical source
 /// lives at `lib/stdlib/prelude.doxa`; keep the two in sync.
 library;
 
-import 'package:doxa/src/check.dart';
-import 'package:doxa/src/elab.dart';
-import 'package:doxa/src/parse.dart';
-import 'package:doxa/src/report.dart';
-import 'package:doxa/src/source.dart';
-import 'package:doxa/src/surface.dart';
 import 'package:rumil/rumil.dart';
+
+import 'check.dart';
+import 'elab.dart';
+import 'env.dart';
+import 'eval.dart';
+import 'output.dart';
+import 'parse.dart';
+import 'pretty.dart';
+import 'report.dart';
+import 'sem_info.dart';
+import 'source.dart';
+import 'surface.dart';
+import 'value.dart';
 
 const String _preludeSource = '''
 data Eq[A: Type] : A -> A -> Prop {
@@ -61,11 +70,11 @@ data Eq[A: Type] : A -> A -> Prop {
   return result;
 }
 
-/// Run the full parse -> elaborate -> type-check pipeline on [src]
-/// and return a human-readable result string.
-///
-/// [filename] is used only for diagnostic location formatting.
-String checkSourceString(String src, {String filename = 'playground.doxa'}) {
+/// Run the full pipeline and return the structured [CheckOutput].
+CheckOutput checkSourceOutput(
+  String src, {
+  String filename = 'playground.doxa',
+}) {
   final source = SourceFile(filename: filename, text: src);
   final parseResult = parseProgram(source.text);
   final program = switch (parseResult) {
@@ -74,9 +83,15 @@ String checkSourceString(String src, {String filename = 'playground.doxa'}) {
     Failure<ParseError, SProgram>() => null,
   };
   if (program == null) {
-    return reportParseFailure(
-      source,
-      parseResult as Failure<ParseError, Object?>,
+    final failure = parseResult as Failure<ParseError, Object?>;
+    final line = failure.furthest.line;
+    final column = failure.furthest.column;
+    final message = reportParseFailure(source, failure);
+    return CheckFailure(
+      kind: 'parse_error',
+      line: line,
+      column: column,
+      message: message,
     );
   }
 
@@ -84,7 +99,22 @@ String checkSourceString(String src, {String filename = 'playground.doxa'}) {
   final preludeDeclCount = prelude.bindings.length + prelude.dataDecls.length;
   var bindings = prelude.bindings;
   var dataDecls = prelude.dataDecls;
+  final declarations = <DeclInfo>[];
+  final allSemInfos = <SemInfo>[];
+
   for (final decl in program.decls) {
+    final String currentKind = switch (decl.kind) {
+      SValKind _ => 'val',
+      STypeAliasKind _ => 'type',
+      SFunKind _ => 'fun',
+      SFunBlockKind _ => 'fun',
+      SDataKind _ => 'data',
+      SDataBlockKind _ => 'data',
+    };
+
+    final prevBindingsLen = bindings.length;
+    final prevDataDeclsLen = dataDecls.length;
+
     try {
       final produced = elabDecl(TopEnv(bindings, dataDecls), decl);
       final runningData = [...dataDecls, ...produced.dataDecls];
@@ -94,22 +124,186 @@ String checkSourceString(String src, {String filename = 'playground.doxa'}) {
       );
       bindings = [...bindings, ...finalized];
       dataDecls = runningData;
+
+      // Collect semantic metadata from this declaration's elaboration.
+      final declSemInfos = produced.metas?.semInfos;
+      if (declSemInfos != null && declSemInfos.isNotEmpty) {
+        allSemInfos.addAll(declSemInfos);
+      }
+
+      for (var i = prevDataDeclsLen; i < dataDecls.length; i++) {
+        final dd = dataDecls[i];
+        declarations.add(
+          DeclInfo(
+            name: dd.name,
+            kind: currentKind,
+            type: prettyTerm(dd.sort, outerDepth: 0),
+            span: dd.span,
+          ),
+        );
+      }
+
+      for (var i = prevBindingsLen; i < bindings.length; i++) {
+        final binding = bindings[i];
+        final typeStr = prettyTerm(binding.type, outerDepth: 0);
+        declarations.add(
+          DeclInfo(
+            name: binding.name,
+            kind: currentKind,
+            type: typeStr,
+            span: binding.span,
+          ),
+        );
+      }
     } on DoxaCheckError catch (e) {
       final reportSpan = switch (e) {
-        // A type mismatch caught during elaboration carries the offending
-        // sub-expression's span; prefer it over the enclosing decl so the
-        // caret lands on the term, not column 1.
         TypeMismatch(:final span) when span != null => span,
         ScrutineeTypeMismatchesArm(:final armSpan) when armSpan != null =>
           armSpan,
         _ => decl.span,
       };
-      return reportCheckError(source, e, reportSpan);
+      final message = reportCheckError(source, e, reportSpan);
+      final pos = source.positionAt(reportSpan.start);
+      final (expected, actual) = switch (e) {
+        TypeMismatch(:final got, :final expected, level: final level) => (
+          _prettyValueAt(expected, level),
+          _prettyValueAt(got, level),
+        ),
+        _ => (null, null),
+      };
+      return CheckFailure(
+        kind: _checkErrorKind(e),
+        line: pos.line,
+        column: pos.column,
+        expected: expected,
+        actual: actual,
+        message: message,
+        span: reportSpan.isSynthetic ? null : reportSpan,
+      );
     } on ElabError catch (e) {
-      return reportElabError(source, e);
+      final message = reportElabError(source, e);
+      final pos = source.positionAt(e.span.start);
+      return CheckFailure(
+        kind: _elabErrorKind(e),
+        line: pos.line,
+        column: pos.column,
+        message: message,
+        span: e.span.isSynthetic ? null : e.span,
+      );
     }
   }
 
+  // Compute normal forms for val/fun declarations in the full environment
+  // (which includes all accumulated top-level bindings).
+  final nfEnv = _buildFullEnv(bindings, dataDecls);
+  final bindingByName = {for (final b in bindings) b.name: b};
+  final completedDeclarations = [
+    for (final d in declarations)
+      if ((d.kind == 'val' || d.kind == 'fun') &&
+          bindingByName.containsKey(d.name))
+        DeclInfo(
+          name: d.name,
+          kind: d.kind,
+          type: d.type,
+          normalForm: _truncate(
+            prettyTerm(
+              quote(0, eval(bindingByName[d.name]!.term, nfEnv)),
+              outerDepth: 0,
+            ),
+            500,
+          ),
+          span: d.span,
+        )
+      else
+        d,
+  ];
+
   final n = bindings.length + dataDecls.length - preludeDeclCount;
-  return 'OK: $n ${n == 1 ? "declaration" : "declarations"} checked';
+  allSemInfos.sort((a, b) => a.span.start.compareTo(b.span.start));
+  return CheckSuccess(
+    declarations: completedDeclarations,
+    count: n,
+    semInfo: allSemInfos,
+  );
 }
+
+/// Build an [Env] that has all [bindings] evaluated as [TopBindingEntry]s
+/// and all [dataDecls] registered, so `TTop(name)` references resolve.
+Env _buildFullEnv(List<TopBinding> bindings, List<DataDecl> dataDecls) {
+  var acc = <String, TopBindingEntry>{};
+  for (final b in bindings) {
+    final env = ENil.withRegistries(dataDecls: dataDecls, topBindings: acc);
+    final typeV = eval(b.type, env);
+    final termV = eval(b.term, env);
+    acc = {
+      ...acc,
+      b.name: TopBindingEntry(
+        typeV,
+        termV,
+        recDecreasingArg: b.recDecreasingArg,
+        recArity: b.recArity,
+      ),
+    };
+  }
+  return ENil.withRegistries(dataDecls: dataDecls, topBindings: acc);
+}
+
+/// Run the full pipeline and return a human-readable result string.
+///
+/// Delegates to [checkSourceOutput] and formats the result.
+String checkSourceString(String src, {String filename = 'playground.doxa'}) {
+  final output = checkSourceOutput(src, filename: filename);
+  return switch (output) {
+    CheckSuccess(:final count) =>
+      'OK: $count ${count == 1 ? "declaration" : "declarations"} checked',
+    CheckFailure(:final message) => message,
+  };
+}
+
+/// Run the full pipeline and return the result as a JSON string.
+String checkSourceJson(String src, {String filename = 'playground.doxa'}) =>
+    checkSourceOutput(src, filename: filename).toJsonString();
+
+/// Truncate [s] to at most [maxLen] characters, appending `"..."` when
+/// truncated.
+String _truncate(String s, int maxLen) {
+  if (s.length <= maxLen) return s;
+  return '${s.substring(0, maxLen)}...';
+}
+
+/// Map a [DoxaCheckError] to a short diagnostic kind string.
+String _checkErrorKind(DoxaCheckError e) => switch (e) {
+  TypeMismatch _ => 'type_mismatch',
+  NotAFunction _ => 'not_a_function',
+  NotAType _ => 'not_a_type',
+  UnexpectedFree _ => 'internal_error',
+  UnknownDataOrCtor _ => 'unknown_reference',
+  InductiveArityMismatch _ => 'inductive_arity_mismatch',
+  MatchMotiveRequired _ => 'match_motive_required',
+  ScrutineeTypeMismatchesArm _ => 'scrutinee_type_mismatches_arm',
+  MatchScrutineeNotInductive _ => 'match_scrutinee_not_inductive',
+  IndexedMatchNotExhaustive _ => 'match_not_exhaustive',
+  PropEliminationIntoType _ => 'prop_elimination_into_type',
+};
+
+/// Map an [ElabError] to a short diagnostic kind string.
+String _elabErrorKind(ElabError e) => switch (e) {
+  UnresolvedName _ => 'unresolved_name',
+  DuplicateDeclaration _ => 'duplicate_declaration',
+  LambdaRequiresAnnotation _ => 'lambda_requires_annotation',
+  NonStructuralRecursion _ => 'non_structural_recursion',
+  DataSortNotASort _ => 'data_sort_not_a_sort',
+  MutualHeaderCycle _ => 'mutual_header_cycle',
+  CtorResultShapeMismatch _ => 'ctor_result_shape_mismatch',
+  PositivityViolation _ => 'positivity_violation',
+  MatchIndeterminateType _ => 'match_indeterminate_type',
+  UnknownCtorInMatch _ => 'unknown_ctor_in_match',
+  CtorMismatchInMatch _ => 'ctor_mismatch_in_match',
+  MatchArmArityMismatch _ => 'match_arm_arity_mismatch',
+  DuplicateMatchCase _ => 'duplicate_match_case',
+  NonExhaustiveMatch _ => 'nonexhaustive_match',
+};
+
+/// Pretty-print a [Value] by quoting at [level] and rendering.
+String _prettyValueAt(Value v, int level) =>
+    prettyTerm(quote(level, v), outerDepth: level);

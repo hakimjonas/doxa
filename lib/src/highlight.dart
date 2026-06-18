@@ -43,10 +43,11 @@ String? cssClassFor(Token token) => switch (token) {
 /// Produces a `<pre><code class="language-doxa">` block with syntax-highlighted
 /// spans for [source].
 String highlightDoxaBlock(String source) {
-  final buf = StringBuffer()
-    ..write('<pre><code class="language-doxa">')
-    ..write(highlightDoxaInline(source))
-    ..write('</code></pre>');
+  final buf =
+      StringBuffer()
+        ..write('<pre><code class="language-doxa">')
+        ..write(highlightDoxaInline(source))
+        ..write('</code></pre>');
   return buf.toString();
 }
 
@@ -95,10 +96,7 @@ List<DoxaSegment> tokenizeToSegments(String source) {
   final spans = tokenizeDoxaSpans(source);
   return [
     for (final s in spans)
-      DoxaSegment(
-        _escapeHtml(s.token.text),
-        cssClass: cssClassFor(s.token),
-      ),
+      DoxaSegment(_escapeHtml(s.token.text), cssClass: cssClassFor(s.token)),
   ];
 }
 

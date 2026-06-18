@@ -28,6 +28,7 @@
 library;
 
 import 'ctx.dart';
+import 'sem_info.dart';
 import 'term.dart';
 import 'value.dart';
 
@@ -132,6 +133,14 @@ final class MetaContext {
   /// The backing list. Index = meta ID. Append-only for new metas;
   /// individual entries mutate exactly once (unsolved → solved).
   final List<MetaEntry> _entries = <MetaEntry>[];
+
+  /// Accumulated semantic metadata for identifier references during
+  /// elaboration of the current declaration.
+  ///
+  /// Populated by the expression elaborator when this context's
+  /// [MetaContext] is installed on the [Ctx] used during elaboration.
+  /// Null by default; set to a mutable list to enable collection.
+  List<SemInfo>? semInfos;
 
   /// Creates an empty metavariable context.
   MetaContext();

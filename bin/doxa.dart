@@ -1,9 +1,12 @@
-/// Doxa CLI: `doxa check FILE`.
+/// Doxa CLI: `doxa check FILE` or `doxa check --json FILE`.
 ///
 /// Parses a Doxa source file, elaborates each top-level declaration,
 /// and type-checks each declaration's body against its declared type.
 /// Reports errors via the diagnostic formatter. Exits with status 0
 /// on success and 1 on any error.
+///
+/// When `--json` is passed, the output is structured JSON (same exit
+/// code discipline).
 library;
 
 import 'dart:io';
@@ -14,14 +17,23 @@ import 'package:doxa/src/parse.dart';
 import 'package:doxa/src/report.dart';
 import 'package:doxa/src/source.dart';
 import 'package:doxa/src/surface.dart';
+import 'package:doxa/src/web_check.dart';
 import 'package:rumil/rumil.dart';
 
 void main(List<String> args) {
-  if (args.length != 2 || args[0] != 'check') {
+  var jsonFlag = false;
+  String path;
+
+  if (args.length == 3 && args[0] == 'check' && args[1] == '--json') {
+    jsonFlag = true;
+    path = args[2];
+  } else if (args.length == 2 && args[0] == 'check') {
+    path = args[1];
+  } else {
     _usage();
     exit(2);
   }
-  final path = args[1];
+
   final file = File(path);
   if (!file.existsSync()) {
     stderr.writeln('doxa: file not found: $path');
@@ -29,15 +41,25 @@ void main(List<String> args) {
   }
   final text = file.readAsStringSync();
   final source = SourceFile(filename: path, text: text);
+
+  if (jsonFlag) {
+    stdout.writeln(checkSourceJson(text, filename: path));
+    // checkSourceJson always succeeds at serialising; errors are encoded
+    // in the JSON. Exit 0 so the consumer can inspect the status field.
+    exit(0);
+  }
+
   exit(checkSource(source));
 }
 
 void _usage() {
-  stderr.writeln('Usage: doxa check FILE');
+  stderr.writeln('Usage: doxa check [--json] FILE');
   stderr.writeln('');
   stderr.writeln('  Parse, elaborate, and type-check a Doxa source file.');
   stderr.writeln('  Exits 0 on success, 1 on type or parse errors, 2 on');
   stderr.writeln('  usage errors.');
+  stderr.writeln('');
+  stderr.writeln('  --json    Output structured JSON instead of human-readable text.');
 }
 
 /// The Doxa prelude, ambient declarations loaded before user code.

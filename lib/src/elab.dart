@@ -28,7 +28,9 @@ import 'ctx.dart';
 import 'env.dart';
 import 'eval.dart';
 import 'meta.dart';
+import 'pretty.dart';
 import 'registry.dart';
+import 'sem_info.dart';
 import 'surface.dart';
 import 'term.dart';
 import 'value.dart';
@@ -997,6 +999,14 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
       final local = state.lookupLocal(name);
       if (local != null) {
         final (index, type) = local;
+        _recordSemInfo(
+          state,
+          expr.span,
+          name,
+          SemInfoKind.localVar,
+          type,
+          null,
+        );
         return (TBound(index), type);
       }
       // Inductive-type registry: resolve to TData / TConstr before
@@ -1005,16 +1015,31 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
       final dataDecl = state.topEnv.lookupData(name);
       if (dataDecl != null) {
         final sigTerm = _dataSignatureTerm(dataDecl);
-        return (TData(name, const <Term>[]), eval(sigTerm, state.ctx.env));
+        final sigValue = eval(sigTerm, state.ctx.env);
+        _recordSemInfo(
+          state,
+          expr.span,
+          name,
+          SemInfoKind.dataType,
+          sigValue,
+          dataDecl.span,
+        );
+        return (TData(name, const <Term>[]), sigValue);
       }
       for (final d in state.topEnv.dataDecls) {
         for (final c in d.ctors) {
           if (c.name == name) {
             final sigTerm = _ctorSignatureTerm(d, c);
-            return (
-              TConstr(d.name, name, const <Term>[]),
-              eval(sigTerm, state.ctx.env),
+            final sigValue = eval(sigTerm, state.ctx.env);
+            _recordSemInfo(
+              state,
+              expr.span,
+              name,
+              SemInfoKind.constructor,
+              sigValue,
+              c.span,
             );
+            return (TConstr(d.name, name, const <Term>[]), sigValue);
           }
         }
       }
@@ -1029,6 +1054,14 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
           'violation.',
         );
       }
+      _recordSemInfo(
+        state,
+        expr.span,
+        name,
+        SemInfoKind.topBinding,
+        topEntry.type,
+        state.topEnv.spanOf(name),
+      );
       return (TTop(name), topEntry.type);
 
     case STypeKind(:final level):
@@ -1049,6 +1082,14 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
       final local = state.lookupLocal(flat);
       if (local != null) {
         final (index, type) = local;
+        _recordSemInfo(
+          state,
+          expr.span,
+          flat,
+          SemInfoKind.localVar,
+          type,
+          null,
+        );
         return (TBound(index), type);
       }
       if (state.topEnv.indexOfFromEnd(flat) < 0) {
@@ -1062,6 +1103,14 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
           'invariant violation.',
         );
       }
+      _recordSemInfo(
+        state,
+        expr.span,
+        flat,
+        SemInfoKind.topBinding,
+        topEntry.type,
+        state.topEnv.spanOf(flat),
+      );
       return (TTop(flat), topEntry.type);
 
     case SPiKind(:final param, :final domain, :final codomain):
@@ -1270,6 +1319,29 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
       final motiveV = eval(matchTerm.motive!, state.ctx.env);
       return (term, motiveV);
   }
+}
+
+/// Record a [SemInfo] entry during elaboration, if semantic metadata
+/// collection is enabled on the current [MetaContext].
+void _recordSemInfo(
+  _ElabState state,
+  DoxaSpan span,
+  String name,
+  SemInfoKind kind,
+  Value type,
+  DoxaSpan? defSpan,
+) {
+  final infos = state.ctx.metas?.semInfos;
+  if (infos == null) return;
+  infos.add(
+    SemInfo(
+      span: span,
+      name: name,
+      kind: kind,
+      type: prettyTerm(quote(state.ctx.level, type), outerDepth: 0),
+      defSpan: defSpan?.isSynthetic == true ? null : defSpan,
+    ),
+  );
 }
 
 /// Check-mode elaboration: produce a Term whose type is [expected].
@@ -2085,7 +2157,8 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
   // allocate into this context; `checkDeclResult` installs it on
   // the check-time Ctx so the kernel's `_Infer(TMeta)` path
   // resolves solutions back to their solved terms.
-  final metas = MetaContext();
+  // Also enable semantic metadata collection.
+  final metas = MetaContext()..semInfos = <SemInfo>[];
   switch (kind) {
     case SValKind(:final name, :final type, :final body):
       final Term bodyTerm;

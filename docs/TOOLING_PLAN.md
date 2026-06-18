@@ -32,15 +32,20 @@ or test failures. This is a hard gate.
    grammar to one. No hand-rolled alternatives unless rumil genuinely
    cannot do it.
 
-2. **The website is a dumb renderer.** The kernel/WASM produces
+2. **Build infrastructure, not demos.** The goal isn't a pretty website.
+   The goal is a real LSP server, a real REPL, and real CLI tooling
+   that Doxa ships as first-class features. The arda-web demo consumes
+   them — it doesn't replace them.
+
+3. **The website is a dumb renderer.** The kernel/WASM produces
    structured data (JSON). The arda-web demo parses it and renders it.
    No semantic logic in JS, no regex-parsing of flat error strings.
 
-3. **Layers, not a monolith.** Each phase builds a self-contained
+4. **Layers, not a monolith.** Each phase builds a self-contained
    capability on top of the previous layer. A phase can ship and be
    useful without the later phases.
 
-4. **Anticipate future expansion.** Every architectural decision works
+5. **Anticipate future expansion.** Every architectural decision works
    for the current single-file Doxa AND scales to multi-file projects,
    modules, tactics, and a full LSP server — without a rewrite.
 
@@ -51,6 +56,12 @@ or test failures. This is a hard gate.
 │  Layer 3: Semantic Metadata (InfoTree)           │
 │  Per-position types, names, scopes               │
 │  ─ Powers: hover, goto-def, completion           │
+│                                                  │
+│  ┌────────────────┬───────────────┬────────────┐ │
+│  │  3b: REPL      │ 3c: LSP Server│ Arda-web   │ │
+│  │  doxa repl     │ doxa lsp      │ demo        │ │
+│  └───────┬────────┴───────┬───────┴──────┬─────┘ │
+│          └────────────────┼──────────────┘       │
 ├──────────────────────────────────────────────────┤
 │  Layer 2: Structured Check Output                │
 │  Per-declaration summary: name, type, normal     │
@@ -69,10 +80,6 @@ or test failures. This is a hard gate.
 │  ─ Powers: syntax highlighting everywhere        │
 │    (server, playground, cells), editor theming   │
 └──────────────────────────────────────────────────┘
-```
-
-Each layer depends on the layers below it. Layers 0 and 2 can be built
-in parallel. Layer 1 is needed for Layer 3 but not for Layer 2.
 
 ## Phase 0 — Tokenizer & Highlighting
 
@@ -301,21 +308,20 @@ spans, errors). It just discards it after formatting it into a string.
 - The `nf` function may be expensive for some terms. Defer normal form
   computation — only compute when the user expands a declaration.
 
-## Phase 3 — Position-Indexed Semantic Metadata (InfoTree)
+## Phase 3a — Semantic Metadata (InfoTree)
 
 **Goal:** During elaboration, record per-identifier metadata (resolved
-name, type, source span). Expose it for hover, go-to-definition, and
-completion queries. This is Doxa's equivalent of Lean 4's InfoTree.
+name, type, source span, declaration-site span). This is the shared
+dependency that powers the REPL, the LSP server, and the website demo.
+Doxa's equivalent of Lean 4's InfoTree.
 
 **Status:** The elaborator resolves every identifier, determines its
 type, and knows its source span (via `SExpr.span`). This info is
-currently discarded after elaboration. The GreenNode tree from Phase 1
-provides the substrate for attaching metadata at positions.
+currently discarded after elaboration.
 
 ### Deliverables
 
-1. **Semantic metadata model.** For each source position where an
-   identifier occurs, record:
+1. **Semantic metadata model.** `lib/src/sem_info.dart`:
 
    ```dart
    final class SemInfo {
@@ -331,77 +337,223 @@ provides the substrate for attaching metadata at positions.
      dataType, implicitParam }
    ```
 
-2. **Collection during elaboration.** Modify `elab.dart` to
-   accumulate `SemInfo` entries as it resolves identifiers.
-   Each `_resolveName` call that succeeds records a `SemInfo`.
-   The `MetaContext` already tracks implicitly-inserted parameters;
-   those become `SemInfo` entries with `kind: implicitParam`.
+2. **Collection during elaboration.** Modify `elab.dart` to accumulate
+   `SemInfo` entries as it resolves identifiers. Each `_resolveName` call
+   that succeeds records a `SemInfo`. The `MetaContext` already tracks
+   implicitly-inserted parameters; those become `SemInfo` entries with
+   `kind: implicitParam`.
 
    Collection is additive — no change to elaboration semantics.
    The `SemInfo` list is threaded through `_ElabState` alongside
    the meta context.
 
-3. **Position-indexed query.** Build a lookup structure (sorted by
-   span start offset) that maps a document position to the
-   innermost `SemInfo` containing it:
+3. **Position-indexed query.** Build a sorted lookup structure that maps
+   a document offset to the innermost `SemInfo` containing it:
 
    ```dart
    SemInfo? infoAt(int offset);
    List<SemInfo> allInRange(DoxaSpan span);
+   List<SemInfo> allInScope(int offset);  // for completion
    ```
 
 4. **Expose in structured output.** Extend the `CheckSuccess` JSON
-   from Phase 2 with an optional `semInfo` field: per-position
-   metadata for the whole file.
-
-5. **Demo features.** Wired into the arda-web demo:
-   - **Hover**: on any identifier, show its resolved name and type
-   - **Go-to-definition**: on a `TTop` reference, jump to the
-     declaration's source span
-   - **Completion candidates**: names in scope at the cursor position
-
-   These use the RedTree from Phase 1 for position lookup and the
-   `SemInfo` map for semantic content.
-
-6. **LSP server (future).** The `SemInfo` structure is already
-   position-indexed and maps directly to LSP types:
-   - `textDocument/hover` → `SemInfo.type` at the cursor position
-   - `textDocument/definition` → `SemInfo.defSpan` → LSP `Location`
-   - `textDocument/completion` → all `SemInfo` entries in scope
-   - `textDocument/publishDiagnostics` → `CheckFailure` entries
+   from Phase 2 with a `semInfo` field: per-position metadata for
+   the whole file.
 
 ### What this unlocks
 
-- Full IDE-grade editor features
-- The demo stops being a "textbox + checker" and starts being a
-  lightweight IDE
-- LSP implementation becomes a thin protocol layer over existing data
+- Per-position type queries (foundation for hover)
+- Name → declaration-site resolution (foundation for go-to-definition)
+- Scope-aware identifier lists (foundation for completion)
+- Powers REPL, LSP server, and website demo equally
 
 ### Risks / unknowns
 
 - Collecting `SemInfo` during elaboration adds allocation overhead.
-  The checker is already fast; profile to ensure this doesn't
-  regress the 6-15ms WASM baseline.
-- For large files, the `SemInfo` list may be substantial. Use a
-  compact representation (maybe a sorted `List<(int offset, SemInfo)>`).
-- The elaborator currently runs to completion before any output is
-  available. For IDE use, we'd want incremental elaboration (stop
-  at the cursor position). Defer this — full-file elaboration is
-  fine at current scale.
+  Profile to ensure this doesn't regress the 6-15ms WASM baseline.
+- For large files, the `SemInfo` list may be substantial. Use a compact
+  representation (sorted `List<(int offset, SemInfo)>` with binary search).
+
+---
+
+## Phase 3b — REPL
+
+**Goal:** A CLI read-eval-print loop (`doxa repl`) that accepts
+expressions and declarations interactively, showing inferred types
+and normal forms, with accumulated top-level state.
+
+**Status:** All building blocks exist: `parseExpr`, `elabExpr`, `nf`,
+`prettyTerm`, and the accumulator pattern from `checkSourceOutput`.
+
+### Architecture
+
+The REPL uses the same accumulated-`TopEnv` pattern as the existing
+checker. It is NOT a re-check of the entire file on every input.
+Each new input is elaborated and checked against the accumulated env.
+
+```
+State: ReplSession { bindings, dataDecls, inputCount, ctxLevel }
+
+Loop:
+  1. read input (line editor / stdin)
+  2. try parseExpr → elaborate + infer + nf → show type + normal form
+     catch → try parseDecl  → elaborate + check  → accumulate state, show type
+           catch            → report error, don't change state
+```
+
+An expression input shows:
+
+```
+> plus one two
+: Nat
+succ (succ (succ zero))
+```
+
+A declaration input accumulates state:
+
+```
+> val three : Nat = succ (succ (succ zero))
+three : Nat
+```
+
+### Deliverables
+
+1. **`bin/repl.dart`.** The REPL entry point, wired to `doxa repl` CLI
+   subcommand. Uses `dart:io` stdin/stdout with line editing (readline).
+   Supports `:type <expr>`, `:show <name>`, `:quit`.
+
+2. **`lib/src/repl.dart`.** The `ReplSession` class holding accumulated
+   state. `processInput(String)` returns an `ReplResult` (either
+   `ExprResult` with type + normal form, or `DeclResult` with name +
+   type, or `ReplError` with diagnostic).
+
+3. **`lib/src/line_edit.dart`.** Minimal line editing (history via
+   up/down arrows, left/right/backspace). Multi-line input for block
+   expressions and multi-line declarations. This can start as simple
+   stdin.readline() and be refined later.
+
+4. **Piped mode.** `printf '1 + 1\n' | doxa repl` prints only
+   evaluation output (no prompts, no banner). Diagnostics go to stderr.
+   Useful for scripting and CI.
+
+### What this unlocks
+
+- Interactive exploration of the language
+- Learning tool: type an expression, see what happens
+- Scripting: `echo 'some proof' | doxa repl` for CI checks
+- Debugging: inspect types and normal forms of intermediate terms
+
+### Risks / unknowns
+
+- Multi-line input detection: need to detect incomplete input (open
+  braces, unclosed parentheses). The parser's partial-result mechanism
+  (Rumil's `Failure` vs `Partial`) can inform this.
+
+---
+
+## Phase 3c — LSP Server
+
+**Goal:** A real Language Server Protocol implementation (`doxa lsp`)
+that speaks JSON-RPC over stdio. VS Code talks to it directly as a
+separate process. Provides diagnostics, hover, go-to-definition, and
+completion.
+
+**Status:** The LSP protocol is well-defined. The transport is trivial
+(Content-Length framed JSON over stdin/stdout). The semantic data
+(CheckFailure diagnostics, SemInfo hover/definition/completion) already
+exists from Phases 2 and 3a.
+
+### Architecture
+
+**Transport (build from scratch).** No third-party LSP package. The
+LSP framing is ~30 lines of `dart:io` + `dart:convert`:
+
+```
+stdin → read Content-Length header → read body → jsonDecode → dispatch
+                                                              ↓
+stdout ← write Content-Length header ← write body ← jsonEncode ← response
+```
+
+The protocol types (initialize, didOpen, didChange, didClose, hover,
+definition, completion, publishDiagnostics) are ~200 lines of Dart
+records/classes with `fromJson`/`toJson`.
+
+**Feature set (initial):**
+
+| LSP method | Doxa data source |
+|---|---|
+| `initialize` | Static capabilities (hover, definition, completion, diagnostics) |
+| `textDocument/didOpen` | Store document text, trigger full check |
+| `textDocument/didChange` | Update document text, trigger full check |
+| `textDocument/didClose` | Release document resources |
+| `textDocument/hover` | `infoAt(offset)` → SemInfo.type |
+| `textDocument/definition` | `infoAt(offset)` → SemInfo.defSpan → Location |
+| `textDocument/completion` | `allInScope(offset)` → CompletionItem[] |
+| `textDocument/publishDiagnostics` | CheckFailure[] → Diagnostic[] (pushed after check) |
+
+### Deliverables
+
+1. **`lib/src/lsp/transport.dart`.** Content-Length framed
+   message reader/writer over stdin/stdout. `Stream<Map>` for incoming
+   messages. `void send(Map)` for outgoing.
+
+2. **`lib/src/lsp/protocol.dart`.** LSP type definitions and
+   serialization. Minimal set: InitializeParams, InitializeResult,
+   ServerCapabilities, DidOpenTextDocumentParams, DidChangeTextDocumentParams,
+   HoverParams, Hover, DefinitionParams, Location, CompletionParams,
+   CompletionItem, CompletionList, Diagnostic, DiagnosticSeverity,
+   PublishDiagnosticsParams.
+
+3. **`lib/src/lsp/handler.dart`.** Message dispatch: reads method name
+   from incoming JSON-RPC, routes to the appropriate handler. Calls
+   Phase 2's `checkSourceOutput` for diagnostics, Phase 3a's `infoAt`
+   and `allInScope` for hover/definition/completion.
+
+4. **`bin/doxa.dart`.** New `doxa lsp` subcommand. Starts the transport,
+   initializes capabilities, enters the message loop. Exits cleanly on
+   `shutdown`/`exit`.
+
+5. **VS Code extension (follow-on).** A minimal extension that launches
+   `doxa lsp` as a language server for `.doxa` files. This is tracked
+   outside this plan but is a thin package.json + TypeScript shim.
+
+### What this unlocks
+
+- Real IDE editing for Doxa files (VS Code, Neovim, Emacs)
+- Hover to see types, Ctrl+click to jump to definition
+- Diagnostics appear as squiggly underlines in the editor
+- Completion popups with in-scope identifiers
+- The architecture is independent of the website demo — LSP works
+  in any LSP-compatible editor
+
+### Risks / unknowns
+
+- Single-document model: the initial LSP handles one document at a
+  time. Multi-document project support (imports across files) is
+  deferred.
+- Full-file recheck on every edit: efficient at current file sizes
+  (<1000 lines, 6-15ms). Incremental checking (recheck only the
+  changed declaration) is future work.
+- Process isolation: Doxa has no `#eval` side effects, so a single
+  process is safe. No watchdog/worker split needed initially.
 
 ## Phase Dependencies
 
 ```
-Phase 0 ─────────────────────────────────────────────┐
-(Tokenizer)                                           │
-     │                                                │
-     └── Phase 1 ───────────┐                        │
-         (GreenNode CST)     │                        │
-              │              │                        │
-              │              ├── Phase 3 ─────────────┤
-              │              │   (Semantic Metadata)  │
-              │              │                        │
-              └──────────────┴────────────────────────┘
+Phase 0 ──────────────────────────────────────────────┐
+(Tokenizer)                                            │
+     │                                                 │
+     └── Phase 1 ───────────┐                         │
+         (GreenNode CST)     │                         │
+              │              │                         │
+              │              ├── Phase 3a ─────────────┤
+              │              │   (Semantic Metadata)   │
+              │              │          │              │
+              │              │   ┌──────┼──────┐       │
+              │              │   ▼      ▼      ▼       │
+              │              │ 3b REPL 3c LSP Website  │
+              │              │                         │
+              └──────────────┴─────────────────────────┘
                                      │
 Phase 2 ─────────────────────────────┘
 (Structured Output)
@@ -411,19 +563,27 @@ Phase 2 ────────────────────────
 - **Phase 2** has no dependencies on Phase 0/1. Can start immediately.
   They can be built in parallel by different people or interleaved.
 - **Phase 1** depends on Phase 0 (token alphabet).
-- **Phase 3** depends on Phase 1 (GreenNode for position queries) and
+- **Phase 3a** depends on Phase 1 (GreenNode for position queries) and
   Phase 2 (structured output format to expose metadata).
+- **Phase 3b (REPL)** depends on Phase 3a (SemInfo for `:type` and
+  `:show` queries). The core REPL loop (parse → elaborate → nf → show)
+  works without SemInfo, but rich features need it.
+- **Phase 3c (LSP)** depends on Phase 3a (SemInfo for hover,
+  definition, completion) and Phase 2 (CheckFailure for diagnostics).
 
 ## Recommended Ordering
 
 | Step | What | Why first |
 |---|---|---|
 | Phase 0 | Tokenizer & highlighting | Eliminates 3-way lexer duplication immediately. Smallest change, highest visibility. Every other phase wants syntax highlighting. |
-| Phase 2 | Structured check output | The demo goes from "OK: 26 checked" to inspectable results. Directly educational. Independent of Phase 0/1. |
-| Phase 1 | GreenNode CST | Foundation for Phase 3. Also lets error messages cite the exact syntactic context. Larger change but mechanical. |
-| Phase 3 | Semantic metadata | Full IDE features. Depends on Phase 1 and 2. |
+| Phase 1 | GreenNode CST | Foundation for Phase 3a. Also lets error messages cite the exact syntactic context. |
+| Phase 2 | Structured check output | Per-declaration inspectable results. Machine-readable diagnostics. `--json` CLI flag. Powers the REPL's `:show` and the LSP's diagnostics. |
+| Phase 3a | Semantic metadata | Shared dependency for REPL, LSP, and website. Per-position type/name/scope queries. |
+| Phase 3b | REPL | `doxa repl` — interactive exploration, scripting. Uses existing `parseExpr`/`elabExpr`/`nf`/`prettyTerm` plus accumulated TopEnv. |
+| Phase 3c | LSP server | `doxa lsp` — real IDE support. Uses SemInfo for hover/definition/completion and CheckFailure for diagnostics. |
 
-Phases 0 and 2 can be built and shipped in parallel.
+Phases 0 and 2 can be built in parallel. Phase 3b and 3c are independent
+once 3a is done — they can be built in parallel.
 
 ## Scaling Considerations
 
@@ -434,26 +594,30 @@ The architecture is designed to compose with future Doxa features:
 | **Modules/imports** | GreenNode trees per file compose naturally. `SemInfo` includes cross-file references via URI + span. |
 | **Tactics**        | The `InfoTree` collects metadata during elaboration, including tactic-produced subgoals and their contexts. Add `SemInfoKind.tacticGoal`. |
 | **Multi-file projects** | Incremental reparse works per-file. The `TopEnv` accumulates across files. A project-level `CheckOutput` aggregates per-file results. |
-| **LSP server**     | A `doxa lsp` CLI command wraps the Dart LSP package. `SemInfo` and `CheckOutput` are directly serializable to LSP types. No kernel changes needed. |
+| **LSP server**     | Built in Phase 3c. The `doxa lsp` command speaks standard JSON-RPC over stdio. `SemInfo` and `CheckOutput` are directly serializable to LSP types. Multi-document support added when modules/imports land. |
 | **Universe polymorphism** | `SemInfo` records the resolved universe level for each type occurrence. |
 | **Record types**   | `SemInfo` records field names and their types at each record literal. |
 | **Typeclasses / instance search** | `SemInfo` records instance resolutions. The completion provider can filter by instance availability. |
 
 ## Non-Goals (deliberately excluded)
 
-- **A full LSP server in this plan.** Phase 3 provides all the data
-  an LSP server needs. The server itself is a thin protocol layer.
-  Building it is tracked separately.
 - **Code formatting.** GreenNode.toSource() gives lossless
   reproduction. A formatter needs a different pass (re-pretty-printing
   with canonical whitespace). Not in this plan.
-- **A VS Code extension.** The TextMate grammar from Phase 0 is the
-  first step. A full extension with LSP integration is tracked
+- **A VS Code extension.** The LSP server from Phase 3c works with any
+  LSP-compatible editor. A dedicated VS Code extension (package.json +
+  TypeScript shim to launch `doxa lsp`) is a thin follow-on, tracked
   separately.
 - **WebWorker-based WASM.** The current synchronous `doxaCheck` call
   works for a file that checks in 6-15ms. If/when checking times
   grow (larger files, more imports), move to a WebWorker. Not needed
   now.
+- **Multi-document project support.** The LSP server handles one
+  document at a time. Cross-file imports and project-wide diagnostics
+  are deferred until Doxa has an import/module system.
+- **Incremental elaboration.** Full-file re-elaboration on every edit.
+  Fast at current scale. Incremental (single-declaration) re-elaboration
+  is future work.
 
 ## References
 
