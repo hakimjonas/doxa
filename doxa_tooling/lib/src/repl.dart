@@ -11,15 +11,15 @@ library;
 
 import 'package:rumil/rumil.dart';
 
-import 'check.dart';
-import 'elab.dart';
-import 'env.dart';
-import 'eval.dart';
-import 'parse.dart';
-import 'pretty.dart';
-import 'report.dart';
-import 'source.dart';
-import 'surface.dart';
+import 'package:doxa/src/check.dart';
+import 'package:doxa/src/elab.dart';
+import 'package:doxa/src/env.dart';
+import 'package:doxa/src/eval.dart';
+import 'package:doxa/src/parse.dart';
+import 'package:doxa/src/pretty.dart';
+import 'package:doxa/src/report.dart';
+import 'package:doxa/src/source.dart';
+import 'package:doxa/src/surface.dart';
 
 /// The result of processing one REPL input, plus the (possibly updated)
 /// session state.

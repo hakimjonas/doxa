@@ -1,0 +1,19 @@
+name: doxa
+description: >-
+  A dependently typed proof checker for the Calculus of Inductive
+  Constructions, with an ML-family surface syntax and a stack-safe
+  normalization-by-evaluation kernel.
+version: 0.1.0
+publish_to: none
+repository: https://github.com/hakimjonas/doxa
+homepage: https://github.com/hakimjonas/doxa
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  rumil: ^0.10.0
+
+dev_dependencies:
+  test: ^1.31.0
+  lints: ^6.0.0

@@ -20,18 +20,18 @@ library;
 
 import 'package:rumil/rumil.dart';
 
-import 'check.dart';
-import 'elab.dart';
-import 'env.dart';
-import 'eval.dart';
+import 'package:doxa/src/check.dart';
+import 'package:doxa/src/elab.dart';
+import 'package:doxa/src/env.dart';
+import 'package:doxa/src/eval.dart';
 import 'output.dart';
-import 'parse.dart';
-import 'pretty.dart';
-import 'report.dart';
-import 'sem_info.dart';
-import 'source.dart';
-import 'surface.dart';
-import 'value.dart';
+import 'package:doxa/src/parse.dart';
+import 'package:doxa/src/pretty.dart';
+import 'package:doxa/src/report.dart';
+import 'package:doxa/src/sem_info.dart';
+import 'package:doxa/src/source.dart';
+import 'package:doxa/src/surface.dart';
+import 'package:doxa/src/value.dart';
 
 const String _preludeSource = '''
 data Eq[A: Type] : A -> A -> Prop {

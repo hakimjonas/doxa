@@ -16,7 +16,7 @@ library;
 
 import 'dart:js_interop';
 
-import 'package:doxa/src/web_check.dart';
+import 'package:doxa_tooling/src/web_check.dart';
 
 /// Run the full checker on the JS-supplied source; return a JSON result.
 @JS('doxaCheck')

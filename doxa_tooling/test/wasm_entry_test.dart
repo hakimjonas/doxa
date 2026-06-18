@@ -2,7 +2,7 @@
 /// WasmGC browser entry, natively (no browser/Node runtime needed).
 library;
 
-import 'package:doxa/src/web_check.dart';
+import 'package:doxa_tooling/src/web_check.dart';
 import 'package:test/test.dart';
 
 void main() {

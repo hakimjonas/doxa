@@ -18,7 +18,7 @@ void main() {
             'lib/stdlib',
           ).listSync(recursive: true).whereType<File>(),
           ...Directory(
-            'test/programs',
+            'doxa_tooling/test/programs',
           ).listSync(recursive: true).whereType<File>(),
         ].where((f) => f.path.endsWith('.doxa')).toList()
         ..sort((a, b) => a.path.compareTo(b.path));

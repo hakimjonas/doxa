@@ -8,8 +8,8 @@ library;
 
 import 'dart:convert';
 
-import 'sem_info.dart';
-import 'surface.dart' show DoxaSpan;
+import 'package:doxa/src/sem_info.dart';
+import 'package:doxa/src/surface.dart' show DoxaSpan;
 
 /// The result of checking a Doxa source file.
 sealed class CheckOutput {

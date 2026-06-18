@@ -1,4 +1,4 @@
-/// Doxa CLI: `doxa check [--json] FILE` or `doxa repl`.
+/// Doxa CLI: `doxa check [--json] FILE`, `doxa repl`, or `doxa lsp`.
 ///
 /// Parses a Doxa source file, elaborates each top-level declaration,
 /// and type-checks each declaration's body against its declared type.
@@ -9,6 +9,8 @@
 /// code discipline).
 ///
 /// The `repl` subcommand starts an interactive read-eval-print loop.
+///
+/// The `lsp` subcommand starts the Doxa language server over stdio.
 library;
 
 import 'dart:io';
@@ -16,14 +18,20 @@ import 'dart:io';
 import 'package:doxa/src/check.dart';
 import 'package:doxa/src/elab.dart';
 import 'package:doxa/src/parse.dart';
-import 'package:doxa/src/repl.dart';
 import 'package:doxa/src/report.dart';
 import 'package:doxa/src/source.dart';
 import 'package:doxa/src/surface.dart';
-import 'package:doxa/src/web_check.dart';
+import 'package:doxa_tooling/src/lsp/handler.dart';
+import 'package:doxa_tooling/src/lsp/transport.dart';
+import 'package:doxa_tooling/src/repl.dart';
+import 'package:doxa_tooling/src/web_check.dart';
 import 'package:rumil/rumil.dart';
 
 void main(List<String> args) {
+  if (args.isNotEmpty && args[0] == 'lsp') {
+    _runLsp();
+    return;
+  }
   if (args.isNotEmpty && args[0] == 'repl') {
     _runRepl();
     return;
@@ -74,6 +82,28 @@ void _usage() {
   stderr.writeln('  doxa repl');
   stderr.writeln('');
   stderr.writeln('  Start an interactive REPL session.');
+  stderr.writeln('');
+  stderr.writeln('  doxa lsp');
+  stderr.writeln('');
+  stderr.writeln('  Start the LSP language server over stdio.');
+}
+
+/// Run the LSP server.
+///
+/// Reads LSP messages from stdin and sends responses to stdout.
+/// Exits cleanly on `shutdown`/`exit`.
+void _runLsp() {
+  final handler = LspHandler();
+  while (true) {
+    final message = readLspMessage();
+    if (message == null) break; // EOF
+    final response = handler.handle(message);
+    if (response != null) {
+      final method = message['method'] as String?;
+      if (method == 'exit') break;
+      sendLspMessage(response);
+    }
+  }
 }
 
 /// Run the REPL.

@@ -1,5 +1,5 @@
-import 'package:doxa/src/cst.dart' show parseProgramCst, nodeAt, toSource;
-import 'package:doxa/src/parse_tree.dart' show parseProgramTree;
+import 'package:doxa_tooling/src/cst.dart' show parseProgramCst, nodeAt;
+import 'package:doxa_tooling/src/parse_tree.dart' show parseProgramTree;
 import 'package:rumil/rumil.dart';
 import 'package:test/test.dart';
 

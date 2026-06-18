@@ -1,0 +1,25 @@
+name: doxa_tooling
+description: >-
+  Tooling infrastructure for the Doxa proof checker: tokenizer, concrete
+  syntax tree, structured check output, semantic metadata, REPL, and
+  LSP language server.
+version: 0.1.0
+publish_to: none
+repository: https://github.com/hakimjonas/doxa
+homepage: https://github.com/hakimjonas/doxa
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  doxa: ^0.1.0
+  rumil: ^0.10.0
+  rumil_tokens: ^0.10.0
+
+dev_dependencies:
+  test: ^1.31.0
+  lints: ^6.0.0
+
+dependency_overrides:
+  doxa:
+    path: ../doxa

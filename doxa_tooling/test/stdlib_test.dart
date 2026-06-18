@@ -10,7 +10,7 @@ import 'package:test/test.dart';
 import '../bin/doxa.dart' show checkSource;
 
 void main() {
-  final stdlibDir = Directory('lib/stdlib');
+  final stdlibDir = Directory('../lib/stdlib');
 
   group('stdlib type-checks', () {
     // Discover all .doxa files in lib/stdlib/. If the directory is
