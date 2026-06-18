@@ -16,6 +16,9 @@ dependencies:
   rumil: ^0.10.0
   rumil_tokens: ^0.10.0
 
+executables:
+  doxa: doxa
+
 dev_dependencies:
   test: ^1.31.0
   lints: ^6.0.0
