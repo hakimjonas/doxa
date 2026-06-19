@@ -23,11 +23,16 @@
 /// shadows any earlier binding of the same name within its body.
 library;
 
+import 'dart:io';
+
+import 'package:rumil/rumil.dart' show ParseError, Success, Partial, Failure;
+
 import 'check.dart' show TypeMismatch;
 import 'ctx.dart';
 import 'env.dart';
 import 'eval.dart';
 import 'meta.dart';
+import 'parse.dart' show parseProgram;
 import 'pretty.dart';
 import 'registry.dart';
 import 'sem_info.dart';
@@ -444,6 +449,62 @@ final class DuplicateDeclaration extends ElabError {
   @override
   String toString() =>
       'DuplicateDeclaration($name, previous: $previousSpan, redeclared: $span)';
+}
+
+/// A `import` statement references a file that has already been
+/// imported (directly or transitively) in the current chain.
+final class CyclicImport extends ElabError {
+  /// The resolved file path forming the cycle.
+  final String path;
+
+  /// The source span of the offending `import` declaration.
+  @override
+  final DoxaSpan span;
+
+  /// Creates a cyclic-import error.
+  const CyclicImport(this.path, this.span);
+
+  @override
+  String toString() => 'CyclicImport($path @ $span)';
+}
+
+/// The file referenced by an `import` declaration does not exist.
+final class ImportFileNotFound extends ElabError {
+  /// The resolved file path that could not be found.
+  final String path;
+
+  /// The source span of the offending `import` declaration.
+  @override
+  final DoxaSpan span;
+
+  /// Creates a file-not-found error.
+  const ImportFileNotFound(this.path, this.span);
+
+  @override
+  String toString() => 'ImportFileNotFound($path @ $span)';
+}
+
+// ---------------------------------------------------------------------------
+// Import state
+// ---------------------------------------------------------------------------
+
+/// The absolute path of the file currently being elaborated, used to
+/// resolve relative import paths. Set by the pipeline before elaboration.
+String? currentImportPath;
+
+/// Stack of import paths currently being processed, for cycle detection.
+final _importStack = <String>[];
+
+/// Set of paths that have already been fully imported in the current
+/// pipeline run. Used to make repeated imports of the same file
+/// idempotent. Reset before processing each new top-level file.
+final importedPaths = <String>{};
+
+/// Resolve an import path relative to the current file's directory.
+String _resolveImportPath(String importPath, String currentFile) {
+  final current = Uri.file(currentFile);
+  final resolved = current.resolve(importPath);
+  return resolved.toFilePath();
 }
 
 // ---------------------------------------------------------------------------
@@ -2383,6 +2444,9 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
         metas: metas,
       );
 
+    case SImportKind(:final path):
+      return _processImport(topEnv, path, decl.span);
+
     case SFunBlockKind(:final members):
       // Mutual `fun ... and ...` block. The block-level _elabFunBlock
       // handles duplicate detection, structural-recursion check,
@@ -2404,6 +2468,112 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
             blockResult.group.members.isEmpty ? null : blockResult.group,
         metas: metas,
       );
+  }
+}
+
+/// Process an `import "path"` declaration.
+///
+/// Loads the imported file, recursively elaborates and type-checks its
+/// declarations, and returns the merged bindings and data decls.
+/// Detects cycles via [_importStack] and rejects duplicates against
+/// the calling [topEnv].
+DeclResult _processImport(TopEnv topEnv, String path, DoxaSpan span) {
+  if (currentImportPath == null) {
+    throw StateError(
+      'currentImportPath is not set; cannot resolve import "$path"',
+    );
+  }
+  final resolvedPath = _resolveImportPath(path, currentImportPath!);
+
+  // Idempotent import: if this file was already imported (by a prior
+  // import at the current level), silently return no new bindings.
+  if (importedPaths.contains(resolvedPath)) {
+    return (
+      bindings: const <TopBinding>[],
+      dataDecls: const <DataDecl>[],
+      corecursiveGroup: null,
+      metas: MetaContext()..semInfos = <SemInfo>[],
+    );
+  }
+
+  if (_importStack.contains(resolvedPath)) {
+    throw CyclicImport(resolvedPath, span);
+  }
+
+  final file = File(resolvedPath);
+  if (!file.existsSync()) {
+    throw ImportFileNotFound(resolvedPath, span);
+  }
+  final source = file.readAsStringSync();
+  final parseResult = parseProgram(source);
+  final prog = switch (parseResult) {
+    Success<ParseError, SProgram>(:final value) => value,
+    Partial<ParseError, SProgram>(:final value) => value,
+    Failure<ParseError, SProgram>() =>
+      throw StateError('Failed to parse import: $resolvedPath'),
+  };
+
+  _importStack.add(resolvedPath);
+  final prevFilePath = currentImportPath;
+  currentImportPath = resolvedPath;
+
+  try {
+    var localBindings = const <TopBinding>[];
+    var localDataDecls = const <DataDecl>[];
+
+    for (final decl in prog.decls) {
+      final runningEnv = TopEnv(
+        [...topEnv.bindings, ...localBindings],
+        [...topEnv.dataDecls, ...localDataDecls],
+      );
+      final produced = _elabDecl(runningEnv, decl);
+      final runningData = [...localDataDecls, ...produced.dataDecls];
+      // For import decls inside the imported file, expand the env so
+      // checkDeclResult can verify cross-references within the import.
+      final checkBindings = decl.kind is SImportKind
+          ? [...topEnv.bindings, ...localBindings, ...produced.bindings]
+          : [...topEnv.bindings, ...localBindings];
+      final checkEnv = TopEnv(checkBindings, [
+        ...topEnv.dataDecls,
+        ...runningData,
+      ]);
+      final finalized = checkDeclResult(checkEnv, produced);
+      localBindings = [...localBindings, ...finalized];
+      localDataDecls = runningData;
+    }
+
+    // Check for duplicates against the calling topEnv.
+    final seen = <String>{};
+    for (final b in localBindings) {
+      if (!seen.add(b.name)) {
+        throw DuplicateDeclaration(b.name, span, span);
+      }
+      final existing = topEnv.spanOf(b.name);
+      if (existing != null) {
+        throw DuplicateDeclaration(b.name, existing, span);
+      }
+    }
+    for (final d in localDataDecls) {
+      if (!seen.add(d.name)) {
+        throw DuplicateDeclaration(d.name, span, span);
+      }
+      final existing = topEnv.spanOf(d.name);
+      if (existing != null) {
+        throw DuplicateDeclaration(d.name, existing, span);
+      }
+    }
+
+    importedPaths.add(resolvedPath);
+
+    return (
+      bindings: localBindings,
+      dataDecls: localDataDecls,
+      corecursiveGroup: null,
+      metas: MetaContext()..semInfos = <SemInfo>[],
+    );
+  } finally {
+    currentImportPath = prevFilePath;
+    _importStack.removeLast();
   }
 }
 

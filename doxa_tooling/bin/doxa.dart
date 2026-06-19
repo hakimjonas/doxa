@@ -16,11 +16,11 @@ library;
 import 'dart:io';
 
 import 'package:doxa/src/check.dart';
-import 'package:doxa/src/elab.dart';
+import 'package:doxa/src/elab.dart' show currentImportPath, importedPaths, elabDecl, checkDeclResult, ElabError, TopEnv, TopBinding, DataDecl;
 import 'package:doxa/src/parse.dart';
 import 'package:doxa/src/report.dart';
 import 'package:doxa/src/source.dart';
-import 'package:doxa/src/surface.dart';
+import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
 import 'package:doxa_tooling/src/lsp/handler.dart';
 import 'package:doxa_tooling/src/lsp/transport.dart';
 import 'package:doxa_tooling/src/repl.dart';
@@ -235,6 +235,11 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   final preludeDeclCount = prelude.bindings.length + prelude.dataDecls.length;
   var bindings = prelude.bindings;
   var dataDecls = prelude.dataDecls;
+
+  // Set the current file path so imports can resolve relative paths.
+  currentImportPath = source.filename;
+  importedPaths.clear();
+
   for (final decl in program.decls) {
     final env = TopEnv(bindings, dataDecls);
     try {
@@ -244,7 +249,13 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
       // checking any body, the classical CIC fixpoint discipline
       // (SPEC §8.6).
       final runningData = [...dataDecls, ...produced.dataDecls];
-      final runningEnv = TopEnv(bindings, runningData);
+      // For import decls, expand the env to include the import's own
+      // bindings so checkDeclResult can verify cross-references within
+      // the imported module.
+      final checkBindings = decl.kind is SImportKind
+          ? [...bindings, ...produced.bindings]
+          : bindings;
+      final runningEnv = TopEnv(checkBindings, runningData);
       final finalized = checkDeclResult(runningEnv, produced);
       bindings = [...bindings, ...finalized];
       dataDecls = runningData;

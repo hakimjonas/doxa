@@ -393,6 +393,14 @@ String reportElabError(SourceFile source, ElabError error) {
         '${missingCtors.join(', ')}.',
       );
       sb.writeln('  Add explicit arms or a wildcard `case _ => ...`.');
+    case CyclicImport(:final path, :final span):
+      sb.writeln('error: cyclic import');
+      sb.writeln('  at ${source.formatStart(span)}');
+      sb.writeln('  import of "$path" would create a cycle in the import graph.');
+    case ImportFileNotFound(:final path, :final span):
+      sb.writeln('error: import file not found');
+      sb.writeln('  at ${source.formatStart(span)}');
+      sb.writeln('  cannot find file: $path');
   }
   return sb.toString();
 }

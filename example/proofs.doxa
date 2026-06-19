@@ -14,38 +14,12 @@
 //   * Definitional proofs collapse to a bare `refl`.
 //   * Induction over a value uses the auto-generated dependent
 //     eliminator (`Nat.ind` / `List.ind`).
+//
+// Shared modules are imported instead of redeclared.
 
-// --- Data ------------------------------------------------------------------
-
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
-}
-
-data List[A: Type] : Type {
-  nil  : List[A];
-  cons : A -> List[A] -> List[A];
-}
-
-// --- Functions -------------------------------------------------------------
-
-// Addition, by structural recursion on the first argument.
-fun plus(m: Nat, n: Nat): Nat = match m {
-  case zero => n
-  case succ k => succ (plus k n)
-}
-
-// Length and concatenation of lists. The element type `A` is implicit
-// (curly braces): call sites never write it.
-fun length{A: Type}(xs: List[A]): Nat = match xs {
-  case nil => zero
-  case cons _ rest => succ (length rest)
-}
-
-fun append{A: Type}(xs: List[A], ys: List[A]): List[A] = match xs {
-  case nil => ys
-  case cons h t => cons h (append t ys)
-}
+import "../lib/stdlib/nat.doxa"
+import "../lib/stdlib/list.doxa"
+import "../lib/stdlib/vec.doxa"
 
 // Congruence: equal inputs give equal `f`-images. The body matches on
 // the proof and rebuilds a bare `refl`.
@@ -118,15 +92,6 @@ val succ_ne_zero : (n: Nat) -> Eq[Nat] (succ n) zero -> False =
 // index: the runtime length of a vector equals the index its type
 // carries. The proof uses `Vec.ind`, the dependent eliminator whose
 // motive ranges over both the index and the vector.
-data Vec[A: Type] : Nat -> Type {
-  vnil  : Vec[A] zero;
-  vcons : (n: Nat) -> A -> Vec[A] n -> Vec[A] (succ n);
-}
-
-fun vlength{A: Type}{n: Nat}(v: Vec[A] n): Nat = match v {
-  case vnil => zero
-  case vcons k x rest => succ (vlength rest)
-}
 
 val vlength_index : (A: Type) -> (n: Nat) -> (v: Vec[A] n)
                  -> Eq[Nat] (vlength v) n =

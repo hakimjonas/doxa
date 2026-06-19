@@ -106,6 +106,7 @@ const Set<String> _reserved = {
   'match',
   'case',
   'returning',
+  'import',
   'Type',
   'Prop',
   'SProp',
@@ -136,6 +137,24 @@ final Parser<ParseError, String> _ident = _lex(_rawIdent);
 /// identifier character. Prevents `valid` from matching `val`.
 Parser<ParseError, String> _keyword(String word) =>
     _lex(string(word).thenSkip((alphaNum() | char('_')).notFollowedBy));
+
+/// A double-quoted string literal.
+final Parser<ParseError, String> _strLit = _sym('"')
+    .skipThen(
+      satisfy((c) => c != '"', 'string character').many.map((cs) => cs.join()),
+    )
+    .thenSkip(_sym('"'));
+
+/// An `import` declaration: `import "path/to/file.doxa"`.
+final Parser<ParseError, SDecl> _importDecl = position<ParseError>().flatMap(
+  (start) => _keyword('import')
+      .skipThen(_strLit)
+      .flatMap(
+        (path) => position<ParseError>().map(
+          (end) => SDecl(SImportKind(path), DoxaSpan(start, end)),
+        ),
+      ),
+);
 
 /// Optional `opaque` modifier, consumed before `val` / `fun`.
 final Parser<ParseError, bool> _opaqueMod = _keyword(
@@ -884,7 +903,7 @@ final Parser<ParseError, SDecl> _dataDecl = position<ParseError>().flatMap(
 
 /// Any declaration.
 final Parser<ParseError, SDecl> _decl =
-    _valDecl | _typeDecl | _funDecl | _dataDecl;
+    _importDecl | _valDecl | _typeDecl | _funDecl | _dataDecl;
 
 /// A program: leading whitespace, declarations, trailing whitespace, eof.
 final Parser<ParseError, SProgram> _program = _ws

@@ -2,10 +2,8 @@
 //
 // Written in implicit style: no explicit type passing, pattern
 // unification solves the type arguments.
-//
-// This file is not imported ambiently (imports are not yet
-// implemented). Check it standalone with
-// `dart run bin/doxa.dart check lib/stdlib/nat.doxa`.
+
+import "bool.doxa"
 
 data Nat : Type {
   zero : Nat;
@@ -32,12 +30,7 @@ fun pow(exp: Nat, base: Nat): Nat = match exp {
   case succ e_ => mult base (pow e_ base)
 }
 
-data Bool : Type {
-  true_ : Bool;
-  false_ : Bool;
-}
-
-// Non-strict "less-or-equal": leq m n = true iff m ≤ n.
+// Non-strict "less-or-equal": leq m n = true_ iff m ≤ n.
 fun leq(m: Nat, n: Nat): Bool = match m {
   case zero => true_
   case succ m_ => match n {

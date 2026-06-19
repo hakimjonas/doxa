@@ -11,49 +11,16 @@
 //    parameters; pattern unification solves them against the
 //    explicit proof argument's inferred type.
 //
-// The file is self-contained: the stdlib has no import system yet.
-// Every data type, function, and lemma this file needs is either
-// defined below or, for `Eq`, inherited from the prelude.
+// Shared modules are imported instead of redeclared.
 
-// --- Base data + arithmetic -----------------------------------------------
+import "nat.doxa"
+import "list.doxa"
+import "vec.doxa"
+import "eq.doxa"
+import "bool.doxa"
 
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
-}
-
-fun plus(m: Nat, n: Nat): Nat = match m {
-  case zero => n
-  case succ m_ => succ (plus m_ n)
-}
-
-fun mult(m: Nat, n: Nat): Nat = match m {
-  case zero => zero
-  case succ m_ => plus n (mult m_ n)
-}
-
-// --- Derived Eq lemmas (implicit style) -----------------------------------
+// --- Derived Eq lemmas (explicit style) ------------------------------------
 //
-// Mirror of lib/stdlib/eq.doxa; duplicated here until imports exist.
-
-fun sym{A: Type}{x: A}{y: A}(p: Eq[A] x y): Eq[A] y x =
-  Eq.rec A
-    ((a: A) => (b: A) => (_: Eq[A] a b) => Eq[A] b a)
-    ((z: A) => refl z)
-    x y p
-
-fun trans{A: Type}{x: A}{y: A}{z: A}(p: Eq[A] x y, q: Eq[A] y z): Eq[A] x z =
-  Eq.rec A
-    ((a: A) => (b: A) => (_: Eq[A] a b) => Eq[A] b z -> Eq[A] a z)
-    ((w: A) => (r: Eq[A] w z) => r)
-    x y p q
-
-fun cong{A: Type}{B: Type}{x: A}{y: A}(f: A -> B, p: Eq[A] x y): Eq[B] (f x) (f y) =
-  Eq.rec A
-    ((a: A) => (b: A) => (_: Eq[A] a b) => Eq[B] (f a) (f b))
-    ((z: A) => refl (f z))
-    x y p
-
 // Explicit-style sym/trans/cong for proofs whose composition
 // crosses a call-site where pattern unification over the
 // implicit-style variant currently fails to converge. These are
@@ -159,26 +126,6 @@ val plus_assoc : (m: Nat) -> (n: Nat) -> (p: Nat)
 // type-check via scope-aware TMeta-spine handling; `map_compose` (below)
 // additionally needs guarded delta-reduction.
 
-data List[A: Type] : Type {
-  nil : List[A];
-  cons : A -> List[A] -> List[A];
-}
-
-fun append{A: Type}(xs: List[A], ys: List[A]): List[A] = match xs {
-  case nil => ys
-  case cons h t => cons h (append t ys)
-}
-
-fun map{A: Type}{B: Type}(xs: List[A], f: A -> B): List[B] = match xs {
-  case nil => nil
-  case cons h t => cons (f h) (map t f)
-}
-
-fun length{A: Type}(xs: List[A]): Nat = match xs {
-  case nil => zero
-  case cons h t => succ (length t)
-}
-
 val append_nil : (A: Type) -> (xs: List[A]) ->
                  Eq[List[A]] (append xs nil) xs =
   (A: Type) =>
@@ -263,11 +210,6 @@ val length_append : (A: Type) -> (xs: List[A]) -> (ys: List[A])
 // at the other. Transporting the provable case across the bogus equality
 // (via Eq.rec) lands in `False`.
 
-data Bool : Type {
-  true  : Bool;
-  false : Bool;
-}
-
 data False : Prop { }
 
 fun isZero(n: Nat): Prop = match n {
@@ -276,8 +218,8 @@ fun isZero(n: Nat): Prop = match n {
 }
 
 fun isTrue(b: Bool): Prop = match b {
-  case true => Eq[Bool] true true
-  case false => False
+  case true_ => Eq[Bool] true_ true_
+  case false_ => False
 }
 
 val succ_ne_zero : (n: Nat) -> Eq[Nat] (succ n) zero -> False =
@@ -287,12 +229,12 @@ val succ_ne_zero : (n: Nat) -> Eq[Nat] (succ n) zero -> False =
       ((z: Nat) => (h: isZero z) => h)
       (succ n) zero p (refl zero)
 
-val true_ne_false : Eq[Bool] true false -> False =
-  (p: Eq[Bool] true false) =>
+val true_ne_false : Eq[Bool] true_ false_ -> False =
+  (p: Eq[Bool] true_ false_) =>
     Eq.rec Bool
       ((a: Bool) => (b: Bool) => (_: Eq[Bool] a b) => isTrue a -> isTrue b)
       ((z: Bool) => (h: isTrue z) => h)
-      true false p (refl true)
+      true_ false_ p (refl true_)
 
 // --- Theorems about an indexed family -----------------------------------
 //
@@ -302,17 +244,6 @@ val true_ne_false : Eq[Bool] true false -> False =
 // This is the part that requires elaboration, indexed-family recursion,
 // and dependent motives to cohere, beyond merely computing with the type.
 
-data Vec[A: Type] : Nat -> Type {
-  vnil  : Vec[A] zero;
-  vcons : (n: Nat) -> A -> Vec[A] n -> Vec[A] (succ n);
-}
-
-fun vlength{A: Type}{n: Nat}(v: Vec[A] n): Nat = match v {
-  case vnil => zero
-  case vcons k x rest => succ (vlength rest)
-}
-
-// The runtime length of a vector equals its type-level length index.
 val vlength_index : (A: Type) -> (n: Nat) -> (v: Vec[A] n)
                  -> Eq[Nat] (vlength v) n =
   (A: Type) =>

@@ -10,14 +10,9 @@
 // map/filter/fold) second. This matches Coq's shape; Lean 4's
 // `List.map f xs` order would require a `{struct}` annotation to be
 // admissible.
-//
-// Standalone: inlines `Bool` for `filter`'s predicate-return type.
-// Imports would let this share the `Bool` definition.
 
-data Bool : Type {
-  true_ : Bool;
-  false_ : Bool;
-}
+import "nat.doxa"
+import "bool.doxa"
 
 data List[A: Type] : Type {
   nil : List[A];
@@ -41,11 +36,6 @@ fun filter{A: Type}(xs: List[A], p: A -> Bool): List[A] = match xs {
     case true_ => cons x (filter rest p)
     case false_ => filter rest p
   }
-}
-
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
 }
 
 fun length{A: Type}(xs: List[A]): Nat = match xs {

@@ -504,6 +504,28 @@ sealed class SDeclKind {
   String get name;
 }
 
+/// An import declaration: `import "path/to/file.doxa"`.
+final class SImportKind extends SDeclKind {
+  /// The module path (as parsed from the source).
+  final String path;
+
+  @override
+  String get name => path;
+
+  /// Creates an import declaration.
+  const SImportKind(this.path);
+
+  @override
+  bool operator ==(Object other) =>
+      other is SImportKind && other.path == path;
+
+  @override
+  int get hashCode => Object.hash('SImportKind', path);
+
+  @override
+  String toString() => 'SImportKind($path)';
+}
+
 /// A value binding: `val x: T = e` or `val x = e`.
 final class SValKind extends SDeclKind {
   @override

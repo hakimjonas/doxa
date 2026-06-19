@@ -144,6 +144,7 @@ int _emitLeading(
   SDecl decl,
 ) {
   final syn = switch (decl.kind) {
+    SImportKind _ => DoxaSyntax.importDecl,
     SValKind _ => DoxaSyntax.valDecl,
     STypeAliasKind _ => DoxaSyntax.typeDecl,
     SFunKind _ => DoxaSyntax.funDecl,

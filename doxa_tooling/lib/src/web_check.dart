@@ -101,6 +101,8 @@ CheckOutput checkSourceOutput(
   var dataDecls = prelude.dataDecls;
   final declarations = <DeclInfo>[];
   final allSemInfos = <SemInfo>[];
+  currentImportPath = filename;
+  importedPaths.clear();
 
   for (final decl in program.decls) {
     final String currentKind = switch (decl.kind) {
@@ -110,6 +112,7 @@ CheckOutput checkSourceOutput(
       SFunBlockKind _ => 'fun',
       SDataKind _ => 'data',
       SDataBlockKind _ => 'data',
+      SImportKind _ => 'import',
     };
 
     final prevBindingsLen = bindings.length;
@@ -118,8 +121,14 @@ CheckOutput checkSourceOutput(
     try {
       final produced = elabDecl(TopEnv(bindings, dataDecls), decl);
       final runningData = [...dataDecls, ...produced.dataDecls];
+      // For import decls, expand the env to include the import's own
+      // bindings so checkDeclResult can verify cross-references within
+      // the imported module.
+      final checkBindings = decl.kind is SImportKind
+          ? [...bindings, ...produced.bindings]
+          : bindings;
       final finalized = checkDeclResult(
-        TopEnv(bindings, runningData),
+        TopEnv(checkBindings, runningData),
         produced,
       );
       bindings = [...bindings, ...finalized];
@@ -306,6 +315,8 @@ String _elabErrorKind(ElabError e) => switch (e) {
   MatchArmArityMismatch _ => 'match_arm_arity_mismatch',
   DuplicateMatchCase _ => 'duplicate_match_case',
   NonExhaustiveMatch _ => 'nonexhaustive_match',
+  CyclicImport _ => 'cyclic_import',
+  ImportFileNotFound _ => 'import_file_not_found',
 };
 
 /// Pretty-print a [Value] by quoting at [level] and rendering.

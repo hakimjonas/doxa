@@ -96,6 +96,9 @@ enum DoxaToken {
   /// keyword `and`
   kwAnd,
 
+  /// keyword `import`
+  kwImport,
+
   /// universe sort `Type`
   sortType,
 
@@ -126,6 +129,9 @@ enum DoxaToken {
 enum DoxaSyntax {
   /// entire source file
   sourceFile,
+
+  /// `import "path/to/file.doxa"`
+  importDecl,
 
   /// `val name : type = expr`
   valDecl,
@@ -280,6 +286,7 @@ DoxaToken _keywordKind(String text) => switch (text) {
   'case' => DoxaToken.kwCase,
   'returning' => DoxaToken.kwReturning,
   'and' => DoxaToken.kwAnd,
+  'import' => DoxaToken.kwImport,
   _ => DoxaToken.error,
 };
 
@@ -332,6 +339,7 @@ List<DoxaGreen> tokenizeAsGreens(String source) {
 /// they form self-contained units.
 const Set<DoxaSyntax> reparsableKinds = {
   DoxaSyntax.sourceFile,
+  DoxaSyntax.importDecl,
   DoxaSyntax.valDecl,
   DoxaSyntax.typeDecl,
   DoxaSyntax.funDecl,
