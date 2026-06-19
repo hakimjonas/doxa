@@ -1209,89 +1209,113 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
         ),
       );
 
-    case SAppKind(:final fn, :final arg):
-      // Plain-app elaboration with leading-implicit insertion before
-      // the explicit arg is applied (the elaboration-zoo technique).
-      //
-      // Recipe:
-      //   1. Infer the function head -> (fT, fV).
-      //   2. `insert'`: while fV is VPi(_, _, implicit), allocate a
-      //      fresh meta of the implicit domain's type, append it to
-      //      fT (fold into TData/TConstr args; TApp otherwise),
-      //      advance fV by opening the codomain with the meta's
-      //      neutral value. Loop.
-      //   3. Elaborate the explicit arg via `_inferExpr` under the
-      //      SAME state. This keeps the arg's neutrals at the
-      //      caller's ctx levels, so pattern unification sees
-      //      matching variable levels across the implicit-solution
-      //      boundary.
-      //
-      //      Routing args through the `_elabExpr` shim (which rebuilds
-      //      a Ctx with placeholder types for every local binder) is
-      //      wrong here: the arg's evaluated Value would reference SHIM
-      //      levels, not the caller's levels, so pattern unification
-      //      would compare ?0 (meta at caller level) against
-      //      NVar(shim_level) and fail to solve. Recursive _inferExpr
-      //      keeps the arg's neutrals at caller levels.
-      //   4. Build result term (fold into TData/TConstr args; TApp
-      //      otherwise) and result Value (open codomain closure).
-      final (rawFT, rawFV) = _inferExpr(state, fn);
-      final (fT, fV) = _insertImplicits(state, rawFT, rawFV);
-      // In application inference, CHECK the argument against the
-      // VPi's domain rather than INFER it. The check channel
-      // propagates the expected
-      // type into arg elaboration, this is what lets motive β-
-      // substitution drive step-arg elaboration in `List.ind A P
-      // base step`. Without it, step's ih annotation elaborates
-      // independently of P's shape, allocating duplicate metas
-      // that can't unify against motive-body-captured ones
-      // (pattern-fragment spines disagree in arity at different
-      // ctx levels).
-      //
-      // Fallback to infer when fV isn't a VPi: the non-function
-      // application path (TData/TConstr head, or an ill-typed program
-      // the kernel re-check will surface with a cleaner diagnostic
-      // than a domain-less check would).
-      final Term argT;
-      if (fV is VPi) {
-        argT = _checkExpr(state, arg, fV.domain);
-      } else {
-        argT = _inferExpr(state, arg).$1;
-      }
-      final resultT = switch (fT) {
-        TData(:final name, :final args) => TData(name, [...args, argT]) as Term,
-        TConstr(:final dataName, :final ctorName, :final args) => TConstr(
-          dataName,
-          ctorName,
-          [...args, argT],
-        ),
-        _ => TApp(fT, argT),
-      };
-      // Compute result Value by opening fV's codomain closure with
-      // argV. For dependent codomains (e.g. `cong`'s codomain
-      // `Eq[B] (f x) (f y)`) eval may apply the arg-binder through
-      // the codomain body. If argV is a non-function Value bound in
-      // higher-order position (e.g. a bare VConstr, a ctor passed
-      // without eta-wrapping), the kernel's `_Apply(VConstr, _)` will
-      // crash with a kernel-invariant StateError. That's a real user
-      // error (arity mismatch on the ctor) but the CRASH is wrong
-      // the kernel's post-elab check surfaces it cleanly. Guard via
-      // try/catch: fall back to placeholder, let the kernel produce
-      // the real diagnostic downstream.
-      Value resultV = const VType(0);
-      if (fV is VPi) {
-        final argV = eval(argT, state.ctx.env);
-        try {
-          resultV = eval(fV.codomain.body, fV.codomain.env.extend(argV));
-        } on StateError {
-          // Fall through: resultV stays as the VType(0) placeholder.
-          // This fires when argV is bound to a non-function Value
-          // in a higher-order position (bare ctor without eta-wrap)
-          // and the codomain body tries to apply it; kernel re-check
-          // will surface the real arity/type error cleanly.
+    case SAppKind():
+      // Fully iterative SApp processing — O(1) stack regardless of
+      // nesting depth. Collects all application levels (handling both
+      // left-deep multi-arg `f(a)(b)(c)` and right-deep nested
+      // `f(g(...(x)...))` chains) into a flat list, then processes
+      // from innermost to outermost in a single loop.
+
+      // 1. Walk the expression collecting all SApp levels.
+      //    Follow the fn chain for left-deep, arg chain for right-deep.
+      //    Each entry: (fnExpr, argExpr, followFn).
+      final fns = <SExpr>[], argExprs = <SExpr>[], followFn = <bool>[];
+      var cur = expr;
+      while (cur.kind is SAppKind) {
+        final k = cur.kind as SAppKind;
+        fns.add(k.fn);
+        argExprs.add(k.arg);
+        if (k.fn.kind is SAppKind) {
+          followFn.add(true);
+          cur = k.fn;
+        } else if (k.arg.kind is SAppKind) {
+          followFn.add(false);
+          cur = k.arg;
+        } else {
+          followFn.add(false);
+          break;
         }
       }
-      return (resultT, resultV);
+
+      // 2. Process from innermost (last) to outermost (first).
+      //    Maintain running (resultT, resultV).
+      Term? resultT;
+      Value? resultV;
+      for (var i = fns.length - 1; i >= 0; i--) {
+        // 2a. Determine function head term and value.
+        final Term headT;
+        final Value headV;
+        if (i == fns.length - 1 || !followFn[i]) {
+          // Innermost or right-deep: infer the fn expression.
+          final (rawFT, rawFV) = _inferExpr(state, fns[i]);
+          final (impT, impV) = _insertImplicits(state, rawFT, rawFV);
+          headT = impT;
+          headV = impV;
+        } else {
+          // Left-deep non-innermost: the fn is the previous result.
+          final (impT, impV) =
+              _insertImplicits(state, resultT!, resultV!);
+          headT = impT;
+          headV = impV;
+        }
+
+        // 2b. Determine the argument term.
+        final Term argT;
+        if (i == fns.length - 1 || followFn[i]) {
+          // Innermost or left-deep: arg is a raw SExpr.
+          if (headV is VPi) {
+            argT = _checkExpr(state, argExprs[i], headV.domain);
+          } else {
+            argT = _inferExpr(state, argExprs[i]).$1;
+          }
+        } else {
+          // Right-deep non-innermost: arg is the previous result.
+          if (headV is VPi) {
+            final sr = subtype(
+              state.ctx.level,
+              resultV!,
+              headV.domain,
+              dataDecls: state.ctx.dataDecls,
+              metas: state.ctx.metas,
+              topBindings: state.ctx.env.topBindings,
+            );
+            if (sr is ConvMismatch) {
+              throw TypeMismatch(
+                resultV,
+                headV.domain,
+                sr,
+                level: state.ctx.level,
+              );
+            }
+          }
+          argT = resultT!;
+        }
+
+        // 2c. Build result term.
+        final builtT = switch (headT) {
+          TData(:final name, :final args) =>
+            TData(name, [...args, argT]) as Term,
+          TConstr(:final dataName, :final ctorName, :final args) =>
+            TConstr(dataName, ctorName, [...args, argT]),
+          _ => TApp(headT, argT),
+        };
+
+        // 2d. Advance type value to codomain.
+        Value builtV = const VType(0);
+        if (headV is VPi) {
+          final argV = eval(argT, state.ctx.env);
+          try {
+            builtV = eval(headV.codomain.body, headV.codomain.env.extend(argV));
+          } on StateError {
+            // Keep placeholder; kernel reports the real error.
+          }
+        }
+
+        resultT = builtT;
+        resultV = builtV;
+      }
+
+      return (resultT!, resultV!);
 
     case SMatchKind():
       // SMatchKind routed to `_elabMatch`, which consumes

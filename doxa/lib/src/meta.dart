@@ -400,7 +400,23 @@ Term inlineSolvedMetas(Term term, MetaContext metas, {int outerDepth = 0}) {
       return walk(entry.solution, depth);
     }(),
     TType() || TProp() || TFree() || TTop() || TRec() || TBound() => t,
-    TApp(:final fn, :final arg) => TApp(walk(fn, depth), walk(arg, depth)),
+    TApp(:final fn, :final arg) => () {
+      // Flat-right inlining: collect the right spine (arg chain)
+      // iteratively to avoid stack overflow on deeply right-nested
+      // chains like TApp(f, TApp(g, TApp(h, x))).
+      final newFn = walk(fn, depth);
+      final rights = <Term>[];
+      var cur = arg;
+      while (cur is TApp) {
+        rights.add(cur.fn);
+        cur = cur.arg;
+      }
+      var result = walk(cur, depth);
+      for (final f in rights.reversed) {
+        result = TApp(walk(f, depth), result);
+      }
+      return TApp(newFn, result);
+    }(),
     TPi(:final domain, :final codomain, :final name, :final icit) => TPi(
       walk(domain, depth),
       walk(codomain, depth + 1),
