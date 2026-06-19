@@ -253,16 +253,22 @@ and g(A: Type): Type -> Type = (f: Type) => f
       checkStructuralRecursion(fun, {'f'});
     });
 
-    test(
-      'param-type references to block members are rejected',
-      () {
-        // A param type that mentions a sibling block member is rejected
-        // by the walker's param-type pass (no designated arg there). This
-        // needs a zero-param fun, which the grammar disallows, so the
-        // case is only illustrative; skipped.
-      },
-      skip: 'grammar requires at least one fun parameter',
-    );
+    test('param-type references to block members are rejected', () {
+      // A param type that mentions a sibling block member is rejected
+      // by the walker's param-type pass (no designated arg there). This
+      // requires a zero-param fun (which the grammar now allows).
+      final fun = _parseFun('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+
+fun f(): Type = zero
+and g(x: Type): Type = f
+''', memberName: 'f');
+      // The body `zero` (type Nat) must be convertible with the declared
+      // return type Type, so this produces a type-level error, not a
+      // parse error. The walker only checks for structural recursion
+      // and is a no-op here since `f` has no designated arg.
+      checkStructuralRecursion(fun, {'f', 'g'});
+    });
   });
 
   group('{struct name} annotation', () {

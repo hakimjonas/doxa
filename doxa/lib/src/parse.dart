@@ -838,7 +838,9 @@ final Parser<ParseError, List<(String, SExpr)>> _valueParams = _sym('(')
           .flatMap<(String, SExpr)>(
             (name) => _sym(':').skipThen(_expr).map((t) => (name, t)),
           )
-          .sepBy(_sym(',')),
+          .sepBy(_sym(','))
+          .optional
+          .map((r) => r ?? []),
     )
     .thenSkip(_sym(')'));
 

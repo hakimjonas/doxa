@@ -5806,19 +5806,24 @@ Term _substArmBody(
   // [envIdxAdj] adjusts the env index: use `nBinders + depth` for
   // arm-body positions (main walker) or `depth` for TMeta-spine
   // arg positions (scope-aware).
+  // The quote level for the resolved binder uses [envIdxAdj] (which
+  // includes nBinders for the main walker) so that the arm-local
+  // binder depth is reflected in the TBound index — necessary when
+  // `level > env.depth` and the main-walk vs meta-spine regimes
+  // need independent shifts.
   Term resolveViaEnv(int index, int depth, int envIdxAdj) {
     final envIdx = index - envIdxAdj;
     final envValue = env.lookup(envIdx);
     if (envValue is VNeutral) {
       final n = envValue.neutral;
       if (n is NVar) {
-        return TBound(level + depth - 1 - n.level);
+        return TBound(level + envIdxAdj - 1 - n.level);
       }
       if (n is NTop) {
         return TTop(n.name);
       }
     }
-    return quote(level + depth, envValue);
+    return quote(level + envIdxAdj, envValue);
   }
 
   late final Term Function(Term, int) walk;

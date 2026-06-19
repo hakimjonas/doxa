@@ -83,17 +83,6 @@ void main() {
       );
     });
 
-    // The four tests below assert the FAITHFUL behavior the fix must
-    // achieve; they currently FAIL on the substitution branch of
-    // quote(VMatch). `skip` keeps the suite green while documenting the
-    // target; remove `skip` when the fix lands so they guard against
-    // regression.
-    const openGap =
-        'quote(VMatch) substitution branch is not scope-faithful for '
-        'level>depth captures (map_compose). The meta-spine vs main-walk '
-        'index regimes must be shifted independently; a blanket +nBinders '
-        'corrupts meta-spine args through the quote->eval roundtrip.';
-
     test('non-trivial env, level == depth: head reindexes correctly', () {
       // Non-trivial depth-4 env (slot1 = a nested stuck match), but
       // level == depth (the append_nil shape).
@@ -111,7 +100,7 @@ void main() {
       // headIdx=2 -> env slot 0 -> NVar(3). level 4, depth 6: TBound(2).
       final v = stuckMatch(env: env, scrutLevel: 5, headIdx: 2);
       expect(consHead(quote(4, v)), const TBound(2));
-    }, skip: openGap);
+    });
 
     test('non-trivial env, level > depth: THE map_compose bug', () {
       // map_compose env1: depth-4 [#0=NVar4 (=g), #1=VMatch, #2=NVar2,
@@ -138,7 +127,7 @@ void main() {
             'bug under-shifts it (TBound(2) -> denotes NVar(6), a '
             'deeper wrong binder).',
       );
-    }, skip: openGap);
+    });
 
     // ORACLE (no hand-computed index): the trivial-identity branch is
     // known-correct. For a head that resolves to the SAME absolute
@@ -180,7 +169,6 @@ void main() {
               'whether the env is trivial-identity',
         );
       },
-      skip: openGap,
     );
 
     test('non-trivial must agree with trivial for the same NVar (L>d)', () {
@@ -215,7 +203,7 @@ void main() {
             'level>depth: non-trivial env must still agree with '
             'trivial for the same head NVar',
       );
-    }, skip: openGap);
+    });
   });
 
   // The TWO-REGIME interaction: an arm body that mixes a main-walk outer
@@ -224,11 +212,6 @@ void main() {
   // shift satisfies) and a body where that shift corrupts the meta-spine
   // arg through the quote roundtrip.
   group('quote(VMatch) two-regime (meta-spine + main-walk)', () {
-    const openGap2 =
-        'quote(VMatch) substitution branch, open. The meta-spine and '
-        'main-walk index regimes need independent shifts; a blanket '
-        '+nBinders corrupts spine args.';
-
     // Arm body: cons head element = TApp*(TMeta(0), [outerRef]) applied
     // to h. The head element is a meta-spine whose single arg is an
     // OUTER reference, the shape where a head element sits beside
@@ -310,6 +293,6 @@ void main() {
             'and non-trivial envs; the fix must NOT corrupt the E.1 '
             'spine regime while shifting the main-walk regime',
       );
-    }, skip: openGap2);
+    });
   });
 }
