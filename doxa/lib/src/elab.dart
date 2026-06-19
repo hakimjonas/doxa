@@ -289,7 +289,28 @@ final class DataSortNotASort extends ElabError {
 
   @override
   String toString() =>
-      'DataSortNotASort($dataName: signature must end in Type n or Prop @ $span)';
+      'DataSortNotASort($dataName: signature must end in Type n, Prop, or SProp @ $span)';
+}
+
+/// An SProp-inductive's constructor field is not SProp-sorted.
+///
+/// SProp inductives can only carry SProp-sorted fields; non-SProp fields
+/// (Type-sorted or Prop-sorted data) are rejected.
+final class SPropFieldNotProofIrrelevant extends ElabError {
+  /// The field name.
+  final String fieldName;
+
+  /// The source location.
+  @override
+  final DoxaSpan span;
+
+  /// Creates a non-SProp-field error.
+  const SPropFieldNotProofIrrelevant(this.fieldName, this.span);
+
+  @override
+  String toString() =>
+      'SPropFieldNotProofIrrelevant($fieldName: SProp-inductive fields '
+      'must be SProp-sorted @ $span)';
 }
 
 /// A mutual-data block has a cycle in its header dependencies.
@@ -1087,6 +1108,9 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
     case SPropKind():
       return (const TProp(), _vType1);
 
+    case SSPropKind():
+      return (const TSProp(), _vType1);
+
     case SDotKind():
       final flat = _flattenDottedIdent(expr);
       if (flat == null) {
@@ -1367,8 +1391,7 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
       final (relationT, _) = _inferExpr(state, relation);
       final quotTerm = TQuot(carrierT, relationT);
       // The type of Quot(A, R) is Type 0 (or the sort of A)
-      final resultV =
-          carrierV is VType ? VType(carrierV.level) : _vType0;
+      final resultV = carrierV is VType ? VType(carrierV.level) : _vType0;
       return (quotTerm, resultV);
 
     case SQuotMkKind(:final arg):
@@ -1797,10 +1820,11 @@ Value _closeValueOverCtx(Value type, Ctx ctx) {
 /// caller supplies a placeholder.
 Value? _computePiSort(Value domSort, Value codSort) {
   if (codSort is VProp) return const VProp();
+  if (codSort is VSProp) return const VSProp();
   if (codSort is! VType) return null;
   final codLevel = codSort.level;
   final Level domLevel;
-  if (domSort is VProp) {
+  if (domSort is VProp || domSort is VSProp) {
     domLevel = _l0;
   } else if (domSort is VType) {
     domLevel = domSort.level;
@@ -1906,6 +1930,7 @@ Term _elabExpr(
     case SDotKind():
     case STypeKind():
     case SPropKind():
+    case SSPropKind():
     case SAppKind():
     case SPiKind():
     case SLetKind():
@@ -2479,7 +2504,9 @@ TopBinding _elabFun(
       TopBinding(
         name: m.fun.name,
         type: typeTerm,
-        term: const TType(_l0), // never evaluated, TTop resolves via topBindings
+        term: const TType(
+          _l0,
+        ), // never evaluated, TTop resolves via topBindings
         span: m.span,
       ),
     );
@@ -2763,6 +2790,7 @@ void _walkForRecursion({
       }
     case STypeKind():
     case SPropKind():
+    case SSPropKind():
       return;
     case SDotKind(:final qualifier):
       // Walk the qualifier for shadowing purposes, but DON'T flag a
@@ -3008,6 +3036,7 @@ bool _hasRecursiveReferenceAt(
       return blockMembers.contains(name) && !shadowed.contains(name);
     case STypeKind():
     case SPropKind():
+    case SSPropKind():
       return false;
     case SDotKind(:final qualifier):
       return _hasRecursiveReferenceAt(qualifier, blockMembers, shadowed);
@@ -3179,7 +3208,7 @@ _DataHeader _elabDataHeader(TopEnv topEnv, DoxaSpan span, SDataKind kind) {
     cursor = pi.codomain;
   }
   final sort = cursor;
-  if (sort is! TType && sort is! TProp) {
+  if (sort is! TType && sort is! TProp && sort is! TSProp) {
     throw DataSortNotASort(kind.name, kind.signature.span);
   }
 
@@ -3191,6 +3220,25 @@ _DataHeader _elabDataHeader(TopEnv topEnv, DoxaSpan span, SDataKind kind) {
     sort: sort,
     paramScope: paramScope,
   );
+}
+
+/// True iff [t] is an SProp-sorted type term, i.e., its sort is
+/// [TSProp]. Used by SProp-inductive field validation.
+bool _termIsSPropSorted(Term t, List<DataDecl> dataDecls) {
+  while (true) {
+    switch (t) {
+      case TPi(:final codomain):
+        t = codomain;
+        continue;
+      case TData(:final name):
+        for (final d in dataDecls) {
+          if (d.name == name) return d.sort is TSProp;
+        }
+        return false;
+      default:
+        return false;
+    }
+  }
 }
 
 /// Elaborate the ctors of a single data declaration.
@@ -3271,6 +3319,15 @@ List<CtorDecl> _elabDataCtors(
         '${indices.length == 1 ? 'ex' : 'ices'})',
       );
     }
+    // SProp field validation: all constructor fields must be SProp-sorted.
+    if (header.sort is TSProp) {
+      for (final arg in args) {
+        if (!_termIsSPropSorted(arg.type, scratchEnv.dataDecls)) {
+          throw SPropFieldNotProofIrrelevant(arg.name ?? '_', arg.span);
+        }
+      }
+    }
+
     // Strict positivity: each ctor arg type must have every name in
     // [mutualNames] only in strictly-positive positions (or not at all).
     // For a single-data decl, mutualNames = {kind.name}. For a mutual
@@ -3332,6 +3389,19 @@ List<TopBinding> _makeRecBindings(
   DataDecl dataDecl,
   DoxaSpan span,
 ) {
+  // SProp-sorted data: only the default .rec (no .ind/.rect).
+  // The motive sort stays as SProp; elimination into Type is forbidden.
+  if (dataDecl.sort is TSProp) {
+    return [
+      TopBinding(
+        name: '${dataDecl.name}.rec',
+        type: synthRecursorType(dataDecl, motiveSort: const TSProp()),
+        term: TRec(dataDecl.name, motiveSort: const TSProp()),
+        span: span,
+      ),
+    ];
+  }
+
   final bindings = <TopBinding>[
     TopBinding(
       name: '${dataDecl.name}.rec',
@@ -3586,6 +3656,7 @@ void _collectRefs(
       }
     case STypeKind():
     case SPropKind():
+    case SSPropKind():
       break;
     case SDotKind(:final qualifier):
       _collectRefs(qualifier, blockMembers, shadowed, acc);
@@ -3709,7 +3780,13 @@ List<int> _topoSortHeaders(
 /// counts. Nested covariance is resolved by
 /// [_strictlyPositiveInAny], not by this predicate.
 bool _occursInAny(Set<String> dataNames, Term term) => switch (term) {
-  TType() || TProp() || TFree() || TBound() || TTop() || TMeta() => false,
+  TType() ||
+  TSProp() ||
+  TProp() ||
+  TFree() ||
+  TBound() ||
+  TTop() ||
+  TMeta() => false,
   TData(:final name, :final args) =>
     dataNames.contains(name) || args.any((a) => _occursInAny(dataNames, a)),
   TConstr(:final args) => args.any((a) => _occursInAny(dataNames, a)),
@@ -3834,7 +3911,13 @@ bool _isParamStrictlyPositive(Term term, int boundVar) =>
 // below by explicitly refusing to enter if the param occurs
 // in the domain.
 switch (term) {
-  TType() || TProp() || TFree() || TBound() || TTop() || TMeta() => true,
+  TType() ||
+  TSProp() ||
+  TProp() ||
+  TFree() ||
+  TBound() ||
+  TTop() ||
+  TMeta() => true,
   TData(:final args) => args.every(
     (a) => _isParamStrictlyPositive(a, boundVar),
   ),
@@ -3879,7 +3962,7 @@ switch (term) {
 /// Does TBound(target) occur anywhere in [term] (adjusting for binder
 /// descent)?
 bool _boundOccursIn(Term term, int target) => switch (term) {
-  TType() || TProp() || TFree() || TTop() || TMeta() => false,
+  TType() || TSProp() || TProp() || TFree() || TTop() || TMeta() => false,
   TBound(:final index) => index == target,
   TData(:final args) => args.any((a) => _boundOccursIn(a, target)),
   TConstr(:final args) => args.any((a) => _boundOccursIn(a, target)),

@@ -287,9 +287,16 @@ String reportElabError(SourceFile source, ElabError error) {
       sb.writeln('error: data declaration signature must end in a sort');
       sb.writeln('  at ${source.formatStart(span)}');
       sb.writeln(
-        '  "$dataName"\'s signature must end in `Type n` or `Prop`, not a',
+        '  "$dataName"\'s signature must end in `Type n`, `Prop`, or `SProp`, not a',
       );
       sb.writeln('  concrete type. Check the arrow chain after the `:`.');
+    case SPropFieldNotProofIrrelevant(:final fieldName, :final span):
+      sb.writeln('error: SProp-inductive field is not SProp-sorted');
+      sb.writeln('  at ${source.formatStart(span)}');
+      sb.writeln(
+        '  "$fieldName" has a non-SProp type. All fields of an SProp-sorted',
+      );
+      sb.writeln('  inductive must themselves be SProp-sorted.');
     case MutualHeaderCycle(:final cycle, :final span):
       sb.writeln('error: mutual-data header cycle');
       sb.writeln('  at ${source.formatStart(span)}');

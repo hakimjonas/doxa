@@ -1212,6 +1212,7 @@ bool _termContainsMeta(Term t) {
         return true;
       case TType():
       case TProp():
+      case TSProp():
       case TBound():
       case TFree():
       case TTop():
@@ -1412,6 +1413,9 @@ Object _drive(
 
           case TProp():
             step = const _YieldV(VProp());
+
+          case TSProp():
+            step = const _YieldV(VSProp());
 
           case TBound(:final index):
             step = _YieldV(env.lookup(index));
@@ -1642,6 +1646,14 @@ Object _drive(
         // reports a mismatch. Hard-mismatching here would block that
         // unification and break every proof that passes a stuck
         // recursive application as a `cong`/`trans` argument.
+        // Strict proof irrelevance: any two SProp values are
+        // definitionally equal regardless of their internal structure.
+        // This fires before the structural switch, so SProp-to-SProp
+        // comparison never descends into inner terms.
+        if (a is VSProp && b is VSProp) {
+          step = const _YieldC(_ok);
+          break;
+        }
         switch ((a, b)) {
           // VType × VType: strict on levels.
           case (VType(level: final la), VType(level: final lb)):
@@ -1653,12 +1665,23 @@ Object _drive(
           case (VProp(), VProp()):
             step = const _YieldC(_ok);
 
-          // VType × VProp or VProp × VType: distinct sorts, strict
+          // SProp × SProp: strict irrelevance.
+          case (VSProp(), VSProp()):
+            step = const _YieldC(_ok);
+
+          // VType × VProp/VProp × VType: distinct sorts, strict
           // equality rejects them (no cumulativity across sort
           // identity; see SPEC §8.2, Prop and Type are separate, not a
           // subtype chain).
           case (VType(), VProp()):
           case (VProp(), VType()):
+            step = _YieldC(_mismatchOrIrrelevance(a, b, dataDecls));
+
+          // VSProp × {VType, VProp}: distinct sorts.
+          case (VSProp(), VType()):
+          case (VType(), VSProp()):
+          case (VSProp(), VProp()):
+          case (VProp(), VSProp()):
             step = _YieldC(_mismatchOrIrrelevance(a, b, dataDecls));
 
           // VPi × VPi: domains first, then opened codomains at level+1.
@@ -2247,10 +2270,20 @@ Object _drive(
         switch ((got, expected)) {
           // Type n ≤ Type m  iff  n ≤ m.
           case (VType(level: final lg), VType(level: final le)):
-            step = _YieldC(_levelGte(le, lg) ? _ok : ConvMismatch(got, expected));
+            step = _YieldC(
+              _levelGte(le, lg) ? _ok : ConvMismatch(got, expected),
+            );
 
           // Prop ≤ Prop.
           case (VProp(), VProp()):
+            step = const _YieldC(_ok);
+
+          // SProp ≤ SProp.
+          case (VSProp(), VSProp()):
+            step = const _YieldC(_ok);
+
+          // SProp ≤ Prop (SProp eliminates into Prop).
+          case (VSProp(), VProp()):
             step = const _YieldC(_ok);
 
           // Pi ≤ Pi: contravariant domain, covariant codomain.
@@ -2281,6 +2314,10 @@ Object _drive(
 
           case TProp():
             // Prop : Type 1 (SPEC §8.2).
+            step = const _YieldV(_vType1);
+
+          case TSProp():
+            // SProp : Type 1 (same cumulativity as Prop).
             step = const _YieldV(_vType1);
 
           case TBound(:final index):
@@ -2816,6 +2853,7 @@ Object _drive(
 
           case VType():
           case VProp():
+          case VSProp():
           case VPi():
           case VData():
           case VConstr():
@@ -2837,6 +2875,9 @@ Object _drive(
 
           case VProp():
             step = const _YieldT(TProp());
+
+          case VSProp():
+            step = const _YieldT(TSProp());
 
           case VPi(:final domain, :final codomain, :final name, :final icit):
             // Fast path: the codomain closure was built by
@@ -3281,6 +3322,17 @@ Object _drive(
           case _InferPiHaveDomV(:final ctx, :final cod, :final domSort):
             // `value` is the evaluated domain. Extend the ctx and infer
             // the codomain, carrying the stashed domain sort forward.
+            // Quick path for sort-literal codomains: avoid losing
+            // the specific sort through type inference (Prop/SProp
+            // both infer as VType(1)).
+            if (cod is TSProp) {
+              step = _YieldV(_piSort(domSort, _sPropSort));
+              break;
+            }
+            if (cod is TProp) {
+              step = _YieldV(_piSort(domSort, _propSort));
+              break;
+            }
             stack.add(_InferPiHaveCodType(domSort));
             step = _Infer(ctx.extend(value), cod);
 
@@ -4386,6 +4438,7 @@ Level _normalizeMax(Level a, Level b) {
       args.add(l);
     }
   }
+
   collect(LMax(na, nb));
   args.sort(_levelCompare);
   // Deduplicate: keep only maximal args (no other arg is GTE it).
@@ -4436,8 +4489,7 @@ bool _levelGte(Level a, Level b) {
 }
 
 /// Structural `l1 == l2` on normalized levels. For strict equality in _Conv.
-bool _levelEq(Level a, Level b) =>
-    _normalizeLevel(a) == _normalizeLevel(b);
+bool _levelEq(Level a, Level b) => _normalizeLevel(a) == _normalizeLevel(b);
 
 // ===========================================================================
 // Sort helpers (internal).
@@ -4448,7 +4500,7 @@ bool _levelEq(Level a, Level b) =>
 // admit).
 // ===========================================================================
 
-/// A universe sort: either [_Prop] or [_TypeN].
+/// A universe sort: [_Prop], [_SProp], or [_TypeN].
 sealed class _Sort {
   const _Sort();
 }
@@ -4457,18 +4509,24 @@ final class _Prop extends _Sort {
   const _Prop();
 }
 
+final class _SProp extends _Sort {
+  const _SProp();
+}
+
 final class _TypeN extends _Sort {
   final Level level;
   const _TypeN(this.level);
 }
 
 const _Prop _propSort = _Prop();
+const _SProp _sPropSort = _SProp();
 
 /// Read a sort from a Value, or null if it isn't one.
 ///
-/// Returns a [_Sort] for [VProp] or [VType(n)]; null for any other
-/// shape (a user-facing `NotAType` condition).
+/// Returns a [_Sort] for [VSProp], [VProp] or [VType(n)]; null for
+/// any other shape (a user-facing `NotAType` condition).
 _Sort? _asSort(Value v) => switch (v) {
+  VSProp() => _sPropSort,
   VProp() => _propSort,
   VType(:final level) => _TypeN(level),
   _ => null,
@@ -4476,6 +4534,7 @@ _Sort? _asSort(Value v) => switch (v) {
 
 /// Convert a [_Sort] to its [Value] representation.
 Value _sortToValue(_Sort s) => switch (s) {
+  _SProp() => const VSProp(),
   _Prop() => const VProp(),
   _TypeN(:final level) => VType(level),
 };
@@ -4525,7 +4584,8 @@ bool _isPropSortedTerm(Term t, List<DataDecl> dataDecls) {
 Value _sortTermToValue(Term sort) => switch (sort) {
   TType(:final level) => VType(level),
   TProp() => const VProp(),
-  _ => throw StateError('data sort is neither TType nor TProp: $sort'),
+  TSProp() => const VSProp(),
+  _ => throw StateError('data sort is neither TType, TProp, nor TSProp: $sort'),
 };
 
 /// Infer the type of a `Value` well enough to classify its sort,
@@ -4540,9 +4600,10 @@ Value _sortTermToValue(Term sort) => switch (sort) {
 ///
 /// - `VType(n) → VType(n+1)`.
 /// - `VProp → VType(1)` (Prop : Type 1, SPEC §8.2).
+/// - `VSProp → VType(1)` (SProp : Type 1).
 /// - `VPi` → computed from codomain-Term classification (we don't
-///   need the type's exact value, only its Prop-ness; callers test
-///   that directly via [_isPropSorted]).
+///   need the type's exact value, only its Prop-/SProp-ness; callers
+///   test that directly via [_isPropSorted] / [_isSPropSorted]).
 /// - `VData(name, _) → dataDecl.sort` resolved against the registry.
 /// - `VConstr(dataName, …) → dataDecl.sort` of the parent data
 ///   (ctors live in the data's sort; params/indices don't matter
@@ -4556,20 +4617,25 @@ Value? _inferValueType(Value v, List<DataDecl> dataDecls) {
       return VType(_normalizeLevel(LSucc(level)));
     case VProp():
       return _vType1;
+    case VSProp():
+      return _vType1;
     case VPi():
       // For irrelevance, we don't need the Pi's exact sort as a value,
-      // we only need to know whether the Pi is Prop-sorted. Return
-      // a sentinel Value whose _isPropSorted classification mirrors
-      // the Pi's: we walk the body as a Term.
+      // we only need to know whether the Pi is Prop- or SProp-sorted.
+      // Return a sentinel Value whose classification mirrors the Pi's:
+      // we walk the body as a Term.
       //
       // Rather than compute `_piSort(...)` here (which would require
       // re-entering the driver to evaluate sub-terms), we pre-classify
-      // via the term walker. If the body is Prop-sorted, return
-      // VProp (sentinel); otherwise VType(0) (any Type sort suffices,
-      // since _isPropSorted(VType(_)) = false).
-      return _isPropSortedTerm(v.codomain.body, v.codomain.env.dataDecls)
-          ? const VProp()
-          : _vType0;
+      // via the term walker. If the body is Prop-sorted, return VProp
+      // (sentinel); if SProp-sorted, return VSProp; otherwise VType(0)
+      // (any Type sort suffices, since neither _isPropSorted nor
+      // _isSPropSorted matches VType(_)).
+      final codBody = v.codomain.body;
+      final codDecls = v.codomain.env.dataDecls;
+      if (_isPropSortedTerm(codBody, codDecls)) return const VProp();
+      if (_isSPropSortedTerm(codBody, codDecls)) return const VSProp();
+      return _vType0;
     case VData(:final name):
       // The type of a VData (an inductive type applied to its args) is
       // the inductive's declared SORT, VProp or VType(n). This is
@@ -4622,6 +4688,8 @@ bool _isPropSorted(Value type, List<DataDecl> dataDecls) {
       // The value's type is Prop → the value is a proposition, not a
       // proof. Irrelevance does not fire.
       return false;
+    case VSProp():
+      return false;
     case VType():
       // Value lives in Type n, not Prop.
       return false;
@@ -4650,9 +4718,63 @@ bool _isPropSorted(Value type, List<DataDecl> dataDecls) {
   }
 }
 
-/// Try to admit [a] ≡ [b] by SPEC §8.2 Prop-irrelevance. If both
-/// values have types whose sort is `Prop`, they are definitionally
-/// equal by the calculus's proof-irrelevance rule. Otherwise return
+/// True iff [type] is an `SProp`-sorted type. SProp values are
+/// definitionally equal — no registry needed.
+bool _isSPropSorted(Value type, List<DataDecl> dataDecls) {
+  switch (type) {
+    case VSProp():
+      return true;
+    case VProp():
+    case VType():
+      return false;
+    case VData(:final name):
+      for (final d in dataDecls) {
+        if (d.name == name) return d.sort is TSProp;
+      }
+      return false;
+    case VPi():
+      return _isSPropSortedTerm(
+        type.codomain.body,
+        type.codomain.env.dataDecls,
+      );
+    case VLam():
+    case VConstr():
+    case VRec():
+    case VFun():
+    case VMatch():
+    case VNeutral():
+    case VDelayed():
+    case VQuot():
+    case VQuotMk():
+    case VQuotLift():
+      return false;
+  }
+}
+
+/// Classify whether a [Term] resolves to an `SProp`-sorted type.
+/// Mirrors [_isPropSortedTerm] but checks for [TSProp].
+bool _isSPropSortedTerm(Term t, List<DataDecl> dataDecls) {
+  while (true) {
+    switch (t) {
+      case TPi(:final codomain):
+        t = codomain;
+        continue;
+      case TData(:final name):
+        for (final d in dataDecls) {
+          if (d.name == name) return d.sort is TSProp;
+        }
+        return false;
+      default:
+        return false;
+    }
+  }
+}
+
+/// Try to admit [a] ≡ [b] by SPEC §8.2 Prop-irrelevance or SProp
+/// strict irrelevance. If both values have types whose sort is `Prop`,
+/// they are definitionally equal by the calculus's proof-irrelevance
+/// rule. If both have types whose sort is `SProp`, they are
+/// definitionally equal by strict proof irrelevance. Otherwise return
 /// [ConvMismatch] as before.
 ///
 /// Called from every conv-mismatch site in `_Conv`. When the loop-
@@ -4662,10 +4784,17 @@ bool _isPropSorted(Value type, List<DataDecl> dataDecls) {
 ConvResult _mismatchOrIrrelevance(Value a, Value b, List<DataDecl>? dataDecls) {
   if (dataDecls == null) return ConvMismatch(a, b);
   final ta = _inferValueType(a, dataDecls);
-  if (ta == null || !_isPropSorted(ta, dataDecls)) return ConvMismatch(a, b);
-  final tb = _inferValueType(b, dataDecls);
-  if (tb == null || !_isPropSorted(tb, dataDecls)) return ConvMismatch(a, b);
-  return const ConvOk();
+  // Existing Prop check:
+  if (ta != null && _isPropSorted(ta, dataDecls)) {
+    final tb = _inferValueType(b, dataDecls);
+    if (tb != null && _isPropSorted(tb, dataDecls)) return const ConvOk();
+  }
+  // New SProp check:
+  if (ta != null && _isSPropSorted(ta, dataDecls)) {
+    final tb = _inferValueType(b, dataDecls);
+    if (tb != null && _isSPropSorted(tb, dataDecls)) return const ConvOk();
+  }
+  return ConvMismatch(a, b);
 }
 
 // ===========================================================================
@@ -5240,7 +5369,13 @@ Term _renameForSolution(
       return TBound(n - 1 - pos + depth);
     }(),
     TBound() => t,
-    TType() || TProp() || TFree() || TTop() || TRec() || TMeta() => t,
+    TType() ||
+    TSProp() ||
+    TProp() ||
+    TFree() ||
+    TTop() ||
+    TRec() ||
+    TMeta() => t,
     TApp(:final fn, :final arg) => TApp(walk(fn, depth), walk(arg, depth)),
     TPi(:final domain, :final codomain, :final name, :final icit) => TPi(
       walk(domain, depth),
@@ -5525,7 +5660,13 @@ Term _substArmBody(
         argDepth,
       ),
       TBound() => t,
-      TType() || TProp() || TFree() || TTop() || TRec() || TMeta() => t,
+      TType() ||
+      TSProp() ||
+      TProp() ||
+      TFree() ||
+      TTop() ||
+      TRec() ||
+      TMeta() => t,
       TApp(:final fn, :final arg) => TApp(
         walkSpineArg(fn, argDepth),
         walkSpineArg(arg, argDepth),
@@ -5609,7 +5750,13 @@ Term _substArmBody(
         nBinders + depth,
       ),
       TBound() => t,
-      TType() || TProp() || TFree() || TTop() || TRec() || TMeta() => t,
+      TType() ||
+      TSProp() ||
+      TProp() ||
+      TFree() ||
+      TTop() ||
+      TRec() ||
+      TMeta() => t,
       TApp(:final fn, :final arg) => TApp(walk(fn, depth), walk(arg, depth)),
       TPi(:final domain, :final codomain, :final name, :final icit) => TPi(
         walk(domain, depth),
@@ -5759,7 +5906,7 @@ bool _solutionWellScoped(
   int depth,
 ) {
   switch (t) {
-    case TType() || TProp() || TFree() || TTop() || TRec():
+    case TType() || TSProp() || TProp() || TFree() || TTop() || TRec():
       return true;
     case TMeta(:final id):
       return id != forbiddenId;
@@ -5865,7 +6012,13 @@ bool _solutionWellScopedUnderCtx(Term t, Ctx localCtx) {
   while (stack.isNotEmpty) {
     final (cur, depth) = stack.removeLast();
     switch (cur) {
-      case TType() || TProp() || TFree() || TTop() || TRec() || TMeta():
+      case TType() ||
+          TSProp() ||
+          TProp() ||
+          TFree() ||
+          TTop() ||
+          TRec() ||
+          TMeta():
         // TType/TProp/TFree/TTop/TRec: no indices.
         // TMeta: own indices are interpreted via the nested meta's
         // own localCtx; an unsolved TMeta here is legal, the
@@ -6048,7 +6201,13 @@ Term _shiftTBoundPastThreshold(
   Term uniShift(Term t, int depth) => switch (t) {
     TBound(:final index) when index >= depth => TBound(index + shiftBy),
     TBound() => t,
-    TType() || TProp() || TFree() || TTop() || TRec() || TMeta() => t,
+    TType() ||
+    TSProp() ||
+    TProp() ||
+    TFree() ||
+    TTop() ||
+    TRec() ||
+    TMeta() => t,
     TApp(:final fn, :final arg) => TApp(
       uniShift(fn, depth),
       uniShift(arg, depth),
@@ -6110,7 +6269,13 @@ Term _shiftTBoundPastThreshold(
       index + shiftBy,
     ),
     TBound() => t,
-    TType() || TProp() || TFree() || TTop() || TRec() || TMeta() => t,
+    TType() ||
+    TSProp() ||
+    TProp() ||
+    TFree() ||
+    TTop() ||
+    TRec() ||
+    TMeta() => t,
     TApp(:final fn, :final arg) =>
       (() {
         final hs = _termHeadTMetaAndSpine(t);
@@ -6215,14 +6380,16 @@ void _collectHeadBounds(Term term, Set<int> acc) {
 ///   cod = Type m, dom = Prop    => Pi : Type m
 ///   cod = Type m, dom = Type n  => Pi : Type (max n m)
 Value _piSort(_Sort domSort, _Sort codSort) {
-  // Impredicative Prop: codomain in Prop means Pi is in Prop,
-  // regardless of the domain's sort.
+  // Impredicative: codomain in Prop or SProp means Pi is in the same
+  // impredicative sort, regardless of the domain's sort.
   if (codSort is _Prop) return const VProp();
+  if (codSort is _SProp) return const VSProp();
   // Otherwise codSort is Type m.
   final codLevel = (codSort as _TypeN).level;
-  // Domain contributes its level; Prop is treated as level 0 here
-  // (Prop -> Type m) : Type m.
-  final domLevel = domSort is _Prop ? _l0 : (domSort as _TypeN).level;
+  // Domain contributes its level; Prop and SProp are treated as level
+  // 0 here (Prop/SProp -> Type m) : Type m.
+  final domLevel =
+      (domSort is _Prop || domSort is _SProp) ? _l0 : (domSort as _TypeN).level;
   return VType(_normalizeLevel(LMax(domLevel, codLevel)));
 }
 
@@ -6493,7 +6660,13 @@ Term _substByLevel(Term term, Map<int, Value> substMap, Ctx ctx) {
       return _shiftTBoundPastThreshold(solutionT, threshold: 0, shiftBy: depth);
     }(),
     TBound() => t,
-    TType() || TProp() || TFree() || TTop() || TRec() || TMeta() => t,
+    TType() ||
+    TSProp() ||
+    TProp() ||
+    TFree() ||
+    TTop() ||
+    TRec() ||
+    TMeta() => t,
     TApp(:final fn, :final arg) => TApp(walk(fn, depth), walk(arg, depth)),
     TPi(:final domain, :final codomain, :final name, :final icit) => TPi(
       walk(domain, depth),
@@ -7010,7 +7183,13 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
     TBound(:final index) => TBound(
       paramDepthAtInner(paramCount - 1 - (index - argCount)),
     ),
-    TType() || TProp() || TFree() || TBound() || TTop() || TMeta() => t,
+    TType() ||
+    TSProp() ||
+    TProp() ||
+    TFree() ||
+    TBound() ||
+    TTop() ||
+    TMeta() => t,
     TApp(:final fn, :final arg) => TApp(remapAtInner(fn), remapAtInner(arg)),
     TLam() || TPi() || TLet() => t,
     TData(:final name, :final args) => TData(name, [
@@ -7122,7 +7301,13 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
       TBound(:final index) => TBound(
         paramDepth(paramCount - 1 - (index - posIdx)),
       ),
-      TType() || TProp() || TFree() || TBound() || TTop() || TMeta() => t,
+      TType() ||
+      TSProp() ||
+      TProp() ||
+      TFree() ||
+      TBound() ||
+      TTop() ||
+      TMeta() => t,
       TApp(:final fn, :final arg) => TApp(remapArgType(fn), remapArgType(arg)),
       TLam() || TPi() || TLet() => t,
       TData(:final name, :final args) => TData(name, [
@@ -7278,7 +7463,13 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
   Term shiftArgType(Term t, int j, int depth) => switch (t) {
     TBound(:final index) when index < j => t, // ctor arg, unchanged
     TBound(:final index) => TBound(index + paramShift),
-    TType() || TProp() || TFree() || TBound() || TTop() || TMeta() => t,
+    TType() ||
+    TSProp() ||
+    TProp() ||
+    TFree() ||
+    TBound() ||
+    TTop() ||
+    TMeta() => t,
     TApp(:final fn, :final arg) => TApp(
       shiftArgType(fn, j, depth),
       shiftArgType(arg, j, depth + 0),

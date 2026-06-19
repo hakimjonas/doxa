@@ -26,8 +26,14 @@ void main() {
 
     test('Pi domain mismatch: path = [domain]', () {
       // (Type 0 -> X) vs (Type 1 -> X), domains differ.
-      final a = eval(const TPi(TType(LLevel(0)), TType(LLevel(5))), const ENil());
-      final b = eval(const TPi(TType(LLevel(1)), TType(LLevel(5))), const ENil());
+      final a = eval(
+        const TPi(TType(LLevel(0)), TType(LLevel(5))),
+        const ENil(),
+      );
+      final b = eval(
+        const TPi(TType(LLevel(1)), TType(LLevel(5))),
+        const ENil(),
+      );
       final diff = diffValues(a, b);
       expect(diff.steps, [isA<DiffDomain>()]);
       expect((diff.got as VType).level, const LLevel(0));
@@ -36,8 +42,14 @@ void main() {
 
     test('Pi codomain mismatch: path = [codomain]', () {
       // (Type 0 -> Type 5) vs (Type 0 -> Type 6), codomains differ.
-      final a = eval(const TPi(TType(LLevel(0)), TType(LLevel(5))), const ENil());
-      final b = eval(const TPi(TType(LLevel(0)), TType(LLevel(6))), const ENil());
+      final a = eval(
+        const TPi(TType(LLevel(0)), TType(LLevel(5))),
+        const ENil(),
+      );
+      final b = eval(
+        const TPi(TType(LLevel(0)), TType(LLevel(6))),
+        const ENil(),
+      );
       final diff = diffValues(a, b);
       expect(diff.steps, [isA<DiffCodomain>()]);
       expect((diff.got as VType).level, const LLevel(5));
@@ -77,8 +89,14 @@ void main() {
 
     test('TypeMismatch includes diff path when not top-level', () {
       // (Type 0 -> Type 0) vs (Type 0 -> Type 1), codomain mismatch.
-      final got = eval(const TPi(TType(LLevel(0)), TType(LLevel(0))), const ENil());
-      final expected = eval(const TPi(TType(LLevel(0)), TType(LLevel(1))), const ENil());
+      final got = eval(
+        const TPi(TType(LLevel(0)), TType(LLevel(0))),
+        const ENil(),
+      );
+      final expected = eval(
+        const TPi(TType(LLevel(0)), TType(LLevel(1))),
+        const ENil(),
+      );
       final err = TypeMismatch(
         got,
         expected,
@@ -227,8 +245,14 @@ void main() {
       final program = parseProgram('val _: Type 1 = Type\n');
       // ^ just to get the parser going. We construct the values directly.
       expect(program, isA<Success<ParseError, SProgram>>());
-      final a = eval(const TPi(TType(LLevel(0)), TBound(0), name: 'A'), const ENil());
-      final b = eval(const TPi(TType(LLevel(0)), TType(LLevel(0)), name: 'A'), const ENil());
+      final a = eval(
+        const TPi(TType(LLevel(0)), TBound(0), name: 'A'),
+        const ENil(),
+      );
+      final b = eval(
+        const TPi(TType(LLevel(0)), TType(LLevel(0)), name: 'A'),
+        const ENil(),
+      );
       final diff = diffValues(a, b);
       expect(diff.steps, [isA<DiffCodomain>()]);
       expect(diff.binderNames, ['A']);

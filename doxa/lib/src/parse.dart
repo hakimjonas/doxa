@@ -108,6 +108,7 @@ const Set<String> _reserved = {
   'returning',
   'Type',
   'Prop',
+  'SProp',
   'Quot',
 };
 
@@ -159,6 +160,11 @@ final Parser<ParseError, SExprKind> _typeKind = _keyword(
 final Parser<ParseError, SExprKind> _propKind = _keyword(
   'Prop',
 ).map<SExprKind>((_) => const SPropKind());
+
+/// `SProp`.
+final Parser<ParseError, SExprKind> _spropKind = _keyword(
+  'SProp',
+).map<SExprKind>((_) => const SSPropKind());
 
 /// Wrap an `SExprKind` parser so it picks up start/end spans.
 ///
@@ -591,6 +597,7 @@ final Parser<ParseError, SExpr> _atomImpl = () {
   // then identifier-with-optional-type-args.
   final typeAtom = _spanned(_typeKind);
   final propAtom = _spanned(_propKind);
+  final spropAtom = _spanned(_spropKind);
   final parenAtom = _sym('(').skipThen(_expr).thenSkip(_sym(')'));
   // Quotient type: Quot(A, R)
   final quotAtom = position<ParseError>().flatMap(
@@ -634,6 +641,7 @@ final Parser<ParseError, SExpr> _atomImpl = () {
   );
   return typeAtom |
       propAtom |
+      spropAtom |
       parenAtom |
       _blockExpr |
       quotAtom |

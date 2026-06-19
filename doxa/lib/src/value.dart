@@ -45,6 +45,15 @@ final class VProp extends Value {
   const VProp();
 }
 
+/// The strict proof-irrelevant universe sort (Gilbert et al. 2019).
+///
+/// `SProp : Type 1`. Two `VSProp` values are definitionally equal
+/// (strict proof irrelevance).
+final class VSProp extends Value {
+  /// Creates the SProp sort value.
+  const VSProp();
+}
+
 /// A lambda value: its evaluated domain (needed by [quote]) and the
 /// body-plus-environment closure waiting for an argument.
 ///

@@ -77,7 +77,10 @@ void main() {
       //   outer binder x, then inner binder x, body references x.
       //   Inner shadows outer, so body's x = TBound(0) refers to inner.
       final t = ee('(x: Type) => (x: Type) => x');
-      expect(t, const TLam(TType(LLevel(0)), TLam(TType(LLevel(0)), TBound(0))));
+      expect(
+        t,
+        const TLam(TType(LLevel(0)), TLam(TType(LLevel(0)), TBound(0))),
+      );
     });
   });
 

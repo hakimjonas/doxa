@@ -227,10 +227,14 @@ void main() {
     test('applying a stuck match once extends the neutral spine', () {
       final extended = _env.extend(const VNeutral(NVar(0)));
       const idLam = TLam(TType(LLevel(0)), TBound(0));
-      const matchTerm = TMatch(TBound(0), TPi(TType(LLevel(0)), TType(LLevel(0))), [
-        TMatchCase('zero', 0, idLam, []),
-        TMatchCase('succ', 1, idLam, ['_']),
-      ]);
+      const matchTerm = TMatch(
+        TBound(0),
+        TPi(TType(LLevel(0)), TType(LLevel(0))),
+        [
+          TMatchCase('zero', 0, idLam, []),
+          TMatchCase('succ', 1, idLam, ['_']),
+        ],
+      );
       const applied = TApp(matchTerm, TType(LLevel(0)));
       final v = eval(applied, extended);
       expect(
@@ -248,10 +252,14 @@ void main() {
       // a stuck match instead.
       final extended = _env.extend(const VNeutral(NVar(0)));
       const idLam = TLam(TType(LLevel(0)), TBound(0));
-      const matchTerm = TMatch(TBound(0), TPi(TType(LLevel(0)), TType(LLevel(0))), [
-        TMatchCase('zero', 0, idLam, []),
-        TMatchCase('succ', 1, idLam, ['_']),
-      ]);
+      const matchTerm = TMatch(
+        TBound(0),
+        TPi(TType(LLevel(0)), TType(LLevel(0))),
+        [
+          TMatchCase('zero', 0, idLam, []),
+          TMatchCase('succ', 1, idLam, ['_']),
+        ],
+      );
       const applied = TApp(matchTerm, TType(LLevel(0)));
       final v1 = eval(applied, extended);
       final v2 = eval(applied, extended);
@@ -262,10 +270,14 @@ void main() {
       final extA = _env.extend(const VNeutral(NVar(0)));
       final extB = _env.extend(const VNeutral(NVar(1)));
       const idLam = TLam(TType(LLevel(0)), TBound(0));
-      const matchTerm = TMatch(TBound(0), TPi(TType(LLevel(0)), TType(LLevel(0))), [
-        TMatchCase('zero', 0, idLam, []),
-        TMatchCase('succ', 1, idLam, ['_']),
-      ]);
+      const matchTerm = TMatch(
+        TBound(0),
+        TPi(TType(LLevel(0)), TType(LLevel(0))),
+        [
+          TMatchCase('zero', 0, idLam, []),
+          TMatchCase('succ', 1, idLam, ['_']),
+        ],
+      );
       const applied = TApp(matchTerm, TType(LLevel(0)));
       final v1 = eval(applied, extA);
       final v2 = eval(applied, extB);

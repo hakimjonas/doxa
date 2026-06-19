@@ -155,6 +155,21 @@ final class SPropKind extends SExprKind {
   String toString() => 'SPropKind';
 }
 
+/// The `SProp` sort (v2+). A single value, SProp takes no level.
+final class SSPropKind extends SExprKind {
+  /// Creates the SProp reference.
+  const SSPropKind();
+
+  @override
+  bool operator ==(Object other) => other is SSPropKind;
+
+  @override
+  int get hashCode => Object.hash('SSPropKind', 0);
+
+  @override
+  String toString() => 'SSPropKind';
+}
+
 /// A function application: `f(x)`.
 ///
 /// Multi-argument applications `f(x, y)` desugar during parsing into

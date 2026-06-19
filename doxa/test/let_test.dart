@@ -82,7 +82,10 @@ void main() {
   group('Block elaboration (de Bruijn)', () {
     test('body references bound name via TBound(0)', () {
       final t = ee('{ val x: Type = Type; x }');
-      expect(t, const TLet(TType(LLevel(0)), TType(LLevel(0)), TBound(0), name: 'x'));
+      expect(
+        t,
+        const TLet(TType(LLevel(0)), TType(LLevel(0)), TBound(0), name: 'x'),
+      );
     });
 
     test('two bindings: result refers to outer via TBound(1)', () {
@@ -103,7 +106,10 @@ void main() {
       // Binder type inferred from the bound expr: `Type : Type 1`, so the
       // TLet's domain term is `TType(LLevel(1))`.
       final t = ee('{ val x = Type; x }');
-      expect(t, const TLet(TType(LLevel(1)), TType(LLevel(0)), TBound(0), name: 'x'));
+      expect(
+        t,
+        const TLet(TType(LLevel(1)), TType(LLevel(0)), TBound(0), name: 'x'),
+      );
     });
   });
 

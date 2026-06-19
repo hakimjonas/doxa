@@ -262,7 +262,13 @@ Term inlineSolvedBareMetas(Term term, MetaContext metas) {
         // spine at this position, so no scope-displacement.
         return walk(entry.solution);
       }(),
-      TType() || TProp() || TFree() || TTop() || TRec() || TBound() => t,
+      TType() ||
+      TSProp() ||
+      TProp() ||
+      TFree() ||
+      TTop() ||
+      TRec() ||
+      TBound() => t,
       TApp(:final fn, :final arg) => TApp(walk(fn), walk(arg)),
       TPi(:final domain, :final codomain, :final name, :final icit) => TPi(
         walk(domain),
@@ -399,7 +405,13 @@ Term inlineSolvedMetas(Term term, MetaContext metas, {int outerDepth = 0}) {
       // outer scope.
       return walk(entry.solution, depth);
     }(),
-    TType() || TProp() || TFree() || TTop() || TRec() || TBound() => t,
+    TType() ||
+    TSProp() ||
+    TProp() ||
+    TFree() ||
+    TTop() ||
+    TRec() ||
+    TBound() => t,
     TApp(:final fn, :final arg) => () {
       // Flat-right inlining: collect the right spine (arg chain)
       // iteratively to avoid stack overflow on deeply right-nested

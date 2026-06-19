@@ -78,7 +78,9 @@ void main() {
     });
 
     test('index 1 returns second-from-top', () {
-      final env = const ENil().extend(const VType(LLevel(0))).extend(const VType(LLevel(1)));
+      final env = const ENil()
+          .extend(const VType(LLevel(0)))
+          .extend(const VType(LLevel(1)));
       expect((env.lookup(0) as VType).level, const LLevel(1));
       expect((env.lookup(1) as VType).level, const LLevel(0));
     });
@@ -258,19 +260,30 @@ void main() {
       // NApp(NApp(NVar(0), VType(LLevel(1))), VType(LLevel(2))) at level 1 should produce
       // TApp(TApp(TBound(0), TType(LLevel(1))), TType(LLevel(2))), the outer app is
       // outermost in the Term, with the leftmost-applied argument first.
-      const v = VNeutral(NApp(NApp(NVar(0), VType(LLevel(1))), VType(LLevel(2))));
-      final t = quote(1, v);
-      expect(t, const TApp(TApp(TBound(0), TType(LLevel(1))), TType(LLevel(2))));
-    });
-
-    test('three-deep neutral spine preserves argument order', () {
       const v = VNeutral(
-        NApp(NApp(NApp(NVar(0), VType(LLevel(1))), VType(LLevel(2))), VType(LLevel(3))),
+        NApp(NApp(NVar(0), VType(LLevel(1))), VType(LLevel(2))),
       );
       final t = quote(1, v);
       expect(
         t,
-        const TApp(TApp(TApp(TBound(0), TType(LLevel(1))), TType(LLevel(2))), TType(LLevel(3))),
+        const TApp(TApp(TBound(0), TType(LLevel(1))), TType(LLevel(2))),
+      );
+    });
+
+    test('three-deep neutral spine preserves argument order', () {
+      const v = VNeutral(
+        NApp(
+          NApp(NApp(NVar(0), VType(LLevel(1))), VType(LLevel(2))),
+          VType(LLevel(3)),
+        ),
+      );
+      final t = quote(1, v);
+      expect(
+        t,
+        const TApp(
+          TApp(TApp(TBound(0), TType(LLevel(1))), TType(LLevel(2))),
+          TType(LLevel(3)),
+        ),
       );
     });
   });

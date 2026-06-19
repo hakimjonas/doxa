@@ -144,7 +144,10 @@ void main() {
   group('quotient types', () {
     test('basic formation - Quot typechecks', () {
       final v = eval(
-        TQuot(TType(LLevel(0)), TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp()))),
+        TQuot(
+          TType(LLevel(0)),
+          TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())),
+        ),
         ENil(),
       );
       expect(v, isA<VQuot>());
@@ -161,7 +164,11 @@ void main() {
 
     test('lift ι-reduction via eval of TQuotLift', () {
       final v = eval(
-        TQuotLift(TQuotMk(TType(LLevel(0))), TLam(TType(LLevel(0)), TBound(0)), TProp()),
+        TQuotLift(
+          TQuotMk(TType(LLevel(0))),
+          TLam(TType(LLevel(0)), TBound(0)),
+          TProp(),
+        ),
         ENil(),
       );
       expect(v, isA<VType>());
@@ -169,7 +176,11 @@ void main() {
     });
 
     test('VQuotMk not definitionally equal for different args', () {
-      final result = conv(0, VQuotMk(VType(LLevel(0))), VQuotMk(VType(LLevel(1))));
+      final result = conv(
+        0,
+        VQuotMk(VType(LLevel(0))),
+        VQuotMk(VType(LLevel(1))),
+      );
       expect(result, isA<ConvMismatch>());
     });
 
@@ -179,7 +190,10 @@ void main() {
     });
 
     test('round-trip eval -> quote -> eval', () {
-      final t = TQuot(TType(LLevel(0)), TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())));
+      final t = TQuot(
+        TType(LLevel(0)),
+        TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())),
+      );
       final v = eval(t, ENil());
       final quoted = quote(0, v);
       expect(quoted, isA<TQuot>());
@@ -209,20 +223,31 @@ void main() {
 
     test('VQuot carriers compare structurally in conv', () {
       expect(
-        conv(0, VQuot(VType(LLevel(0)), VProp()), VQuot(VType(LLevel(0)), VProp())),
+        conv(
+          0,
+          VQuot(VType(LLevel(0)), VProp()),
+          VQuot(VType(LLevel(0)), VProp()),
+        ),
         isA<ConvOk>(),
       );
     });
 
     test('VQuot different carriers do not convert', () {
       expect(
-        conv(0, VQuot(VType(LLevel(0)), VProp()), VQuot(VType(LLevel(1)), VProp())),
+        conv(
+          0,
+          VQuot(VType(LLevel(0)), VProp()),
+          VQuot(VType(LLevel(1)), VProp()),
+        ),
         isA<ConvMismatch>(),
       );
     });
 
     test('TQuot infers as VType', () {
-      final q = TQuot(TType(LLevel(0)), TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())));
+      final q = TQuot(
+        TType(LLevel(0)),
+        TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())),
+      );
       final ctx = CNil.withRegistries(
         dataDecls: const [],
         topBindings: const {},
@@ -254,7 +279,11 @@ void main() {
     });
 
     test('infer TQuotLift with non-quotient quot throws NotAQuotient', () {
-      final t = TQuotLift(TType(LLevel(0)), TLam(TType(LLevel(0)), TBound(0)), TProp());
+      final t = TQuotLift(
+        TType(LLevel(0)),
+        TLam(TType(LLevel(0)), TBound(0)),
+        TProp(),
+      );
       final ctx = CNil.withRegistries(
         dataDecls: const [],
         topBindings: const {},
@@ -268,7 +297,10 @@ void main() {
         // TQuot(TType(LLevel(0)), ...)'s inferred type is VType, not VQuot.
         // TQuotLift expects a VQuot-typed term. This tests that case.
         final t = TQuotLift(
-          TQuot(TType(LLevel(0)), TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp()))),
+          TQuot(
+            TType(LLevel(0)),
+            TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())),
+          ),
           TLam(TType(LLevel(0)), TBound(0)),
           TProp(),
         );
@@ -368,7 +400,10 @@ void main() {
         final qType = infer(ctx, q);
         expect(qType, isA<VType>());
 
-        final q2 = TQuot(TType(LLevel(0)), TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())));
+        final q2 = TQuot(
+          TType(LLevel(0)),
+          TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())),
+        );
         final q2Type = infer(ctx, q2);
         expect(q2Type, isA<VType>());
         // Type(0) sorts at Type 1, so the quotient also sorts at Type 1.
@@ -395,7 +430,11 @@ void main() {
         base,
       );
       // TBound(0) has type VQuot. TLam(TType(LLevel(0)), TType(LLevel(0))) has type (x: Type) -> Type.
-      final q = TQuotLift(TBound(0), TLam(TType(LLevel(0)), TType(LLevel(0))), TType(LLevel(0)));
+      final q = TQuotLift(
+        TBound(0),
+        TLam(TType(LLevel(0)), TType(LLevel(0))),
+        TType(LLevel(0)),
+      );
       final t = infer(ctx, q);
       expect(t, isA<VType>());
     });
@@ -428,7 +467,10 @@ void main() {
         TMatchCase(
           'zero',
           0,
-          TQuot(TType(LLevel(0)), TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp()))),
+          TQuot(
+            TType(LLevel(0)),
+            TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())),
+          ),
           const [],
           span: DoxaSpan.synthetic,
         ),
@@ -442,15 +484,16 @@ void main() {
     });
 
     test('TQuotMk inside indexed-family match arm evaluates correctly', () {
-      final t = TMatch(TConstr('Vec', 'vnil', const [TType(LLevel(0))]), null, const [
-        TMatchCase(
-          'vnil',
-          0,
-          TQuotMk(TConstr('Nat', 'zero', const [])),
-          const [],
-          span: DoxaSpan.synthetic,
-        ),
-      ]);
+      final t =
+          TMatch(TConstr('Vec', 'vnil', const [TType(LLevel(0))]), null, const [
+            TMatchCase(
+              'vnil',
+              0,
+              TQuotMk(TConstr('Nat', 'zero', const [])),
+              const [],
+              span: DoxaSpan.synthetic,
+            ),
+          ]);
       final env = ENil.withRegistries(
         dataDecls: _vecDataDecls(),
         topBindings: const {},
@@ -464,7 +507,10 @@ void main() {
         TMatchCase(
           'zero',
           0,
-          TQuot(TType(LLevel(0)), TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp()))),
+          TQuot(
+            TType(LLevel(0)),
+            TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())),
+          ),
           const [],
           span: DoxaSpan.synthetic,
         ),

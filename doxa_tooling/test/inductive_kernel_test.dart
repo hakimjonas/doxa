@@ -12,7 +12,10 @@ void main() {
   group('TData structural equality', () {
     test('same name + same args compare equal', () {
       expect(const TData('Nat', <Term>[]), const TData('Nat', <Term>[]));
-      expect(const TData('List', [TType(LLevel(0))]), const TData('List', [TType(LLevel(0))]));
+      expect(
+        const TData('List', [TType(LLevel(0))]),
+        const TData('List', [TType(LLevel(0))]),
+      );
     });
 
     test('different name compares unequal', () {

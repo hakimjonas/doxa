@@ -179,6 +179,25 @@ final class TProp extends Term {
   String toString() => 'TProp';
 }
 
+/// The strict proof-irrelevant universe sort (Gilbert et al. 2019).
+///
+/// `SProp` is impredicative and strict: any two `SProp` values are
+/// definitionally equal regardless of their internal structure.
+/// `SProp` itself has type `Type 1`.
+final class TSProp extends Term {
+  /// Creates the SProp sort.
+  const TSProp();
+
+  @override
+  bool operator ==(Object other) => other is TSProp;
+
+  @override
+  int get hashCode => Object.hash('TSProp', 0);
+
+  @override
+  String toString() => 'TSProp';
+}
+
 /// A bound variable, referenced by its de Bruijn index.
 ///
 /// Index 0 is the innermost enclosing binder.
@@ -830,6 +849,7 @@ Term closeTerm(Term term, String name) => _closeAt(term, 0, name);
 Term _openAt(Term term, int depth, String name) => switch (term) {
   TType() => term,
   TProp() => term,
+  TSProp() => term,
   TFree() => term,
   TMeta() => term,
   TBound(:final index) when index == depth => TFree(name),
@@ -896,6 +916,7 @@ Term _openAt(Term term, int depth, String name) => switch (term) {
 Term _closeAt(Term term, int depth, String name) => switch (term) {
   TType() => term,
   TProp() => term,
+  TSProp() => term,
   TMeta() => term,
   TFree(name: final n) when n == name => TBound(depth),
   TFree() => term,

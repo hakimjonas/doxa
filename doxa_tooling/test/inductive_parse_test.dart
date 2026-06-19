@@ -19,7 +19,7 @@ T _unwrap<T>(Result<ParseError, T> r) {
 SExprKind _shape(SExpr e) {
   final k = e.kind;
   return switch (k) {
-    SIdentKind() || STypeKind() || SPropKind() => k,
+    SIdentKind() || STypeKind() || SPropKind() || SSPropKind() => k,
     SAppKind(:final fn, :final arg) => SAppKind(
       SExpr(_shape(fn), DoxaSpan.synthetic),
       SExpr(_shape(arg), DoxaSpan.synthetic),

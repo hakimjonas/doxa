@@ -47,8 +47,14 @@ void expectConvertible(Value actual, Value expected) {
 void main() {
   group('infer: basic terms', () {
     test('Type n : Type (n+1)', () {
-      expect((infer(const CNil(), const TType(LLevel(0))) as VType).level, const LLevel(1));
-      expect((infer(const CNil(), const TType(LLevel(5))) as VType).level, const LLevel(6));
+      expect(
+        (infer(const CNil(), const TType(LLevel(0))) as VType).level,
+        const LLevel(1),
+      );
+      expect(
+        (infer(const CNil(), const TType(LLevel(5))) as VType).level,
+        const LLevel(6),
+      );
     });
 
     test('TBound looks up in context', () {
@@ -67,17 +73,26 @@ void main() {
 
   group('infer: Pi', () {
     test('(Type 0 -> Type 0) : Type 1', () {
-      final t = infer(const CNil(), const TPi(TType(LLevel(0)), TType(LLevel(0))));
+      final t = infer(
+        const CNil(),
+        const TPi(TType(LLevel(0)), TType(LLevel(0))),
+      );
       expect((t as VType).level, const LLevel(1));
     });
 
     test('(Type 0 -> Type 1) : Type 2 (max rule)', () {
-      final t = infer(const CNil(), const TPi(TType(LLevel(0)), TType(LLevel(1))));
+      final t = infer(
+        const CNil(),
+        const TPi(TType(LLevel(0)), TType(LLevel(1))),
+      );
       expect((t as VType).level, const LLevel(2));
     });
 
     test('(Type 2 -> Type 0) : Type 3', () {
-      final t = infer(const CNil(), const TPi(TType(LLevel(2)), TType(LLevel(0))));
+      final t = infer(
+        const CNil(),
+        const TPi(TType(LLevel(2)), TType(LLevel(0))),
+      );
       expect((t as VType).level, const LLevel(3));
     });
 
@@ -91,7 +106,10 @@ void main() {
       // Ctx binds x: (Type 0 -> Type 0). Using TBound(0) as a Pi domain
       // means the domain's *type* is a function type, not VType, so the
       // Pi rule must reject it.
-      final funcType = eval(const TPi(TType(LLevel(0)), TType(LLevel(0))), const ENil());
+      final funcType = eval(
+        const TPi(TType(LLevel(0)), TType(LLevel(0))),
+        const ENil(),
+      );
       final ctx = const CNil().extend(funcType);
       expect(
         () => infer(ctx, const TPi(TBound(0), TType(LLevel(0)))),
@@ -103,7 +121,8 @@ void main() {
   group('infer: App', () {
     test('applying non-function throws NotAFunction', () {
       expect(
-        () => infer(const CNil(), const TApp(TType(LLevel(0)), TType(LLevel(0)))),
+        () =>
+            infer(const CNil(), const TApp(TType(LLevel(0)), TType(LLevel(0)))),
         throwsA(isA<NotAFunction>()),
       );
     });
@@ -144,13 +163,19 @@ void main() {
       final pi = t as VPi;
       expect((pi.domain as VType).level, const LLevel(0));
       // Poke the codomain closure with an arbitrary value to read it off.
-      final codomain = apply(VLam(pi.domain, pi.codomain), const VType(LLevel(0)));
+      final codomain = apply(
+        VLam(pi.domain, pi.codomain),
+        const VType(LLevel(0)),
+      );
       expect((codomain as VType).level, const LLevel(0));
     });
 
     test('identity on values: (λx: Type 0. x) : Type 0 -> Type 0', () {
       const lam = TLam(TType(LLevel(0)), TBound(0));
-      final expected = eval(const TPi(TType(LLevel(0)), TType(LLevel(0))), const ENil());
+      final expected = eval(
+        const TPi(TType(LLevel(0)), TType(LLevel(0))),
+        const ENil(),
+      );
       check(const CNil(), lam, expected);
     });
   });
@@ -158,7 +183,10 @@ void main() {
   group('check mode', () {
     test('check TLam against VPi descends under the Pi', () {
       const lam = TLam(TType(LLevel(0)), TBound(0));
-      final piType = eval(const TPi(TType(LLevel(0)), TType(LLevel(0))), const ENil());
+      final piType = eval(
+        const TPi(TType(LLevel(0)), TType(LLevel(0))),
+        const ENil(),
+      );
       check(const CNil(), lam, piType);
     });
 
@@ -166,7 +194,10 @@ void main() {
       // Body has type Type 1 but the expected codomain is Type 0; Type 1
       // is not a subtype of Type 0 (only the reverse), so this fails.
       const lam = TLam(TType(LLevel(1)), TBound(0));
-      final piType = eval(const TPi(TType(LLevel(1)), TType(LLevel(0))), const ENil());
+      final piType = eval(
+        const TPi(TType(LLevel(1)), TType(LLevel(0))),
+        const ENil(),
+      );
       expect(
         () => check(const CNil(), lam, piType),
         throwsA(isA<TypeMismatch>()),
@@ -204,7 +235,10 @@ void main() {
     });
 
     test('churchNat(0) does NOT check against (Type 0 -> Type 0)', () {
-      final wrong = eval(const TPi(TType(LLevel(0)), TType(LLevel(0))), const ENil());
+      final wrong = eval(
+        const TPi(TType(LLevel(0)), TType(LLevel(0))),
+        const ENil(),
+      );
       expect(
         () => check(const CNil(), churchNat(0), wrong),
         throwsA(isA<TypeMismatch>()),
@@ -220,29 +254,43 @@ void main() {
 
     test('(A: Type 0) -> A does NOT check against Type 0', () {
       expect(
-        () =>
-            check(const CNil(), const TPi(TType(LLevel(0)), TBound(0)), const VType(LLevel(0))),
+        () => check(
+          const CNil(),
+          const TPi(TType(LLevel(0)), TBound(0)),
+          const VType(LLevel(0)),
+        ),
         throwsA(isA<TypeMismatch>()),
       );
     });
 
     test('(A: Type 0) -> A DOES check against Type 2 (cumulativity)', () {
       // The Pi has type Type 1, and Type 1 <= Type 2, so this checks.
-      check(const CNil(), const TPi(TType(LLevel(0)), TBound(0)), const VType(LLevel(2)));
+      check(
+        const CNil(),
+        const TPi(TType(LLevel(0)), TBound(0)),
+        const VType(LLevel(2)),
+      );
     });
 
     test('(A: Type 0) -> A does NOT check against Prop', () {
       // Prop and Type are disjoint sorts: cumulativity operates within
       // the Type hierarchy only and does not collapse Type into Prop.
       expect(
-        () =>
-            check(const CNil(), const TPi(TType(LLevel(0)), TBound(0)), const VProp()),
+        () => check(
+          const CNil(),
+          const TPi(TType(LLevel(0)), TBound(0)),
+          const VProp(),
+        ),
         throwsA(isA<TypeMismatch>()),
       );
     });
 
     test('(A: Type 0) -> A DOES check against Type 1 (exact match)', () {
-      check(const CNil(), const TPi(TType(LLevel(0)), TBound(0)), const VType(LLevel(1)));
+      check(
+        const CNil(),
+        const TPi(TType(LLevel(0)), TBound(0)),
+        const VType(LLevel(1)),
+      );
     });
   });
 

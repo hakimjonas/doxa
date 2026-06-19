@@ -11,8 +11,14 @@ void main() {
         const TApp(TFree('f'), TBound(0)),
         const TApp(TFree('f'), TBound(0)),
       );
-      expect(const TLam(TType(LLevel(0)), TBound(0)), const TLam(TType(LLevel(0)), TBound(0)));
-      expect(const TPi(TType(LLevel(0)), TBound(0)), const TPi(TType(LLevel(0)), TBound(0)));
+      expect(
+        const TLam(TType(LLevel(0)), TBound(0)),
+        const TLam(TType(LLevel(0)), TBound(0)),
+      );
+      expect(
+        const TPi(TType(LLevel(0)), TBound(0)),
+        const TPi(TType(LLevel(0)), TBound(0)),
+      );
     });
 
     test('different shape compares unequal', () {
@@ -55,14 +61,20 @@ void main() {
     test('under nested TLam, TBound(2) becomes TFree(x)', () {
       // λ. λ. TBound(2), references the binder being opened.
       const input = TLam(TType(LLevel(0)), TLam(TType(LLevel(0)), TBound(2)));
-      const expected = TLam(TType(LLevel(0)), TLam(TType(LLevel(0)), TFree('x')));
+      const expected = TLam(
+        TType(LLevel(0)),
+        TLam(TType(LLevel(0)), TFree('x')),
+      );
       expect(openTerm(input, 'x'), expected);
     });
 
     test('under nested TLam, TBound(3) decrements to TBound(2)', () {
       // An even deeper outer reference should drop by one level.
       const input = TLam(TType(LLevel(0)), TLam(TType(LLevel(0)), TBound(3)));
-      const expected = TLam(TType(LLevel(0)), TLam(TType(LLevel(0)), TBound(2)));
+      const expected = TLam(
+        TType(LLevel(0)),
+        TLam(TType(LLevel(0)), TBound(2)),
+      );
       expect(openTerm(input, 'x'), expected);
     });
 
@@ -110,7 +122,10 @@ void main() {
 
     test('under nested TLam, TFree(x) becomes TBound(2)', () {
       const input = TLam(TType(LLevel(0)), TLam(TType(LLevel(0)), TFree('x')));
-      const expected = TLam(TType(LLevel(0)), TLam(TType(LLevel(0)), TBound(2)));
+      const expected = TLam(
+        TType(LLevel(0)),
+        TLam(TType(LLevel(0)), TBound(2)),
+      );
       expect(closeTerm(input, 'x'), expected);
     });
 

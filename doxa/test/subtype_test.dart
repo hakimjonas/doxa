@@ -21,14 +21,16 @@ void main() {
 
     test('Type 1 does NOT check against Type 0 (downward rejected)', () {
       expect(
-        () => check(const CNil(), const TType(LLevel(1)), const VType(LLevel(0))),
+        () =>
+            check(const CNil(), const TType(LLevel(1)), const VType(LLevel(0))),
         throwsA(isA<TypeMismatch>()),
       );
     });
 
     test('Type 2 does NOT check against Type 0', () {
       expect(
-        () => check(const CNil(), const TType(LLevel(2)), const VType(LLevel(0))),
+        () =>
+            check(const CNil(), const TType(LLevel(2)), const VType(LLevel(0))),
         throwsA(isA<TypeMismatch>()),
       );
     });
@@ -36,7 +38,11 @@ void main() {
 
   group('Pi cumulativity through codomain', () {
     test('Pi Type 0 -> Type 0 has type Type 1 and is subtype of Type 2', () {
-      check(const CNil(), const TPi(TType(LLevel(0)), TType(LLevel(0))), const VType(LLevel(2)));
+      check(
+        const CNil(),
+        const TPi(TType(LLevel(0)), TType(LLevel(0))),
+        const VType(LLevel(2)),
+      );
     });
   });
 
@@ -72,7 +78,10 @@ void main() {
     test('covariant codomain: lambda into Type 0 fits codomain Type 2', () {
       // lam : (Type 0 -> Type 0); expected : (Type 0 -> Type 2).
       const lam = TLam(TType(LLevel(0)), TBound(0));
-      final broader = eval(const TPi(TType(LLevel(0)), TType(LLevel(2))), const ENil());
+      final broader = eval(
+        const TPi(TType(LLevel(0)), TType(LLevel(2))),
+        const ENil(),
+      );
       check(const CNil(), lam, broader);
     });
 
@@ -82,7 +91,10 @@ void main() {
         // got : (Type 2 -> Type 1); expected : (Type 0 -> Type 1).
         // Contravariance needs Type 0 ≤ Type 2, which holds.
         const lam = TLam(TType(LLevel(2)), TType(LLevel(0)));
-        final expected = eval(const TPi(TType(LLevel(0)), TType(LLevel(1))), const ENil());
+        final expected = eval(
+          const TPi(TType(LLevel(0)), TType(LLevel(1))),
+          const ENil(),
+        );
         check(const CNil(), lam, expected);
       },
     );
@@ -92,7 +104,10 @@ void main() {
       // Contravariance needs Type 2 ≤ Type 0, which is false, so the
       // lambda-annotation-vs-Pi-domain subtype check must reject.
       const lam = TLam(TType(LLevel(0)), TType(LLevel(0)));
-      final expected = eval(const TPi(TType(LLevel(2)), TType(LLevel(1))), const ENil());
+      final expected = eval(
+        const TPi(TType(LLevel(2)), TType(LLevel(1))),
+        const ENil(),
+      );
       expect(
         () => check(const CNil(), lam, expected),
         throwsA(isA<TypeMismatch>()),
@@ -103,7 +118,10 @@ void main() {
       // got : (Type 0 -> Type 1); expected : (Type 0 -> Type 0).
       // Covariance needs Type 1 ≤ Type 0, which is false.
       const lam = TLam(TType(LLevel(0)), TType(LLevel(0)));
-      final expected = eval(const TPi(TType(LLevel(0)), TType(LLevel(0))), const ENil());
+      final expected = eval(
+        const TPi(TType(LLevel(0)), TType(LLevel(0))),
+        const ENil(),
+      );
       expect(
         () => check(const CNil(), lam, expected),
         throwsA(isA<TypeMismatch>()),
@@ -118,9 +136,17 @@ void main() {
       // both sides, which succeeds via the structural-equality fallback.
       check(
         const CNil(),
-        const TLam(TType(LLevel(0)), TLam(TBound(0), TBound(0), name: 'x'), name: 'A'),
+        const TLam(
+          TType(LLevel(0)),
+          TLam(TBound(0), TBound(0), name: 'x'),
+          name: 'A',
+        ),
         eval(
-          const TPi(TType(LLevel(0)), TPi(TBound(0), TBound(1), name: 'x'), name: 'A'),
+          const TPi(
+            TType(LLevel(0)),
+            TPi(TBound(0), TBound(1), name: 'x'),
+            name: 'A',
+          ),
           const ENil(),
         ),
       );
@@ -133,7 +159,11 @@ void main() {
       expect(
         () => check(
           const CNil(),
-          const TLam(TType(LLevel(0)), TLam(TType(LLevel(0)), TBound(0), name: 'x'), name: 'A'),
+          const TLam(
+            TType(LLevel(0)),
+            TLam(TType(LLevel(0)), TBound(0), name: 'x'),
+            name: 'A',
+          ),
           eval(
             const TPi(
               TType(LLevel(0)),

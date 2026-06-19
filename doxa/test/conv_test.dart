@@ -25,11 +25,17 @@ SProgram _parse(String src) {
 void main() {
   group('Universe equality (strict, non-cumulative)', () {
     test('Type 0 converts with Type 0', () {
-      expect(convTerms(const TType(LLevel(0)), const TType(LLevel(0))), isA<ConvOk>());
+      expect(
+        convTerms(const TType(LLevel(0)), const TType(LLevel(0))),
+        isA<ConvOk>(),
+      );
     });
 
     test('Type 3 converts with Type 3', () {
-      expect(convTerms(const TType(LLevel(3)), const TType(LLevel(3))), isA<ConvOk>());
+      expect(
+        convTerms(const TType(LLevel(3)), const TType(LLevel(3))),
+        isA<ConvOk>(),
+      );
     });
 
     test('Type 0 does NOT convert with Type 1', () {
@@ -41,8 +47,14 @@ void main() {
     });
 
     test('Type 5 does NOT convert with Type 4 (either direction)', () {
-      expect(convTerms(const TType(LLevel(5)), const TType(LLevel(4))), isA<ConvMismatch>());
-      expect(convTerms(const TType(LLevel(4)), const TType(LLevel(5))), isA<ConvMismatch>());
+      expect(
+        convTerms(const TType(LLevel(5)), const TType(LLevel(4))),
+        isA<ConvMismatch>(),
+      );
+      expect(
+        convTerms(const TType(LLevel(4)), const TType(LLevel(5))),
+        isA<ConvMismatch>(),
+      );
     });
   });
 
@@ -71,7 +83,10 @@ void main() {
 
     test('(λx. λy. x) a b ≡ a', () {
       const app = TApp(
-        TApp(TLam(TType(LLevel(0)), TLam(TType(LLevel(0)), TBound(1))), TType(LLevel(5))),
+        TApp(
+          TLam(TType(LLevel(0)), TLam(TType(LLevel(0)), TBound(1))),
+          TType(LLevel(5)),
+        ),
         TType(LLevel(7)),
       );
       const a = TType(LLevel(5));
@@ -173,8 +188,12 @@ void main() {
 
     test('two-arg spines compare arg-by-arg; first differing arg reported', () {
       // f(Type 1)(Type 5) vs f(Type 1)(Type 6): only the 5-vs-6 arg differs.
-      const a = VNeutral(NApp(NApp(NVar(0), VType(LLevel(1))), VType(LLevel(5))));
-      const b = VNeutral(NApp(NApp(NVar(0), VType(LLevel(1))), VType(LLevel(6))));
+      const a = VNeutral(
+        NApp(NApp(NVar(0), VType(LLevel(1))), VType(LLevel(5))),
+      );
+      const b = VNeutral(
+        NApp(NApp(NVar(0), VType(LLevel(1))), VType(LLevel(6))),
+      );
       final r = conv(1, a, b);
       expect(r, isA<ConvMismatch>());
       final m = r as ConvMismatch;
@@ -185,8 +204,12 @@ void main() {
     test('two-arg spines: first arg differs, second not reached', () {
       // f(Type 1)(Type 5) vs f(Type 9)(Type 5): the 1-vs-9 mismatch fires
       // before the matching Type 5 args are compared.
-      const a = VNeutral(NApp(NApp(NVar(0), VType(LLevel(1))), VType(LLevel(5))));
-      const b = VNeutral(NApp(NApp(NVar(0), VType(LLevel(9))), VType(LLevel(5))));
+      const a = VNeutral(
+        NApp(NApp(NVar(0), VType(LLevel(1))), VType(LLevel(5))),
+      );
+      const b = VNeutral(
+        NApp(NApp(NVar(0), VType(LLevel(9))), VType(LLevel(5))),
+      );
       final r = conv(1, a, b);
       expect(r, isA<ConvMismatch>());
       final m = r as ConvMismatch;

@@ -79,6 +79,7 @@ class _Printer {
   String term(Term t, int prec) => switch (t) {
     TType(:final level) => _prettyLevel(level),
     TProp() => 'Prop',
+    TSProp() => 'SProp',
     TBound(:final index) => _boundName(index),
     // TFree should not appear in well-formed kernel terms after
     // elaboration, but we still render it sanely.
@@ -287,6 +288,7 @@ bool _referencesBound0(Term t) => _refBound(t, 0);
 bool _refBound(Term t, int depth) => switch (t) {
   TType() => false,
   TProp() => false,
+  TSProp() => false,
   TFree() => false,
   TTop() => false,
   TMeta() => false,

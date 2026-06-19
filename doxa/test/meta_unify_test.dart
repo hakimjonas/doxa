@@ -34,7 +34,10 @@ void main() {
       // outer binder is `x0 : Type 0`, so the meta's declared type is
       // `Π(Type 0). Type 0`, giving solution `λ(Type 0). TBound(0)`.
       final metas = MetaContext();
-      final metaType = eval(const TPi(TType(LLevel(0)), TType(LLevel(0))), const ENil());
+      final metaType = eval(
+        const TPi(TType(LLevel(0)), TType(LLevel(0))),
+        const ENil(),
+      );
       final id = metas.freshTermMeta(metaType, const CNil());
       // Build value `?0 x0` at level 1.
       const x0 = VNeutral(NVar(0));

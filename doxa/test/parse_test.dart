@@ -19,7 +19,7 @@ void expectParseError(Result<ParseError, Object?> r) {
 SExprKind shape(SExpr e) {
   final k = e.kind;
   return switch (k) {
-    SIdentKind() || STypeKind() || SPropKind() => k,
+    SIdentKind() || STypeKind() || SPropKind() || SSPropKind() => k,
     SAppKind(:final fn, :final arg) => SAppKind(
       SExpr(shape(fn), DoxaSpan.synthetic),
       SExpr(shape(arg), DoxaSpan.synthetic),
