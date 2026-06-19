@@ -102,6 +102,11 @@ class _Printer {
     TTop(:final name) => name,
     TMeta(:final id) => '?$id',
     TMatch(:final scrutinee, :final cases) => _match(scrutinee, cases, prec),
+    TQuot(:final carrier, :final relation) =>
+      'Quot(${term(carrier, _precTop)}, ${term(relation, _precTop)})',
+    TQuotMk(:final arg) => 'Quot.mk(${term(arg, _precAppArg)})',
+    TQuotLift(:final quot, :final fn, :final proof) =>
+      'Quot.lift(${term(quot, _precAppArg)}, ${term(fn, _precAppArg)}, ${term(proof, _precAppArg)})',
   };
 
   /// Render a `match` expression in surface form (no separator between
@@ -290,4 +295,9 @@ bool _refBound(Term t, int depth) => switch (t) {
     _refBound(scrutinee, depth) ||
         (motive != null && _refBound(motive, depth)) ||
         cases.any((c) => _refBound(c.body, depth + c.nBinders)),
+  TQuot(:final carrier, :final relation) =>
+    _refBound(carrier, depth) || _refBound(relation, depth),
+  TQuotMk(:final arg) => _refBound(arg, depth),
+  TQuotLift(:final quot, :final fn, :final proof) =>
+    _refBound(quot, depth) || _refBound(fn, depth) || _refBound(proof, depth),
 };

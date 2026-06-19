@@ -108,6 +108,7 @@ const Set<String> _reserved = {
   'returning',
   'Type',
   'Prop',
+  'Quot',
 };
 
 /// A raw identifier, one letter or underscore, then alphanumeric/underscore.
@@ -581,14 +582,60 @@ final Parser<ParseError, SExpr> _identAtom = position<ParseError>().flatMap(
 
 final Parser<ParseError, SExpr> _atomImpl = () {
   // Order: sort keywords first (so they're not eaten by ident), then
-  // parenthesized expression, then a brace block, then identifier-with-
-  // optional-type-args. A block `{ ... }` is unambiguous in atom
-  // position: no other expression form starts with `{` (match/data/
-  // type-param braces are all preceded by a keyword or a binder).
+  // parenthesized expression, then a brace block, then quotient forms,
+  // then identifier-with-optional-type-args.
   final typeAtom = _spanned(_typeKind);
   final propAtom = _spanned(_propKind);
   final parenAtom = _sym('(').skipThen(_expr).thenSkip(_sym(')'));
-  return typeAtom | propAtom | parenAtom | _blockExpr | _identAtom;
+  // Quotient type: Quot(A, R)
+  final quotAtom = position<ParseError>().flatMap(
+    (start) => _keyword('Quot')
+        .skipThen(_sym('('))
+        .skipThen(defer(() => _expr))
+        .flatMap(
+          (carrier) => _sym(',')
+              .skipThen(defer(() => _expr))
+              .thenSkip(_sym(')'))
+              .zip(position<ParseError>())
+              .map(
+                (pair) => SExpr(
+                  SQuotKind(carrier, pair.$1),
+                  DoxaSpan(start, pair.$2),
+                ),
+              ),
+        ),
+  );
+  // Quotient injection: mk a
+  final mkAtom = position<ParseError>().flatMap(
+    (start) => _keyword('mk')
+        .skipThen(defer(() => _expr).zip(position<ParseError>()))
+        .map(
+          (pair) => SExpr(
+            SQuotMkKind(pair.$1),
+            DoxaSpan(start, pair.$2),
+          ),
+        ),
+  );
+  // Quotient lift: lift(fn, proof)
+  final liftAtom = position<ParseError>().flatMap(
+    (start) => _keyword('lift')
+        .skipThen(_sym('('))
+        .skipThen(defer(() => _expr))
+        .flatMap(
+          (fn) => _sym(',')
+              .skipThen(defer(() => _expr))
+              .thenSkip(_sym(')'))
+              .zip(position<ParseError>())
+              .map(
+                (pair) => SExpr(
+                  SQuotLiftKind(fn, pair.$1),
+                  DoxaSpan(start, pair.$2),
+                ),
+              ),
+        ),
+  );
+  return typeAtom | propAtom | parenAtom | _blockExpr |
+      quotAtom | mkAtom | liftAtom | _identAtom;
 }();
 
 // ===========================================================================

@@ -309,6 +309,28 @@ final class VMatch extends Value {
   const VMatch(this.scrutinee, this.motive, this.cases, this.env);
 }
 
+/// A quotient type value: `Quot(A, R)`.
+final class VQuot extends Value {
+  final Value carrier;
+  final Value relation;
+  const VQuot(this.carrier, this.relation);
+}
+
+/// A quotient element value: `Quot.mk(a)`.
+final class VQuotMk extends Value {
+  final Value arg;
+  const VQuotMk(this.arg);
+}
+
+/// A stuck quotient lift (waiting for the quot argument to become VQuotMk).
+/// Once the quot is canonical, ι-reduction fires: lift(mk(a), f, proof) → f(a).
+final class VQuotLift extends Value {
+  final Value quot;
+  final Value fn;
+  final Value proof;
+  const VQuotLift(this.quot, this.fn, this.proof);
+}
+
 /// A β-redex whose reduction is deferred until a driver operation
 /// (conv, quote, apply) forces it. This lazy, force-on-demand
 /// discipline is shared by Lean, Coq, Agda, and elaboration-zoo.

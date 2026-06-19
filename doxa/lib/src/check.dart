@@ -336,3 +336,28 @@ final class PropEliminationIntoType extends DoxaCheckError {
   String toString() =>
       'PropEliminationIntoType($dataName, result sort: $resultSort)';
 }
+
+/// A term expected to be a quotient type but the inferred type was not a VQuot.
+final class NotAQuotient extends DoxaCheckError {
+  final Value actual;
+  const NotAQuotient(this.actual);
+  @override
+  String toString() => 'NotAQuotient(actual: $actual)';
+}
+
+/// TQuotMk cannot be inferred; it must appear in a check context.
+final class QuotMkInInferMode extends DoxaCheckError {
+  const QuotMkInInferMode();
+  @override
+  String toString() => 'QuotMkInInferMode()';
+}
+
+/// The compatibility proof for Quot.lift does not have the correct type.
+final class QuotFnNotRespectingRelation extends DoxaCheckError {
+  final Value got;
+  final Value expected;
+  const QuotFnNotRespectingRelation(this.got, this.expected);
+  @override
+  String toString() =>
+      'QuotFnNotRespectingRelation(got: $got, expected: $expected)';
+}

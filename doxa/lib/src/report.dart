@@ -218,6 +218,32 @@ String reportCheckError(
       sb.writeln('  inconsistency. The singleton-elimination exception admits');
       sb.writeln('  Prop → Type when the inductive has ≤ 1 ctor and no');
       sb.writeln('  informative args; this inductive does not qualify.');
+    case NotAQuotient(:final actual):
+      sb.writeln('error: not a quotient type');
+      sb.writeln('  at ${source.formatStart(span)}');
+      sb.writeln(
+        '  expected a quotient type (Quot(A, R)), '
+        'got: ${_prettyValueAt(actual, 0)}',
+      );
+    case QuotMkInInferMode():
+      sb.writeln('error: quotient injection in infer mode');
+      sb.writeln('  at ${source.formatStart(span)}');
+      sb.writeln(
+        '  `mk a` cannot be used in a position where its type cannot '
+        'be inferred.',
+      );
+      sb.writeln(
+        '  Provide an expected type via an annotation, or use the value '
+        'where its quotient type is known (e.g. as an argument).',
+      );
+    case QuotFnNotRespectingRelation(:final got, :final expected):
+      sb.writeln('error: quotient lift function does not respect the relation');
+      sb.writeln('  at ${source.formatStart(span)}');
+      sb.writeln(
+        '  expected compatibility proof type: '
+        '${_prettyValueAt(expected, 0)}',
+      );
+      sb.writeln('  actual: ${_prettyValueAt(got, 0)}');
   }
   return sb.toString();
 }

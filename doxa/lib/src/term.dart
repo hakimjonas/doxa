@@ -657,6 +657,61 @@ final class TMatch extends Term {
   String toString() => 'TMatch($scrutinee, $motive, $cases)';
 }
 
+/// Quotient type formation: `Quot(A, R)` where A is the carrier and
+/// R: A → A → Prop is the equivalence relation.
+final class TQuot extends Term {
+  final Term carrier;
+  final Term relation;
+  const TQuot(this.carrier, this.relation);
+
+  @override
+  bool operator ==(Object other) =>
+      other is TQuot && other.carrier == carrier && other.relation == relation;
+
+  @override
+  int get hashCode => Object.hash('TQuot', carrier, relation);
+
+  @override
+  String toString() => 'TQuot($carrier, $relation)';
+}
+
+/// Inject an element into a quotient: `Quot.mk(a)`.
+final class TQuotMk extends Term {
+  final Term arg;
+  const TQuotMk(this.arg);
+
+  @override
+  bool operator ==(Object other) => other is TQuotMk && other.arg == arg;
+
+  @override
+  int get hashCode => Object.hash('TQuotMk', arg);
+
+  @override
+  String toString() => 'TQuotMk($arg)';
+}
+
+/// Eliminate from a quotient: `Quot.lift(quot, f, proof)`.
+/// f: A → B, proof: (x y: A) → R x y → Eq B (f x) (f y)
+final class TQuotLift extends Term {
+  final Term quot;
+  final Term fn;
+  final Term proof;
+  const TQuotLift(this.quot, this.fn, this.proof);
+
+  @override
+  bool operator ==(Object other) =>
+      other is TQuotLift &&
+      other.quot == quot &&
+      other.fn == fn &&
+      other.proof == proof;
+
+  @override
+  int get hashCode => Object.hash('TQuotLift', quot, fn, proof);
+
+  @override
+  String toString() => 'TQuotLift($quot, $fn, $proof)';
+}
+
 // ---------------------------------------------------------------------------
 // Locally-nameless binder operations.
 // ---------------------------------------------------------------------------
@@ -731,6 +786,16 @@ Term _openAt(Term term, int depth, String name) => switch (term) {
         ),
     ],
   ),
+  TQuot(:final carrier, :final relation) => TQuot(
+    _openAt(carrier, depth, name),
+    _openAt(relation, depth, name),
+  ),
+  TQuotMk(:final arg) => TQuotMk(_openAt(arg, depth, name)),
+  TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
+    _openAt(quot, depth, name),
+    _openAt(fn, depth, name),
+    _openAt(proof, depth, name),
+  ),
 };
 
 Term _closeAt(Term term, int depth, String name) => switch (term) {
@@ -786,5 +851,15 @@ Term _closeAt(Term term, int depth, String name) => switch (term) {
           span: c.span,
         ),
     ],
+  ),
+  TQuot(:final carrier, :final relation) => TQuot(
+    _closeAt(carrier, depth, name),
+    _closeAt(relation, depth, name),
+  ),
+  TQuotMk(:final arg) => TQuotMk(_closeAt(arg, depth, name)),
+  TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
+    _closeAt(quot, depth, name),
+    _closeAt(fn, depth, name),
+    _closeAt(proof, depth, name),
   ),
 };

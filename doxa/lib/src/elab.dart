@@ -1318,6 +1318,29 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
       }
       final motiveV = eval(matchTerm.motive!, state.ctx.env);
       return (term, motiveV);
+
+    case SQuotKind(:final carrier, :final relation):
+      final (carrierT, carrierV) = _inferExpr(state, carrier);
+      // Relation should be A → A → Prop. Infer it.
+      final (relationT, _) = _inferExpr(state, relation);
+      final quotTerm = TQuot(carrierT, relationT);
+      // The type of Quot(A, R) is Type 0 (or the sort of A)
+      final resultV =
+          carrierV is VType ? VType(carrierV.level) : const VType(0);
+      return (quotTerm, resultV);
+
+    case SQuotMkKind(:final arg):
+      // TQuotMk cannot be inferred in isolation; we need the expected
+      // quotient type. Fall back to inferring the arg and wrapping in
+      // a generic VQuot placeholder.
+      final (argT, argV) = _inferExpr(state, arg);
+      return (TQuotMk(argT), VQuot(argV, const VProp()));
+
+    case SQuotLiftKind(:final fn, :final proof):
+      final (fnT, fnV) = _inferExpr(state, fn);
+      final (proofT, proofV) = _inferExpr(state, proof);
+      // We need the quotient to apply the lift to. Create a placeholder.
+      return (TQuotLift(TType(0), fnT, proofT), const VType(0));
   }
 }
 
@@ -1846,6 +1869,9 @@ Term _elabExpr(
     case SLetKind():
     case SLamKind():
     case SMatchKind():
+    case SQuotKind():
+    case SQuotMkKind():
+    case SQuotLiftKind():
       final (term, _) = _inferExpr(
         _shimState(topEnv, locals, metas: metas),
         expr,
@@ -2871,6 +2897,44 @@ void _walkForRecursion({
             );
         }
       }
+    case SQuotKind(:final carrier, :final relation):
+      _walkForRecursion(
+        expr: carrier,
+        blockMembers: blockMembers,
+        designated: designated,
+        subTerms: subTerms,
+        shadowed: shadowed,
+      );
+      _walkForRecursion(
+        expr: relation,
+        blockMembers: blockMembers,
+        designated: designated,
+        subTerms: subTerms,
+        shadowed: shadowed,
+      );
+    case SQuotMkKind(:final arg):
+      _walkForRecursion(
+        expr: arg,
+        blockMembers: blockMembers,
+        designated: designated,
+        subTerms: subTerms,
+        shadowed: shadowed,
+      );
+    case SQuotLiftKind(:final fn, :final proof):
+      _walkForRecursion(
+        expr: fn,
+        blockMembers: blockMembers,
+        designated: designated,
+        subTerms: subTerms,
+        shadowed: shadowed,
+      );
+      _walkForRecursion(
+        expr: proof,
+        blockMembers: blockMembers,
+        designated: designated,
+        subTerms: subTerms,
+        shadowed: shadowed,
+      );
   }
 }
 
@@ -2948,6 +3012,14 @@ bool _hasRecursiveReferenceAt(
         }
       }
       return false;
+    case SQuotKind(:final carrier, :final relation):
+      return _hasRecursiveReferenceAt(carrier, blockMembers, shadowed) ||
+          _hasRecursiveReferenceAt(relation, blockMembers, shadowed);
+    case SQuotMkKind(:final arg):
+      return _hasRecursiveReferenceAt(arg, blockMembers, shadowed);
+    case SQuotLiftKind(:final fn, :final proof):
+      return _hasRecursiveReferenceAt(fn, blockMembers, shadowed) ||
+          _hasRecursiveReferenceAt(proof, blockMembers, shadowed);
   }
 }
 
@@ -3511,6 +3583,14 @@ void _collectRefs(
             _collectRefs(body, blockMembers, shadowed, acc);
         }
       }
+    case SQuotKind(:final carrier, :final relation):
+      _collectRefs(carrier, blockMembers, shadowed, acc);
+      _collectRefs(relation, blockMembers, shadowed, acc);
+    case SQuotMkKind(:final arg):
+      _collectRefs(arg, blockMembers, shadowed, acc);
+    case SQuotLiftKind(:final fn, :final proof):
+      _collectRefs(fn, blockMembers, shadowed, acc);
+      _collectRefs(proof, blockMembers, shadowed, acc);
   }
 }
 
@@ -3603,6 +3683,13 @@ bool _occursInAny(Set<String> dataNames, Term term) => switch (term) {
     _occursInAny(dataNames, scrutinee) ||
         (motive != null && _occursInAny(dataNames, motive)) ||
         cases.any((c) => _occursInAny(dataNames, c.body)),
+  TQuot(:final carrier, :final relation) =>
+    _occursInAny(dataNames, carrier) || _occursInAny(dataNames, relation),
+  TQuotMk(:final arg) => _occursInAny(dataNames, arg),
+  TQuotLift(:final quot, :final fn, :final proof) =>
+    _occursInAny(dataNames, quot) ||
+        _occursInAny(dataNames, fn) ||
+        _occursInAny(dataNames, proof),
 };
 
 /// True if any name in [dataNames] appears only in strictly-positive
@@ -3734,6 +3821,14 @@ switch (term) {
   // walker it's a kernel invariant violation rather than a
   // positivity concern.
   TMatch() => true,
+  TQuot(:final carrier, :final relation) =>
+    _isParamStrictlyPositive(carrier, boundVar) &&
+        _isParamStrictlyPositive(relation, boundVar),
+  TQuotMk(:final arg) => _isParamStrictlyPositive(arg, boundVar),
+  TQuotLift(:final quot, :final fn, :final proof) =>
+    _isParamStrictlyPositive(quot, boundVar) &&
+        _isParamStrictlyPositive(fn, boundVar) &&
+        _isParamStrictlyPositive(proof, boundVar),
 };
 
 /// Does TBound(target) occur anywhere in [term] (adjusting for binder
@@ -3756,6 +3851,13 @@ bool _boundOccursIn(Term term, int target) => switch (term) {
   TRec() => false,
   // See comment on _isParamStrictlyPositive's TMatch case.
   TMatch() => false,
+  TQuot(:final carrier, :final relation) =>
+    _boundOccursIn(carrier, target) || _boundOccursIn(relation, target),
+  TQuotMk(:final arg) => _boundOccursIn(arg, target),
+  TQuotLift(:final quot, :final fn, :final proof) =>
+    _boundOccursIn(quot, target) ||
+        _boundOccursIn(fn, target) ||
+        _boundOccursIn(proof, target),
 };
 
 /// Compute the per-parameter covariance list for an elaborated data

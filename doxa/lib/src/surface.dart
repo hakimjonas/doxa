@@ -320,6 +320,48 @@ final class SMatchKind extends SExprKind {
           : 'SMatchKind($scrutinee returning $motive, $cases)';
 }
 
+/// Quotient type formation: `Quot(A, R)`.
+final class SQuotKind extends SExprKind {
+  final SExpr carrier;
+  final SExpr relation;
+  const SQuotKind(this.carrier, this.relation);
+  @override
+  bool operator ==(Object other) =>
+      other is SQuotKind &&
+      other.carrier == carrier &&
+      other.relation == relation;
+  @override
+  int get hashCode => Object.hash('SQuotKind', carrier, relation);
+  @override
+  String toString() => 'SQuotKind($carrier, $relation)';
+}
+
+/// Quotient injection: `Quot.mk(a)`.
+final class SQuotMkKind extends SExprKind {
+  final SExpr arg;
+  const SQuotMkKind(this.arg);
+  @override
+  bool operator ==(Object other) => other is SQuotMkKind && other.arg == arg;
+  @override
+  int get hashCode => Object.hash('SQuotMkKind', arg);
+  @override
+  String toString() => 'SQuotMkKind($arg)';
+}
+
+/// Quotient elimination: `Quot.lift(fn, proof)` (or with explicit quot).
+final class SQuotLiftKind extends SExprKind {
+  final SExpr fn;
+  final SExpr proof;
+  const SQuotLiftKind(this.fn, this.proof);
+  @override
+  bool operator ==(Object other) =>
+      other is SQuotLiftKind && other.fn == fn && other.proof == proof;
+  @override
+  int get hashCode => Object.hash('SQuotLiftKind', fn, proof);
+  @override
+  String toString() => 'SQuotLiftKind($fn, $proof)';
+}
+
 /// A single case arm in a match expression. Sealed: exactly
 /// [SMatchCase] (ctor pattern) or [SWildcardCase].
 sealed class SMatchCaseArm {

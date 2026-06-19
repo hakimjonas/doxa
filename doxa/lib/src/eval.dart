@@ -389,6 +389,37 @@ final class _BuildConstr extends _Frame {
   );
 }
 
+/// After a [TQuot]'s carrier is evaluated, evaluate the relation and
+/// produce [VQuot].
+final class _EvalQuot extends _Frame {
+  final Term relation;
+  final Env env;
+  final Value? carrier;
+  const _EvalQuot(this.relation, this.env, [this.carrier]);
+}
+
+/// After a [TQuotMk]'s arg is evaluated, produce [VQuotMk].
+final class _EvalQuotMk extends _Frame {
+  const _EvalQuotMk();
+}
+
+/// After a [TQuotLift]'s arguments are evaluated, produce [VQuotLift],
+/// or ι-reduce when the quot is [VQuotMk].
+final class _EvalQuotLift extends _Frame {
+  final Term fnTerm;
+  final Term proofTerm;
+  final Env env;
+  final Value? quot;
+  final Value? fn;
+  const _EvalQuotLift(
+    this.fnTerm,
+    this.proofTerm,
+    this.env, [
+    this.quot,
+    this.fn,
+  ]);
+}
+
 /// Cross-mode frame. When a value is delivered, transition to quote mode
 /// at the captured [level]. Used to bridge from eval back to quote when
 /// a closure has just been opened for quote's benefit.
@@ -855,6 +886,58 @@ final class _CheckMatchArm extends _Frame {
   });
 }
 
+// --- Quotient inference frames ---
+
+/// After inferring a [TQuot]'s carrier type, check it's a sort and eval the carrier.
+final class _InferQuotHaveCarrierType extends _Frame {
+  final Ctx ctx;
+  final Term carrier;
+  final Term relation;
+  const _InferQuotHaveCarrierType(this.ctx, this.carrier, this.relation);
+}
+
+/// After evaluating a [TQuot]'s carrier, quote it and check the relation.
+final class _InferQuotHaveCarrierV extends _Frame {
+  final Ctx ctx;
+  final Term relation;
+  final _Sort carrierSort;
+  const _InferQuotHaveCarrierV(this.ctx, this.relation, this.carrierSort);
+}
+
+/// After quoting the carrier (term arrived in _YieldT), build expected rel type and check.
+final class _InferQuotAfterCarrierQuote extends _Frame {
+  final Ctx ctx;
+  final Term relation;
+  final _Sort carrierSort;
+  const _InferQuotAfterCarrierQuote(this.ctx, this.relation, this.carrierSort);
+}
+
+/// After checking relation, yield the result sort.
+final class _InferQuotAfterRelationCheck extends _Frame {
+  final _Sort carrierSort;
+  const _InferQuotAfterRelationCheck(this.carrierSort);
+}
+
+/// After inferring [TQuotLift]'s quot type, check it's a VQuot.
+final class _InferQuotLiftHaveQuotType extends _Frame {
+  final Ctx ctx;
+  final Term fn;
+  const _InferQuotLiftHaveQuotType(this.ctx, this.fn);
+}
+
+/// After inferring [TQuotLift]'s fn type, check it's VPi and open codomain.
+final class _InferQuotLiftHaveFnType extends _Frame {
+  final Ctx ctx;
+  final Value quotA;
+  final Value quotR;
+  const _InferQuotLiftHaveFnType(this.ctx, this.quotA, this.quotR);
+}
+
+/// After checking proof, yield the opened codomain value.
+final class _InferQuotLiftAfterProof extends _Frame {
+  const _InferQuotLiftAfterProof();
+}
+
 // --- Term-consuming frames (fired when current step is [_YieldT]) ---
 
 /// After a Pi's domain is quoted, open the codomain closure (by evaluating
@@ -906,6 +989,47 @@ final class _QMatchBuild extends _Frame {
   final Term scrutineeT;
   final List<TMatchCase> caseTerms;
   const _QMatchBuild(this.scrutineeT, this.caseTerms);
+}
+
+/// After a [VQuot]'s carrier is quoted, quote the relation.
+final class _QQuotRelation extends _Frame {
+  final Value relation;
+  final int level;
+  const _QQuotRelation(this.relation, this.level);
+}
+
+/// After a [VQuot]'s relation is quoted, combine into a [TQuot].
+final class _QQuotBuild extends _Frame {
+  final Term carrier;
+  const _QQuotBuild(this.carrier);
+}
+
+/// After a [VQuotMk]'s arg is quoted, produce [TQuotMk].
+final class _QQuotMk extends _Frame {
+  const _QQuotMk();
+}
+
+/// After a [VQuotLift]'s quot is quoted, quote the fn.
+final class _QQuotLiftFn extends _Frame {
+  final Value fn;
+  final Value proof;
+  final int level;
+  const _QQuotLiftFn(this.fn, this.proof, this.level);
+}
+
+/// After a [VQuotLift]'s fn is quoted, quote the proof.
+final class _QQuotLiftProof extends _Frame {
+  final Term quot;
+  final Value proof;
+  final int level;
+  const _QQuotLiftProof(this.quot, this.proof, this.level);
+}
+
+/// After a [VQuotLift]'s proof is quoted, produce [TQuotLift].
+final class _QQuotLiftBuild extends _Frame {
+  final Term quot;
+  final Term fn;
+  const _QQuotLiftBuild(this.quot, this.fn);
 }
 
 /// Stack-safe recursor ι-reduction. A naive ι-reduction for `VRec ...
@@ -1108,6 +1232,15 @@ bool _termContainsMeta(Term t) {
         for (final c in cases) {
           stack.add(c.body);
         }
+      case TQuot(:final carrier, :final relation):
+        stack.add(carrier);
+        stack.add(relation);
+      case TQuotMk(:final arg):
+        stack.add(arg);
+      case TQuotLift(:final quot, :final fn, :final proof):
+        stack.add(quot);
+        stack.add(fn);
+        stack.add(proof);
     }
   }
   return false;
@@ -1394,6 +1527,18 @@ Object _drive(
             // driven reductions); then dispatch.
             stack.add(_MatchAfterScrutinee(motive, cases, env));
             step = _Eval(scrutinee, env);
+
+          case TQuot(:final carrier, :final relation):
+            stack.add(_EvalQuot(relation, env));
+            step = _Eval(carrier, env);
+
+          case TQuotMk(:final arg):
+            stack.add(const _EvalQuotMk());
+            step = _Eval(arg, env);
+
+          case TQuotLift(:final quot, :final fn, :final proof):
+            stack.add(_EvalQuotLift(fn, proof, env));
+            step = _Eval(quot, env);
         }
 
       // -----------------------------------------------------------------
@@ -2041,6 +2186,27 @@ Object _drive(
               }
             }
 
+          // VQuot × VQuot: compare carriers, then relations.
+          case (
+            VQuot(carrier: final c1, relation: final r1),
+            VQuot(carrier: final c2, relation: final r2),
+          ):
+            stack.add(_ConvThen(_Conv(r1, r2, level)));
+            step = _Conv(c1, c2, level);
+
+          // VQuotMk × VQuotMk: identity only (no pointwise equality).
+          case (VQuotMk(arg: final a1), VQuotMk(arg: final a2)):
+            step = _YieldC(identical(a1, a2) ? _ok : ConvMismatch(a, b));
+
+          // VQuotLift × VQuotLift: compare pointwise.
+          case (
+            VQuotLift(quot: final q1, fn: final f1, proof: final p1),
+            VQuotLift(quot: final q2, fn: final f2, proof: final p2),
+          ):
+            stack.add(_ConvThen(_Conv(f1, f2, level)));
+            stack.add(_ConvThen(_Conv(p1, p2, level)));
+            step = _Conv(q1, q2, level);
+
           // Any other shape combination: try flex-rigid
           // pattern unification first (if one side is a meta-headed
           // neutral and the other is rigid), then fall back to the
@@ -2281,6 +2447,19 @@ Object _drive(
             }
             stack.add(_InferMatchAfterMotive(ctx, term));
             step = _Eval(motive, ctx.env);
+
+          case TQuot(:final carrier, :final relation):
+            stack.add(_InferQuotHaveCarrierType(ctx, carrier, relation));
+            step = _Infer(ctx, carrier);
+            break;
+
+          case TQuotMk():
+            throw const QuotMkInInferMode();
+
+          case TQuotLift(:final quot, :final fn):
+            stack.add(_InferQuotLiftHaveQuotType(ctx, fn));
+            step = _Infer(ctx, quot);
+            break;
         }
 
       // -----------------------------------------------------------------
@@ -2595,6 +2774,17 @@ Object _drive(
             // spine will be rebuilt by conv/quote walkers.
             step = _YieldV(VNeutral(NApp(NStuck(fn), arg)));
 
+          case VQuotLift(quot: VQuotMk(:final arg), :final fn):
+            // ι-reduction: lift(mk(a), f, proof) → f(a), then apply
+            // the current arg to the result.
+            stack.add(_ApplyArg(arg));
+            step = _Apply(fn, arg);
+
+          case VQuotLift():
+            // Stuck VQuotLift applied to an arg becomes a neutral.
+            // The quot is not VQuotMk, so the lift stays stuck.
+            step = _YieldV(VNeutral(NApp(NStuck(fn), arg)));
+
           case VDelayed(:final closure, arg: final dArg):
             // Lazy-motive: force the delayed β-redex (the
             // head is a VLam-shaped closure waiting on dArg), then
@@ -2614,6 +2804,8 @@ Object _drive(
           case VPi():
           case VData():
           case VConstr():
+          case VQuot():
+          case VQuotMk():
             throw StateError(
               'apply: attempted to apply a non-function value '
               '(${fn.runtimeType}). Kernel invariant violated.',
@@ -2802,6 +2994,18 @@ Object _drive(
             // it handles VDelayed structurally at the Value level.)
             stack.add(_QuoteAt(level));
             step = _Eval(closure.body, closure.env.extend(arg));
+
+          case VQuot(:final carrier, :final relation):
+            stack.add(_QQuotRelation(relation, level));
+            step = _Quote(carrier, level);
+
+          case VQuotMk(:final arg):
+            stack.add(const _QQuotMk());
+            step = _Quote(arg, level);
+
+          case VQuotLift(:final quot, :final fn, :final proof):
+            stack.add(_QQuotLiftFn(fn, proof, level));
+            step = _Quote(quot, level);
         }
 
       // -----------------------------------------------------------------
@@ -2961,6 +3165,55 @@ Object _drive(
                 ),
               );
               step = _Eval(args[nextIndex], env);
+            }
+
+          case _EvalQuot(:final relation, :final env, :final carrier):
+            if (carrier == null) {
+              // First yield: value is the evaluated carrier.
+              // Re-push with carrier stored, then eval relation.
+              stack.add(_EvalQuot(relation, env, value));
+              step = _Eval(relation, env);
+            } else {
+              // Second yield: value is the evaluated relation.
+              step = _YieldV(VQuot(carrier, value));
+            }
+
+          case _EvalQuotMk():
+            step = _YieldV(VQuotMk(value));
+
+          case _EvalQuotLift(
+            :final fnTerm,
+            :final proofTerm,
+            :final env,
+            :final quot,
+            :final fn,
+          ):
+            if (quot == null) {
+              // First yield: value is the evaluated quot.
+              if (value is VQuotMk) {
+                // ι-reduce: lift(mk(a), f, proof) → f(a)
+                // Eval fn then apply to value.arg
+                stack.add(_EvalQuotLift(fnTerm, proofTerm, env, value, null));
+                step = _Eval(fnTerm, env);
+              } else {
+                // Stuck: continue accumulating
+                stack.add(_EvalQuotLift(fnTerm, proofTerm, env, value, null));
+                step = _Eval(fnTerm, env);
+              }
+            } else if (fn == null) {
+              // Second yield: value is the evaluated fn.
+              final q = quot;
+              if (q is VQuotMk) {
+                // ι-reduce: apply fn to quot.arg
+                step = _Apply(value, q.arg);
+              } else {
+                // Store fn, eval proof
+                stack.add(_EvalQuotLift(fnTerm, proofTerm, env, quot, value));
+                step = _Eval(proofTerm, env);
+              }
+            } else {
+              // Third yield: value is the evaluated proof. Produce VQuotLift.
+              step = _YieldV(VQuotLift(quot, fn, value));
             }
 
           case _QuoteAt(:final level):
@@ -3581,6 +3834,45 @@ Object _drive(
               );
             }
 
+          // --- quotient infer _YieldV handlers ---
+
+          case _InferQuotHaveCarrierType(
+            :final ctx,
+            :final carrier,
+            :final relation,
+          ):
+            final carrierSort = _asSort(value);
+            if (carrierSort == null) throw NotAType(value);
+            stack.add(_InferQuotHaveCarrierV(ctx, relation, carrierSort));
+            step = _Eval(carrier, ctx.env);
+
+          case _InferQuotHaveCarrierV(
+            :final ctx,
+            :final relation,
+            :final carrierSort,
+          ):
+            stack.add(_InferQuotAfterCarrierQuote(ctx, relation, carrierSort));
+            step = _Quote(value, ctx.level);
+
+          case _InferQuotAfterRelationCheck(:final carrierSort):
+            step = _YieldV(_sortToValue(carrierSort));
+
+          case _InferQuotLiftHaveQuotType(:final ctx, :final fn):
+            if (value is! VQuot) throw NotAQuotient(value);
+            final qV = value;
+            stack.add(_InferQuotLiftHaveFnType(ctx, qV.carrier, qV.relation));
+            step = _Infer(ctx, fn);
+
+          case _InferQuotLiftHaveFnType(:final ctx, quotA: _, quotR: _):
+            final v = value;
+            if (v is! VPi) throw NotAFunction(v);
+            final fresh = VNeutral(NVar(ctx.level));
+            stack.add(const _InferQuotLiftAfterProof());
+            step = _Eval(v.codomain.body, v.codomain.env.extend(fresh));
+
+          case _InferQuotLiftAfterProof():
+            step = _YieldV(value);
+
           case _QPiCod():
           case _QPiBuild():
           case _QPiBuildNormal():
@@ -3592,12 +3884,19 @@ Object _drive(
           case _QConstrArg():
           case _QMatchAfterScrutinee():
           case _QMatchBuild():
+          case _QQuotRelation():
+          case _QQuotBuild():
+          case _QQuotMk():
+          case _QQuotLiftFn():
+          case _QQuotLiftProof():
+          case _QQuotLiftBuild():
           case _QMatchArmAfterQuote():
           case _ConvThen():
           case _ConvThenOpen():
           case _InferLamHaveBodyTerm():
           case _CheckFallbackConvResult():
           case _CheckLamAnnotSubtype():
+          case _InferQuotAfterCarrierQuote():
             throw StateError(
               'internal: _YieldV on term/conv-expecting frame '
               '${frame.runtimeType}. This indicates a bug in the '
@@ -3771,6 +4070,37 @@ Object _drive(
             // `term` = motiveT.
             step = _YieldT(TMatch(scrutineeT, term, caseTerms));
 
+          case _QQuotRelation(:final relation, :final level):
+            stack.add(_QQuotBuild(term));
+            step = _Quote(relation, level);
+
+          case _QQuotBuild(:final carrier):
+            step = _YieldT(TQuot(carrier, term));
+
+          case _QQuotMk():
+            step = _YieldT(TQuotMk(term));
+
+          case _QQuotLiftFn(:final fn, :final proof, :final level):
+            stack.add(_QQuotLiftProof(term, proof, level));
+            step = _Quote(fn, level);
+
+          case _QQuotLiftProof(:final quot, :final proof, :final level):
+            stack.add(_QQuotLiftBuild(quot, term));
+            step = _Quote(proof, level);
+
+          case _QQuotLiftBuild(:final quot, :final fn):
+            step = _YieldT(TQuotLift(quot, fn, term));
+
+          case _InferQuotAfterCarrierQuote(
+            :final ctx,
+            :final relation,
+            :final carrierSort,
+          ):
+            // Infer the relation to verify it's well-typed (its type
+            // must be a sort, since it's a type-level expression).
+            stack.add(_InferQuotAfterRelationCheck(carrierSort));
+            step = _Infer(ctx, relation);
+
           // --- check/infer T-consuming frames ---
 
           case _InferLamHaveBodyTerm(:final env, :final domV, :final nameHint):
@@ -3827,6 +4157,15 @@ Object _drive(
           case _InferMatchAfterMotive():
           case _QMatchArmAfterEval():
           case _RecCollectIH():
+          case _EvalQuot():
+          case _EvalQuotMk():
+          case _EvalQuotLift():
+          case _InferQuotHaveCarrierType():
+          case _InferQuotHaveCarrierV():
+          case _InferQuotAfterRelationCheck():
+          case _InferQuotLiftHaveQuotType():
+          case _InferQuotLiftHaveFnType():
+          case _InferQuotLiftAfterProof():
             throw StateError(
               'internal: _YieldT on value/conv-expecting frame '
               '${frame.runtimeType}. This indicates a bug in the '
@@ -3932,9 +4271,18 @@ Object _drive(
           case _QConstrArg():
           case _QMatchAfterScrutinee():
           case _QMatchBuild():
+          case _QQuotRelation():
+          case _QQuotBuild():
+          case _QQuotMk():
+          case _QQuotLiftFn():
+          case _QQuotLiftProof():
+          case _QQuotLiftBuild():
           case _QMatchArmAfterEval():
           case _QMatchArmAfterQuote():
           case _RecCollectIH():
+          case _EvalQuot():
+          case _EvalQuotMk():
+          case _EvalQuotLift():
           case _InferPiHaveDomType():
           case _InferPiHaveDomV():
           case _InferPiHaveCodType():
@@ -3963,6 +4311,13 @@ Object _drive(
           case _CheckMatchScrutineeType():
           case _CheckMatchArm():
           case _InferMatchAfterMotive():
+          case _InferQuotHaveCarrierType():
+          case _InferQuotHaveCarrierV():
+          case _InferQuotAfterCarrierQuote():
+          case _InferQuotAfterRelationCheck():
+          case _InferQuotLiftHaveQuotType():
+          case _InferQuotLiftHaveFnType():
+          case _InferQuotLiftAfterProof():
             throw StateError(
               'internal: _YieldC on non-conv frame '
               '${frame.runtimeType}. This indicates a bug in the '
@@ -4007,6 +4362,12 @@ _Sort? _asSort(Value v) => switch (v) {
   VProp() => _propSort,
   VType(:final level) => _TypeN(level),
   _ => null,
+};
+
+/// Convert a [_Sort] to its [Value] representation.
+Value _sortToValue(_Sort s) => switch (s) {
+  _Prop() => const VProp(),
+  _TypeN(:final level) => VType(level),
 };
 
 /// Classify whether a [Term] that sits as a type in a given `env`
@@ -4130,6 +4491,9 @@ Value? _inferValueType(Value v, List<DataDecl> dataDecls) {
     case VMatch():
     case VNeutral():
     case VDelayed():
+    case VQuot():
+    case VQuotMk():
+    case VQuotLift():
       return null;
   }
 }
@@ -4168,6 +4532,9 @@ bool _isPropSorted(Value type, List<DataDecl> dataDecls) {
     case VMatch():
     case VNeutral():
     case VDelayed():
+    case VQuot():
+    case VQuotMk():
+    case VQuotLift():
       // Not a type-value; conservative decline.
       return false;
   }
@@ -4805,6 +5172,16 @@ Term _renameForSolution(
           ),
       ],
     ),
+    TQuot(:final carrier, :final relation) => TQuot(
+      walk(carrier, depth),
+      walk(relation, depth),
+    ),
+    TQuotMk(:final arg) => TQuotMk(walk(arg, depth)),
+    TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
+      walk(quot, depth),
+      walk(fn, depth),
+      walk(proof, depth),
+    ),
   };
   return walk(term, 0);
 }
@@ -5083,6 +5460,16 @@ Term _substArmBody(
             ),
         ],
       ),
+      TQuot(:final carrier, :final relation) => TQuot(
+        walkSpineArg(carrier, argDepth),
+        walkSpineArg(relation, argDepth),
+      ),
+      TQuotMk(:final arg) => TQuotMk(walkSpineArg(arg, argDepth)),
+      TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
+        walkSpineArg(quot, argDepth),
+        walkSpineArg(fn, argDepth),
+        walkSpineArg(proof, argDepth),
+      ),
     };
   };
 
@@ -5153,6 +5540,16 @@ Term _substArmBody(
               span: c.span,
             ),
         ],
+      ),
+      TQuot(:final carrier, :final relation) => TQuot(
+        walk(carrier, depth),
+        walk(relation, depth),
+      ),
+      TQuotMk(:final arg) => TQuotMk(walk(arg, depth)),
+      TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
+        walk(quot, depth),
+        walk(fn, depth),
+        walk(proof, depth),
       ),
     };
   };
@@ -5291,6 +5688,20 @@ bool _solutionWellScoped(
         }
       }
       return true;
+    case TQuot(:final carrier, :final relation):
+      return _solutionWellScoped(
+            carrier,
+            forbiddenId,
+            allowedAtDepth0,
+            depth,
+          ) &&
+          _solutionWellScoped(relation, forbiddenId, allowedAtDepth0, depth);
+    case TQuotMk(:final arg):
+      return _solutionWellScoped(arg, forbiddenId, allowedAtDepth0, depth);
+    case TQuotLift(:final quot, :final fn, :final proof):
+      return _solutionWellScoped(quot, forbiddenId, allowedAtDepth0, depth) &&
+          _solutionWellScoped(fn, forbiddenId, allowedAtDepth0, depth) &&
+          _solutionWellScoped(proof, forbiddenId, allowedAtDepth0, depth);
     case TMatch(:final scrutinee, :final motive, :final cases):
       if (!_solutionWellScoped(
         scrutinee,
@@ -5376,6 +5787,15 @@ bool _solutionWellScopedUnderCtx(Term t, Ctx localCtx) {
         for (final a in args) {
           stack.add((a, depth));
         }
+      case TQuot(:final carrier, :final relation):
+        stack.add((carrier, depth));
+        stack.add((relation, depth));
+      case TQuotMk(:final arg):
+        stack.add((arg, depth));
+      case TQuotLift(:final quot, :final fn, :final proof):
+        stack.add((quot, depth));
+        stack.add((fn, depth));
+        stack.add((proof, depth));
       case TMatch(:final scrutinee, :final motive, :final cases):
         stack.add((scrutinee, depth));
         if (motive != null) stack.add((motive, depth));
@@ -5563,6 +5983,16 @@ Term _shiftTBoundPastThreshold(
           ),
       ],
     ),
+    TQuot(:final carrier, :final relation) => TQuot(
+      uniShift(carrier, depth),
+      uniShift(relation, depth),
+    ),
+    TQuotMk(:final arg) => TQuotMk(uniShift(arg, depth)),
+    TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
+      uniShift(quot, depth),
+      uniShift(fn, depth),
+      uniShift(proof, depth),
+    ),
   };
 
   Term walk(Term t, int depth) => switch (t) {
@@ -5622,6 +6052,16 @@ Term _shiftTBoundPastThreshold(
             span: c.span,
           ),
       ],
+    ),
+    TQuot(:final carrier, :final relation) => TQuot(
+      walk(carrier, depth),
+      walk(relation, depth),
+    ),
+    TQuotMk(:final arg) => TQuotMk(walk(arg, depth)),
+    TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
+      walk(quot, depth),
+      walk(fn, depth),
+      walk(proof, depth),
     ),
   };
   return walk(term, 0);
@@ -5985,6 +6425,16 @@ Term _substByLevel(Term term, Map<int, Value> substMap, Ctx ctx) {
             span: c.span,
           ),
       ],
+    ),
+    TQuot(:final carrier, :final relation) => TQuot(
+      walk(carrier, depth),
+      walk(relation, depth),
+    ),
+    TQuotMk(:final arg) => TQuotMk(walk(arg, depth)),
+    TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
+      walk(quot, depth),
+      walk(fn, depth),
+      walk(proof, depth),
     ),
   };
   return walk(term, 0);
@@ -6463,6 +6913,9 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
       [for (final a in args) remapAtInner(a)],
     ),
     TRec() => t,
+    TQuot() => t,
+    TQuotMk() => t,
+    TQuotLift() => t,
     // TMatch in a ctor arg/result-index type is not meaningful for
     // recursor synthesis, ctor signatures are types, not terms.
     // A well-typed ctor can't contain a TMatch inside its signature
@@ -6572,6 +7025,9 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
         [for (final a in args) remapArgType(a)],
       ),
       TRec() => t,
+      TQuot() => t,
+      TQuotMk() => t,
+      TQuotLift() => t,
       // Ctor signatures are types; TMatch is term-level and does
       // not appear inside them under any well-typed shape.
       TMatch() => t,
@@ -6748,6 +7204,9 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
       [for (final a in args) shiftArgType(a, j, depth)],
     ),
     TRec() => t,
+    TQuot() => t,
+    TQuotMk() => t,
+    TQuotLift() => t,
     // Ctor signatures are types; TMatch is term-level.
     TMatch() => t,
   };

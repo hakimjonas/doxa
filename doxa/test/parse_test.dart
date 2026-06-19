@@ -64,6 +64,17 @@ SExprKind shape(SExpr e) {
           },
       ],
     ),
+    SQuotKind(:final carrier, :final relation) => SQuotKind(
+      SExpr(shape(carrier), DoxaSpan.synthetic),
+      SExpr(shape(relation), DoxaSpan.synthetic),
+    ),
+    SQuotMkKind(:final arg) => SQuotMkKind(
+      SExpr(shape(arg), DoxaSpan.synthetic),
+    ),
+    SQuotLiftKind(:final fn, :final proof) => SQuotLiftKind(
+      SExpr(shape(fn), DoxaSpan.synthetic),
+      SExpr(shape(proof), DoxaSpan.synthetic),
+    ),
   };
 }
 

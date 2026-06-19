@@ -301,6 +301,16 @@ Term inlineSolvedBareMetas(Term term, MetaContext metas) {
               span: c.span,
             ),
         ]),
+      TQuot(:final carrier, :final relation) => TQuot(
+        walk(carrier),
+        walk(relation),
+      ),
+      TQuotMk(:final arg) => TQuotMk(walk(arg)),
+      TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
+        walk(quot),
+        walk(fn),
+        walk(proof),
+      ),
     };
   };
   return walk(term);
@@ -430,6 +440,16 @@ Term inlineSolvedMetas(Term term, MetaContext metas, {int outerDepth = 0}) {
             span: c.span,
           ),
       ],
+    ),
+    TQuot(:final carrier, :final relation) => TQuot(
+      walk(carrier, depth),
+      walk(relation, depth),
+    ),
+    TQuotMk(:final arg) => TQuotMk(walk(arg, depth)),
+    TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
+      walk(quot, depth),
+      walk(fn, depth),
+      walk(proof, depth),
     ),
   };
   return walk(term, outerDepth);
