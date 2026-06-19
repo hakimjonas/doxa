@@ -237,10 +237,24 @@ data T : Nat { it : T; }
       expect(() => elabProgram(prog), throwsA(isA<DataSortNotASort>()));
     });
 
+    test('product form fields desugar to single mk constructor', () {
+      // `unit : Type` in `data Unit` is a product field (no Unit ref),
+      // desugars to `mk : (unit: Type) -> Unit`.
+      final env = elabProgram(_parse('''
+data Unit : Type { unit : Type; }
+'''));
+      expect(env.dataDecls, hasLength(1));
+      final data = env.dataDecls.first;
+      expect(data.name, 'Unit');
+      expect(data.ctors, hasLength(1));
+      expect(data.ctors[0].name, 'mk');
+    });
+
     test('constructor result is not this data type', () {
+      // When a ctor's result references the data name but with wrong
+      // arity, we get CtorResultShapeMismatch.
       final prog = _parse('''
-data Nat : Type { zero : Nat; }
-data Bool : Type { tt : Nat; }
+data Pair[A: Type, B: Type] : Type { pair : Pair[A]; }
 ''');
       expect(() => elabProgram(prog), throwsA(isA<CtorResultShapeMismatch>()));
     });

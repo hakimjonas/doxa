@@ -145,14 +145,23 @@ final Parser<ParseError, String> _strLit = _sym('"')
     )
     .thenSkip(_sym('"'));
 
-/// An `import` declaration: `import "path/to/file.doxa"`.
+/// An `import` declaration: `import "path/to/file.doxa"` or
+/// `import "path/to/file.doxa" { name1, name2 }`.
 final Parser<ParseError, SDecl> _importDecl = position<ParseError>().flatMap(
   (start) => _keyword('import')
       .skipThen(_strLit)
       .flatMap(
-        (path) => position<ParseError>().map(
-          (end) => SDecl(SImportKind(path), DoxaSpan(start, end)),
-        ),
+        (path) => _sym('{')
+            .skipThen(_ident.sepBy(_sym(',')))
+            .thenSkip(_sym('}'))
+            .optional
+            .zip(position<ParseError>())
+            .map(
+              (pair) => SDecl(
+                SImportKind(path, importedNames: pair.$1 ?? const []),
+                DoxaSpan(start, pair.$2),
+              ),
+            ),
       ),
 );
 
@@ -864,8 +873,7 @@ Parser<ParseError, SFunKind> _mkFunBody(bool isOpaque) => _ident.flatMap(
           .skipThen(_expr)
           .flatMap(
             (ret) => _structAnn.flatMap(
-              (structAnn) => _sym('=')
-                  .skipThen(_expr)
+              (structAnn) => (_sym('=').skipThen(_expr) | _blockExpr)
                   .map(
                     (body) => SFunKind(
                       name,
@@ -932,13 +940,78 @@ final Parser<ParseError, SCtorDecl> _ctorDecl = position<ParseError>().flatMap(
 /// Semicolons separate constructors; a trailing semicolon is allowed.
 /// An empty body parses but the elaborator rejects data types with no
 /// constructors.
+/// Separator between constructors in a `data` body: `|` or `;`.
+final Parser<ParseError, String> _ctorSep = _sym('|') | _sym(';');
+
 final Parser<ParseError, List<SCtorDecl>> _ctorList = _sym('{')
-    .skipThen(_ctorDecl.sepBy(_sym(';')))
-    .thenSkip(_sym(';').optional)
+    .skipThen(_ctorDecl.sepBy(_ctorSep))
+    .thenSkip(_ctorSep.optional)
     .thenSkip(_sym('}'));
 
+/// Walk a Pi chain to find the rightmost expression (the result type).
+SExpr _resultType(SExpr expr) {
+  var cur = expr;
+  while (cur.kind is SPiKind) {
+    cur = (cur.kind as SPiKind).codomain;
+  }
+  return cur;
+}
+
+/// True when [expr] is a (possibly applied) reference to [dataName].
+bool _isDataRef(SExpr expr, String dataName) {
+  switch (expr.kind) {
+    case SIdentKind(:final name):
+      return name == dataName;
+    case SAppKind(:final fn):
+      return _isDataRef(fn, dataName);
+    default:
+      return false;
+  }
+}
+
+/// Detect whether a list of constructor entries is a product form
+/// (field declarations) vs. a sum form (constructor declarations).
+///
+/// A product form has entries whose result type does NOT reference
+/// the data type name. A sum form has at least one entry whose
+/// result type references the data type name.
+bool _isProductForm(List<SCtorDecl> ctors, String dataName) =>
+    ctors.isNotEmpty && ctors.every(
+      (c) => !_isDataRef(_resultType(c.type), dataName),
+    );
+
+/// Desugar product-form fields into a single `mk` constructor.
+///
+/// `data Point[A: Type] : Type { x: A; y: A }` desugars to
+/// `data Point[A: Type] : Type { mk : (x: A) -> (y: A) -> Point[A] }`.
+List<SCtorDecl> _desugarProduct(
+  List<SCtorDecl> fields,
+  String dataName,
+  List<(String, SExpr?)> tps,
+) {
+  final span = DoxaSpan.synthetic;
+  // Build result type: DataName applied to type params.
+  SExpr resultType = SExpr(SIdentKind(dataName), span);
+  for (final tp in tps) {
+    resultType = SExpr(
+      SAppKind(resultType, SExpr(SIdentKind(tp.$1), span)),
+      span,
+    );
+  }
+  // Build Pi chain from fields (right-to-left) using named binders.
+  SExpr ctorType = resultType;
+  for (final field in fields.reversed) {
+    ctorType = SExpr(SPiKind(field.name, field.type, ctorType), span);
+  }
+  return [SCtorDecl('mk', ctorType, span)];
+}
+
 /// A single `data` body (post-`data` or post-`and data` keyword):
-/// ident typeparams? ':' expr '{' ctors '}'.
+/// ident typeparams? ':' expr '{' (ctors | fields) '}'.
+///
+/// Supports both sum form (constructor declarations with `;` or `|`
+/// separators) and product form (field declarations that desugar to
+/// a single `mk` constructor).
 ///
 /// Returns the [SDataKind] alone; the containing [_dataDecl] wraps it
 /// in an [SDecl] directly or inside an [SDataBlockKind] when chained.
@@ -948,12 +1021,18 @@ final Parser<ParseError, SDataKind> _dataBody = _ident.flatMap(
         .skipThen(_expr)
         .flatMap(
           (signature) => _ctorList.map(
-            (ctors) => SDataKind(
-              name,
-              tps ?? const <(String, SExpr?)>[],
-              signature,
-              ctors,
-            ),
+            (ctors) {
+              final resolvedTps = tps ?? const <(String, SExpr?)>[];
+              if (_isProductForm(ctors, name)) {
+                return SDataKind(
+                  name,
+                  resolvedTps,
+                  signature,
+                  _desugarProduct(ctors, name, resolvedTps),
+                );
+              }
+              return SDataKind(name, resolvedTps, signature, ctors);
+            },
           ),
         ),
   ),

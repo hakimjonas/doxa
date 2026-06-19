@@ -521,25 +521,36 @@ sealed class SDeclKind {
   String get name;
 }
 
-/// An import declaration: `import "path/to/file.doxa"`.
+/// An import declaration: `import "path/to/file.doxa"` or
+/// `import "path/to/file.doxa" { name1, name2 }`.
 final class SImportKind extends SDeclKind {
   /// The module path (as parsed from the source).
   final String path;
+
+  /// The list of names to selectively import. When empty, all names
+  /// from the module are imported.
+  final List<String> importedNames;
 
   @override
   String get name => path;
 
   /// Creates an import declaration.
-  const SImportKind(this.path);
+  const SImportKind(this.path, {this.importedNames = const []});
 
   @override
-  bool operator ==(Object other) => other is SImportKind && other.path == path;
+  bool operator ==(Object other) =>
+      other is SImportKind &&
+      other.path == path &&
+      _listEq(other.importedNames, importedNames);
 
   @override
-  int get hashCode => Object.hash('SImportKind', path);
+  int get hashCode => Object.hash('SImportKind', path, Object.hashAll(importedNames));
 
   @override
-  String toString() => 'SImportKind($path)';
+  String toString() =>
+      importedNames.isEmpty
+          ? 'SImportKind($path)'
+          : 'SImportKind($path, importedNames: $importedNames)';
 }
 
 /// A value binding: `val x: T = e` or `val x = e`.

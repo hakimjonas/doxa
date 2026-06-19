@@ -2519,8 +2519,8 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
         metas: metas,
       );
 
-    case SImportKind(:final path):
-      return _processImport(topEnv, path, decl.span);
+    case SImportKind(:final path, :final importedNames):
+      return _processImport(topEnv, path, decl.span, importedNames: importedNames);
 
     case SFunBlockKind(:final members):
       // Mutual `fun ... and ...` block. The block-level _elabFunBlock
@@ -2546,13 +2546,19 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
   }
 }
 
-/// Process an `import "path"` declaration.
+/// Process an `import "path"` declaration, optionally filtering to
+/// only the named bindings when [importedNames] is non-empty.
 ///
 /// Loads the imported file, recursively elaborates and type-checks its
 /// declarations, and returns the merged bindings and data decls.
 /// Detects cycles via [_importStack] and rejects duplicates against
 /// the calling [topEnv].
-DeclResult _processImport(TopEnv topEnv, String path, DoxaSpan span) {
+DeclResult _processImport(
+  TopEnv topEnv,
+  String path,
+  DoxaSpan span, {
+  List<String> importedNames = const [],
+}) {
   if (currentImportPath == null) {
     throw StateError(
       'currentImportPath is not set; cannot resolve import "$path"',
@@ -2616,6 +2622,16 @@ DeclResult _processImport(TopEnv topEnv, String path, DoxaSpan span) {
       final finalized = checkDeclResult(checkEnv, produced);
       localBindings = [...localBindings, ...finalized];
       localDataDecls = runningData;
+    }
+
+    // Selective import: filter to only the named bindings.
+    if (importedNames.isNotEmpty) {
+      localBindings = localBindings
+          .where((b) => importedNames.contains(b.name))
+          .toList();
+      localDataDecls = localDataDecls
+          .where((d) => importedNames.contains(d.name))
+          .toList();
     }
 
     // Check for duplicates against the calling topEnv.
