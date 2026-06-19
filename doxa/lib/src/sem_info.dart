@@ -25,6 +25,9 @@ enum SemInfoKind {
 
   /// An implicit parameter inserted by the elaborator.
   implicitParam,
+
+  /// A field projection (`e.field` on a record).
+  fieldProj,
 }
 
 /// Metadata for a single identifier occurrence in the source.

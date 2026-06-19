@@ -1111,7 +1111,26 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
     case SSPropKind():
       return (const TSProp(), _vType1);
 
-    case SDotKind():
+    case SDotKind(:final qualifier, :final name):
+      // Try record projection first: elaborate the qualifier; if its
+      // type is a record type, treat .name as a field projection.
+      try {
+        final (qualT, qualV) = _inferExpr(state, qualifier);
+        if (qualV is VData && _isRecord(qualV.name, state.topEnv.dataDecls)) {
+          final fieldType = _fieldType(qualV, name, state.topEnv.dataDecls);
+          _recordSemInfo(
+            state,
+            expr.span,
+            name,
+            SemInfoKind.fieldProj,
+            fieldType,
+            null,
+          );
+          return (TProj(qualT, name), fieldType);
+        }
+      } catch (_) {
+        // Fall through to name qualification.
+      }
       final flat = _flattenDottedIdent(expr);
       if (flat == null) {
         throw UnresolvedName(
@@ -3812,6 +3831,8 @@ bool _occursInAny(Set<String> dataNames, Term term) => switch (term) {
     _occursInAny(dataNames, quot) ||
         _occursInAny(dataNames, fn) ||
         _occursInAny(dataNames, proof),
+  TProj(:final expr, :final fieldName) =>
+    _occursInAny(dataNames, expr),
 };
 
 /// True if any name in [dataNames] appears only in strictly-positive
@@ -3957,6 +3978,8 @@ switch (term) {
     _isParamStrictlyPositive(quot, boundVar) &&
         _isParamStrictlyPositive(fn, boundVar) &&
         _isParamStrictlyPositive(proof, boundVar),
+  TProj(:final expr, :final fieldName) =>
+    _isParamStrictlyPositive(expr, boundVar),
 };
 
 /// Does TBound(target) occur anywhere in [term] (adjusting for binder
@@ -3986,6 +4009,7 @@ bool _boundOccursIn(Term term, int target) => switch (term) {
     _boundOccursIn(quot, target) ||
         _boundOccursIn(fn, target) ||
         _boundOccursIn(proof, target),
+  TProj(:final expr, :final fieldName) => _boundOccursIn(expr, target),
 };
 
 /// Compute the per-parameter covariance list for an elaborated data
@@ -4020,4 +4044,52 @@ List<bool> _computeParamsCovariant(
     }
   }
   return result;
+}
+
+/// True iff the data type named [dataName] is a record (single ctor,
+/// no indices).
+bool _isRecord(String dataName, List<DataDecl> dataDecls) {
+  for (final d in dataDecls) {
+    if (d.name == dataName) {
+      return d.ctors.length == 1 && d.indices.isEmpty;
+    }
+  }
+  return false;
+}
+
+/// Compute the type of [fieldName] in record type [dataV] (a VData with
+/// args containing the params). Looks up the field in the constructor's
+/// args telescope and evaluates its type under the param env.
+Value _fieldType(VData dataV, String fieldName, List<DataDecl> dataDecls) {
+  DataDecl? decl;
+  for (final d in dataDecls) {
+    if (d.name == dataV.name) {
+      decl = d;
+      break;
+    }
+  }
+  if (decl == null) {
+    throw StateError('_fieldType: unknown data type ${dataV.name}');
+  }
+  final ctor = decl.ctors.first;
+  for (var i = 0; i < ctor.args.length; i++) {
+    if (ctor.args[i].name == fieldName) {
+      final fieldTypeTerm = ctor.args[i].type;
+      // Build env: preceding args as placeholders, then params
+      // + preceding fields. Fields after fieldIndex are NOT
+      // pushed so de Bruijn indices resolve correctly.
+      final paramCount = decl.params.length;
+      Env env = const ENil();
+      for (var j = 0; j < i; j++) {
+        env = env.extend(VNeutral(NVar(1000 + j)));
+      }
+      for (var j = paramCount + i - 1; j >= 0; j--) {
+        env = env.extend(dataV.args[j]);
+      }
+      return eval(fieldTypeTerm, env);
+    }
+  }
+  throw StateError(
+    '_fieldType: record ${dataV.name} has no field named $fieldName',
+  );
 }

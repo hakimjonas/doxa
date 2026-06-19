@@ -258,6 +258,27 @@ final class TApp extends Term {
   String toString() => 'TApp($fn, $arg)';
 }
 
+/// Primitive projection: `e.field` for a single-constructor record type.
+final class TProj extends Term {
+  /// The record expression being projected from.
+  final Term expr;
+
+  /// The field name.
+  final String fieldName;
+
+  const TProj(this.expr, this.fieldName);
+
+  @override
+  bool operator ==(Object other) =>
+      other is TProj && other.expr == expr && other.fieldName == fieldName;
+
+  @override
+  int get hashCode => Object.hash('TProj', expr, fieldName);
+
+  @override
+  String toString() => 'TProj($expr, $fieldName)';
+}
+
 /// A lambda abstraction `(x: domain) => body`.
 ///
 /// The body uses `TBound(0)` to reference the bound variable. The
@@ -885,6 +906,10 @@ Term _openAt(Term term, int depth, String name) => switch (term) {
     ctorName,
     [for (final a in args) _openAt(a, depth, name)],
   ),
+  TProj(:final expr, :final fieldName) => TProj(
+    _openAt(expr, depth, name),
+    fieldName,
+  ),
   TRec() => term,
   TTop() => term,
   TMatch(:final scrutinee, :final motive, :final cases) => TMatch(
@@ -951,6 +976,10 @@ Term _closeAt(Term term, int depth, String name) => switch (term) {
     dataName,
     ctorName,
     [for (final a in args) _closeAt(a, depth, name)],
+  ),
+  TProj(:final expr, :final fieldName) => TProj(
+    _closeAt(expr, depth, name),
+    fieldName,
   ),
   TRec() => term,
   TTop() => term,

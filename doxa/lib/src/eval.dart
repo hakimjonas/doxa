@@ -428,6 +428,19 @@ final class _EvalQuotLift extends _Frame {
   ]);
 }
 
+/// Eval a [TProj] expression: evaluate the expr, then project the field.
+final class _EvalProj extends _Frame {
+  final String fieldName;
+  const _EvalProj(this.fieldName);
+}
+
+/// After inferring the type of a [TProj]'s qualifier, look up the
+/// field's declared type from the record's constructor.
+final class _InferProjFieldType extends _Frame {
+  final String fieldName;
+  const _InferProjFieldType(this.fieldName);
+}
+
 /// Cross-mode frame. When a value is delivered, transition to quote mode
 /// at the captured [level]. Used to bridge from eval back to quote when
 /// a closure has just been opened for quote's benefit.
@@ -1250,6 +1263,8 @@ bool _termContainsMeta(Term t) {
         stack.add(quot);
         stack.add(fn);
         stack.add(proof);
+      case TProj(:final expr):
+        stack.add(expr);
     }
   }
   return false;
@@ -1558,6 +1573,10 @@ Object _drive(
           case TQuotLift(:final quot, :final fn, :final proof):
             stack.add(_EvalQuotLift(fn, proof, env));
             step = _Eval(quot, env);
+
+          case TProj(:final expr, :final fieldName):
+            stack.add(_EvalProj(fieldName));
+            step = _Eval(expr, env);
         }
 
       // -----------------------------------------------------------------
@@ -1653,6 +1672,49 @@ Object _drive(
         if (a is VSProp && b is VSProp) {
           step = const _YieldC(_ok);
           break;
+        }
+        // Record η: if one side is a VConstr from a record type and
+        // the other side is not a VConstr, η-expand by projecting all
+        // fields from both sides and comparing pointwise.
+        if (a is VConstr && b is! VConstr) {
+          final dDecl = _lookupData(a.dataName, dataDecls);
+          if (dDecl != null && _isRecordData(dDecl)) {
+            final ctor = dDecl.ctors.first;
+            final paramCount = dDecl.params.length;
+            final pending = <_Frame>[];
+            for (var i = 0; i < ctor.args.length; i++) {
+              pending.add(_ConvThen(_Conv(
+                a.args[paramCount + i],
+                VNeutral(NProj(b, ctor.args[i].name ?? '')),
+                level,
+              )));
+            }
+            for (final f in pending.reversed) {
+              stack.add(f);
+            }
+            step = const _YieldC(_ok);
+            break;
+          }
+        }
+        if (b is VConstr && a is! VConstr) {
+          final dDecl = _lookupData(b.dataName, dataDecls);
+          if (dDecl != null && _isRecordData(dDecl)) {
+            final ctor = dDecl.ctors.first;
+            final paramCount = dDecl.params.length;
+            final pending = <_Frame>[];
+            for (var i = 0; i < ctor.args.length; i++) {
+              pending.add(_ConvThen(_Conv(
+                VNeutral(NProj(a, ctor.args[i].name ?? '')),
+                b.args[paramCount + i],
+                level,
+              )));
+            }
+            for (final f in pending.reversed) {
+              stack.add(f);
+            }
+            step = const _YieldC(_ok);
+            break;
+          }
         }
         switch ((a, b)) {
           // VType × VType: strict on levels.
@@ -1906,6 +1968,16 @@ Object _drive(
                       stack.add(_ConvThen(_Conv(args1[i], args2[i], level)));
                     }
                     step = const _YieldC(_ok);
+                  }
+                case (NProj(expr: final e1, fieldName: final f1),
+                      NProj(expr: final e2, fieldName: final f2)):
+                  if (f1 != f2) {
+                    step = _YieldC(_mismatchOrIrrelevance(a, b, dataDecls));
+                  } else {
+                    for (var i = 0; i < args1.length; i++) {
+                      stack.add(_ConvThen(_Conv(args1[i], args2[i], level)));
+                    }
+                    step = _Conv(e1, e2, level);
                   }
                 case (NApp(), _):
                 case (_, NApp()):
@@ -2512,6 +2584,12 @@ Object _drive(
             stack.add(_InferQuotLiftHaveQuotType(ctx, fn));
             step = _Infer(ctx, quot);
             break;
+
+          case TProj(:final expr, :final fieldName):
+            // Infer the type of expr, then extract the field's type
+            // from the record's constructor.
+            stack.add(_InferProjFieldType(fieldName));
+            step = _Infer(ctx, expr);
         }
 
       // -----------------------------------------------------------------
@@ -2930,6 +3008,11 @@ Object _drive(
                 // _QAppArg frames in the loop above, so the final
                 // term is TApp(...TApp(TMeta(id), arg1)...argN).
                 step = _YieldT(TMeta(id));
+              case NProj(:final expr, :final fieldName):
+                step = _YieldT(TProj(
+                  quote(level, expr),
+                  fieldName,
+                ));
               case NApp():
                 // Loop invariant: we walked past all NApps above.
                 throw StateError(
@@ -3237,6 +3320,13 @@ Object _drive(
           case _EvalQuotMk():
             step = _YieldV(VQuotMk(value));
 
+          case _EvalProj(:final fieldName):
+            if (value is VConstr) {
+              step = _YieldV(_projectField(value, fieldName, dataDecls));
+            } else {
+              step = _YieldV(VNeutral(NProj(value, fieldName)));
+            }
+
           case _EvalQuotLift(
             :final fnTerm,
             :final proofTerm,
@@ -3360,6 +3450,43 @@ Object _drive(
             // `value` is the evaluated argument. Evaluate the codomain
             // body in the closure's env extended with the arg.
             step = _Eval(cod.body, cod.env.extend(value));
+
+          case _InferProjFieldType(:final fieldName):
+            // `value` is the inferred type of the record expression.
+            // It must be VData(name, params) for a record type.
+            if (value is VData) {
+              final dDecl = _lookupData(value.name, dataDecls);
+              if (dDecl != null && _isRecordData(dDecl)) {
+                final ctor = dDecl.ctors.first;
+                var fieldIndex = -1;
+                for (var i = 0; i < ctor.args.length; i++) {
+                  if (ctor.args[i].name == fieldName) {
+                    fieldIndex = i;
+                    break;
+                  }
+                }
+                if (fieldIndex >= 0) {
+                  final fieldTypeTerm = ctor.args[fieldIndex].type;
+                  // Build env: preceding args as placeholders, then params
+                  // + preceding fields. Fields after fieldIndex are NOT
+                  // pushed so de Bruijn indices in the field type resolve
+                  // correctly against (params + preceding fields only).
+                  Env env = const ENil();
+                  for (var j = 0; j < fieldIndex; j++) {
+                    env = env.extend(VNeutral(NVar(1000 + j)));
+                  }
+                  for (var j = dDecl.params.length + fieldIndex - 1; j >= 0; j--) {
+                    env = env.extend(value.args[j]);
+                  }
+                  step = _YieldV(eval(fieldTypeTerm, env));
+                  break;
+                }
+              }
+            }
+            throw StateError(
+              'infer TProj: expected record type with field $fieldName, '
+              'got ${value.runtimeType}',
+            );
 
           // --- infer(TLam) sequencing ---
 
@@ -4224,6 +4351,8 @@ Object _drive(
           case _InferMatchAfterMotive():
           case _QMatchArmAfterEval():
           case _RecCollectIH():
+          case _EvalProj():
+          case _InferProjFieldType():
           case _EvalQuot():
           case _EvalQuotMk():
           case _EvalQuotLift():
@@ -4347,6 +4476,8 @@ Object _drive(
           case _QMatchArmAfterEval():
           case _QMatchArmAfterQuote():
           case _RecCollectIH():
+          case _EvalProj():
+          case _InferProjFieldType():
           case _EvalQuot():
           case _EvalQuotMk():
           case _EvalQuotLift():
@@ -5427,6 +5558,10 @@ Term _renameForSolution(
       walk(fn, depth),
       walk(proof, depth),
     ),
+    TProj(:final expr, :final fieldName) => TProj(
+      walk(expr, depth),
+      fieldName,
+    ),
   };
   return walk(term, 0);
 }
@@ -5721,6 +5856,10 @@ Term _substArmBody(
         walkSpineArg(fn, argDepth),
         walkSpineArg(proof, argDepth),
       ),
+      TProj(:final expr, :final fieldName) => TProj(
+        walkSpineArg(expr, argDepth),
+        fieldName,
+      ),
     };
   };
 
@@ -5807,6 +5946,10 @@ Term _substArmBody(
         walk(quot, depth),
         walk(fn, depth),
         walk(proof, depth),
+      ),
+      TProj(:final expr, :final fieldName) => TProj(
+        walk(expr, depth),
+        fieldName,
       ),
     };
   };
@@ -5959,6 +6102,8 @@ bool _solutionWellScoped(
       return _solutionWellScoped(quot, forbiddenId, allowedAtDepth0, depth) &&
           _solutionWellScoped(fn, forbiddenId, allowedAtDepth0, depth) &&
           _solutionWellScoped(proof, forbiddenId, allowedAtDepth0, depth);
+    case TProj(:final expr):
+      return _solutionWellScoped(expr, forbiddenId, allowedAtDepth0, depth);
     case TMatch(:final scrutinee, :final motive, :final cases):
       if (!_solutionWellScoped(
         scrutinee,
@@ -6059,6 +6204,8 @@ bool _solutionWellScopedUnderCtx(Term t, Ctx localCtx) {
         stack.add((quot, depth));
         stack.add((fn, depth));
         stack.add((proof, depth));
+      case TProj(:final expr):
+        stack.add((expr, depth));
       case TMatch(:final scrutinee, :final motive, :final cases):
         stack.add((scrutinee, depth));
         if (motive != null) stack.add((motive, depth));
@@ -6262,6 +6409,10 @@ Term _shiftTBoundPastThreshold(
       uniShift(fn, depth),
       uniShift(proof, depth),
     ),
+    TProj(:final expr, :final fieldName) => TProj(
+      uniShift(expr, depth),
+      fieldName,
+    ),
   };
 
   Term walk(Term t, int depth) => switch (t) {
@@ -6337,6 +6488,10 @@ Term _shiftTBoundPastThreshold(
       walk(quot, depth),
       walk(fn, depth),
       walk(proof, depth),
+    ),
+    TProj(:final expr, :final fieldName) => TProj(
+      walk(expr, depth),
+      fieldName,
     ),
   };
   return walk(term, 0);
@@ -6718,6 +6873,10 @@ Term _substByLevel(Term term, Map<int, Value> substMap, Ctx ctx) {
       walk(fn, depth),
       walk(proof, depth),
     ),
+    TProj(:final expr, :final fieldName) => TProj(
+      walk(expr, depth),
+      fieldName,
+    ),
   };
   return walk(term, 0);
 }
@@ -6838,6 +6997,42 @@ bool _isRecursiveOccurrence(String dataName, Term type) {
     t = t.codomain;
   }
   return t is TData && t.name == dataName;
+}
+
+/// True iff [dataDecl] is a record: single constructor, non-recursive,
+/// no indices.
+bool _isRecordData(DataDecl dataDecl) =>
+    dataDecl.ctors.length == 1 && dataDecl.indices.isEmpty;
+
+/// Look up a [DataDecl] by [name] in [dataDecls].
+DataDecl? _lookupData(String name, List<DataDecl>? dataDecls) {
+  if (dataDecls == null) return null;
+  for (final d in dataDecls) {
+    if (d.name == name) return d;
+  }
+  return null;
+}
+
+/// Extract field [fieldName] from a [VConstr] by looking up the field
+/// index in the constructor's args.
+Value _projectField(VConstr v, String fieldName, List<DataDecl>? dataDecls) {
+  final dDecl = _lookupData(v.dataName, dataDecls);
+  if (dDecl == null || dDecl.ctors.isEmpty) {
+    throw StateError(
+      'projectField: VConstr(${v.dataName}) has no matching DataDecl.',
+    );
+  }
+  final ctor = dDecl.ctors.first;
+  final paramCount = dDecl.params.length;
+  for (var i = 0; i < ctor.args.length; i++) {
+    if (ctor.args[i].name == fieldName) {
+      return v.args[paramCount + i];
+    }
+  }
+  throw StateError(
+    'projectField: VConstr(${v.dataName}.${v.ctorName}) '
+    'has no field named $fieldName.',
+  );
 }
 
 /// Synthesize the kernel [Term] representing the recursor's type for
@@ -7210,6 +7405,7 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
     // (match is term-level), so this path is unreachable at runtime.
     // Kept exhaustive so the compiler stays green.
     TMatch() => t,
+    TProj() => t,
   };
 
   // Build the innermost expression: P ctor.resultIndices (C params args).
@@ -7325,6 +7521,7 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
       // Ctor signatures are types; TMatch is term-level and does
       // not appear inside them under any well-typed shape.
       TMatch() => t,
+      TProj() => t,
     };
 
     // IH domain = P <sub-indices of a_posIdx> a_posIdx.
@@ -7509,6 +7706,7 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
     TQuotLift() => t,
     // Ctor signatures are types; TMatch is term-level.
     TMatch() => t,
+    TProj() => t,
   };
 
   for (var j = argCount - 1; j >= 0; j--) {

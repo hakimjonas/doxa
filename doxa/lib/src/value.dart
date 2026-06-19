@@ -489,6 +489,32 @@ final class NTop extends Neutral {
   const NTop(this.name);
 }
 
+/// A stuck primitive projection: `neutral.fieldName`.
+///
+/// Produced when evaluating `TProj(e, fieldName)` and `e` evaluates to a
+/// non-[VConstr] value (typically a [VNeutral]). The projection stays
+/// stuck until the record expression becomes a [VConstr].
+final class NProj extends Neutral {
+  /// The stuck record expression being projected from.
+  final Value expr;
+
+  /// The field name being accessed.
+  final String fieldName;
+
+  /// Creates a projection neutral.
+  const NProj(this.expr, this.fieldName);
+
+  @override
+  bool operator ==(Object other) =>
+      other is NProj && other.expr == expr && other.fieldName == fieldName;
+
+  @override
+  int get hashCode => Object.hash('NProj', expr, fieldName);
+
+  @override
+  String toString() => 'NProj($expr, $fieldName)';
+}
+
 /// An unsolved metavariable's neutral head.
 ///
 /// `VNeutral(NMeta(id))` is the value produced by evaluating a
