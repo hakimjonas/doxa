@@ -61,9 +61,10 @@ written from scratch at Phase 22.
 
 Before adding any kernel features or optimizations, measure the kernel
 as it exists today. The goal is to know what Doxa *actually* needs, not
-what it might hypothetically need. This runs in parallel with Phase 14.5-14.7
-design work but measures the **pre-14.5 kernel** — the baseline before
-quotients, injectivity, or reducibility hints are added.
+what it might hypothetically need. This runs in parallel with Phase 14.5-14.7. The existing kernel paths
+(beta-reduction, conversion of existing term forms) are unchanged by
+the new features — benchmarking during or after 14.5-14.7 produces
+the same measurements for non-quotient code.
 
 ## Phase 14.5 — Kernel Hardening
 
@@ -424,15 +425,15 @@ scope. Revisit if a concrete application emerges.
 ```
 14 (kernel complete)
  │
- ├─ Benchmarking (measures pre-14.5 kernel, runs in parallel with design work)
- │   │
- │   └── results inform implementation of 14.5-14.7 ──┐
- │                                                     │
- ├─ 14.5 (quotients) ──┐                              │
- ├─ 14.6 (injectivity)─┤  all three in parallel       │
- └─ 14.7 (reducibility)┘  or any order                │
-        │                                              │
-        ├── Re-benchmark (measure post-14.7 kernel) ───┘
+ ├─ Benchmarking ── (measures kernel, runs alongside 14.5-14.7)
+ │   │               results inform implementation decisions
+ │   └──────────────────────────────────────────────┐
+ │                                                   │
+ ├─ 14.5 (quotients) ──┐                            │
+ ├─ 14.6 (injectivity)─┤  all three in parallel     │
+ └─ 14.7 (reducibility)┘  or any order              │
+        │                                            │
+        ├── Re-benchmark (measure post-14.7 kernel) ─┘
         │
         ├─ 15 (universe polymorphism)
         │   └─ 16 (SProp)
@@ -448,11 +449,11 @@ scope. Revisit if a concrete application emerges.
 ```
 
 Phases 14.5–14.7 are independent of each other. Phases 15–22 are linear
-(the original plan's dependency chain is correct). The benchmarking
-interlude happens before 14.5 touches the kernel — it establishes the
-baseline. A re-benchmark after 14.7 measures the impact of the new
-conversion rules. Each subsequent phase re-runs relevant benchmarks as
-part of its exit criteria.
+(the original plan's dependency chain is correct). Benchmarking runs
+alongside 14.5–14.7 — the existing kernel code paths are unchanged by
+the new features. A re-benchmark after 14.7 measures the delta.
+Each subsequent phase re-runs relevant benchmarks as part of its exit
+criteria.
 
 ---
 
