@@ -14,39 +14,39 @@ import 'package:doxa/src/value.dart';
 import 'package:test/test.dart';
 
 DataDecl _pairDecl() => DataDecl(
-      name: 'Pair',
-      params: const [
-        TelescopeEntry('A', TType(LLevel(0)), DoxaSpan.synthetic),
-        TelescopeEntry('B', TType(LLevel(0)), DoxaSpan.synthetic),
+  name: 'Pair',
+  params: const [
+    TelescopeEntry('A', TType(LLevel(0)), DoxaSpan.synthetic),
+    TelescopeEntry('B', TType(LLevel(0)), DoxaSpan.synthetic),
+  ],
+  indices: const [],
+  sort: TType(LLevel(0)),
+  ctors: [
+    CtorDecl(
+      dataName: 'Pair',
+      name: 'mk',
+      args: const [
+        TelescopeEntry('fst', TBound(1), DoxaSpan.synthetic),
+        TelescopeEntry('snd', TBound(0), DoxaSpan.synthetic),
       ],
-      indices: const [],
-      sort: TType(LLevel(0)),
-      ctors: [
-        CtorDecl(
-          dataName: 'Pair',
-          name: 'mk',
-          args: const [
-            TelescopeEntry('fst', TBound(1), DoxaSpan.synthetic),
-            TelescopeEntry('snd', TBound(0), DoxaSpan.synthetic),
-          ],
-          resultIndices: const [],
-          source: SCtorDecl(
-            'mk',
-            SExpr(SIdentKind('dummy'), DoxaSpan.synthetic),
-            DoxaSpan.synthetic,
-          ),
-          span: DoxaSpan.synthetic,
-        ),
-      ],
-      paramsCovariant: const [true, true],
-      source: SDataKind(
-        'Pair',
-        const [],
-        const SExpr(SIdentKind('dummy'), DoxaSpan.synthetic),
-        const [],
+      resultIndices: const [],
+      source: SCtorDecl(
+        'mk',
+        SExpr(SIdentKind('dummy'), DoxaSpan.synthetic),
+        DoxaSpan.synthetic,
       ),
       span: DoxaSpan.synthetic,
-    );
+    ),
+  ],
+  paramsCovariant: const [true, true],
+  source: SDataKind(
+    'Pair',
+    const [],
+    const SExpr(SIdentKind('dummy'), DoxaSpan.synthetic),
+    const [],
+  ),
+  span: DoxaSpan.synthetic,
+);
 
 void main() {
   group('Projection from VConstr', () {
@@ -83,8 +83,7 @@ void main() {
 
   group('Projection from stuck neutral', () {
     test('TProj(VNeutral(NVar(0)), "fst") stays NProj', () {
-      final env = ENil.withData([_pairDecl()])
-          .extend(const VNeutral(NVar(0)));
+      final env = ENil.withData([_pairDecl()]).extend(const VNeutral(NVar(0)));
       final t = TProj(TBound(0), 'fst');
       final v = eval(t, env);
       expect(v, isA<VNeutral>());
@@ -115,8 +114,7 @@ void main() {
       // conv(etaExpanded, p): left is VConstr, right is VNeutral (not VConstr).
       // η rule projects fields from right: NProj(p, "fst"), NProj(p, "snd").
       // These match the VConstr's fields, so ConvOk.
-      final result =
-          conv(0, etaExpanded, p, dataDecls: [_pairDecl()]);
+      final result = conv(0, etaExpanded, p, dataDecls: [_pairDecl()]);
       expect(result, isA<ConvOk>());
     });
   });

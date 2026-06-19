@@ -264,4 +264,50 @@ and g(A: Type): Type -> Type = (f: Type) => f
       skip: 'grammar requires at least one fun parameter',
     );
   });
+
+  group('{struct name} annotation', () {
+    test('{struct} on a later param is accepted', () {
+      final fun = _parseFun('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+
+fun f(a: Nat, b: List): List {struct b} = match b {
+  case nil => nil
+  case cons x xs => cons x (f a xs)
+}
+''');
+      checkStructuralRecursion(fun, {'f'});
+    });
+
+    test('{struct} on first param works (same as default)', () {
+      final fun = _parseFun('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+
+fun f(n: Nat): Nat {struct n} = match n {
+  case zero => zero
+  case succ m => f m
+}
+''');
+      checkStructuralRecursion(fun, {'f'});
+    });
+
+    test('{struct} on non-existent param rejected at elaboration', () {
+      expect(
+        () => elabProgram(
+          _parseProg('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+
+fun f(n: Nat): Nat {struct x} = n
+'''),
+        ),
+        throwsA(isA<StructAnnotationNotFound>()),
+      );
+    });
+  });
+}
+
+SProgram _parseProg(String src) {
+  final r = parseProgram(src);
+  if (r is Success<ParseError, SProgram>) return r.value;
+  if (r is Partial<ParseError, SProgram>) return r.value;
+  fail('parse failed: $r');
 }

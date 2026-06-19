@@ -117,6 +117,28 @@ final class NonStructuralRecursion extends ElabError {
   String toString() => 'NonStructuralRecursion($calleeName @ $span)';
 }
 
+/// The `{struct <name>}` annotation references a parameter that does not
+/// exist in the function's value parameter list.
+final class StructAnnotationNotFound extends ElabError {
+  /// The function name.
+  final String funName;
+
+  /// The annotated parameter name.
+  final String paramName;
+
+  /// The source span of the annotation.
+  @override
+  final DoxaSpan span;
+
+  /// Creates a struct-annotation-not-found error.
+  const StructAnnotationNotFound(this.funName, this.paramName, this.span);
+
+  @override
+  String toString() =>
+      'StructAnnotationNotFound: fun $funName has no parameter '
+      'named $paramName';
+}
+
 /// A `match` expression has no ctor case AND no explicit `returning`
 /// clause, so the elaborator cannot determine the scrutinee's inductive
 /// type. Elaboration requires *either* at least one constructor
@@ -1248,23 +1270,76 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
       final resultV = _computePiSort(domSort, codSort) ?? _vType0;
       return (TPi(domT, codT, name: param), resultV);
 
-    case SLetKind(:final param, :final domain, :final bound, :final body):
-      // Local binding (a block `{ val x: T = e; ... }` desugars to a
-      // chain of these). When the annotation is present we check the
-      // bound expr against it; when absent we INFER the binder's type
-      // from the bound expr (matching top-level `val n = e`, which also
-      // infers). Top-level and local bindings thus agree.
-      //
-      // The body infers under a `pushWith` extension installing the
-      // concrete bound value, the body's inferred type is then already
-      // correct in the outer scope (NbE substitutes at eval time).
-      //
-      // Elaborate under the real context, not the `_elabExpr` shim
-      // (which types outer binders with placeholders). A bound
-      // expression that applies a function to an outer binding, e.g.
-      // the inner `val b: N = s a` in `{ val a: N = z; val b: N = s a;
-      // ... }`, mis-infers under a placeholder type for `a`; the real
-      // context resolves outer binders at their true types.
+    case SLetKind(
+      :final param,
+      :final domain,
+      :final bound,
+      :final body,
+      :final isRec,
+    ):
+      if (isRec) {
+        // Recursive local binding `val rec f(x: T): R = body; result`.
+        // The domain is a Pi type built by the parser, and the bound is
+        // a lambda chain. Self-references inside the lambda body are NOT
+        // supported (use a top-level `fun` for full recursion). The
+        // result body CAN reference the function via the TLet binder.
+        // At eval time, the TLet wraps the bound in a VFun guard.
+        final (piTerm, _) = _inferExpr(state, domain!);
+        final piV = eval(piTerm, state.ctx.env);
+
+        // Extract params and inner body from the lambda chain bound.
+        List<SExpr> paramDomains = [];
+        List<String> paramNames = [];
+        SExpr innerBody = bound;
+        var extracting = true;
+        while (extracting) {
+          switch (innerBody.kind) {
+            case SLamKind(:final param, :final domain, :final body):
+              paramNames.add(param);
+              paramDomains.add(domain!);
+              innerBody = body;
+            default:
+              extracting = false;
+          }
+        }
+
+        // Elaborate param domains and build the TLam chain.
+        // The lambda body is elaborated WITHOUT the rec name in scope.
+        var funState = state;
+        final domainTerms = <Term>[];
+        for (var i = 0; i < paramNames.length; i++) {
+          final (domT, _) = _inferExpr(funState, paramDomains[i]);
+          final domV = eval(domT, funState.ctx.env);
+          domainTerms.add(domT);
+          funState = funState.push(paramNames[i], domV);
+        }
+        Term funcBody = _inferExpr(funState, innerBody).$1;
+        for (var i = paramNames.length - 1; i >= 0; i--) {
+          funcBody = TLam(domainTerms[i], funcBody, name: paramNames[i]);
+        }
+        final boundV = eval(funcBody, state.ctx.env);
+        // Build TLet with isRec: the body elaborates under pushWith
+        // so TBound(0) resolves to the VFun at eval time.
+        final decreasingArg = 0;
+        final arity = paramNames.length;
+        final (bodyTerm, bodyV) = _inferExpr(
+          state.pushWith(param, piV, boundV),
+          body,
+        );
+        return (
+          TLet(
+            piTerm,
+            funcBody,
+            bodyTerm,
+            name: param,
+            isRec: true,
+            recDecreasingArg: decreasingArg,
+            recArity: arity,
+          ),
+          bodyV,
+        );
+      }
+      // Non-recursive let-binding.
       final Term domainTerm;
       final Term boundTerm;
       if (domain == null) {
@@ -2530,9 +2605,10 @@ DeclResult _processImport(TopEnv topEnv, String path, DoxaSpan span) {
       final runningData = [...localDataDecls, ...produced.dataDecls];
       // For import decls inside the imported file, expand the env so
       // checkDeclResult can verify cross-references within the import.
-      final checkBindings = decl.kind is SImportKind
-          ? [...topEnv.bindings, ...localBindings, ...produced.bindings]
-          : [...topEnv.bindings, ...localBindings];
+      final checkBindings =
+          decl.kind is SImportKind
+              ? [...topEnv.bindings, ...localBindings, ...produced.bindings]
+              : [...topEnv.bindings, ...localBindings];
       final checkEnv = TopEnv(checkBindings, [
         ...topEnv.dataDecls,
         ...runningData,
@@ -2667,6 +2743,11 @@ TopBinding _elabFun(
   final memberNames = {for (final m in members) m.fun.name};
   for (final m in members) {
     _checkStructuralRecursion(m.fun, memberNames);
+    // Validate {struct name} annotation even for non-recursive members.
+    if (m.fun.structAnn != null &&
+        _findParamIndex(m.fun, m.fun.structAnn!) < 0) {
+      throw StructAnnotationNotFound(m.fun.name, m.fun.structAnn!, m.span);
+    }
   }
 
   // Pass 1: elaborate each member's signature against the outer
@@ -2746,11 +2827,13 @@ TopBinding _elabFun(
   ]);
   // Stamp guarded-reduction metadata onto each recursive member's
   // binding. The designated decreasing argument is
-  // the first explicit value param (SPEC §8.6), which sits in the
-  // lambda chain AFTER all type params, so its de-Bruijn position is
-  // `typeParams.length`. A member with no value params has no
-  // decreasing argument and is left unguarded (it can't recurse
-  // structurally anyway). `recArity` is the full param count.
+  // the first explicit value param (SPEC §8.6), or the `{struct name}`
+  // annotation if present. It sits in the lambda chain AFTER all type
+  // params, so its de-Bruijn position is `typeParams.length` by
+  // default, adjusted to the annotated param's position. A member
+  // with no value params has no decreasing argument and is left
+  // unguarded (it can't recurse structurally anyway). `recArity` is
+  // the full param count.
   final guarded = <TopBinding>[];
   for (final b in elaborated) {
     final fun = members.firstWhere((m) => m.fun.name == b.name).fun;
@@ -2758,7 +2841,19 @@ TopBinding _elabFun(
       guarded.add(b);
       continue;
     }
-    final decreasing = fun.typeParams.length;
+    final int decreasing;
+    if (fun.structAnn != null) {
+      decreasing = _findParamIndex(fun, fun.structAnn!);
+      if (decreasing < 0) {
+        throw StructAnnotationNotFound(
+          fun.name,
+          fun.structAnn!,
+          members.firstWhere((m) => m.fun.name == b.name).span,
+        );
+      }
+    } else {
+      decreasing = fun.typeParams.length;
+    }
     final arity = fun.typeParams.length + fun.params.length;
     guarded.add(
       TopBinding(
@@ -2908,6 +3003,33 @@ void _checkDuplicate(TopEnv topEnv, SDecl decl) {
 void checkStructuralRecursion(SFunKind kind, Set<String> blockMembers) =>
     _checkStructuralRecursion(kind, blockMembers);
 
+/// Find the de-Bruijn position of a value parameter [name] in [fun].
+/// Returns the position counting type params first, so the first value
+/// param has position [fun.typeParams.length]. Returns -1 if not found.
+int _findParamIndex(SFunKind fun, String name) {
+  for (var i = 0; i < fun.params.length; i++) {
+    if (fun.params[i].$1 == name) return fun.typeParams.length + i;
+  }
+  return -1;
+}
+
+/// Compute the position of the designated argument among the value params.
+/// Returns null when there is no designated argument. The returned index
+/// is relative to the value-param list only (not including type params),
+/// matching the arg position in application calls where type args are
+/// implicit/elided.
+int? _designatedArgIndex(SFunKind kind) {
+  if (kind.params.isEmpty) return null;
+  if (kind.structAnn != null) {
+    for (var i = 0; i < kind.params.length; i++) {
+      if (kind.params[i].$1 == kind.structAnn) return i;
+    }
+    // Should not reach here if structAnn was validated earlier.
+    return null;
+  }
+  return 0; // first value param
+}
+
 void _checkStructuralRecursion(SFunKind kind, Set<String> blockMembers) {
   // Shadow set: type-params and all value-params start in scope
   // (they mask any block-member name that coincides with them).
@@ -2915,9 +3037,11 @@ void _checkStructuralRecursion(SFunKind kind, Set<String> blockMembers) {
     for (final tp in kind.typeParams) tp.name,
     for (final p in kind.params) p.$1,
   };
-  // Designated argument: first explicit value param, if any.
+  // Designated argument: the `{struct <name>}` annotation, or the
+  // first explicit value param if no annotation is given.
   final String? designated =
-      kind.params.isNotEmpty ? kind.params.first.$1 : null;
+      kind.structAnn ?? (kind.params.isNotEmpty ? kind.params.first.$1 : null);
+  final int? designatedIdx = _designatedArgIndex(kind);
 
   // Walk the body and the return type, both are in the function's
   // scope, so both can mention block members. Param types and
@@ -2928,6 +3052,7 @@ void _checkStructuralRecursion(SFunKind kind, Set<String> blockMembers) {
     expr: kind.body,
     blockMembers: blockMembers,
     designated: designated,
+    designatedIdx: designatedIdx,
     subTerms: const <String>{},
     shadowed: shadowed,
   );
@@ -2935,6 +3060,7 @@ void _checkStructuralRecursion(SFunKind kind, Set<String> blockMembers) {
     expr: kind.returnType,
     blockMembers: blockMembers,
     designated: designated,
+    designatedIdx: designatedIdx,
     subTerms: const <String>{},
     shadowed: shadowed,
   );
@@ -2943,6 +3069,7 @@ void _checkStructuralRecursion(SFunKind kind, Set<String> blockMembers) {
       expr: p.$2,
       blockMembers: blockMembers,
       designated: null,
+      designatedIdx: null,
       subTerms: const <String>{},
       shadowed: const <String>{},
     );
@@ -2953,6 +3080,7 @@ void _checkStructuralRecursion(SFunKind kind, Set<String> blockMembers) {
         expr: tp.kind!,
         blockMembers: blockMembers,
         designated: null,
+        designatedIdx: null,
         subTerms: const <String>{},
         shadowed: const <String>{},
       );
@@ -2967,6 +3095,7 @@ void _walkForRecursion({
   required SExpr expr,
   required Set<String> blockMembers,
   required String? designated,
+  int? designatedIdx,
   required Set<String> subTerms,
   required Set<String> shadowed,
 }) {
@@ -2992,6 +3121,7 @@ void _walkForRecursion({
         expr: qualifier,
         blockMembers: blockMembers,
         designated: designated,
+        designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
       );
@@ -3004,18 +3134,20 @@ void _walkForRecursion({
       if (headKind is SIdentKind &&
           blockMembers.contains(headKind.name) &&
           !shadowed.contains(headKind.name)) {
-        // The designated-arg position is taken as index 0 of the args
-        // list. This holds for calls of the form `f x1 x2 ...` (direct
-        // juxtaposition). Calls of the form `f[TypeArg] x` flatten to
-        // `args = [TypeArg, x]`, where a 1-type-param callee's real
-        // designated-arg position is `args[1]`; that case is not
-        // distinguished here (it would need per-callee type-param
-        // counts). Implicit arguments sidestep it, since type args are
-        // then elided.
+        // The designated-arg position is determined by [`designatedIdx`]
+        // when available (from `{struct name}` annotation), or defaults
+        // to index 0 (first explicit value param). Calls with explicit
+        // type args (e.g. `f[TypeArg] x`) flatten to `args = [TypeArg,
+        // x]`; that case is not distinguished here (it would need per-
+        // callee type-param counts). Implicit arguments sidestep it.
         if (args.isEmpty) {
           throw NonStructuralRecursion(headKind.name, head.span);
         }
-        final designatedArg = args[0];
+        final daIdx = designatedIdx ?? 0;
+        if (daIdx >= args.length) {
+          throw NonStructuralRecursion(headKind.name, expr.span);
+        }
+        final designatedArg = args[daIdx];
         final argIdent = designatedArg.kind;
         final argName = argIdent is SIdentKind ? argIdent.name : null;
         if (argName == null || !subTerms.contains(argName)) {
@@ -3028,6 +3160,7 @@ void _walkForRecursion({
             expr: args[i],
             blockMembers: blockMembers,
             designated: designated,
+            designatedIdx: designatedIdx,
             subTerms: subTerms,
             shadowed: shadowed,
           );
@@ -3041,6 +3174,7 @@ void _walkForRecursion({
           expr: app.fn,
           blockMembers: blockMembers,
           designated: designated,
+          designatedIdx: designatedIdx,
           subTerms: subTerms,
           shadowed: shadowed,
         );
@@ -3048,6 +3182,7 @@ void _walkForRecursion({
           expr: app.arg,
           blockMembers: blockMembers,
           designated: designated,
+          designatedIdx: designatedIdx,
           subTerms: subTerms,
           shadowed: shadowed,
         );
@@ -3058,6 +3193,7 @@ void _walkForRecursion({
           expr: domain,
           blockMembers: blockMembers,
           designated: designated,
+          designatedIdx: designatedIdx,
           subTerms: subTerms,
           shadowed: shadowed,
         );
@@ -3066,6 +3202,7 @@ void _walkForRecursion({
         expr: body,
         blockMembers: blockMembers,
         designated: designated,
+        designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: {...shadowed, param},
       );
@@ -3074,6 +3211,7 @@ void _walkForRecursion({
         expr: domain,
         blockMembers: blockMembers,
         designated: designated,
+        designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
       );
@@ -3081,6 +3219,7 @@ void _walkForRecursion({
         expr: codomain,
         blockMembers: blockMembers,
         designated: designated,
+        designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: param == null ? shadowed : {...shadowed, param},
       );
@@ -3090,6 +3229,7 @@ void _walkForRecursion({
           expr: domain,
           blockMembers: blockMembers,
           designated: designated,
+          designatedIdx: designatedIdx,
           subTerms: subTerms,
           shadowed: shadowed,
         );
@@ -3098,6 +3238,7 @@ void _walkForRecursion({
         expr: bound,
         blockMembers: blockMembers,
         designated: designated,
+        designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
       );
@@ -3105,6 +3246,7 @@ void _walkForRecursion({
         expr: body,
         blockMembers: blockMembers,
         designated: designated,
+        designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: {...shadowed, param},
       );
@@ -3113,6 +3255,7 @@ void _walkForRecursion({
         expr: scrutinee,
         blockMembers: blockMembers,
         designated: designated,
+        designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
       );
@@ -3121,6 +3264,7 @@ void _walkForRecursion({
           expr: motive,
           blockMembers: blockMembers,
           designated: designated,
+          designatedIdx: designatedIdx,
           subTerms: subTerms,
           shadowed: shadowed,
         );
@@ -3146,6 +3290,7 @@ void _walkForRecursion({
               expr: body,
               blockMembers: blockMembers,
               designated: designated,
+              designatedIdx: designatedIdx,
               subTerms: extendedSubTerms,
               shadowed: extendedShadow,
             );
@@ -3154,6 +3299,7 @@ void _walkForRecursion({
               expr: body,
               blockMembers: blockMembers,
               designated: designated,
+              designatedIdx: designatedIdx,
               subTerms: subTerms,
               shadowed: shadowed,
             );
@@ -3164,6 +3310,7 @@ void _walkForRecursion({
         expr: carrier,
         blockMembers: blockMembers,
         designated: designated,
+        designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
       );
@@ -3171,6 +3318,7 @@ void _walkForRecursion({
         expr: relation,
         blockMembers: blockMembers,
         designated: designated,
+        designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
       );
@@ -3179,6 +3327,7 @@ void _walkForRecursion({
         expr: arg,
         blockMembers: blockMembers,
         designated: designated,
+        designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
       );
@@ -3187,6 +3336,7 @@ void _walkForRecursion({
         expr: fn,
         blockMembers: blockMembers,
         designated: designated,
+        designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
       );
@@ -3194,6 +3344,7 @@ void _walkForRecursion({
         expr: proof,
         blockMembers: blockMembers,
         designated: designated,
+        designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
       );
@@ -4001,8 +4152,7 @@ bool _occursInAny(Set<String> dataNames, Term term) => switch (term) {
     _occursInAny(dataNames, quot) ||
         _occursInAny(dataNames, fn) ||
         _occursInAny(dataNames, proof),
-  TProj(:final expr, :final fieldName) =>
-    _occursInAny(dataNames, expr),
+  TProj(:final expr, :final fieldName) => _occursInAny(dataNames, expr),
 };
 
 /// True if any name in [dataNames] appears only in strictly-positive
@@ -4148,8 +4298,10 @@ switch (term) {
     _isParamStrictlyPositive(quot, boundVar) &&
         _isParamStrictlyPositive(fn, boundVar) &&
         _isParamStrictlyPositive(proof, boundVar),
-  TProj(:final expr, :final fieldName) =>
-    _isParamStrictlyPositive(expr, boundVar),
+  TProj(:final expr, :final fieldName) => _isParamStrictlyPositive(
+    expr,
+    boundVar,
+  ),
 };
 
 /// Does TBound(target) occur anywhere in [term] (adjusting for binder

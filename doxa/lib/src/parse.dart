@@ -236,28 +236,82 @@ final Parser<ParseError, SExpr> _expr = defer(
 ///
 /// Carries its own start position so the desugared [SLetKind] can be
 /// spanned from the `val` keyword through the block's result.
-typedef _ValBinding = ({int start, String name, SExpr? domain, SExpr bound});
+///
+/// When [isRec] is true, the binding is a recursive `val rec` whose
+/// [domain] is the return type and [funParams] are the value parameters.
+typedef _ValBinding =
+    ({
+      int start,
+      String name,
+      SExpr? domain,
+      SExpr bound,
+      bool isRec,
+      List<(String, SExpr)> funParams,
+    });
+
+/// Optional `rec` keyword modifier on a `val` binding.
+final Parser<ParseError, bool> _recMod = _keyword(
+  'rec',
+).map((_) => true).optional.map((v) => v ?? false);
+
+/// Value parameters for a `val rec` binding: `'(' name ':' expr (',' name ':' expr)* ')'`.
+final Parser<ParseError, List<(String, SExpr)>> _recValueParams = _sym('(')
+    .skipThen(
+      _ident
+          .flatMap<(String, SExpr)>(
+            (name) => _sym(':').skipThen(_expr).map((t) => (name, t)),
+          )
+          .sepBy(_sym(',')),
+    )
+    .thenSkip(_sym(')'));
 
 final Parser<ParseError, _ValBinding> _valBinding = position<ParseError>()
     .flatMap(
       (start) => _keyword('val')
-          .skipThen(_ident)
+          .skipThen(_recMod)
           .flatMap(
-            (name) => _sym(':')
-                .skipThen(_expr)
-                .optional
-                .flatMap(
-                  (domain) => _sym('=')
+            (isRec) => _ident.flatMap((name) {
+              if (isRec) {
+                // val rec f(x: T): R = body
+                return _recValueParams.flatMap(
+                  (params) => _sym(':')
                       .skipThen(_expr)
-                      .map(
-                        (bound) => (
-                          start: start,
-                          name: name,
-                          domain: domain,
-                          bound: bound,
-                        ),
+                      .flatMap(
+                        (retType) => _sym('=')
+                            .skipThen(_expr)
+                            .map(
+                              (body) => (
+                                start: start,
+                                name: name,
+                                domain: retType,
+                                bound: body,
+                                isRec: true,
+                                funParams: params,
+                              ),
+                            ),
                       ),
-                ),
+                );
+              } else {
+                // val f(: T)? = expr
+                return _sym(':')
+                    .skipThen(_expr)
+                    .optional
+                    .flatMap(
+                      (domain) => _sym('=')
+                          .skipThen(_expr)
+                          .map(
+                            (bound) => (
+                              start: start,
+                              name: name,
+                              domain: domain,
+                              bound: bound,
+                              isRec: false,
+                              funParams: const [],
+                            ),
+                          ),
+                    );
+              }
+            }),
           ),
     );
 
@@ -288,10 +342,33 @@ final Parser<ParseError, SExpr> _blockExpr = _sym('{').skipThen(
               // Fold bindings right-to-left so the first binding is outermost.
               var body = result;
               for (final b in bindings.reversed) {
-                body = SExpr(
-                  SLetKind(b.name, b.domain, b.bound, body),
-                  DoxaSpan(b.start, end),
-                );
+                if (b.isRec) {
+                  // Build lambda chain from params and body.
+                  var bound = b.bound;
+                  for (final p in b.funParams.reversed) {
+                    bound = SExpr(
+                      SLamKind(p.$1, p.$2, bound),
+                      DoxaSpan(b.start, end),
+                    );
+                  }
+                  // Build Pi type from params and return type.
+                  var domain = b.domain!;
+                  for (final p in b.funParams.reversed) {
+                    domain = SExpr(
+                      SPiKind(p.$1, p.$2, domain),
+                      DoxaSpan(b.start, end),
+                    );
+                  }
+                  body = SExpr(
+                    SLetKind(b.name, domain, bound, body, isRec: true),
+                    DoxaSpan(b.start, end),
+                  );
+                } else {
+                  body = SExpr(
+                    SLetKind(b.name, b.domain, b.bound, body),
+                    DoxaSpan(b.start, end),
+                  );
+                }
               }
               return body;
             }),
@@ -765,6 +842,18 @@ final Parser<ParseError, List<(String, SExpr)>> _valueParams = _sym('(')
     )
     .thenSkip(_sym(')'));
 
+/// Optional `{struct <name>}` annotation on a `fun` declaration.
+///
+/// Parsed as a whole atom so that the opening `{` is only consumed when
+/// followed by `struct`. If the current position is NOT `{struct`, the
+/// parser returns null without consuming input.
+final Parser<ParseError, String?> _structAnn =
+    _sym('{')
+        .skipThen(_keyword('struct'))
+        .skipThen(_ident)
+        .thenSkip(_sym('}'))
+        .optional;
+
 /// Build a `fun` body parser with the given [isOpaque] flag.
 Parser<ParseError, SFunKind> _mkFunBody(bool isOpaque) => _ident.flatMap(
   (name) => _funTypeParams.flatMap(
@@ -772,12 +861,21 @@ Parser<ParseError, SFunKind> _mkFunBody(bool isOpaque) => _ident.flatMap(
       (ps) => _sym(':')
           .skipThen(_expr)
           .flatMap(
-            (ret) => _sym('=')
-                .skipThen(_expr)
-                .map(
-                  (body) =>
-                      SFunKind(name, tps, ps, ret, body, isOpaque: isOpaque),
-                ),
+            (ret) => _structAnn.flatMap(
+              (structAnn) => _sym('=')
+                  .skipThen(_expr)
+                  .map(
+                    (body) => SFunKind(
+                      name,
+                      tps,
+                      ps,
+                      ret,
+                      body,
+                      isOpaque: isOpaque,
+                      structAnn: structAnn,
+                    ),
+                  ),
+            ),
           ),
     ),
   ),

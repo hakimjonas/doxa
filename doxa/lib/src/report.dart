@@ -396,11 +396,25 @@ String reportElabError(SourceFile source, ElabError error) {
     case CyclicImport(:final path, :final span):
       sb.writeln('error: cyclic import');
       sb.writeln('  at ${source.formatStart(span)}');
-      sb.writeln('  import of "$path" would create a cycle in the import graph.');
+      sb.writeln(
+        '  import of "$path" would create a cycle in the import graph.',
+      );
     case ImportFileNotFound(:final path, :final span):
       sb.writeln('error: import file not found');
       sb.writeln('  at ${source.formatStart(span)}');
       sb.writeln('  cannot find file: $path');
+    case StructAnnotationNotFound(
+      :final funName,
+      :final paramName,
+      :final span,
+    ):
+      sb.writeln('error: struct annotation references non-existent parameter');
+      sb.writeln('  at ${source.formatStart(span)}');
+      sb.writeln('  "$funName" has no value parameter named "$paramName".');
+      sb.writeln(
+        '  The `{struct name}` annotation must name a value parameter',
+      );
+      sb.writeln('  of the annotated function.');
   }
   return sb.toString();
 }

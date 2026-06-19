@@ -317,10 +317,7 @@ Term inlineSolvedBareMetas(Term term, MetaContext metas) {
         walk(fn),
         walk(proof),
       ),
-      TProj(:final expr, :final fieldName) => TProj(
-        walk(expr),
-        fieldName,
-      ),
+      TProj(:final expr, :final fieldName) => TProj(walk(expr), fieldName),
     };
   };
   return walk(term);
@@ -483,10 +480,7 @@ Term inlineSolvedMetas(Term term, MetaContext metas, {int outerDepth = 0}) {
       walk(fn, depth),
       walk(proof, depth),
     ),
-    TProj(:final expr, :final fieldName) => TProj(
-      walk(expr, depth),
-      fieldName,
-    ),
+    TProj(:final expr, :final fieldName) => TProj(walk(expr, depth), fieldName),
   };
   return walk(term, outerDepth);
 }

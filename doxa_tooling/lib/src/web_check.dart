@@ -124,9 +124,10 @@ CheckOutput checkSourceOutput(
       // For import decls, expand the env to include the import's own
       // bindings so checkDeclResult can verify cross-references within
       // the imported module.
-      final checkBindings = decl.kind is SImportKind
-          ? [...bindings, ...produced.bindings]
-          : bindings;
+      final checkBindings =
+          decl.kind is SImportKind
+              ? [...bindings, ...produced.bindings]
+              : bindings;
       final finalized = checkDeclResult(
         TopEnv(checkBindings, runningData),
         produced,
@@ -317,6 +318,7 @@ String _elabErrorKind(ElabError e) => switch (e) {
   NonExhaustiveMatch _ => 'nonexhaustive_match',
   CyclicImport _ => 'cyclic_import',
   ImportFileNotFound _ => 'import_file_not_found',
+  StructAnnotationNotFound _ => 'struct_annotation_not_found',
 };
 
 /// Pretty-print a [Value] by quoting at [level] and rendering.

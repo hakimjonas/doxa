@@ -350,24 +350,47 @@ final class TLet extends Term {
   /// Optional source name for the bound variable (diagnostic hint only).
   final String? name;
 
+  /// When true, this is a recursive `let rec` binding. The evaluator wraps
+  /// the bound value in a [VFun] guard before extending the env.
+  final bool isRec;
+
+  /// For recursive bindings, the de-Bruijn position of the decreasing arg.
+  final int? recDecreasingArg;
+
+  /// For recursive bindings, the total parameter count.
+  final int? recArity;
+
   /// Creates a let-binding.
-  const TLet(this.domain, this.bound, this.body, {this.name});
+  const TLet(
+    this.domain,
+    this.bound,
+    this.body, {
+    this.name,
+    this.isRec = false,
+    this.recDecreasingArg,
+    this.recArity,
+  });
 
   @override
   bool operator ==(Object other) =>
       other is TLet &&
       other.domain == domain &&
       other.bound == bound &&
-      other.body == body;
+      other.body == body &&
+      other.isRec == isRec;
 
   @override
-  int get hashCode => Object.hash('TLet', domain, bound, body);
+  int get hashCode => Object.hash('TLet', domain, bound, body, isRec);
 
   @override
-  String toString() =>
-      name == null
-          ? 'TLet($domain, $bound, $body)'
-          : 'TLet[$name]($domain, $bound, $body)';
+  String toString() {
+    final base =
+        name == null
+            ? 'TLet($domain, $bound, $body)'
+            : 'TLet[$name]($domain, $bound, $body)';
+    if (isRec) return '$base[rec]';
+    return base;
+  }
 }
 
 /// An inductive type reference: `Nat`, `List A`, `Vec A (succ n)`.

@@ -218,4 +218,82 @@ void main() {
       expect(prettyTerm(t), '{ val x: Type = Type; x }');
     });
   });
+
+  group('Local val rec', () {
+    test('val rec parses to SLetKind with isRec', () {
+      final r = parseExpr('{ val rec f(x: Nat): Nat = x; f }');
+      expect(r, isA<Success<ParseError, SExpr>>());
+      final v = (r as Success<ParseError, SExpr>).value.kind;
+      expect(v, isA<SLetKind>());
+      expect((v as SLetKind).isRec, isTrue);
+    });
+
+    test('val rec elaborates to TLet with isRec', () {
+      final prog = parseProgramOk('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+val t = { val rec f(x: Nat): Nat = x; f(zero) }
+''');
+      final env = elabProgram(prog);
+      expect(env.bindings, hasLength(3)); // Nat.rec + Nat.rect + t
+      final b = env.bindings[2];
+      expect(b.term, isA<TLet>());
+      final let = b.term as TLet;
+      expect(let.isRec, isTrue);
+      expect(let.name, 'f');
+    });
+
+    test('val rec non-recursive body (no self-call) type-checks', () {
+      final env = elabProgram(
+        parseProgramOk('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+fun plus(m: Nat, n: Nat): Nat = match m {
+  case zero => n
+  case succ m_ => succ (plus m_ n)
+}
+val r : Nat = { val rec f(x: Nat): Nat = x; f(zero) }
+'''),
+      );
+      final b = env.bindings.lastWhere((b) => b.name == 'r');
+      final ctx = env.toCtx();
+      check(ctx, b.term, eval(b.type, ctx.env));
+    });
+
+    test('val rec body type-checks (non-recursive body)', () {
+      final env = elabProgram(
+        parseProgramOk('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+fun plus(m: Nat, n: Nat): Nat = match m {
+  case zero => n
+  case succ m_ => succ (plus m_ n)
+}
+val r : Nat = {
+  val rec f(x: Nat): Nat = x;
+  f(succ zero)
+}
+'''),
+      );
+      final b = env.bindings.lastWhere((b) => b.name == 'r');
+      final ctx = env.toCtx();
+      check(ctx, b.term, eval(b.type, ctx.env));
+    });
+
+    test('val rec with multiple params parses and type-checks', () {
+      final env = elabProgram(
+        parseProgramOk('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+fun plus(m: Nat, n: Nat): Nat = match m {
+  case zero => n
+  case succ m_ => succ (plus m_ n)
+}
+val r : Nat = {
+  val rec f(a: Nat, b: Nat): Nat = a;
+  f zero zero
+}
+'''),
+      );
+      final b = env.bindings.lastWhere((b) => b.name == 'r');
+      final ctx = env.toCtx();
+      check(ctx, b.term, eval(b.type, ctx.env));
+    });
+  });
 }

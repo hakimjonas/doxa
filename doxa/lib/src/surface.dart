@@ -230,11 +230,16 @@ final class SLamKind extends SExprKind {
 /// A local let-binding: `let x: T = e1 in e2` or `let x = e1 in e2`
 /// (v2). The type annotation is optional, when absent, elaboration
 /// infers the type from the bound expression.
+///
+/// When [isRec] is true, this desugars to a recursive binding
+/// (`val rec` inside a block expression). The [bound] expression is a
+/// lambda chain wrapping the function body, and the [domain] is the
+/// Pi type of the function.
 final class SLetKind extends SExprKind {
   /// The name of the bound variable.
   final String param;
 
-  /// The optional type annotation.
+  /// The optional type annotation (or return type for [isRec]).
   final SExpr? domain;
 
   /// The bound expression.
@@ -244,8 +249,17 @@ final class SLetKind extends SExprKind {
   /// into a de Bruijn index pointing at the let's binder).
   final SExpr body;
 
+  /// Whether this is a recursive `val rec` binding.
+  final bool isRec;
+
   /// Creates a let-binding.
-  const SLetKind(this.param, this.domain, this.bound, this.body);
+  const SLetKind(
+    this.param,
+    this.domain,
+    this.bound,
+    this.body, {
+    this.isRec = false,
+  });
 
   @override
   bool operator ==(Object other) =>
@@ -253,13 +267,16 @@ final class SLetKind extends SExprKind {
       other.param == param &&
       other.domain == domain &&
       other.bound == bound &&
-      other.body == body;
+      other.body == body &&
+      other.isRec == isRec;
 
   @override
-  int get hashCode => Object.hash('SLetKind', param, domain, bound, body);
+  int get hashCode =>
+      Object.hash('SLetKind', param, domain, bound, body, isRec);
 
   @override
-  String toString() => 'SLetKind($param, ${domain ?? "_"}, $bound, $body)';
+  String toString() =>
+      'SLetKind($param, ${domain ?? "_"}, $bound, $body, isRec: $isRec)';
 }
 
 /// A dependent function type: `(x: A) -> B`, or a non-dependent arrow
@@ -516,8 +533,7 @@ final class SImportKind extends SDeclKind {
   const SImportKind(this.path);
 
   @override
-  bool operator ==(Object other) =>
-      other is SImportKind && other.path == path;
+  bool operator ==(Object other) => other is SImportKind && other.path == path;
 
   @override
   int get hashCode => Object.hash('SImportKind', path);
@@ -704,6 +720,11 @@ final class SFunKind extends SDeclKind {
   /// When true, this fun is opaque (never unfolds during conversion).
   final bool isOpaque;
 
+  /// Optional `{struct <name>}` annotation naming a value parameter
+  /// as the structurally decreasing argument. When null, the first
+  /// explicit value parameter is used (SPEC §8.6).
+  final String? structAnn;
+
   /// Creates a fun declaration.
   const SFunKind(
     this.name,
@@ -712,6 +733,7 @@ final class SFunKind extends SDeclKind {
     this.returnType,
     this.body, {
     this.isOpaque = false,
+    this.structAnn,
   });
 
   @override
@@ -722,7 +744,8 @@ final class SFunKind extends SDeclKind {
       other.params == params &&
       other.returnType == returnType &&
       other.body == body &&
-      other.isOpaque == isOpaque;
+      other.isOpaque == isOpaque &&
+      other.structAnn == structAnn;
 
   @override
   int get hashCode => Object.hash(
@@ -733,12 +756,14 @@ final class SFunKind extends SDeclKind {
     returnType,
     body,
     isOpaque,
+    structAnn,
   );
 
   @override
   String toString() =>
       'SFunKind($name, typeParams: $typeParams, params: $params, '
-      'returnType: $returnType, body: $body, isOpaque: $isOpaque)';
+      'returnType: $returnType, body: $body, isOpaque: $isOpaque'
+      '${structAnn != null ? ", structAnn: $structAnn" : ""})';
 }
 
 /// A single type-parameter entry on a `fun` declaration.

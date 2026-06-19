@@ -34,12 +34,19 @@ SExprKind shape(SExpr e) {
       SExpr(shape(domain), DoxaSpan.synthetic),
       SExpr(shape(codomain), DoxaSpan.synthetic),
     ),
-    SLetKind(:final param, :final domain, :final bound, :final body) =>
+    SLetKind(
+      :final param,
+      :final domain,
+      :final bound,
+      :final body,
+      :final isRec,
+    ) =>
       SLetKind(
         param,
         domain == null ? null : SExpr(shape(domain), DoxaSpan.synthetic),
         SExpr(shape(bound), DoxaSpan.synthetic),
         SExpr(shape(body), DoxaSpan.synthetic),
+        isRec: isRec,
       ),
     SDotKind(:final qualifier, :final name) => SDotKind(
       SExpr(shape(qualifier), DoxaSpan.synthetic),

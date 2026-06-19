@@ -275,7 +275,18 @@ final class _BuildPi extends _Frame {
 final class _EvalLetBody extends _Frame {
   final Env env;
   final Term body;
-  const _EvalLetBody(this.env, this.body);
+  final bool isRec;
+  final String? name;
+  final int? decreasingArg;
+  final int? arity;
+  const _EvalLetBody(
+    this.env,
+    this.body, {
+    this.isRec = false,
+    this.name,
+    this.decreasingArg,
+    this.arity,
+  });
 }
 
 /// Fires after a [TMatch]'s scrutinee is evaluated. `value` is the
@@ -1456,13 +1467,29 @@ Object _drive(
             stack.add(_BuildPi(env, codomain, name, icit));
             step = _Eval(domain, env);
 
-          case TLet(bound: final boundTerm, body: final bodyTerm):
+          case TLet(
+            bound: final boundTerm,
+            body: final bodyTerm,
+            :final isRec,
+            :final name,
+            recDecreasingArg: final decreasingArg,
+            recArity: final arity,
+          ):
             // Eval the bound expression; the resulting value gets
             // extended into the env when `_EvalLetBody` fires, and the
             // body is evaluated under the new env. Domain and name
             // hint are not needed at eval time, they're for the
             // checker (domain) and diagnostics (name).
-            stack.add(_EvalLetBody(env, bodyTerm));
+            stack.add(
+              _EvalLetBody(
+                env,
+                bodyTerm,
+                isRec: isRec,
+                name: name,
+                decreasingArg: decreasingArg,
+                arity: arity,
+              ),
+            );
             step = _Eval(boundTerm, env);
 
           case TData(name: final n, args: final dataArgs):
@@ -1683,11 +1710,15 @@ Object _drive(
             final paramCount = dDecl.params.length;
             final pending = <_Frame>[];
             for (var i = 0; i < ctor.args.length; i++) {
-              pending.add(_ConvThen(_Conv(
-                a.args[paramCount + i],
-                VNeutral(NProj(b, ctor.args[i].name ?? '')),
-                level,
-              )));
+              pending.add(
+                _ConvThen(
+                  _Conv(
+                    a.args[paramCount + i],
+                    VNeutral(NProj(b, ctor.args[i].name ?? '')),
+                    level,
+                  ),
+                ),
+              );
             }
             for (final f in pending.reversed) {
               stack.add(f);
@@ -1703,11 +1734,15 @@ Object _drive(
             final paramCount = dDecl.params.length;
             final pending = <_Frame>[];
             for (var i = 0; i < ctor.args.length; i++) {
-              pending.add(_ConvThen(_Conv(
-                VNeutral(NProj(a, ctor.args[i].name ?? '')),
-                b.args[paramCount + i],
-                level,
-              )));
+              pending.add(
+                _ConvThen(
+                  _Conv(
+                    VNeutral(NProj(a, ctor.args[i].name ?? '')),
+                    b.args[paramCount + i],
+                    level,
+                  ),
+                ),
+              );
             }
             for (final f in pending.reversed) {
               stack.add(f);
@@ -1969,8 +2004,10 @@ Object _drive(
                     }
                     step = const _YieldC(_ok);
                   }
-                case (NProj(expr: final e1, fieldName: final f1),
-                      NProj(expr: final e2, fieldName: final f2)):
+                case (
+                  NProj(expr: final e1, fieldName: final f1),
+                  NProj(expr: final e2, fieldName: final f2),
+                ):
                   if (f1 != f2) {
                     step = _YieldC(_mismatchOrIrrelevance(a, b, dataDecls));
                   } else {
@@ -3009,10 +3046,7 @@ Object _drive(
                 // term is TApp(...TApp(TMeta(id), arg1)...argN).
                 step = _YieldT(TMeta(id));
               case NProj(:final expr, :final fieldName):
-                step = _YieldT(TProj(
-                  quote(level, expr),
-                  fieldName,
-                ));
+                step = _YieldT(TProj(quote(level, expr), fieldName));
               case NApp():
                 // Loop invariant: we walked past all NApps above.
                 throw StateError(
@@ -3181,10 +3215,28 @@ Object _drive(
               VPi(value, Closure(env, codomain), name: nameHint, icit: icit),
             );
 
-          case _EvalLetBody(:final env, :final body):
+          case _EvalLetBody(
+            :final env,
+            :final body,
+            :final isRec,
+            :final name,
+            :final decreasingArg,
+            :final arity,
+          ):
             // `value` is the evaluated bound expression. Extend env
             // and evaluate the body; no VLet is produced.
-            step = _Eval(body, env.extend(value));
+            if (isRec) {
+              final vfun = VFun(
+                name as String,
+                value,
+                decreasingArg!,
+                arity!,
+                const <Value>[],
+              );
+              step = _Eval(body, env.extend(vfun));
+            } else {
+              step = _Eval(body, env.extend(value));
+            }
 
           case _MatchAfterScrutinee(:final motive, :final cases, :final env):
             // `value` is the scrutineeV. Three cases:
@@ -3475,7 +3527,11 @@ Object _drive(
                   for (var j = 0; j < fieldIndex; j++) {
                     env = env.extend(VNeutral(NVar(1000 + j)));
                   }
-                  for (var j = dDecl.params.length + fieldIndex - 1; j >= 0; j--) {
+                  for (
+                    var j = dDecl.params.length + fieldIndex - 1;
+                    j >= 0;
+                    j--
+                  ) {
                     env = env.extend(value.args[j]);
                   }
                   step = _YieldV(eval(fieldTypeTerm, env));
@@ -5558,10 +5614,7 @@ Term _renameForSolution(
       walk(fn, depth),
       walk(proof, depth),
     ),
-    TProj(:final expr, :final fieldName) => TProj(
-      walk(expr, depth),
-      fieldName,
-    ),
+    TProj(:final expr, :final fieldName) => TProj(walk(expr, depth), fieldName),
   };
   return walk(term, 0);
 }
@@ -6489,10 +6542,7 @@ Term _shiftTBoundPastThreshold(
       walk(fn, depth),
       walk(proof, depth),
     ),
-    TProj(:final expr, :final fieldName) => TProj(
-      walk(expr, depth),
-      fieldName,
-    ),
+    TProj(:final expr, :final fieldName) => TProj(walk(expr, depth), fieldName),
   };
   return walk(term, 0);
 }
@@ -6873,10 +6923,7 @@ Term _substByLevel(Term term, Map<int, Value> substMap, Ctx ctx) {
       walk(fn, depth),
       walk(proof, depth),
     ),
-    TProj(:final expr, :final fieldName) => TProj(
-      walk(expr, depth),
-      fieldName,
-    ),
+    TProj(:final expr, :final fieldName) => TProj(walk(expr, depth), fieldName),
   };
   return walk(term, 0);
 }
