@@ -35,7 +35,7 @@ final DataDecl natDecl = DataDecl(
   name: 'Nat',
   params: const <TelescopeEntry>[],
   indices: const <TelescopeEntry>[],
-  sort: const TType(0),
+  sort: const TType(LLevel(0)),
   ctors: [
     CtorDecl(
       dataName: 'Nat',
@@ -70,7 +70,7 @@ final DataDecl boolDecl = DataDecl(
   name: 'Bool',
   params: const <TelescopeEntry>[],
   indices: const <TelescopeEntry>[],
-  sort: const TType(0),
+  sort: const TType(LLevel(0)),
   ctors: [
     CtorDecl(
       dataName: 'Bool',
@@ -98,22 +98,22 @@ void main() {
   group('TelescopeEntry', () {
     test('structural equality over name + type + span', () {
       expect(
-        const TelescopeEntry('A', TType(0), _span0),
-        const TelescopeEntry('A', TType(0), _span0),
+        const TelescopeEntry('A', TType(LLevel(0)), _span0),
+        const TelescopeEntry('A', TType(LLevel(0)), _span0),
       );
     });
 
     test('different names compare unequal', () {
       expect(
-        const TelescopeEntry('A', TType(0), _span0),
-        isNot(const TelescopeEntry('B', TType(0), _span0)),
+        const TelescopeEntry('A', TType(LLevel(0)), _span0),
+        isNot(const TelescopeEntry('B', TType(LLevel(0)), _span0)),
       );
     });
 
     test('null name distinguishes anonymous binders', () {
       expect(
-        const TelescopeEntry(null, TType(0), _span0),
-        isNot(const TelescopeEntry('A', TType(0), _span0)),
+        const TelescopeEntry(null, TType(LLevel(0)), _span0),
+        isNot(const TelescopeEntry('A', TType(LLevel(0)), _span0)),
       );
     });
   });

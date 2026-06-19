@@ -24,33 +24,29 @@ SExpr _parse(String src) {
 const _span = DoxaSpan.synthetic;
 
 // Surface AST for `data Nat : Type { zero : Nat; succ : Nat -> Nat }`.
-const SDataKind _natSource = SDataKind(
-  'Nat',
-  <(String, SExpr?)>[],
-  SExpr(STypeKind(0), _span),
-  [
-    SCtorDecl('zero', SExpr(SIdentKind('Nat'), _span), _span),
-    SCtorDecl(
-      'succ',
-      SExpr(
-        SPiKind(
-          null,
-          SExpr(SIdentKind('Nat'), _span),
-          SExpr(SIdentKind('Nat'), _span),
+const SDataKind _natSource =
+    SDataKind('Nat', <(String, SExpr?)>[], SExpr(STypeKind(0), _span), [
+      SCtorDecl('zero', SExpr(SIdentKind('Nat'), _span), _span),
+      SCtorDecl(
+        'succ',
+        SExpr(
+          SPiKind(
+            null,
+            SExpr(SIdentKind('Nat'), _span),
+            SExpr(SIdentKind('Nat'), _span),
+          ),
+          _span,
         ),
         _span,
       ),
-      _span,
-    ),
-  ],
-);
+    ]);
 
 // Elaborated form of `data Nat`.
 final DataDecl _natDecl = DataDecl(
   name: 'Nat',
   params: const <TelescopeEntry>[],
   indices: const <TelescopeEntry>[],
-  sort: const TType(0),
+  sort: const TType(LLevel(0)),
   ctors: [
     CtorDecl(
       dataName: 'Nat',
@@ -79,11 +75,7 @@ const SDataKind _vecSource = SDataKind(
   'Vec',
   <(String, SExpr?)>[('_', null)],
   SExpr(
-    SPiKind(
-      null,
-      SExpr(SIdentKind('Nat'), _span),
-      SExpr(STypeKind(0), _span),
-    ),
+    SPiKind(null, SExpr(SIdentKind('Nat'), _span), SExpr(STypeKind(0), _span)),
     _span,
   ),
   [
@@ -106,9 +98,9 @@ const SDataKind _vecSource = SDataKind(
 // Elaborated form of `data Vec (A : Type) : Nat -> Type`.
 final DataDecl _vecDecl = DataDecl(
   name: 'Vec',
-  params: const [TelescopeEntry('_', TType(0), _span)],
+  params: const [TelescopeEntry('_', TType(LLevel(0)), _span)],
   indices: const [TelescopeEntry('_', TData('Nat', <Term>[]), _span)],
-  sort: const TType(0),
+  sort: const TType(LLevel(0)),
   ctors: [
     CtorDecl(
       dataName: 'Vec',
@@ -123,10 +115,10 @@ final DataDecl _vecDecl = DataDecl(
       name: 'vcons',
       args: const [
         TelescopeEntry(null, TData('Nat', <Term>[]), _span),
-        TelescopeEntry(null, TType(0), _span),
+        TelescopeEntry(null, TType(LLevel(0)), _span),
         TelescopeEntry(
           null,
-          TData('Vec', [TType(0), TData('Nat', <Term>[])]),
+          TData('Vec', [TType(LLevel(0)), TData('Nat', <Term>[])]),
           _span,
         ),
       ],
@@ -152,7 +144,7 @@ void main() {
   group('quotient types', () {
     test('basic formation - Quot typechecks', () {
       final v = eval(
-        TQuot(TType(0), TPi(TType(0), TPi(TType(0), TProp()))),
+        TQuot(TType(LLevel(0)), TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp()))),
         ENil(),
       );
       expect(v, isA<VQuot>());
@@ -162,32 +154,32 @@ void main() {
     });
 
     test('mk injection', () {
-      final v = eval(TQuotMk(TType(0)), ENil());
+      final v = eval(TQuotMk(TType(LLevel(0))), ENil());
       expect(v, isA<VQuotMk>());
       expect((v as VQuotMk).arg, isA<VType>());
     });
 
     test('lift ι-reduction via eval of TQuotLift', () {
       final v = eval(
-        TQuotLift(TQuotMk(TType(0)), TLam(TType(0), TBound(0)), TProp()),
+        TQuotLift(TQuotMk(TType(LLevel(0))), TLam(TType(LLevel(0)), TBound(0)), TProp()),
         ENil(),
       );
       expect(v, isA<VType>());
-      expect((v as VType).level, equals(0));
+      expect((v as VType).level, equals(const LLevel(0)));
     });
 
     test('VQuotMk not definitionally equal for different args', () {
-      final result = conv(0, VQuotMk(VType(0)), VQuotMk(VType(1)));
+      final result = conv(0, VQuotMk(VType(LLevel(0))), VQuotMk(VType(LLevel(1))));
       expect(result, isA<ConvMismatch>());
     });
 
     test('VQuotMk identical args are definitionally equal', () {
-      final arg = VType(0);
+      final arg = VType(LLevel(0));
       expect(conv(0, VQuotMk(arg), VQuotMk(arg)), isA<ConvOk>());
     });
 
     test('round-trip eval -> quote -> eval', () {
-      final t = TQuot(TType(0), TPi(TType(0), TPi(TType(0), TProp())));
+      final t = TQuot(TType(LLevel(0)), TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())));
       final v = eval(t, ENil());
       final quoted = quote(0, v);
       expect(quoted, isA<TQuot>());
@@ -197,7 +189,7 @@ void main() {
     test('neutral QuotLift stays stuck and quotes correctly', () {
       final stuck = VQuotLift(
         VNeutral(NVar(0)),
-        VLam(VType(0), Closure(ENil(), TBound(0))),
+        VLam(VType(LLevel(0)), Closure(ENil(), TBound(0))),
         VProp(),
       );
       expect(quote(1, stuck), isA<TQuotLift>());
@@ -207,30 +199,30 @@ void main() {
       final result = apply(
         VQuotLift(
           VNeutral(NVar(0)),
-          VLam(VType(0), Closure(ENil(), TBound(0))),
+          VLam(VType(LLevel(0)), Closure(ENil(), TBound(0))),
           VProp(),
         ),
-        VType(0),
+        VType(LLevel(0)),
       );
       expect(result, isA<VNeutral>());
     });
 
     test('VQuot carriers compare structurally in conv', () {
       expect(
-        conv(0, VQuot(VType(0), VProp()), VQuot(VType(0), VProp())),
+        conv(0, VQuot(VType(LLevel(0)), VProp()), VQuot(VType(LLevel(0)), VProp())),
         isA<ConvOk>(),
       );
     });
 
     test('VQuot different carriers do not convert', () {
       expect(
-        conv(0, VQuot(VType(0), VProp()), VQuot(VType(1), VProp())),
+        conv(0, VQuot(VType(LLevel(0)), VProp()), VQuot(VType(LLevel(1)), VProp())),
         isA<ConvMismatch>(),
       );
     });
 
     test('TQuot infers as VType', () {
-      final q = TQuot(TType(0), TPi(TType(0), TPi(TType(0), TProp())));
+      final q = TQuot(TType(LLevel(0)), TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())));
       final ctx = CNil.withRegistries(
         dataDecls: const [],
         topBindings: const {},
@@ -239,33 +231,54 @@ void main() {
     });
 
     test('TQuotMk in infer mode throws QuotMkInInferMode', () {
-      final ctx = CNil.withRegistries(dataDecls: const [], topBindings: const {});
-      expect(() => infer(ctx, TQuotMk(TType(0))), throwsA(isA<QuotMkInInferMode>()));
+      final ctx = CNil.withRegistries(
+        dataDecls: const [],
+        topBindings: const {},
+      );
+      expect(
+        () => infer(ctx, TQuotMk(TType(LLevel(0)))),
+        throwsA(isA<QuotMkInInferMode>()),
+      );
     });
 
     test('infer TQuot rejects non-sort carrier', () {
-      final q = TQuot(TLam(TType(0), TBound(0)), TPi(TType(0), TPi(TType(0), TProp())));
-      final ctx = CNil.withRegistries(dataDecls: const [], topBindings: const {});
+      final q = TQuot(
+        TLam(TType(LLevel(0)), TBound(0)),
+        TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())),
+      );
+      final ctx = CNil.withRegistries(
+        dataDecls: const [],
+        topBindings: const {},
+      );
       expect(() => infer(ctx, q), throwsA(isA<NotAType>()));
     });
 
     test('infer TQuotLift with non-quotient quot throws NotAQuotient', () {
-      final t = TQuotLift(TType(0), TLam(TType(0), TBound(0)), TProp());
-      final ctx = CNil.withRegistries(dataDecls: const [], topBindings: const {});
+      final t = TQuotLift(TType(LLevel(0)), TLam(TType(LLevel(0)), TBound(0)), TProp());
+      final ctx = CNil.withRegistries(
+        dataDecls: const [],
+        topBindings: const {},
+      );
       expect(() => infer(ctx, t), throwsA(isA<NotAQuotient>()));
     });
 
-    test('infer TQuotLift with non-quotient quot throws NotAQuotient (TQuot types as VType, not VQuot)', () {
-      // TQuot(TType(0), ...)'s inferred type is VType, not VQuot.
-      // TQuotLift expects a VQuot-typed term. This tests that case.
-      final t = TQuotLift(
-        TQuot(TType(0), TPi(TType(0), TPi(TType(0), TProp()))),
-        TLam(TType(0), TBound(0)),
-        TProp(),
-      );
-      final ctx = CNil.withRegistries(dataDecls: const [], topBindings: const {});
-      expect(() => infer(ctx, t), throwsA(isA<NotAQuotient>()));
-    });
+    test(
+      'infer TQuotLift with non-quotient quot throws NotAQuotient (TQuot types as VType, not VQuot)',
+      () {
+        // TQuot(TType(LLevel(0)), ...)'s inferred type is VType, not VQuot.
+        // TQuotLift expects a VQuot-typed term. This tests that case.
+        final t = TQuotLift(
+          TQuot(TType(LLevel(0)), TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp()))),
+          TLam(TType(LLevel(0)), TBound(0)),
+          TProp(),
+        );
+        final ctx = CNil.withRegistries(
+          dataDecls: const [],
+          topBindings: const {},
+        );
+        expect(() => infer(ctx, t), throwsA(isA<NotAQuotient>()));
+      },
+    );
 
     // --- Parser tests ---
 
@@ -329,111 +342,136 @@ void main() {
 
     // --- Quotient singleton elimination / Lean 3 soundness tests ---
 
-    test('Quot.lift into Type with Prop carrier succeeds (quotients are Type-sorted)', () {
-      final q = TQuot(TProp(), TPi(TProp(), TPi(TProp(), TProp())));
-      final ctx = CNil.withRegistries(dataDecls: const [], topBindings: const {});
-      final qType = infer(ctx, q);
-      expect(qType, isA<VType>());
-      // The carrier sort is VType(1) (Prop : Type 1), so the quotient sorts at Type 1.
-      expect((qType as VType).level, equals(1));
-    });
+    test(
+      'Quot.lift into Type with Prop carrier succeeds (quotients are Type-sorted)',
+      () {
+        final q = TQuot(TProp(), TPi(TProp(), TPi(TProp(), TProp())));
+        final ctx = CNil.withRegistries(
+          dataDecls: const [],
+          topBindings: const {},
+        );
+        final qType = infer(ctx, q);
+        expect(qType, isA<VType>());
+        // The carrier sort is VType(LLevel(1)) (Prop : Type 1), so the quotient sorts at Type 1.
+        expect((qType as VType).level, equals(const LLevel(1)));
+      },
+    );
 
-    test('Quot with Prop carrier is Type-sorted, not Prop-sorted (Lean 3 fix is architectural)', () {
-      final q = TQuot(TProp(), TPi(TProp(), TPi(TProp(), TProp())));
-      final ctx = CNil.withRegistries(dataDecls: const [], topBindings: const {});
-      final qType = infer(ctx, q);
-      expect(qType, isA<VType>());
+    test(
+      'Quot with Prop carrier is Type-sorted, not Prop-sorted (Lean 3 fix is architectural)',
+      () {
+        final q = TQuot(TProp(), TPi(TProp(), TPi(TProp(), TProp())));
+        final ctx = CNil.withRegistries(
+          dataDecls: const [],
+          topBindings: const {},
+        );
+        final qType = infer(ctx, q);
+        expect(qType, isA<VType>());
 
-      final q2 = TQuot(TType(0), TPi(TType(0), TPi(TType(0), TProp())));
-      final q2Type = infer(ctx, q2);
-      expect(q2Type, isA<VType>());
-      // Type(0) sorts at Type 1, so the quotient also sorts at Type 1.
-      expect((q2Type as VType).level, equals(1));
-    });
+        final q2 = TQuot(TType(LLevel(0)), TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())));
+        final q2Type = infer(ctx, q2);
+        expect(q2Type, isA<VType>());
+        // Type(0) sorts at Type 1, so the quotient also sorts at Type 1.
+        expect((q2Type as VType).level, equals(const LLevel(1)));
+      },
+    );
 
     test('Quot.lift with VQuot-typed quot and proper fn succeeds in infer', () {
       // Construct a context with a VQuot-typed binder so the quot check
       // succeeds and we exercise the full TQuotLift infer path.
-      final base = CNil.withRegistries(dataDecls: const [], topBindings: const {});
-      final env = ENil.withRegistries(dataDecls: const [], topBindings: const {});
+      final base = CNil.withRegistries(
+        dataDecls: const [],
+        topBindings: const {},
+      );
+      final env = ENil.withRegistries(
+        dataDecls: const [],
+        topBindings: const {},
+      );
       final ctx = CCons(
-        VQuot(VType(0), VProp()),
+        VQuot(VType(LLevel(0)), VProp()),
         VNeutral(NVar(0)),
         env.extend(VNeutral(NVar(0))),
         1,
         base,
       );
-      // TBound(0) has type VQuot. TLam(TType(0), TType(0)) has type (x: Type) -> Type.
-      final q = TQuotLift(
-        TBound(0),
-        TLam(TType(0), TType(0)),
-        TType(0),
-      );
+      // TBound(0) has type VQuot. TLam(TType(LLevel(0)), TType(LLevel(0))) has type (x: Type) -> Type.
+      final q = TQuotLift(TBound(0), TLam(TType(LLevel(0)), TType(LLevel(0))), TType(LLevel(0)));
       final t = infer(ctx, q);
       expect(t, isA<VType>());
     });
 
     test('Quot.lift with non-VPi fn type throws NotAFunction', () {
-      final base = CNil.withRegistries(dataDecls: const [], topBindings: const {});
-      final env = ENil.withRegistries(dataDecls: const [], topBindings: const {});
+      final base = CNil.withRegistries(
+        dataDecls: const [],
+        topBindings: const {},
+      );
+      final env = ENil.withRegistries(
+        dataDecls: const [],
+        topBindings: const {},
+      );
       final ctx = CCons(
-        VQuot(VType(0), VProp()),
+        VQuot(VType(LLevel(0)), VProp()),
         VNeutral(NVar(0)),
         env.extend(VNeutral(NVar(0))),
         1,
         base,
       );
-      // TType(0) infers to VType(1), which is NOT VPi.
-      final q = TQuotLift(
-        TBound(0),
-        TType(0),
-        TType(0),
-      );
-      expect(
-        () => infer(ctx, q),
-        throwsA(isA<NotAFunction>()),
-      );
+      // TType(LLevel(0)) infers to VType(LLevel(1)), which is NOT VPi.
+      final q = TQuotLift(TBound(0), TType(LLevel(0)), TType(LLevel(0)));
+      expect(() => infer(ctx, q), throwsA(isA<NotAFunction>()));
     });
 
     // --- Quotient-in-match tests ---
 
     test('TQuot inside TMatch case body evaluates correctly', () {
-      final t = TMatch(
-        TConstr('Nat', 'zero', const []), null, const [
-        TMatchCase('zero', 0,
-          TQuot(TType(0), TPi(TType(0), TPi(TType(0), TProp()))),
-          const [], span: DoxaSpan.synthetic),
+      final t = TMatch(TConstr('Nat', 'zero', const []), null, const [
+        TMatchCase(
+          'zero',
+          0,
+          TQuot(TType(LLevel(0)), TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp()))),
+          const [],
+          span: DoxaSpan.synthetic,
+        ),
       ]);
       final env = ENil.withRegistries(
-        dataDecls: _natDataDecls(), topBindings: const {},
+        dataDecls: _natDataDecls(),
+        topBindings: const {},
       );
       final v = eval(t, env);
       expect(v, isA<VQuot>());
     });
 
     test('TQuotMk inside indexed-family match arm evaluates correctly', () {
-      final t = TMatch(
-        TConstr('Vec', 'vnil', const [TType(0)]), null, const [
-        TMatchCase('vnil', 0,
+      final t = TMatch(TConstr('Vec', 'vnil', const [TType(LLevel(0))]), null, const [
+        TMatchCase(
+          'vnil',
+          0,
           TQuotMk(TConstr('Nat', 'zero', const [])),
-          const [], span: DoxaSpan.synthetic),
+          const [],
+          span: DoxaSpan.synthetic,
+        ),
       ]);
       final env = ENil.withRegistries(
-        dataDecls: _vecDataDecls(), topBindings: const {},
+        dataDecls: _vecDataDecls(),
+        topBindings: const {},
       );
       final v = eval(t, env);
       expect(v, isA<VQuotMk>());
     });
 
     test('quotient in match round-trips through eval -> quote -> eval', () {
-      final t = TMatch(
-        TConstr('Nat', 'zero', const []), null, const [
-        TMatchCase('zero', 0,
-          TQuot(TType(0), TPi(TType(0), TPi(TType(0), TProp()))),
-          const [], span: DoxaSpan.synthetic),
+      final t = TMatch(TConstr('Nat', 'zero', const []), null, const [
+        TMatchCase(
+          'zero',
+          0,
+          TQuot(TType(LLevel(0)), TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp()))),
+          const [],
+          span: DoxaSpan.synthetic,
+        ),
       ]);
       final env = ENil.withRegistries(
-        dataDecls: _natDataDecls(), topBindings: const {},
+        dataDecls: _natDataDecls(),
+        topBindings: const {},
       );
       final v = eval(t, env);
       final quoted = quote(0, v);

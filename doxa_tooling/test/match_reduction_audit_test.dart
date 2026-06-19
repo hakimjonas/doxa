@@ -34,7 +34,7 @@ final DataDecl _natDecl = DataDecl(
   name: 'Nat',
   params: const <TelescopeEntry>[],
   indices: const <TelescopeEntry>[],
-  sort: const TType(0),
+  sort: const TType(LLevel(0)),
   ctors: [
     CtorDecl(
       dataName: 'Nat',
@@ -226,12 +226,12 @@ void main() {
   group('applying stuck matches (NStuck + NApp spine)', () {
     test('applying a stuck match once extends the neutral spine', () {
       final extended = _env.extend(const VNeutral(NVar(0)));
-      const idLam = TLam(TType(0), TBound(0));
-      const matchTerm = TMatch(TBound(0), TPi(TType(0), TType(0)), [
+      const idLam = TLam(TType(LLevel(0)), TBound(0));
+      const matchTerm = TMatch(TBound(0), TPi(TType(LLevel(0)), TType(LLevel(0))), [
         TMatchCase('zero', 0, idLam, []),
         TMatchCase('succ', 1, idLam, ['_']),
       ]);
-      const applied = TApp(matchTerm, TType(0));
+      const applied = TApp(matchTerm, TType(LLevel(0)));
       final v = eval(applied, extended);
       expect(
         v,
@@ -247,12 +247,12 @@ void main() {
       // directly to a plain variable, which crashed when the head was
       // a stuck match instead.
       final extended = _env.extend(const VNeutral(NVar(0)));
-      const idLam = TLam(TType(0), TBound(0));
-      const matchTerm = TMatch(TBound(0), TPi(TType(0), TType(0)), [
+      const idLam = TLam(TType(LLevel(0)), TBound(0));
+      const matchTerm = TMatch(TBound(0), TPi(TType(LLevel(0)), TType(LLevel(0))), [
         TMatchCase('zero', 0, idLam, []),
         TMatchCase('succ', 1, idLam, ['_']),
       ]);
-      const applied = TApp(matchTerm, TType(0));
+      const applied = TApp(matchTerm, TType(LLevel(0)));
       final v1 = eval(applied, extended);
       final v2 = eval(applied, extended);
       expect(conv(1, v1, v2), isA<ConvOk>());
@@ -261,12 +261,12 @@ void main() {
     test('two different stuck match-spine applications report mismatch', () {
       final extA = _env.extend(const VNeutral(NVar(0)));
       final extB = _env.extend(const VNeutral(NVar(1)));
-      const idLam = TLam(TType(0), TBound(0));
-      const matchTerm = TMatch(TBound(0), TPi(TType(0), TType(0)), [
+      const idLam = TLam(TType(LLevel(0)), TBound(0));
+      const matchTerm = TMatch(TBound(0), TPi(TType(LLevel(0)), TType(LLevel(0))), [
         TMatchCase('zero', 0, idLam, []),
         TMatchCase('succ', 1, idLam, ['_']),
       ]);
-      const applied = TApp(matchTerm, TType(0));
+      const applied = TApp(matchTerm, TType(LLevel(0)));
       final v1 = eval(applied, extA);
       final v2 = eval(applied, extB);
       // Levels differ → scrutinees differ → mismatch.

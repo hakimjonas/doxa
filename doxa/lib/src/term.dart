@@ -41,6 +41,101 @@ enum Icit {
   implicit,
 }
 
+/// A universe level expression.
+///
+/// Universe levels express the hierarchy of `Type n`. The level algebra
+/// supports concrete levels, variables (declaration-scoped), successor,
+/// maximum, and impredicative maximum.
+///
+/// This mirrors Lean 4's `level` ADT (per-declaration level variables),
+/// omitting level metavariables (handled by the elaborator as fresh
+/// `LLevel` assignments). See PHASE_15 docs for design rationale.
+sealed class Level {
+  const Level();
+}
+
+/// Concrete universe level: `Type 0`, `Type 1`, etc.
+final class LLevel extends Level {
+  final int level;
+  const LLevel(this.level);
+
+  @override
+  bool operator ==(Object other) => other is LLevel && other.level == level;
+
+  @override
+  int get hashCode => Object.hash('LLevel', level);
+
+  @override
+  String toString() => 'LLevel($level)';
+}
+
+/// Level variable (declaration-scoped): bound per top-level declaration.
+final class LVar extends Level {
+  final String name;
+  const LVar(this.name);
+
+  @override
+  bool operator ==(Object other) => other is LVar && other.name == name;
+
+  @override
+  int get hashCode => Object.hash('LVar', name);
+
+  @override
+  String toString() => 'LVar($name)';
+}
+
+/// Level successor: `succ(l)` for `Type l : Type (l+1)`.
+final class LSucc extends Level {
+  final Level of;
+  const LSucc(this.of);
+
+  @override
+  bool operator ==(Object other) => other is LSucc && other.of == of;
+
+  @override
+  int get hashCode => Object.hash('LSucc', of);
+
+  @override
+  String toString() => 'LSucc($of)';
+}
+
+/// Maximum of two levels. Used for Pi types and inductive parameters.
+final class LMax extends Level {
+  final Level lhs;
+  final Level rhs;
+  const LMax(this.lhs, this.rhs);
+
+  @override
+  bool operator ==(Object other) =>
+      other is LMax && other.lhs == lhs && other.rhs == rhs;
+
+  @override
+  int get hashCode => Object.hash('LMax', lhs, rhs);
+
+  @override
+  String toString() => 'LMax($lhs, $rhs)';
+}
+
+/// Impredicative maximum: `imax(u, v) = 0` when `v == 0`, else `max(u, v)`.
+///
+/// Used so `(Type u → Prop) : Type 0` not `Type u`. In Doxa, `Prop` is
+/// level 0 for Pi-sort computation.
+final class LImax extends Level {
+  final Level lhs;
+  final Level rhs;
+  const LImax(this.lhs, this.rhs);
+
+  @override
+  bool operator ==(Object other) =>
+      other is LImax && other.lhs == lhs && other.rhs == rhs;
+
+  @override
+  int get hashCode => Object.hash('LImax', lhs, rhs);
+
+  @override
+  String toString() => 'LImax($lhs, $rhs)';
+}
+
 /// A kernel term.
 sealed class Term {
   /// Base constructor.
@@ -49,8 +144,8 @@ sealed class Term {
 
 /// A universe, `Type n`, inhabited by the types at level `n`.
 final class TType extends Term {
-  /// The universe level (0, 1, 2, ...).
-  final int level;
+  /// The universe level.
+  final Level level;
 
   /// Creates a universe at [level].
   const TType(this.level);

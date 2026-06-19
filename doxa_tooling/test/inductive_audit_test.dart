@@ -267,7 +267,7 @@ data Nat : Type {
       final ctx = env.toCtx();
       final t = infer(ctx, const TData('Nat', <Term>[]));
       expect(t, isA<VType>());
-      expect((t as VType).level, 0);
+      expect((t as VType).level, const LLevel(0));
     });
 
     test('Big : Type 1', () {
@@ -275,7 +275,7 @@ data Nat : Type {
       final ctx = env.toCtx();
       final t = infer(ctx, const TData('Big', <Term>[]));
       expect(t, isA<VType>());
-      expect((t as VType).level, 1);
+      expect((t as VType).level, const LLevel(1));
     });
 
     test('P : Prop', () {

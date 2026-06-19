@@ -500,21 +500,25 @@ final class SValKind extends SDeclKind {
   /// The bound expression.
   final SExpr body;
 
+  /// When true, this binding is opaque (never unfolds during conversion).
+  final bool isOpaque;
+
   /// Creates a val declaration.
-  const SValKind(this.name, this.type, this.body);
+  const SValKind(this.name, this.type, this.body, {this.isOpaque = false});
 
   @override
   bool operator ==(Object other) =>
       other is SValKind &&
       other.name == name &&
       other.type == type &&
-      other.body == body;
+      other.body == body &&
+      other.isOpaque == isOpaque;
 
   @override
-  int get hashCode => Object.hash('SValKind', name, type, body);
+  int get hashCode => Object.hash('SValKind', name, type, body, isOpaque);
 
   @override
-  String toString() => 'SValKind($name, $type, $body)';
+  String toString() => 'SValKind($name, $type, $body, isOpaque: $isOpaque)';
 }
 
 /// A type alias: `type N = T`.
@@ -660,19 +664,44 @@ final class SFunKind extends SDeclKind {
   /// The body.
   final SExpr body;
 
+  /// When true, this fun is opaque (never unfolds during conversion).
+  final bool isOpaque;
+
   /// Creates a fun declaration.
   const SFunKind(
     this.name,
     this.typeParams,
     this.params,
     this.returnType,
-    this.body,
+    this.body, {
+    this.isOpaque = false,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      other is SFunKind &&
+      other.name == name &&
+      other.typeParams == typeParams &&
+      other.params == params &&
+      other.returnType == returnType &&
+      other.body == body &&
+      other.isOpaque == isOpaque;
+
+  @override
+  int get hashCode => Object.hash(
+    'SFunKind',
+    name,
+    typeParams,
+    params,
+    returnType,
+    body,
+    isOpaque,
   );
 
   @override
   String toString() =>
       'SFunKind($name, typeParams: $typeParams, params: $params, '
-      'returnType: $returnType, body: $body)';
+      'returnType: $returnType, body: $body, isOpaque: $isOpaque)';
 }
 
 /// A single type-parameter entry on a `fun` declaration.

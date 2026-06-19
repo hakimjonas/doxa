@@ -30,7 +30,7 @@ sealed class Value {
 /// A universe value at [level].
 final class VType extends Value {
   /// The universe level.
-  final int level;
+  final Level level;
 
   /// Creates a universe value.
   const VType(this.level);

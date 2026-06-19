@@ -12,23 +12,23 @@ import 'package:test/test.dart';
 void main() {
   group('Cumulativity at universes', () {
     test('Type 0 checks against Type 1 (upward)', () {
-      check(const CNil(), const TType(0), const VType(1));
+      check(const CNil(), const TType(LLevel(0)), const VType(LLevel(1)));
     });
 
     test('Type 0 checks against Type 2 (two steps upward)', () {
-      check(const CNil(), const TType(0), const VType(2));
+      check(const CNil(), const TType(LLevel(0)), const VType(LLevel(2)));
     });
 
     test('Type 1 does NOT check against Type 0 (downward rejected)', () {
       expect(
-        () => check(const CNil(), const TType(1), const VType(0)),
+        () => check(const CNil(), const TType(LLevel(1)), const VType(LLevel(0))),
         throwsA(isA<TypeMismatch>()),
       );
     });
 
     test('Type 2 does NOT check against Type 0', () {
       expect(
-        () => check(const CNil(), const TType(2), const VType(0)),
+        () => check(const CNil(), const TType(LLevel(2)), const VType(LLevel(0))),
         throwsA(isA<TypeMismatch>()),
       );
     });
@@ -36,31 +36,31 @@ void main() {
 
   group('Pi cumulativity through codomain', () {
     test('Pi Type 0 -> Type 0 has type Type 1 and is subtype of Type 2', () {
-      check(const CNil(), const TPi(TType(0), TType(0)), const VType(2));
+      check(const CNil(), const TPi(TType(LLevel(0)), TType(LLevel(0))), const VType(LLevel(2)));
     });
   });
 
   group('Cumulativity does not cross Prop', () {
     test('Prop DOES check against Type 1 (Prop : Type 1)', () {
-      check(const CNil(), const TProp(), const VType(1));
+      check(const CNil(), const TProp(), const VType(LLevel(1)));
     });
 
     test('Prop does NOT check against Type 0', () {
       expect(
-        () => check(const CNil(), const TProp(), const VType(0)),
+        () => check(const CNil(), const TProp(), const VType(LLevel(0))),
         throwsA(isA<TypeMismatch>()),
       );
     });
 
     test('Type 0 does NOT check against Prop', () {
       expect(
-        () => check(const CNil(), const TType(0), const VProp()),
+        () => check(const CNil(), const TType(LLevel(0)), const VProp()),
         throwsA(isA<TypeMismatch>()),
       );
     });
 
     test('conv Prop vs Type 1 is rejected (not cumulative across sorts)', () {
-      final r = conv(0, const VProp(), const VType(1));
+      final r = conv(0, const VProp(), const VType(LLevel(1)));
       expect(r, isA<ConvMismatch>());
     });
   });
@@ -71,8 +71,8 @@ void main() {
 
     test('covariant codomain: lambda into Type 0 fits codomain Type 2', () {
       // lam : (Type 0 -> Type 0); expected : (Type 0 -> Type 2).
-      const lam = TLam(TType(0), TBound(0));
-      final broader = eval(const TPi(TType(0), TType(2)), const ENil());
+      const lam = TLam(TType(LLevel(0)), TBound(0));
+      final broader = eval(const TPi(TType(LLevel(0)), TType(LLevel(2))), const ENil());
       check(const CNil(), lam, broader);
     });
 
@@ -81,8 +81,8 @@ void main() {
       () {
         // got : (Type 2 -> Type 1); expected : (Type 0 -> Type 1).
         // Contravariance needs Type 0 ≤ Type 2, which holds.
-        const lam = TLam(TType(2), TType(0));
-        final expected = eval(const TPi(TType(0), TType(1)), const ENil());
+        const lam = TLam(TType(LLevel(2)), TType(LLevel(0)));
+        final expected = eval(const TPi(TType(LLevel(0)), TType(LLevel(1))), const ENil());
         check(const CNil(), lam, expected);
       },
     );
@@ -91,8 +91,8 @@ void main() {
       // got : (Type 0 -> Type 1); expected : (Type 2 -> Type 1).
       // Contravariance needs Type 2 ≤ Type 0, which is false, so the
       // lambda-annotation-vs-Pi-domain subtype check must reject.
-      const lam = TLam(TType(0), TType(0));
-      final expected = eval(const TPi(TType(2), TType(1)), const ENil());
+      const lam = TLam(TType(LLevel(0)), TType(LLevel(0)));
+      final expected = eval(const TPi(TType(LLevel(2)), TType(LLevel(1))), const ENil());
       expect(
         () => check(const CNil(), lam, expected),
         throwsA(isA<TypeMismatch>()),
@@ -102,8 +102,8 @@ void main() {
     test('codomain covariance wrong way rejected', () {
       // got : (Type 0 -> Type 1); expected : (Type 0 -> Type 0).
       // Covariance needs Type 1 ≤ Type 0, which is false.
-      const lam = TLam(TType(0), TType(0));
-      final expected = eval(const TPi(TType(0), TType(0)), const ENil());
+      const lam = TLam(TType(LLevel(0)), TType(LLevel(0)));
+      final expected = eval(const TPi(TType(LLevel(0)), TType(LLevel(0))), const ENil());
       expect(
         () => check(const CNil(), lam, expected),
         throwsA(isA<TypeMismatch>()),
@@ -118,9 +118,9 @@ void main() {
       // both sides, which succeeds via the structural-equality fallback.
       check(
         const CNil(),
-        const TLam(TType(0), TLam(TBound(0), TBound(0), name: 'x'), name: 'A'),
+        const TLam(TType(LLevel(0)), TLam(TBound(0), TBound(0), name: 'x'), name: 'A'),
         eval(
-          const TPi(TType(0), TPi(TBound(0), TBound(1), name: 'x'), name: 'A'),
+          const TPi(TType(LLevel(0)), TPi(TBound(0), TBound(1), name: 'x'), name: 'A'),
           const ENil(),
         ),
       );
@@ -133,10 +133,10 @@ void main() {
       expect(
         () => check(
           const CNil(),
-          const TLam(TType(0), TLam(TType(0), TBound(0), name: 'x'), name: 'A'),
+          const TLam(TType(LLevel(0)), TLam(TType(LLevel(0)), TBound(0), name: 'x'), name: 'A'),
           eval(
             const TPi(
-              TType(0),
+              TType(LLevel(0)),
               TPi(TBound(0), TBound(1), name: 'x'),
               name: 'A',
             ),
@@ -153,22 +153,22 @@ void main() {
       // Build (Type 0 -> ... -> Type 0) 10k deep; subtype must descend
       // all levels without host-stack recursion.
       const depth = 10000;
-      Term t = const TType(0);
+      Term t = const TType(LLevel(0));
       for (var i = 0; i < depth; i++) {
-        t = TPi(const TType(0), t);
+        t = TPi(const TType(LLevel(0)), t);
       }
-      check(const CNil(), t, const VType(2));
+      check(const CNil(), t, const VType(LLevel(2)));
     });
   });
 
   group('Equality vs subtype', () {
     test('conv rejects Type 0 ≡ Type 1', () {
-      final r = conv(0, const VType(0), const VType(1));
+      final r = conv(0, const VType(LLevel(0)), const VType(LLevel(1)));
       expect(r, isA<ConvMismatch>());
     });
 
     test('conv rejects Type 1 ≡ Type 0', () {
-      final r = conv(0, const VType(1), const VType(0));
+      final r = conv(0, const VType(LLevel(1)), const VType(LLevel(0)));
       expect(r, isA<ConvMismatch>());
     });
   });

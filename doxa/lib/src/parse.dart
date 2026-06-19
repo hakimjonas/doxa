@@ -136,6 +136,11 @@ final Parser<ParseError, String> _ident = _lex(_rawIdent);
 Parser<ParseError, String> _keyword(String word) =>
     _lex(string(word).thenSkip((alphaNum() | char('_')).notFollowedBy));
 
+/// Optional `opaque` modifier, consumed before `val` / `fun`.
+final Parser<ParseError, bool> _opaqueMod = _keyword(
+  'opaque',
+).map((_) => true).optional.map((v) => v ?? false);
+
 // ===========================================================================
 // Atoms and type levels.
 // ===========================================================================
@@ -609,12 +614,7 @@ final Parser<ParseError, SExpr> _atomImpl = () {
   final mkAtom = position<ParseError>().flatMap(
     (start) => _keyword('mk')
         .skipThen(defer(() => _expr).zip(position<ParseError>()))
-        .map(
-          (pair) => SExpr(
-            SQuotMkKind(pair.$1),
-            DoxaSpan(start, pair.$2),
-          ),
-        ),
+        .map((pair) => SExpr(SQuotMkKind(pair.$1), DoxaSpan(start, pair.$2))),
   );
   // Quotient lift: lift(fn, proof)
   final liftAtom = position<ParseError>().flatMap(
@@ -627,40 +627,46 @@ final Parser<ParseError, SExpr> _atomImpl = () {
               .thenSkip(_sym(')'))
               .zip(position<ParseError>())
               .map(
-                (pair) => SExpr(
-                  SQuotLiftKind(fn, pair.$1),
-                  DoxaSpan(start, pair.$2),
-                ),
+                (pair) =>
+                    SExpr(SQuotLiftKind(fn, pair.$1), DoxaSpan(start, pair.$2)),
               ),
         ),
   );
-  return typeAtom | propAtom | parenAtom | _blockExpr |
-      quotAtom | mkAtom | liftAtom | _identAtom;
+  return typeAtom |
+      propAtom |
+      parenAtom |
+      _blockExpr |
+      quotAtom |
+      mkAtom |
+      liftAtom |
+      _identAtom;
 }();
 
 // ===========================================================================
 // Declarations.
 // ===========================================================================
 
-/// A `val` declaration: `val name (':' type)? '=' expr`.
+/// A `val` declaration: `opaque? val name (':' type)? '=' expr`.
 final Parser<ParseError, SDecl> _valDecl = position<ParseError>().flatMap(
-  (start) => _keyword('val')
-      .skipThen(_ident)
-      .flatMap(
-        (name) => _sym(':')
-            .skipThen(_expr)
-            .optional
-            .flatMap(
-              (type) => _sym('=')
-                  .skipThen(_expr.zip(position<ParseError>()))
-                  .map(
-                    (pair) => SDecl(
-                      SValKind(name, type, pair.$1),
-                      DoxaSpan(start, pair.$2),
+  (start) => _opaqueMod.flatMap(
+    (isOpaque) => _keyword('val')
+        .skipThen(_ident)
+        .flatMap(
+          (name) => _sym(':')
+              .skipThen(_expr)
+              .optional
+              .flatMap(
+                (type) => _sym('=')
+                    .skipThen(_expr.zip(position<ParseError>()))
+                    .map(
+                      (pair) => SDecl(
+                        SValKind(name, type, pair.$1, isOpaque: isOpaque),
+                        DoxaSpan(start, pair.$2),
+                      ),
                     ),
-                  ),
-            ),
-      ),
+              ),
+        ),
+  ),
 );
 
 /// A `type` alias declaration: `type name '=' expr`.
@@ -732,30 +738,28 @@ final Parser<ParseError, List<(String, SExpr)>> _valueParams = _sym('(')
     )
     .thenSkip(_sym(')'));
 
-/// A `fun` declaration.
-/// A single fun body (post-`fun` or post-`and` keyword): ident
-/// params ':' type '=' body. Returns the SFunKind alone; the
-/// containing [_funDecl] wraps one or more of these into a decl,
-/// introducing an SFunBlockKind when `and` chains ≥ 2 funs.
-final Parser<ParseError, SFunKind> _funBody = _ident.flatMap(
+/// Build a `fun` body parser with the given [isOpaque] flag.
+Parser<ParseError, SFunKind> _mkFunBody(bool isOpaque) => _ident.flatMap(
   (name) => _funTypeParams.flatMap(
     (tps) => _valueParams.flatMap(
       (ps) => _sym(':')
           .skipThen(_expr)
           .flatMap(
-            (ret) => _sym(
-              '=',
-            ).skipThen(_expr).map((body) => SFunKind(name, tps, ps, ret, body)),
+            (ret) => _sym('=')
+                .skipThen(_expr)
+                .map(
+                  (body) =>
+                      SFunKind(name, tps, ps, ret, body, isOpaque: isOpaque),
+                ),
           ),
     ),
   ),
 );
 
-/// One member inside a mutual `fun` block, pre-wrapped with its own
-/// per-member source span.
-final Parser<ParseError, SFunBlockMember> _funMember = position<ParseError>()
-    .flatMap(
-      (start) => _funBody
+/// Build a fun-block-member parser with the given [isOpaque] flag.
+Parser<ParseError, SFunBlockMember> _mkFunMember(bool isOpaque) =>
+    position<ParseError>().flatMap(
+      (start) => _mkFunBody(isOpaque)
           .zip(position<ParseError>())
           .map((pair) => SFunBlockMember(pair.$1, DoxaSpan(start, pair.$2))),
     );
@@ -765,21 +769,25 @@ final Parser<ParseError, SFunBlockMember> _funMember = position<ParseError>()
 /// (SPEC §6) so diagnostics in a mutual fun block cite the
 /// individual function, not the whole block.
 final Parser<ParseError, SDecl> _funDecl = position<ParseError>().flatMap(
-  (start) => _keyword('fun')
-      .skipThen(_funMember)
-      .flatMap(
-        (first) => _keyword(
-          'and',
-        ).skipThen(_funMember).many.zip(position<ParseError>()).map((pair) {
-          final more = pair.$1;
-          final end = pair.$2;
-          final blockSpan = DoxaSpan(start, end);
-          if (more.isEmpty) {
-            return SDecl(first.fun, blockSpan);
-          }
-          return SDecl(SFunBlockKind([first, ...more]), blockSpan);
-        }),
-      ),
+  (start) => _opaqueMod.flatMap(
+    (isOpaque) => _keyword('fun')
+        .skipThen(_mkFunMember(isOpaque))
+        .flatMap(
+          (first) => _keyword('and')
+              .skipThen(_mkFunMember(isOpaque))
+              .many
+              .zip(position<ParseError>())
+              .map((pair) {
+                final more = pair.$1;
+                final end = pair.$2;
+                final blockSpan = DoxaSpan(start, end);
+                if (more.isEmpty) {
+                  return SDecl(first.fun, blockSpan);
+                }
+                return SDecl(SFunBlockKind([first, ...more]), blockSpan);
+              }),
+        ),
+  ),
 );
 
 /// A single constructor declaration inside a `data { ... }` block:

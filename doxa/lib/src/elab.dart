@@ -37,6 +37,12 @@ import 'value.dart';
 
 export 'registry.dart';
 
+// Level constants (universe polymorphism).
+const _l0 = LLevel(0);
+const _l1 = LLevel(1);
+const _vType0 = VType(_l0);
+const _vType1 = VType(_l1);
+
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
@@ -574,6 +580,9 @@ final class TopBinding {
   /// [recDecreasingArg] is null.
   final int? recArity;
 
+  /// When true, this binding is opaque (never unfolds during conversion).
+  final bool isOpaque;
+
   /// Creates a top-level binding.
   const TopBinding({
     required this.name,
@@ -582,6 +591,7 @@ final class TopBinding {
     required this.span,
     this.recDecreasingArg,
     this.recArity,
+    this.isOpaque = false,
   });
 }
 
@@ -748,6 +758,7 @@ final class TopEnv {
         value,
         recDecreasingArg: b.recDecreasingArg,
         recArity: b.recArity,
+        isOpaque: b.isOpaque,
       );
     }
     return CNil.withRegistries(dataDecls: dataDecls, topBindings: acc);
@@ -832,7 +843,11 @@ List<TopBinding> checkDeclResult(TopEnv topEnv, DeclResult result) {
     final binding = result.bindings[m.bindingIndex];
     final typeV = eval(binding.type, baseCtx.env);
     memberTypes.add(typeV);
-    stubs[binding.name] = TopBindingEntry(typeV, VNeutral(NTop(binding.name)));
+    stubs[binding.name] = TopBindingEntry(
+      typeV,
+      VNeutral(NTop(binding.name)),
+      isOpaque: binding.isOpaque,
+    );
   }
   // Ctx with the group's stubs installed in topBindings AND the
   // elab-time MetaContext threaded. The local-binder chain is
@@ -869,6 +884,7 @@ List<TopBinding> _finalizeDeclBindings(
         span: b.span,
         recDecreasingArg: b.recDecreasingArg,
         recArity: b.recArity,
+        isOpaque: b.isOpaque,
       ),
   ];
 }
@@ -1066,10 +1082,10 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
 
     case STypeKind(:final level):
       final n = level ?? 0;
-      return (TType(n), VType(n + 1));
+      return (TType(LLevel(n)), VType(LLevel(n + 1)));
 
     case SPropKind():
-      return (const TProp(), const VType(1));
+      return (const TProp(), _vType1);
 
     case SDotKind():
       final flat = _flattenDottedIdent(expr);
@@ -1125,7 +1141,7 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
         state.push(binderName, domV),
         codomain,
       );
-      final resultV = _computePiSort(domSort, codSort) ?? const VType(0);
+      final resultV = _computePiSort(domSort, codSort) ?? _vType0;
       return (TPi(domT, codT, name: param), resultV);
 
     case SLetKind(:final param, :final domain, :final bound, :final body):
@@ -1253,8 +1269,7 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
           headV = impV;
         } else {
           // Left-deep non-innermost: the fn is the previous result.
-          final (impT, impV) =
-              _insertImplicits(state, resultT!, resultV!);
+          final (impT, impV) = _insertImplicits(state, resultT!, resultV!);
           headT = impT;
           headV = impV;
         }
@@ -1295,13 +1310,16 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
         final builtT = switch (headT) {
           TData(:final name, :final args) =>
             TData(name, [...args, argT]) as Term,
-          TConstr(:final dataName, :final ctorName, :final args) =>
-            TConstr(dataName, ctorName, [...args, argT]),
+          TConstr(:final dataName, :final ctorName, :final args) => TConstr(
+            dataName,
+            ctorName,
+            [...args, argT],
+          ),
           _ => TApp(headT, argT),
         };
 
         // 2d. Advance type value to codomain.
-        Value builtV = const VType(0);
+        Value builtV = _vType0;
         if (headV is VPi) {
           final argV = eval(argT, state.ctx.env);
           try {
@@ -1338,7 +1356,7 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
       final term = _elabMatch(state, expr);
       final matchTerm = term as TMatch;
       if (matchTerm.motive == null) {
-        return (term, const VType(0));
+        return (term, _vType0);
       }
       final motiveV = eval(matchTerm.motive!, state.ctx.env);
       return (term, motiveV);
@@ -1350,7 +1368,7 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
       final quotTerm = TQuot(carrierT, relationT);
       // The type of Quot(A, R) is Type 0 (or the sort of A)
       final resultV =
-          carrierV is VType ? VType(carrierV.level) : const VType(0);
+          carrierV is VType ? VType(carrierV.level) : _vType0;
       return (quotTerm, resultV);
 
     case SQuotMkKind(:final arg):
@@ -1364,7 +1382,7 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
       final (fnT, fnV) = _inferExpr(state, fn);
       final (proofT, proofV) = _inferExpr(state, proof);
       // We need the quotient to apply the lift to. Create a placeholder.
-      return (TQuotLift(TType(0), fnT, proofT), const VType(0));
+      return (TQuotLift(TType(_l0), fnT, proofT), _vType0);
   }
 }
 
@@ -1773,24 +1791,23 @@ Value _closeValueOverCtx(Value type, Ctx ctx) {
 ///
 ///   cod = Prop                 => Pi : Prop     (impredicative Prop)
 ///   cod = Type m, dom = Prop   => Pi : Type m
-///   cod = Type m, dom = Type n => Pi : Type (max n m)
+///   cod = Type m, dom = Type n => Pi : Type (imax n m)
 ///
 /// Returns null when either side isn't a recognisable sort; the
-/// caller supplies a placeholder. Universe polymorphism would reshape
-/// this to operate on [Level] instead of raw `int`.
+/// caller supplies a placeholder.
 Value? _computePiSort(Value domSort, Value codSort) {
   if (codSort is VProp) return const VProp();
   if (codSort is! VType) return null;
   final codLevel = codSort.level;
-  final int domLevel;
+  final Level domLevel;
   if (domSort is VProp) {
-    domLevel = 0;
+    domLevel = _l0;
   } else if (domSort is VType) {
     domLevel = domSort.level;
   } else {
     return null;
   }
-  return VType(domLevel > codLevel ? domLevel : codLevel);
+  return VType(LMax(domLevel, codLevel));
 }
 
 /// Build an `_ElabState` approximating the current [topEnv] + [locals]
@@ -1836,7 +1853,7 @@ _ElabState _shimState(TopEnv topEnv, _LocalScope locals, {MetaContext? metas}) {
     );
     final typeV = eval(b.type, env);
     final Value valueV;
-    if (b.term == const TType(0) && typeV is VPi) {
+    if (b.term == const TType(_l0) && typeV is VPi) {
       // Mutual-pre-binding sentinel: stub as NTop neutral.
       valueV = VNeutral(NTop(b.name));
     } else {
@@ -1847,6 +1864,7 @@ _ElabState _shimState(TopEnv topEnv, _LocalScope locals, {MetaContext? metas}) {
       valueV,
       recDecreasingArg: b.recDecreasingArg,
       recArity: b.recArity,
+      isOpaque: b.isOpaque,
     );
   }
   var ctx =
@@ -1867,7 +1885,7 @@ _ElabState _shimState(TopEnv topEnv, _LocalScope locals, {MetaContext? metas}) {
   }
   var scope = const _LocalNil() as _LocalScope;
   for (var i = names.length - 1; i >= 0; i--) {
-    ctx = ctx.extend(const VType(0));
+    ctx = ctx.extend(const VType(_l0));
     scope = scope.push(names[i]);
   }
   return _ElabState(topEnv, ctx, scope);
@@ -2056,7 +2074,7 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
           armTeleEnv = teleEnv;
         } else {
           for (final b in arm.binders) {
-            armState = armState.push(b, const VType(0));
+            armState = armState.push(b, const VType(_l0));
           }
         }
 
@@ -2243,6 +2261,7 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
             type: typeTerm,
             term: bodyTerm,
             span: decl.span,
+            isOpaque: kind.isOpaque,
           ),
         ],
         dataDecls: const <DataDecl>[],
@@ -2378,6 +2397,7 @@ TopBinding _elabFun(
     type: funTypeTerm,
     term: funBodyTerm,
     span: span,
+    isOpaque: kind.isOpaque,
   );
 }
 
@@ -2459,7 +2479,7 @@ TopBinding _elabFun(
       TopBinding(
         name: m.fun.name,
         type: typeTerm,
-        term: const TType(0), // never evaluated, TTop resolves via topBindings
+        term: const TType(_l0), // never evaluated, TTop resolves via topBindings
         span: m.span,
       ),
     );
@@ -2532,6 +2552,7 @@ TopBinding _elabFun(
         span: b.span,
         recDecreasingArg: decreasing,
         recArity: arity,
+        isOpaque: b.isOpaque,
       ),
     );
   }
@@ -3343,8 +3364,8 @@ List<TopBinding> _makeRecBindings(
       bindings.add(
         TopBinding(
           name: '${dataDecl.name}.rect',
-          type: synthRecursorType(dataDecl, motiveSort: const TType(0)),
-          term: TRec(dataDecl.name, motiveSort: const TType(0)),
+          type: synthRecursorType(dataDecl, motiveSort: const TType(_l0)),
+          term: TRec(dataDecl.name, motiveSort: const TType(_l0)),
           span: span,
         ),
       );

@@ -261,9 +261,9 @@ void main() {
     // quote(VMatch)/_substArmBody, the path the conv site exercises.
     MetaContext metasSolved0() {
       final m = MetaContext();
-      final id = m.freshTermMeta(const VType(0), const CNil() as Ctx);
+      final id = m.freshTermMeta(const VType(LLevel(0)), const CNil() as Ctx);
       expect(id, 0);
-      m.solve(0, const TType(0));
+      m.solve(0, const TType(LLevel(0)));
       return m;
     }
 

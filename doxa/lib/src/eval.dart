@@ -67,6 +67,14 @@ import 'registry.dart';
 import 'term.dart';
 import 'value.dart';
 
+// -------------------------------------------------------------------------
+// Level constants (universe polymorphism).
+// -------------------------------------------------------------------------
+const _l0 = LLevel(0);
+const _l1 = LLevel(1);
+const _vType0 = VType(_l0);
+const _vType1 = VType(_l1);
+
 // ===========================================================================
 // Conversion result.
 // ===========================================================================
@@ -1497,6 +1505,13 @@ Object _drive(
                 'names.',
               );
             }
+            // An opaque binding never unfolds: yield a neutral keyed
+            // on the name. Checked before the VFun guard so opaque
+            // recursive funs also stay stuck.
+            if (entry.isOpaque) {
+              step = _YieldV(VNeutral(NTop(name)));
+              break;
+            }
             // A structurally-recursive `fun` yields a guarded VFun
             // (empty spine) instead of its raw VLam, so
             // it stays stuck until its decreasing argument is canonical
@@ -1631,7 +1646,7 @@ Object _drive(
           // VType × VType: strict on levels.
           case (VType(level: final la), VType(level: final lb)):
             step = _YieldC(
-              la == lb ? _ok : _mismatchOrIrrelevance(a, b, dataDecls),
+              _levelEq(la, lb) ? _ok : _mismatchOrIrrelevance(a, b, dataDecls),
             );
 
           // Prop × Prop: α-convertible.
@@ -2232,7 +2247,7 @@ Object _drive(
         switch ((got, expected)) {
           // Type n ≤ Type m  iff  n ≤ m.
           case (VType(level: final lg), VType(level: final le)):
-            step = _YieldC(lg <= le ? _ok : ConvMismatch(got, expected));
+            step = _YieldC(_levelGte(le, lg) ? _ok : ConvMismatch(got, expected));
 
           // Prop ≤ Prop.
           case (VProp(), VProp()):
@@ -2262,11 +2277,11 @@ Object _drive(
       case _Infer(:final ctx, :final term):
         switch (term) {
           case TType(:final level):
-            step = _YieldV(VType(level + 1));
+            step = _YieldV(VType(_normalizeLevel(LSucc(level))));
 
           case TProp():
             // Prop : Type 1 (SPEC §8.2).
-            step = const _YieldV(VType(1));
+            step = const _YieldV(_vType1);
 
           case TBound(:final index):
             step = _YieldV(ctx.lookupType(index));
@@ -4330,6 +4345,101 @@ Object _drive(
 }
 
 // ===========================================================================
+// Level normalization and comparison (universe polymorphism).
+// ===========================================================================
+
+/// Normalize a level expression.
+///
+/// Flattens `LMax` chains, eliminates trivial cases:
+///   - `max(u, u) → u`
+///   - `max(0, u) → u`, `max(u, 0) → u`
+///   - `imax(u, 0) → 0` (impredicative: Prop codomain → Pi is Prop)
+///   - `imax(u, v)` when `v ≠ 0` → `max(u, v)`
+///   - `succ(LLevel(n))` → `LLevel(n+1)`
+Level _normalizeLevel(Level l) => switch (l) {
+  LMax(lhs: final l1, rhs: final l2) => _normalizeMax(l1, l2),
+  LImax(lhs: final l1, rhs: final l2) =>
+    _normalizeLevel(l2) == _l0 ? _l0 : _normalizeMax(l1, l2),
+  LSucc(of: final o) => switch (_normalizeLevel(o)) {
+    LLevel(level: final n) => LLevel(n + 1),
+    final ln => LSucc(ln),
+  },
+  LVar() || LLevel() => l,
+};
+
+Level _normalizeMax(Level a, Level b) {
+  final na = _normalizeLevel(a);
+  final nb = _normalizeLevel(b);
+  if (na == nb) return na;
+  if (na is LLevel && na.level == 0) return nb;
+  if (nb is LLevel && nb.level == 0) return na;
+  if (na is LLevel && nb is LLevel) {
+    return na.level >= nb.level ? na : nb;
+  }
+  // Flatten nested LMax.
+  final args = <Level>[];
+  void collect(Level l) {
+    if (l is LMax) {
+      collect(l.lhs);
+      collect(l.rhs);
+    } else {
+      args.add(l);
+    }
+  }
+  collect(LMax(na, nb));
+  args.sort(_levelCompare);
+  // Deduplicate: keep only maximal args (no other arg is GTE it).
+  final deduped = <Level>[];
+  for (final a in args) {
+    if (!deduped.any((d) => _levelGte(d, a))) {
+      deduped.removeWhere((d) => _levelGte(a, d));
+      deduped.add(a);
+    }
+  }
+  if (deduped.isEmpty) return _l0;
+  if (deduped.length == 1) return deduped.first;
+  return _rebuildMax(deduped);
+}
+
+int _levelCompare(Level a, Level b) {
+  final na = _normalizeLevel(a);
+  final nb = _normalizeLevel(b);
+  if (na is LLevel && nb is LLevel) return na.level.compareTo(nb.level);
+  if (na is LLevel) return -1;
+  if (nb is LLevel) return 1;
+  if (na is LVar && nb is LVar) return na.name.compareTo(nb.name);
+  if (na is LVar) return -1;
+  if (nb is LVar) return 1;
+  return 0;
+}
+
+Level _rebuildMax(List<Level> args) {
+  var result = args[0];
+  for (var i = 1; i < args.length; i++) {
+    result = LMax(result, args[i]);
+  }
+  return result;
+}
+
+/// Structural `a >= b` on normalized levels. For cumulativity in _Subtype.
+bool _levelGte(Level a, Level b) {
+  final na = _normalizeLevel(a), nb = _normalizeLevel(b);
+  if (na == nb) return true;
+  // b is max(l1, ..., ln): a >= b iff a >= l1 && ... && a >= ln
+  if (nb is LMax) return _levelGte(na, nb.lhs) && _levelGte(na, nb.rhs);
+  // a is max: a >= b iff l1 >= b || ... || ln >= b
+  if (na is LMax) return _levelGte(na.lhs, nb) || _levelGte(na.rhs, nb);
+  // LLevel vs LVar: LLevel exact match only, LVar never >= LLevel(n>0)
+  if (na is LLevel && nb is LLevel) return na.level >= nb.level;
+  if (na is LVar && nb is LVar) return na.name == nb.name;
+  return false;
+}
+
+/// Structural `l1 == l2` on normalized levels. For strict equality in _Conv.
+bool _levelEq(Level a, Level b) =>
+    _normalizeLevel(a) == _normalizeLevel(b);
+
+// ===========================================================================
 // Sort helpers (internal).
 //
 // In CIC with Prop, a "sort" is either Prop or Type n. A sealed
@@ -4348,7 +4458,7 @@ final class _Prop extends _Sort {
 }
 
 final class _TypeN extends _Sort {
-  final int level;
+  final Level level;
   const _TypeN(this.level);
 }
 
@@ -4443,9 +4553,9 @@ Value _sortTermToValue(Term sort) => switch (sort) {
 Value? _inferValueType(Value v, List<DataDecl> dataDecls) {
   switch (v) {
     case VType(:final level):
-      return VType(level + 1);
+      return VType(_normalizeLevel(LSucc(level)));
     case VProp():
-      return const VType(1);
+      return _vType1;
     case VPi():
       // For irrelevance, we don't need the Pi's exact sort as a value,
       // we only need to know whether the Pi is Prop-sorted. Return
@@ -4459,7 +4569,7 @@ Value? _inferValueType(Value v, List<DataDecl> dataDecls) {
       // since _isPropSorted(VType(_)) = false).
       return _isPropSortedTerm(v.codomain.body, v.codomain.env.dataDecls)
           ? const VProp()
-          : const VType(0);
+          : _vType0;
     case VData(:final name):
       // The type of a VData (an inductive type applied to its args) is
       // the inductive's declared SORT, VProp or VType(n). This is
@@ -6112,9 +6222,8 @@ Value _piSort(_Sort domSort, _Sort codSort) {
   final codLevel = (codSort as _TypeN).level;
   // Domain contributes its level; Prop is treated as level 0 here
   // (Prop -> Type m) : Type m.
-  final domLevel = domSort is _Prop ? 0 : (domSort as _TypeN).level;
-  final level = domLevel > codLevel ? domLevel : codLevel;
-  return VType(level);
+  final domLevel = domSort is _Prop ? _l0 : (domSort as _TypeN).level;
+  return VType(_normalizeLevel(LMax(domLevel, codLevel)));
 }
 
 // ---------------------------------------------------------------------------

@@ -44,16 +44,16 @@ void main() {
     test('infer Prop yields Type 1', () {
       final t = infer(const CNil(), const TProp());
       expect(t, isA<VType>());
-      expect((t as VType).level, 1);
+      expect((t as VType).level, const LLevel(1));
     });
 
     test('check Prop : Type 1 succeeds', () {
-      check(const CNil(), const TProp(), const VType(1));
+      check(const CNil(), const TProp(), const VType(LLevel(1)));
     });
 
     test('check Prop : Type 0 fails', () {
       expect(
-        () => check(const CNil(), const TProp(), const VType(0)),
+        () => check(const CNil(), const TProp(), const VType(LLevel(0))),
         throwsA(isA<TypeMismatch>()),
       );
     });
@@ -68,18 +68,18 @@ void main() {
     test('(A: Type) -> A  is in Type 1', () {
       // Codomain A has type Type 0; domain has type Type 1 (since
       // Type 0 : Type 1). Pi sort is max(1, 0) = 1.
-      final t = infer(const CNil(), const TPi(TType(0), TBound(0)));
+      final t = infer(const CNil(), const TPi(TType(LLevel(0)), TBound(0)));
       expect(t, isA<VType>());
-      expect((t as VType).level, 1);
+      expect((t as VType).level, const LLevel(1));
     });
 
     test('(P: Prop) -> (A: Type) -> A  is in Type 1', () {
       // Outer: domain Prop (type Type 1), codomain itself in Type 1.
       // max(1, 1) = 1.
-      const term = TPi(TProp(), TPi(TType(0), TBound(0)));
+      const term = TPi(TProp(), TPi(TType(LLevel(0)), TBound(0)));
       final t = infer(const CNil(), term);
       expect(t, isA<VType>());
-      expect((t as VType).level, 1);
+      expect((t as VType).level, const LLevel(1));
     });
 
     test(
@@ -87,7 +87,7 @@ void main() {
       () {
         // The codomain `(P: Prop) -> P` is in Prop. Therefore the
         // outer Pi is also in Prop, regardless of the domain sort.
-        const term = TPi(TType(0), TPi(TProp(), TBound(0)));
+        const term = TPi(TType(LLevel(0)), TPi(TProp(), TBound(0)));
         final t = infer(const CNil(), term);
         expect(t, isA<VProp>());
       },
@@ -99,7 +99,7 @@ void main() {
         // Impredicativity is strong: the codomain being in Prop
         // collapses the Pi into Prop no matter how high the domain
         // universe is.
-        const term = TPi(TType(2), TPi(TProp(), TBound(0)));
+        const term = TPi(TType(LLevel(2)), TPi(TProp(), TBound(0)));
         final t = infer(const CNil(), term);
         expect(t, isA<VProp>());
       },
@@ -113,12 +113,12 @@ void main() {
     });
 
     test('Prop ≢ Type 0', () {
-      final r = conv(0, const VProp(), const VType(0));
+      final r = conv(0, const VProp(), const VType(LLevel(0)));
       expect(r, isA<ConvMismatch>());
     });
 
     test('Prop ≢ Type 1', () {
-      final r = conv(0, const VProp(), const VType(1));
+      final r = conv(0, const VProp(), const VType(LLevel(1)));
       expect(r, isA<ConvMismatch>());
     });
   });

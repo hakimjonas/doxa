@@ -21,7 +21,7 @@ SProgram _parseProg(String src) {
 ///
 /// Duplicated from eval_test to keep these tests self-contained.
 Term churchNatType() => const TPi(
-  TType(0),
+  TType(LLevel(0)),
   TPi(TPi(TBound(0), TBound(1)), TPi(TBound(1), TBound(2))),
 );
 
@@ -34,7 +34,7 @@ Term churchNat(int n) {
   final lamZ = TLam(const TBound(1), body);
   const sType = TPi(TBound(0), TBound(1));
   final lamS = TLam(sType, lamZ);
-  final lamA = TLam(const TType(0), lamS);
+  final lamA = TLam(const TType(LLevel(0)), lamS);
   return lamA;
 }
 
@@ -47,14 +47,14 @@ void expectConvertible(Value actual, Value expected) {
 void main() {
   group('infer: basic terms', () {
     test('Type n : Type (n+1)', () {
-      expect((infer(const CNil(), const TType(0)) as VType).level, 1);
-      expect((infer(const CNil(), const TType(5)) as VType).level, 6);
+      expect((infer(const CNil(), const TType(LLevel(0))) as VType).level, const LLevel(1));
+      expect((infer(const CNil(), const TType(LLevel(5))) as VType).level, const LLevel(6));
     });
 
     test('TBound looks up in context', () {
-      final ctx = const CNil().extend(const VType(7));
+      final ctx = const CNil().extend(const VType(LLevel(7)));
       final t = infer(ctx, const TBound(0));
-      expect((t as VType).level, 7);
+      expect((t as VType).level, const LLevel(7));
     });
 
     test('TFree in infer throws UnexpectedFree', () {
@@ -67,34 +67,34 @@ void main() {
 
   group('infer: Pi', () {
     test('(Type 0 -> Type 0) : Type 1', () {
-      final t = infer(const CNil(), const TPi(TType(0), TType(0)));
-      expect((t as VType).level, 1);
+      final t = infer(const CNil(), const TPi(TType(LLevel(0)), TType(LLevel(0))));
+      expect((t as VType).level, const LLevel(1));
     });
 
     test('(Type 0 -> Type 1) : Type 2 (max rule)', () {
-      final t = infer(const CNil(), const TPi(TType(0), TType(1)));
-      expect((t as VType).level, 2);
+      final t = infer(const CNil(), const TPi(TType(LLevel(0)), TType(LLevel(1))));
+      expect((t as VType).level, const LLevel(2));
     });
 
     test('(Type 2 -> Type 0) : Type 3', () {
-      final t = infer(const CNil(), const TPi(TType(2), TType(0)));
-      expect((t as VType).level, 3);
+      final t = infer(const CNil(), const TPi(TType(LLevel(2)), TType(LLevel(0))));
+      expect((t as VType).level, const LLevel(3));
     });
 
     test('dependent (A: Type 0) -> A : Type 1', () {
       // Pi with domain Type 0 (typed Type 1) and codomain A (typed Type 0).
-      final t = infer(const CNil(), const TPi(TType(0), TBound(0)));
-      expect((t as VType).level, 1);
+      final t = infer(const CNil(), const TPi(TType(LLevel(0)), TBound(0)));
+      expect((t as VType).level, const LLevel(1));
     });
 
     test('Pi with non-type domain fails (NotAType)', () {
       // Ctx binds x: (Type 0 -> Type 0). Using TBound(0) as a Pi domain
       // means the domain's *type* is a function type, not VType, so the
       // Pi rule must reject it.
-      final funcType = eval(const TPi(TType(0), TType(0)), const ENil());
+      final funcType = eval(const TPi(TType(LLevel(0)), TType(LLevel(0))), const ENil());
       final ctx = const CNil().extend(funcType);
       expect(
-        () => infer(ctx, const TPi(TBound(0), TType(0))),
+        () => infer(ctx, const TPi(TBound(0), TType(LLevel(0)))),
         throwsA(isA<NotAType>()),
       );
     });
@@ -103,7 +103,7 @@ void main() {
   group('infer: App', () {
     test('applying non-function throws NotAFunction', () {
       expect(
-        () => infer(const CNil(), const TApp(TType(0), TType(0))),
+        () => infer(const CNil(), const TApp(TType(LLevel(0)), TType(LLevel(0)))),
         throwsA(isA<NotAFunction>()),
       );
     });
@@ -111,27 +111,27 @@ void main() {
     test('identity applied to a Type-0 inhabitant infers to Type 0', () {
       // (λA: Type 0. A) applied to a ctx-bound x : Type 0. The application
       // returns x; we ask for its type, which is Type 0.
-      final ctx = const CNil().extend(const VType(0)); // x: Type 0
+      final ctx = const CNil().extend(const VType(LLevel(0))); // x: Type 0
       const app = TApp(
-        TLam(TType(0), TBound(0)),
+        TLam(TType(LLevel(0)), TBound(0)),
         TBound(0), // refers to x in the outer ctx
       );
       final t = infer(ctx, app);
-      expect((t as VType).level, 0);
+      expect((t as VType).level, const LLevel(0));
     });
 
     test('applying to wrong-universe arg throws TypeMismatch', () {
       // Domain wants type Type 0, but the arg Type 0 has type Type 1.
-      const app = TApp(TLam(TType(0), TBound(0)), TType(0));
+      const app = TApp(TLam(TType(LLevel(0)), TBound(0)), TType(LLevel(0)));
       expect(() => infer(const CNil(), app), throwsA(isA<TypeMismatch>()));
     });
 
     test('applying to right-universe arg succeeds', () {
       // Domain wants Type 1, and the arg Type 0 has type Type 1; result
       // type is Type 1.
-      const app = TApp(TLam(TType(1), TBound(0)), TType(0));
+      const app = TApp(TLam(TType(LLevel(1)), TBound(0)), TType(LLevel(0)));
       final t = infer(const CNil(), app);
-      expect((t as VType).level, 1);
+      expect((t as VType).level, const LLevel(1));
     });
   });
 
@@ -139,34 +139,34 @@ void main() {
     test('(λA: Type 0. A) infers to (Type 0 -> Type 1)', () {
       // A is bound at Type 0 and the body is A, so infer yields the
       // non-dependent arrow (A: Type 0) -> Type 0.
-      final t = infer(const CNil(), const TLam(TType(0), TBound(0)));
+      final t = infer(const CNil(), const TLam(TType(LLevel(0)), TBound(0)));
       expect(t, isA<VPi>());
       final pi = t as VPi;
-      expect((pi.domain as VType).level, 0);
+      expect((pi.domain as VType).level, const LLevel(0));
       // Poke the codomain closure with an arbitrary value to read it off.
-      final codomain = apply(VLam(pi.domain, pi.codomain), const VType(0));
-      expect((codomain as VType).level, 0);
+      final codomain = apply(VLam(pi.domain, pi.codomain), const VType(LLevel(0)));
+      expect((codomain as VType).level, const LLevel(0));
     });
 
     test('identity on values: (λx: Type 0. x) : Type 0 -> Type 0', () {
-      const lam = TLam(TType(0), TBound(0));
-      final expected = eval(const TPi(TType(0), TType(0)), const ENil());
+      const lam = TLam(TType(LLevel(0)), TBound(0));
+      final expected = eval(const TPi(TType(LLevel(0)), TType(LLevel(0))), const ENil());
       check(const CNil(), lam, expected);
     });
   });
 
   group('check mode', () {
     test('check TLam against VPi descends under the Pi', () {
-      const lam = TLam(TType(0), TBound(0));
-      final piType = eval(const TPi(TType(0), TType(0)), const ENil());
+      const lam = TLam(TType(LLevel(0)), TBound(0));
+      final piType = eval(const TPi(TType(LLevel(0)), TType(LLevel(0))), const ENil());
       check(const CNil(), lam, piType);
     });
 
     test('check TLam against wrong Pi fails (cumulativity downward)', () {
       // Body has type Type 1 but the expected codomain is Type 0; Type 1
       // is not a subtype of Type 0 (only the reverse), so this fails.
-      const lam = TLam(TType(1), TBound(0));
-      final piType = eval(const TPi(TType(1), TType(0)), const ENil());
+      const lam = TLam(TType(LLevel(1)), TBound(0));
+      final piType = eval(const TPi(TType(LLevel(1)), TType(LLevel(0))), const ENil());
       expect(
         () => check(const CNil(), lam, piType),
         throwsA(isA<TypeMismatch>()),
@@ -176,9 +176,9 @@ void main() {
     test('check TLam against non-Pi falls through to infer and conv', () {
       // Checking against a non-Pi infers the lambda's type
       // (Type 0 -> Type 0), which does not convert with Type 0.
-      const lam = TLam(TType(0), TBound(0));
+      const lam = TLam(TType(LLevel(0)), TBound(0));
       expect(
-        () => check(const CNil(), lam, const VType(0)),
+        () => check(const CNil(), lam, const VType(LLevel(0))),
         throwsA(isA<TypeMismatch>()),
       );
     });
@@ -190,7 +190,7 @@ void main() {
       // Type 0 (m=0), so the whole type lives in Type 1.
       final t = infer(const CNil(), churchNatType());
       expect(t, isA<VType>());
-      expect((t as VType).level, 1);
+      expect((t as VType).level, const LLevel(1));
     });
 
     test('churchNat(0) checks against Nat', () {
@@ -204,7 +204,7 @@ void main() {
     });
 
     test('churchNat(0) does NOT check against (Type 0 -> Type 0)', () {
-      final wrong = eval(const TPi(TType(0), TType(0)), const ENil());
+      final wrong = eval(const TPi(TType(LLevel(0)), TType(LLevel(0))), const ENil());
       expect(
         () => check(const CNil(), churchNat(0), wrong),
         throwsA(isA<TypeMismatch>()),
@@ -214,21 +214,21 @@ void main() {
 
   group('Universe discipline (strict, non-cumulative)', () {
     test('(A: Type 0) -> A has type Type 1 exactly', () {
-      final t = infer(const CNil(), const TPi(TType(0), TBound(0)));
-      expect((t as VType).level, 1);
+      final t = infer(const CNil(), const TPi(TType(LLevel(0)), TBound(0)));
+      expect((t as VType).level, const LLevel(1));
     });
 
     test('(A: Type 0) -> A does NOT check against Type 0', () {
       expect(
         () =>
-            check(const CNil(), const TPi(TType(0), TBound(0)), const VType(0)),
+            check(const CNil(), const TPi(TType(LLevel(0)), TBound(0)), const VType(LLevel(0))),
         throwsA(isA<TypeMismatch>()),
       );
     });
 
     test('(A: Type 0) -> A DOES check against Type 2 (cumulativity)', () {
       // The Pi has type Type 1, and Type 1 <= Type 2, so this checks.
-      check(const CNil(), const TPi(TType(0), TBound(0)), const VType(2));
+      check(const CNil(), const TPi(TType(LLevel(0)), TBound(0)), const VType(LLevel(2)));
     });
 
     test('(A: Type 0) -> A does NOT check against Prop', () {
@@ -236,13 +236,13 @@ void main() {
       // the Type hierarchy only and does not collapse Type into Prop.
       expect(
         () =>
-            check(const CNil(), const TPi(TType(0), TBound(0)), const VProp()),
+            check(const CNil(), const TPi(TType(LLevel(0)), TBound(0)), const VProp()),
         throwsA(isA<TypeMismatch>()),
       );
     });
 
     test('(A: Type 0) -> A DOES check against Type 1 (exact match)', () {
-      check(const CNil(), const TPi(TType(0), TBound(0)), const VType(1));
+      check(const CNil(), const TPi(TType(LLevel(0)), TBound(0)), const VType(LLevel(1)));
     });
   });
 
@@ -252,10 +252,10 @@ void main() {
       // Apply id to a ctx value of type Type 0 (you can't apply it at the
       // type level under strict universes: Type 0 has type Type 1).
       // Ctx is x: Type 0, y: x; by de Bruijn x is TBound(1), y is TBound(0).
-      const id = TLam(TType(0), TLam(TBound(0), TBound(0)));
+      const id = TLam(TType(LLevel(0)), TLam(TBound(0), TBound(0)));
       const body = TApp(TApp(id, TBound(1)), TBound(0));
       final ctx = const CNil()
-          .extend(const VType(0)) // x: Type 0
+          .extend(const VType(LLevel(0))) // x: Type 0
           .extend(const VNeutral(NVar(0))); // y: x (= TBound(1))
       final t = infer(ctx, body);
       // Expected type is x, which evaluates to the neutral NVar(0).
@@ -266,10 +266,10 @@ void main() {
   group('Deep structural terms', () {
     test('churchNatType roundtrips through infer (checks as Type 1)', () {
       final natV = eval(churchNatType(), const ENil());
-      check(const CNil(), churchNatType(), const VType(1));
+      check(const CNil(), churchNatType(), const VType(LLevel(1)));
       // Does NOT check at Type 0.
       expect(
-        () => check(const CNil(), churchNatType(), const VType(0)),
+        () => check(const CNil(), churchNatType(), const VType(LLevel(0))),
         throwsA(isA<TypeMismatch>()),
       );
       expectConvertible(natV, natV);
@@ -279,28 +279,28 @@ void main() {
   group('Stack safety of the checker', () {
     test('infer on 10,000-nested Pi does not blow the stack', () {
       const depth = 10000;
-      Term t = const TType(0);
+      Term t = const TType(LLevel(0));
       for (var i = 0; i < depth; i++) {
-        t = TPi(const TType(0), t);
+        t = TPi(const TType(LLevel(0)), t);
       }
       final result = infer(const CNil(), t);
-      expect((result as VType).level, 1);
+      expect((result as VType).level, const LLevel(1));
     });
 
     test('check on 10,000-nested Pi against Type 1 does not blow stack', () {
       const depth = 10000;
-      Term t = const TType(0);
+      Term t = const TType(LLevel(0));
       for (var i = 0; i < depth; i++) {
-        t = TPi(const TType(0), t);
+        t = TPi(const TType(LLevel(0)), t);
       }
-      check(const CNil(), t, const VType(1));
+      check(const CNil(), t, const VType(LLevel(1)));
     });
 
     test('infer on 10,000-nested Lam does not blow the stack', () {
       const depth = 10000;
-      Term t = const TType(0);
+      Term t = const TType(LLevel(0));
       for (var i = 0; i < depth; i++) {
-        t = TLam(const TType(0), t);
+        t = TLam(const TType(LLevel(0)), t);
       }
       final result = infer(const CNil(), t);
       expect(result, isA<VPi>());
@@ -313,9 +313,9 @@ void main() {
       // 5s budget is generous; failing means the quadratic is back, likely
       // an open/eval/quote round-trip that lost the bodyIsNormal fast path.
       const depth = 100000;
-      Term t = const TType(0);
+      Term t = const TType(LLevel(0));
       for (var i = 0; i < depth; i++) {
-        t = TLam(const TType(0), t);
+        t = TLam(const TType(LLevel(0)), t);
       }
       final sw = Stopwatch()..start();
       final result = infer(const CNil(), t);
@@ -342,7 +342,7 @@ void main() {
         // Term-level chain of matches, each a single wildcard arm whose body
         // is the prior match; eval under a neutral scrutinee gives a VMatch
         // chain of the same depth.
-        Term body = const TType(0);
+        Term body = const TType(LLevel(0));
         for (var i = 0; i < depth; i++) {
           body = TMatch(const TBound(0), null, [
             TMatchCase('', 0, body, const <String?>[]),

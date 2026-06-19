@@ -267,7 +267,7 @@ data Nat : Type {
       // spine to extend, not a well-typed motive.
       final motive = eval(
         const TLam(
-          TPi(TData('Nat', <Term>[]), TType(1)),
+          TPi(TData('Nat', <Term>[]), TType(LLevel(1))),
           TData('Nat', <Term>[]),
         ),
         ctx.env,

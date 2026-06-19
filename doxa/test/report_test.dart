@@ -18,40 +18,40 @@ SourceFile _src(String text, [String filename = 'input.doxa']) =>
 void main() {
   group('Diff walker', () {
     test('top-level universe mismatch has empty path', () {
-      final diff = diffValues(const VType(0), const VType(1));
+      final diff = diffValues(const VType(LLevel(0)), const VType(LLevel(1)));
       expect(diff.isTopLevel, isTrue);
-      expect((diff.got as VType).level, 0);
-      expect((diff.expected as VType).level, 1);
+      expect((diff.got as VType).level, const LLevel(0));
+      expect((diff.expected as VType).level, const LLevel(1));
     });
 
     test('Pi domain mismatch: path = [domain]', () {
       // (Type 0 -> X) vs (Type 1 -> X), domains differ.
-      final a = eval(const TPi(TType(0), TType(5)), const ENil());
-      final b = eval(const TPi(TType(1), TType(5)), const ENil());
+      final a = eval(const TPi(TType(LLevel(0)), TType(LLevel(5))), const ENil());
+      final b = eval(const TPi(TType(LLevel(1)), TType(LLevel(5))), const ENil());
       final diff = diffValues(a, b);
       expect(diff.steps, [isA<DiffDomain>()]);
-      expect((diff.got as VType).level, 0);
-      expect((diff.expected as VType).level, 1);
+      expect((diff.got as VType).level, const LLevel(0));
+      expect((diff.expected as VType).level, const LLevel(1));
     });
 
     test('Pi codomain mismatch: path = [codomain]', () {
       // (Type 0 -> Type 5) vs (Type 0 -> Type 6), codomains differ.
-      final a = eval(const TPi(TType(0), TType(5)), const ENil());
-      final b = eval(const TPi(TType(0), TType(6)), const ENil());
+      final a = eval(const TPi(TType(LLevel(0)), TType(LLevel(5))), const ENil());
+      final b = eval(const TPi(TType(LLevel(0)), TType(LLevel(6))), const ENil());
       final diff = diffValues(a, b);
       expect(diff.steps, [isA<DiffCodomain>()]);
-      expect((diff.got as VType).level, 5);
-      expect((diff.expected as VType).level, 6);
+      expect((diff.got as VType).level, const LLevel(5));
+      expect((diff.expected as VType).level, const LLevel(6));
     });
 
     test('deep Pi path: [codomain, codomain] -> divergence', () {
       // (Type 0 -> (Type 0 -> Type 5)) vs (Type 0 -> (Type 0 -> Type 6))
       final a = eval(
-        const TPi(TType(0), TPi(TType(0), TType(5))),
+        const TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TType(LLevel(5)))),
         const ENil(),
       );
       final b = eval(
-        const TPi(TType(0), TPi(TType(0), TType(6))),
+        const TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TType(LLevel(6)))),
         const ENil(),
       );
       final diff = diffValues(a, b);
@@ -62,11 +62,11 @@ void main() {
   group('Check error reports', () {
     test('TypeMismatch format', () {
       final src = _src('val x: Type 0 = Type\n');
-      // Build manually: got = VType(1), expected = VType(0).
+      // Build manually: got = VType(LLevel(1)), expected = VType(LLevel(0)).
       const err = TypeMismatch(
-        VType(1),
-        VType(0),
-        ConvMismatch(VType(1), VType(0)),
+        VType(LLevel(1)),
+        VType(LLevel(0)),
+        ConvMismatch(VType(LLevel(1)), VType(LLevel(0))),
       );
       final out = reportCheckError(src, err, const DoxaSpan(16, 20));
       expect(out, contains('error: type mismatch'));
@@ -77,12 +77,12 @@ void main() {
 
     test('TypeMismatch includes diff path when not top-level', () {
       // (Type 0 -> Type 0) vs (Type 0 -> Type 1), codomain mismatch.
-      final got = eval(const TPi(TType(0), TType(0)), const ENil());
-      final expected = eval(const TPi(TType(0), TType(1)), const ENil());
+      final got = eval(const TPi(TType(LLevel(0)), TType(LLevel(0))), const ENil());
+      final expected = eval(const TPi(TType(LLevel(0)), TType(LLevel(1))), const ENil());
       final err = TypeMismatch(
         got,
         expected,
-        const ConvMismatch(VType(0), VType(1)),
+        const ConvMismatch(VType(LLevel(0)), VType(LLevel(1))),
       );
       final src = _src('unused');
       final out = reportCheckError(src, err, const DoxaSpan(0, 6));
@@ -93,7 +93,7 @@ void main() {
 
     test('NotAFunction format', () {
       final src = _src('val x = Type Type\n');
-      const err = NotAFunction(VType(1));
+      const err = NotAFunction(VType(LLevel(1)));
       final out = reportCheckError(src, err, const DoxaSpan(8, 17));
       expect(out, contains('error: not a function'));
       expect(out, contains('has type: Type 1'));
@@ -101,7 +101,7 @@ void main() {
 
     test('NotAType format', () {
       final src = _src('unused');
-      const err = NotAType(VType(1));
+      const err = NotAType(VType(LLevel(1)));
       final out = reportCheckError(src, err, const DoxaSpan(0, 6));
       expect(out, contains('error: not a type'));
       expect(out, contains('expected a universe'));
@@ -179,8 +179,8 @@ void main() {
     });
 
     test('withSpan keeps the innermost (first) attachment', () {
-      const inner = ConvMismatch(VType(0), VType(1));
-      const base = TypeMismatch(VType(0), VType(1), inner);
+      const inner = ConvMismatch(VType(LLevel(0)), VType(LLevel(1)));
+      const base = TypeMismatch(VType(LLevel(0)), VType(LLevel(1)), inner);
       final tagged = base.withSpan(const DoxaSpan(5, 9));
       // A second, wider span must not overwrite the first.
       final retagged = tagged.withSpan(const DoxaSpan(0, 20));
@@ -227,8 +227,8 @@ void main() {
       final program = parseProgram('val _: Type 1 = Type\n');
       // ^ just to get the parser going. We construct the values directly.
       expect(program, isA<Success<ParseError, SProgram>>());
-      final a = eval(const TPi(TType(0), TBound(0), name: 'A'), const ENil());
-      final b = eval(const TPi(TType(0), TType(0), name: 'A'), const ENil());
+      final a = eval(const TPi(TType(LLevel(0)), TBound(0), name: 'A'), const ENil());
+      final b = eval(const TPi(TType(LLevel(0)), TType(LLevel(0)), name: 'A'), const ENil());
       final diff = diffValues(a, b);
       expect(diff.steps, [isA<DiffCodomain>()]);
       expect(diff.binderNames, ['A']);

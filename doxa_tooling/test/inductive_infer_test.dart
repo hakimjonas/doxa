@@ -42,7 +42,7 @@ TopEnv _elabAndCheck(String src) {
 // Structural-inspection helpers.
 // ---------------------------------------------------------------------------
 
-void _expectVType(Value v, int level) {
+void _expectVType(Value v, Level level) {
   expect(v, isA<VType>());
   expect((v as VType).level, level);
 }
@@ -76,7 +76,7 @@ void main() {
       final env = _elab('data Nat : Type { zero : Nat; }');
       final ctx = env.toCtx();
       final v = infer(ctx, const TData('Nat', <Term>[]));
-      _expectVType(v, 0);
+      _expectVType(v, const LLevel(0));
     });
 
     test('List applied to its param yields Type 0', () {
@@ -86,7 +86,7 @@ data List[A: Type] : Type { nil : List[A]; }
 ''');
       final ctx = env.toCtx();
       final v = infer(ctx, const TData('List', [TData('Nat', <Term>[])]));
-      _expectVType(v, 0);
+      _expectVType(v, const LLevel(0));
     });
 
     test('Prop-sorted data yields Prop', () {
@@ -122,7 +122,7 @@ data List[A: Type] : Type { nil : List[A]; }
     test('wrong arity (too many)', () {
       final env = _elab('data Nat : Type { zero : Nat; }');
       expect(
-        () => infer(env.toCtx(), const TData('Nat', [TType(0)])),
+        () => infer(env.toCtx(), const TData('Nat', [TType(LLevel(0))])),
         throwsA(isA<InductiveArityMismatch>()),
       );
     });

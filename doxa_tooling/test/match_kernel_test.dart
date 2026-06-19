@@ -40,7 +40,7 @@ final DataDecl _natDecl = DataDecl(
   name: 'Nat',
   params: const <TelescopeEntry>[],
   indices: const <TelescopeEntry>[],
-  sort: const TType(0),
+  sort: const TType(LLevel(0)),
   ctors: [
     CtorDecl(
       dataName: 'Nat',

@@ -21,11 +21,11 @@ Term ee(String src) {
 void main() {
   group('Atoms', () {
     test('Type 0 prints as Type', () {
-      expect(prettyTerm(const TType(0)), 'Type');
+      expect(prettyTerm(const TType(LLevel(0))), 'Type');
     });
 
     test('Type 3 prints as "Type 3"', () {
-      expect(prettyTerm(const TType(3)), 'Type 3');
+      expect(prettyTerm(const TType(LLevel(3))), 'Type 3');
     });
 
     test('free variable prints its name', () {
@@ -106,7 +106,7 @@ void main() {
 
   group('Synthesized names where no hint', () {
     test('TLam with null name gets a fresh synthesized name', () {
-      const t = TLam(TType(0), TBound(0));
+      const t = TLam(TType(LLevel(0)), TBound(0));
       final printed = prettyTerm(t);
       // The synthesized name should be something like `_a`.
       expect(printed, matches(r'^\(_[a-z]+\d*: Type\) => _[a-z]+\d*$'));

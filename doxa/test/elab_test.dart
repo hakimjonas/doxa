@@ -30,11 +30,11 @@ Term ee(String src) => elabExpr(TopEnv.empty, pe(src));
 void main() {
   group('Expression elaboration: atoms', () {
     test('Type (no level) elaborates to Type 0', () {
-      expect(ee('Type'), const TType(0));
+      expect(ee('Type'), const TType(LLevel(0)));
     });
 
     test('Type 5 elaborates to Type 5', () {
-      expect(ee('Type 5'), const TType(5));
+      expect(ee('Type 5'), const TType(LLevel(5)));
     });
 
     test('unresolved name throws UnresolvedName', () {
@@ -44,11 +44,11 @@ void main() {
 
   group('Expression elaboration: binders produce de Bruijn', () {
     test('(x: Type) => x elaborates to TLam(Type 0, TBound(0))', () {
-      expect(ee('(x: Type) => x'), const TLam(TType(0), TBound(0)));
+      expect(ee('(x: Type) => x'), const TLam(TType(LLevel(0)), TBound(0)));
     });
 
     test('(A: Type) -> A elaborates to TPi(Type 0, TBound(0))', () {
-      expect(ee('(A: Type) -> A'), const TPi(TType(0), TBound(0)));
+      expect(ee('(A: Type) -> A'), const TPi(TType(LLevel(0)), TBound(0)));
     });
 
     test('A -> B (non-dep arrow, both unbound) fails with unresolved A', () {
@@ -60,7 +60,7 @@ void main() {
       // Inner: param x, domain A (= TBound(0) under outer).
       // Body: x (= TBound(0) under inner).
       final t = ee('(A: Type) => (x: A) => x');
-      expect(t, const TLam(TType(0), TLam(TBound(0), TBound(0))));
+      expect(t, const TLam(TType(LLevel(0)), TLam(TBound(0), TBound(0))));
     });
 
     test('dependent Pi: (A: Type) -> A -> A', () {
@@ -69,7 +69,7 @@ void main() {
       // Codomain is A under the non-dep Pi, which is TBound(1), because
       // the non-dep binder shifts inner references up by one.
       final t = ee('(A: Type) -> A -> A');
-      expect(t, const TPi(TType(0), TPi(TBound(0), TBound(1))));
+      expect(t, const TPi(TType(LLevel(0)), TPi(TBound(0), TBound(1))));
     });
 
     test('shadowing: inner binder hides outer with same name', () {
@@ -77,7 +77,7 @@ void main() {
       //   outer binder x, then inner binder x, body references x.
       //   Inner shadows outer, so body's x = TBound(0) refers to inner.
       final t = ee('(x: Type) => (x: Type) => x');
-      expect(t, const TLam(TType(0), TLam(TType(0), TBound(0))));
+      expect(t, const TLam(TType(LLevel(0)), TLam(TType(LLevel(0)), TBound(0))));
     });
   });
 
@@ -91,10 +91,10 @@ void main() {
       expect(
         t,
         const TLam(
-          TType(0),
+          TType(LLevel(0)),
           TLam(
-            TType(0),
-            TLam(TType(0), TApp(TApp(TBound(2), TBound(1)), TBound(0))),
+            TType(LLevel(0)),
+            TLam(TType(LLevel(0)), TApp(TApp(TBound(2), TBound(1)), TBound(0))),
           ),
         ),
       );
@@ -111,16 +111,16 @@ void main() {
       expect(env.bindings, hasLength(1));
       final b = env.bindings[0];
       expect(b.name, 'x');
-      expect(b.type, const TType(1));
-      expect(b.term, const TType(0));
+      expect(b.type, const TType(LLevel(1)));
+      expect(b.term, const TType(LLevel(0)));
     });
 
     test('val without type annotation infers Type', () {
       // val x = Type, the body has type Type 1 (Type 0 : Type 1).
       final env = elabProgram(pp('val x = Type'));
       final b = env.bindings[0];
-      expect(b.term, const TType(0));
-      expect(b.type, const TType(1));
+      expect(b.term, const TType(LLevel(0)));
+      expect(b.type, const TType(LLevel(1)));
     });
 
     test('duplicate top-level declaration raises DuplicateDeclaration', () {
@@ -166,9 +166,9 @@ void main() {
       final b = env.bindings[0];
       expect(b.name, 'id');
       // Type: (A: Type 0) -> (x: A) -> A
-      expect(b.type, const TPi(TType(0), TPi(TBound(0), TBound(1))));
+      expect(b.type, const TPi(TType(LLevel(0)), TPi(TBound(0), TBound(1))));
       // Body: λA. λx. x
-      expect(b.term, const TLam(TType(0), TLam(TBound(0), TBound(0))));
+      expect(b.term, const TLam(TType(LLevel(0)), TLam(TBound(0), TBound(0))));
     });
 
     test('fun body that self-references non-structurally is rejected', () {
@@ -190,8 +190,8 @@ void main() {
     test('fun with no type params', () {
       final env = elabProgram(pp('fun k(x: Type): Type = x'));
       final b = env.bindings[0];
-      expect(b.type, const TPi(TType(0), TType(0)));
-      expect(b.term, const TLam(TType(0), TBound(0)));
+      expect(b.type, const TPi(TType(LLevel(0)), TType(LLevel(0))));
+      expect(b.term, const TLam(TType(LLevel(0)), TBound(0)));
     });
 
     test('fun with multiple parameters', () {
@@ -208,15 +208,15 @@ void main() {
       expect(
         b.type,
         const TPi(
-          TType(0),
-          TPi(TType(0), TPi(TBound(1), TPi(TBound(1), TBound(3)))),
+          TType(LLevel(0)),
+          TPi(TType(LLevel(0)), TPi(TBound(1), TPi(TBound(1), TBound(3)))),
         ),
       );
       expect(
         b.term,
         const TLam(
-          TType(0),
-          TLam(TType(0), TLam(TBound(1), TLam(TBound(1), TBound(1)))),
+          TType(LLevel(0)),
+          TLam(TType(LLevel(0)), TLam(TBound(1), TLam(TBound(1), TBound(1)))),
         ),
       );
     });
@@ -283,7 +283,7 @@ void main() {
       final b = env.bindings[0];
       final v = eval(b.term, const ENil());
       expect(v, isA<VType>());
-      expect((v as VType).level, 0);
+      expect((v as VType).level, const LLevel(0));
     });
   });
 }

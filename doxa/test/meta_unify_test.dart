@@ -13,16 +13,16 @@ void main() {
   group('Pattern unification: flex-rigid', () {
     test('bare unapplied meta unifies with a concrete value', () {
       final metas = MetaContext();
-      final id = metas.freshTermMeta(const VType(1), const CNil());
+      final id = metas.freshTermMeta(const VType(LLevel(1)), const CNil());
       final r = conv(
         0,
         eval(TMeta(id), const ENil()),
-        const VType(0),
+        const VType(LLevel(0)),
         metas: metas,
       );
       expect(r, isA<ConvOk>());
       expect(metas.isSolved(id), isTrue);
-      expect(metas.solutionOf(id), const TType(0));
+      expect(metas.solutionOf(id), const TType(LLevel(0)));
     });
 
     test('meta applied to bound var unifies: builds a λ solution', () {
@@ -34,7 +34,7 @@ void main() {
       // outer binder is `x0 : Type 0`, so the meta's declared type is
       // `Π(Type 0). Type 0`, giving solution `λ(Type 0). TBound(0)`.
       final metas = MetaContext();
-      final metaType = eval(const TPi(TType(0), TType(0)), const ENil());
+      final metaType = eval(const TPi(TType(LLevel(0)), TType(LLevel(0))), const ENil());
       final id = metas.freshTermMeta(metaType, const CNil());
       // Build value `?0 x0` at level 1.
       const x0 = VNeutral(NVar(0));
@@ -44,14 +44,14 @@ void main() {
       expect(r, isA<ConvOk>());
       expect(metas.isSolved(id), isTrue);
       // Solution's domain is Type 0 (from the meta's declared Pi).
-      expect(metas.solutionOf(id), const TLam(TType(0), TBound(0)));
+      expect(metas.solutionOf(id), const TLam(TType(LLevel(0)), TBound(0)));
     });
 
     test('occurs check rejects ?0 ≡ f ?0 (self-referential solution)', () {
       // Build the rigid side as a stuck neutral `x0 ?0` whose argument
       // mentions ?0 itself, so solving ?0 would reference itself.
       final metas = MetaContext();
-      final id = metas.freshTermMeta(const VType(1), const CNil());
+      final id = metas.freshTermMeta(const VType(LLevel(1)), const CNil());
       final metaV = eval(TMeta(id), const ENil());
       final rigid = VNeutral(NApp(const NVar(0), metaV));
       final r = conv(1, metaV, rigid, metas: metas);
@@ -64,13 +64,13 @@ void main() {
       // ?0 x0 x0 ≡ Type 0: x0 appears twice, so the spine is not a
       // valid pattern and the unifier declines.
       final metas = MetaContext();
-      final id = metas.freshTermMeta(const VType(1), const CNil());
+      final id = metas.freshTermMeta(const VType(LLevel(1)), const CNil());
       final base = eval(TMeta(id), const ENil());
       final applied = apply(
         apply(base, const VNeutral(NVar(0))),
         const VNeutral(NVar(0)),
       );
-      final r = conv(1, applied, const VType(0), metas: metas);
+      final r = conv(1, applied, const VType(LLevel(0)), metas: metas);
       expect(r, isA<ConvMismatch>());
       expect(metas.isSolved(id), isFalse);
     });
@@ -79,7 +79,7 @@ void main() {
       // ?0 x0 ≡ x1 at level 2 where only x0 is in the meta's spine:
       // x1 is not among the pattern vars, so the scope check declines.
       final metas = MetaContext();
-      final id = metas.freshTermMeta(const VType(0), const CNil());
+      final id = metas.freshTermMeta(const VType(LLevel(0)), const CNil());
       final base = eval(TMeta(id), const ENil());
       final applied = apply(base, const VNeutral(NVar(0)));
       final r = conv(2, applied, const VNeutral(NVar(1)), metas: metas);
@@ -93,7 +93,7 @@ void main() {
       // ?0 x0 ≡ ?0 x0: admitted by structural equality, meta stays
       // unsolved (no most-general solution is computed).
       final metas = MetaContext();
-      final id = metas.freshTermMeta(const VType(0), const CNil());
+      final id = metas.freshTermMeta(const VType(LLevel(0)), const CNil());
       final base = eval(TMeta(id), const ENil());
       final applied = apply(base, const VNeutral(NVar(0)));
       final r = conv(1, applied, applied, metas: metas);
@@ -103,7 +103,7 @@ void main() {
 
     test('same meta, different spine lengths: mismatch', () {
       final metas = MetaContext();
-      final id = metas.freshTermMeta(const VType(0), const CNil());
+      final id = metas.freshTermMeta(const VType(LLevel(0)), const CNil());
       final base = eval(TMeta(id), const ENil());
       final a = apply(base, const VNeutral(NVar(0)));
       final b = base;
@@ -124,7 +124,7 @@ void main() {
       // 2-Pi-layer chain long enough to supply both λ-chain
       // domains in the const-approx solution.
       final metaType = eval(
-        const TPi(TType(0), TPi(TType(0), TType(0))),
+        const TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TType(LLevel(0)))),
         const ENil(),
       );
       final id = metas.freshTermMeta(metaType, const CNil());
@@ -147,10 +147,10 @@ void main() {
       final sol = metas.solutionOf(id);
       expect(sol, isA<TLam>());
       final outer = sol as TLam;
-      expect(outer.domain, const TType(0));
+      expect(outer.domain, const TType(LLevel(0)));
       expect(outer.body, isA<TLam>());
       final inner = outer.body as TLam;
-      expect(inner.domain, const TType(0));
+      expect(inner.domain, const TType(LLevel(0)));
       expect(inner.body, isA<TMeta>());
     });
 
@@ -161,7 +161,7 @@ void main() {
       // "same meta, equal spines" fast path so an applied meta is not
       // needlessly solved here.
       final metas = MetaContext();
-      final id = metas.freshTermMeta(const VType(0), const CNil());
+      final id = metas.freshTermMeta(const VType(LLevel(0)), const CNil());
       final base = eval(TMeta(id), const ENil());
       const shared = VNeutral(NVar(0));
       final applied = apply(base, shared);
@@ -174,8 +174,8 @@ void main() {
       // ?0 ≡ ?1 has no principled solution without intersection metas,
       // so the unifier defers: mismatch, neither meta solved.
       final metas = MetaContext();
-      final id0 = metas.freshTermMeta(const VType(0), const CNil());
-      final id1 = metas.freshTermMeta(const VType(0), const CNil());
+      final id0 = metas.freshTermMeta(const VType(LLevel(0)), const CNil());
+      final id1 = metas.freshTermMeta(const VType(LLevel(0)), const CNil());
       final v0 = eval(TMeta(id0), const ENil());
       final v1 = eval(TMeta(id1), const ENil());
       final r = conv(0, v0, v1, metas: metas);
@@ -188,11 +188,11 @@ void main() {
   group('Conv without meta-context (metas=null) treats NMeta opaquely', () {
     test('?0 ≡ Type 0 without metas yields mismatch', () {
       final metas = MetaContext();
-      final id = metas.freshTermMeta(const VType(1), const CNil());
+      final id = metas.freshTermMeta(const VType(LLevel(1)), const CNil());
       final r = conv(
         0,
         eval(TMeta(id), const ENil()),
-        const VType(0),
+        const VType(LLevel(0)),
         // No meta-context passed, so no solving.
       );
       expect(r, isA<ConvMismatch>());
@@ -201,7 +201,7 @@ void main() {
 
     test('?0 ≡ ?0 without metas still admits (structural)', () {
       final metas = MetaContext();
-      final id = metas.freshTermMeta(const VType(0), const CNil());
+      final id = metas.freshTermMeta(const VType(LLevel(0)), const CNil());
       final v = eval(TMeta(id), const ENil());
       final r = conv(0, v, v);
       expect(r, isA<ConvOk>());
@@ -230,9 +230,9 @@ void main() {
       // binds NVar(1), which sits at de-Bruijn index `n-1-1 = 4`
       // inside the 6-λ chain.
       final metas = MetaContext();
-      Term metaTypeTerm = const TType(0);
+      Term metaTypeTerm = const TType(LLevel(0));
       for (var i = 0; i < 6; i++) {
-        metaTypeTerm = TPi(const TType(0), metaTypeTerm);
+        metaTypeTerm = TPi(const TType(LLevel(0)), metaTypeTerm);
       }
       final metaType = eval(metaTypeTerm, const ENil());
       final id = metas.freshTermMeta(metaType, const CNil());
@@ -271,9 +271,9 @@ void main() {
       // arity-6 declared Pi-chain. After solve, applying the solution
       // to the spine reproduces NVar(1).
       final metas = MetaContext();
-      Term metaTypeTerm = const TType(0);
+      Term metaTypeTerm = const TType(LLevel(0));
       for (var i = 0; i < 6; i++) {
-        metaTypeTerm = TPi(const TType(0), metaTypeTerm);
+        metaTypeTerm = TPi(const TType(LLevel(0)), metaTypeTerm);
       }
       final metaType = eval(metaTypeTerm, const ENil());
       final id = metas.freshTermMeta(metaType, const CNil());
@@ -309,15 +309,15 @@ void main() {
   group('Solved meta unfolds during subsequent conv', () {
     test('after solving ?0 := Type 0, ?0 ≡ Type 0 via unfolding', () {
       final metas = MetaContext();
-      final id = metas.freshTermMeta(const VType(1), const CNil());
+      final id = metas.freshTermMeta(const VType(LLevel(1)), const CNil());
       // Pre-solve, then conv should admit by unfolding the meta side:
       // eval(TMeta) yields VNeutral(NMeta(0)), and conv unfolds it via
       // the solved-meta branch.
-      metas.solve(id, const TType(0));
+      metas.solve(id, const TType(LLevel(0)));
       final r = conv(
         0,
         eval(TMeta(id), const ENil()),
-        const VType(0),
+        const VType(LLevel(0)),
         metas: metas,
       );
       expect(r, isA<ConvOk>());

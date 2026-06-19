@@ -12,7 +12,7 @@ void main() {
   group('TData structural equality', () {
     test('same name + same args compare equal', () {
       expect(const TData('Nat', <Term>[]), const TData('Nat', <Term>[]));
-      expect(const TData('List', [TType(0)]), const TData('List', [TType(0)]));
+      expect(const TData('List', [TType(LLevel(0))]), const TData('List', [TType(LLevel(0))]));
     });
 
     test('different name compares unequal', () {
@@ -24,8 +24,8 @@ void main() {
 
     test('different args compare unequal', () {
       expect(
-        const TData('List', [TType(0)]),
-        isNot(const TData('List', [TType(1)])),
+        const TData('List', [TType(LLevel(0))]),
+        isNot(const TData('List', [TType(LLevel(1))])),
       );
     });
   });
@@ -80,11 +80,11 @@ void main() {
     });
 
     test('TData args are evaluated', () {
-      final v = eval(const TData('List', [TType(0)]), const ENil());
+      final v = eval(const TData('List', [TType(LLevel(0))]), const ENil());
       expect(v, isA<VData>());
       expect((v as VData).args, hasLength(1));
       expect(v.args[0], isA<VType>());
-      expect((v.args[0] as VType).level, 0);
+      expect((v.args[0] as VType).level, const LLevel(0));
     });
 
     test('TConstr args are evaluated', () {
@@ -107,8 +107,8 @@ void main() {
     });
 
     test('VData with args round-trips', () {
-      const v = VData('List', [VType(0)]);
-      expect(quote(0, v), const TData('List', [TType(0)]));
+      const v = VData('List', [VType(LLevel(0))]);
+      expect(quote(0, v), const TData('List', [TType(LLevel(0))]));
     });
 
     test('VConstr round-trips', () {
@@ -142,8 +142,8 @@ void main() {
     test('VData × VData different args: mismatch', () {
       final r = conv(
         0,
-        const VData('List', [VType(0)]),
-        const VData('List', [VType(1)]),
+        const VData('List', [VType(LLevel(0))]),
+        const VData('List', [VType(LLevel(1))]),
       );
       expect(r, isA<ConvMismatch>());
     });
@@ -182,7 +182,7 @@ void main() {
     });
 
     test('TData with args', () {
-      expect(prettyTerm(const TData('List', [TType(0)])), 'List Type');
+      expect(prettyTerm(const TData('List', [TType(LLevel(0))])), 'List Type');
     });
 
     test('TConstr with args', () {
@@ -197,7 +197,7 @@ void main() {
 
   group('stack safety on deep args', () {
     test('10,000-arg TData evaluates without blowing stack', () {
-      final args = List<Term>.generate(10000, (_) => const TType(0));
+      final args = List<Term>.generate(10000, (_) => const TType(LLevel(0)));
       final v = eval(TData('Vec', args), const ENil());
       expect(v, isA<VData>());
       expect((v as VData).args, hasLength(10000));

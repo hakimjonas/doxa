@@ -45,7 +45,7 @@ data Nat : Type {
     });
 
     test('sort is Type 0', () {
-      expect(data.sort, const TType(0));
+      expect(data.sort, const TType(LLevel(0)));
     });
 
     test('ctor zero : Nat → args empty, resultIndices empty', () {
@@ -78,7 +78,7 @@ data List[A: Type] : Type {
     test('params has one entry (A : Type)', () {
       expect(data.params, hasLength(1));
       expect(data.params.first.name, 'A');
-      expect(data.params.first.type, const TType(0));
+      expect(data.params.first.type, const TType(LLevel(0)));
     });
 
     test('no indices', () {

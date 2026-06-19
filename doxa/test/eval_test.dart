@@ -31,7 +31,7 @@ Term churchNat(int n) {
   const sType = TPi(TBound(0), TBound(1));
   final lamS = TLam(sType, lamZ);
   // λA: Type 0. lamS
-  final lamA = TLam(const TType(0), lamS);
+  final lamA = TLam(const TType(LLevel(0)), lamS);
   return lamA;
 }
 
@@ -40,7 +40,7 @@ Term churchNat(int n) {
 /// Built outside-in. Non-dependent arrows use a TPi whose codomain does not
 /// mention TBound(0); under each such Pi, references to A shift up by one.
 Term churchNatType() => const TPi(
-  TType(0),
+  TType(LLevel(0)),
   TPi(TPi(TBound(0), TBound(1)), TPi(TBound(1), TBound(2))),
 );
 
@@ -61,7 +61,7 @@ Term churchSucc() {
   //   domain at ctx [A, n]: A = TBound(0); inside the Pi, A = TBound(1).
   const succMid = TLam(TPi(TBound(0), TBound(1)), succInner);
   // λA: Type 0. succMid
-  const succA = TLam(TType(0), succMid);
+  const succA = TLam(TType(LLevel(0)), succMid);
   // λn: Nat. succA
   return TLam(churchNatType(), succA);
 }
@@ -73,37 +73,37 @@ void main() {
     });
 
     test('index 0 returns head', () {
-      final env = const ENil().extend(const VType(0));
+      final env = const ENil().extend(const VType(LLevel(0)));
       expect(env.lookup(0), isA<VType>());
     });
 
     test('index 1 returns second-from-top', () {
-      final env = const ENil().extend(const VType(0)).extend(const VType(1));
-      expect((env.lookup(0) as VType).level, 1);
-      expect((env.lookup(1) as VType).level, 0);
+      final env = const ENil().extend(const VType(LLevel(0))).extend(const VType(LLevel(1)));
+      expect((env.lookup(0) as VType).level, const LLevel(1));
+      expect((env.lookup(1) as VType).level, const LLevel(0));
     });
 
     test('extension does not mutate the tail', () {
-      final base = const ENil().extend(const VType(0));
-      final extended = base.extend(const VType(5));
-      // base.lookup(0) should still be VType(0), not VType(5).
-      expect((base.lookup(0) as VType).level, 0);
-      expect((extended.lookup(0) as VType).level, 5);
-      expect((extended.lookup(1) as VType).level, 0);
+      final base = const ENil().extend(const VType(LLevel(0)));
+      final extended = base.extend(const VType(LLevel(5)));
+      // base.lookup(0) should still be VType(LLevel(0)), not VType(LLevel(5)).
+      expect((base.lookup(0) as VType).level, const LLevel(0));
+      expect((extended.lookup(0) as VType).level, const LLevel(5));
+      expect((extended.lookup(1) as VType).level, const LLevel(0));
     });
   });
 
   group('eval: basic terms', () {
     test('TType evaluates to VType of same level', () {
-      final v = eval(const TType(2), const ENil());
+      final v = eval(const TType(LLevel(2)), const ENil());
       expect(v, isA<VType>());
-      expect((v as VType).level, 2);
+      expect((v as VType).level, const LLevel(2));
     });
 
     test('TBound looks up in env', () {
-      final env = const ENil().extend(const VType(7));
+      final env = const ENil().extend(const VType(LLevel(7)));
       final v = eval(const TBound(0), env);
-      expect((v as VType).level, 7);
+      expect((v as VType).level, const LLevel(7));
     });
 
     test('TFree in eval throws (kernel invariant)', () {
@@ -112,14 +112,14 @@ void main() {
 
     test('TLam becomes VLam with captured env', () {
       // λ(A: Type 0). TBound(0), identity on TType.
-      const term = TLam(TType(0), TBound(0));
+      const term = TLam(TType(LLevel(0)), TBound(0));
       final v = eval(term, const ENil());
       expect(v, isA<VLam>());
     });
 
     test('TPi becomes VPi with evaluated domain', () {
       // (A: Type 0) -> A
-      const term = TPi(TType(0), TBound(0));
+      const term = TPi(TType(LLevel(0)), TBound(0));
       final v = eval(term, const ENil());
       expect(v, isA<VPi>());
       expect((v as VPi).domain, isA<VType>());
@@ -129,22 +129,22 @@ void main() {
   group('eval: β-reduction', () {
     test('(λx. x) y reduces to y (y = TType 5)', () {
       // (λA. A) applied to (TType 5).
-      const lam = TLam(TType(0), TBound(0));
-      const app = TApp(lam, TType(5));
+      const lam = TLam(TType(LLevel(0)), TBound(0));
+      const app = TApp(lam, TType(LLevel(5)));
       final v = eval(app, const ENil());
-      expect((v as VType).level, 5);
+      expect((v as VType).level, const LLevel(5));
     });
 
     test('(λx. λy. x) a b reduces to a', () {
       // const-like: (λA. λB. A) applied to TType 3, then TType 7.
       // Inside: outermost binder is x, second is y.
       // Body: TBound(1) (the outer x).
-      const inner = TLam(TType(0), TBound(1));
-      const lam = TLam(TType(0), TLam(TType(0), TBound(1)));
-      const app1 = TApp(lam, TType(3));
-      const app2 = TApp(app1, TType(7));
+      const inner = TLam(TType(LLevel(0)), TBound(1));
+      const lam = TLam(TType(LLevel(0)), TLam(TType(LLevel(0)), TBound(1)));
+      const app1 = TApp(lam, TType(LLevel(3)));
+      const app2 = TApp(app1, TType(LLevel(7)));
       final v = eval(app2, const ENil());
-      expect((v as VType).level, 3);
+      expect((v as VType).level, const LLevel(3));
       // Sanity-check the single-arg intermediate stays a VLam.
       final v1 = eval(app1, const ENil());
       expect(v1, isA<VLam>());
@@ -153,7 +153,7 @@ void main() {
 
     test('under-applied lambda stays VLam', () {
       // (λx. x) with no argument: just eval the lambda.
-      const lam = TLam(TType(0), TBound(0));
+      const lam = TLam(TType(LLevel(0)), TBound(0));
       final v = eval(lam, const ENil());
       expect(v, isA<VLam>());
     });
@@ -163,20 +163,20 @@ void main() {
       // neutral application we construct a VNeutral-headed value and
       // apply it.
       const head = VNeutral(NVar(0));
-      const arg = VType(3);
+      const arg = VType(LLevel(3));
       final v = apply(head, arg);
       expect(v, isA<VNeutral>());
       expect((v as VNeutral).neutral, isA<NApp>());
       final napp = v.neutral as NApp;
       expect(napp.fn, const NVar(0));
-      expect((napp.arg as VType).level, 3);
+      expect((napp.arg as VType).level, const LLevel(3));
     });
   });
 
   group('quote', () {
     test('VType round-trips', () {
-      expect(quote(0, const VType(0)), const TType(0));
-      expect(quote(0, const VType(5)), const TType(5));
+      expect(quote(0, const VType(LLevel(0))), const TType(LLevel(0)));
+      expect(quote(0, const VType(LLevel(5))), const TType(LLevel(5)));
     });
 
     test('neutral variable quotes to TBound relative to level', () {
@@ -188,23 +188,23 @@ void main() {
 
     test('identity λ round-trips via nf', () {
       // (λA: Type 0. A)
-      const term = TLam(TType(0), TBound(0));
+      const term = TLam(TType(LLevel(0)), TBound(0));
       final normalized = nf(term);
       expect(normalized, term);
     });
 
     test('Pi round-trips via nf', () {
       // (A: Type 0) -> A
-      const term = TPi(TType(0), TBound(0));
+      const term = TPi(TType(LLevel(0)), TBound(0));
       final normalized = nf(term);
       expect(normalized, term);
     });
 
     test('neutral application quotes with spine intact', () {
-      // Build NApp(NVar(0), VType(3)) at level 2 -> TApp(TBound(1), TType(3)).
-      const v = VNeutral(NApp(NVar(0), VType(3)));
+      // Build NApp(NVar(0), VType(LLevel(3))) at level 2 -> TApp(TBound(1), TType(LLevel(3))).
+      const v = VNeutral(NApp(NVar(0), VType(LLevel(3))));
       final t = quote(2, v);
-      expect(t, const TApp(TBound(1), TType(3)));
+      expect(t, const TApp(TBound(1), TType(LLevel(3))));
     });
   });
 
@@ -255,22 +255,22 @@ void main() {
 
   group('Neutral spines', () {
     test('two-deep neutral spine quotes with argument order preserved', () {
-      // NApp(NApp(NVar(0), VType(1)), VType(2)) at level 1 should produce
-      // TApp(TApp(TBound(0), TType(1)), TType(2)), the outer app is
+      // NApp(NApp(NVar(0), VType(LLevel(1))), VType(LLevel(2))) at level 1 should produce
+      // TApp(TApp(TBound(0), TType(LLevel(1))), TType(LLevel(2))), the outer app is
       // outermost in the Term, with the leftmost-applied argument first.
-      const v = VNeutral(NApp(NApp(NVar(0), VType(1)), VType(2)));
+      const v = VNeutral(NApp(NApp(NVar(0), VType(LLevel(1))), VType(LLevel(2))));
       final t = quote(1, v);
-      expect(t, const TApp(TApp(TBound(0), TType(1)), TType(2)));
+      expect(t, const TApp(TApp(TBound(0), TType(LLevel(1))), TType(LLevel(2))));
     });
 
     test('three-deep neutral spine preserves argument order', () {
       const v = VNeutral(
-        NApp(NApp(NApp(NVar(0), VType(1)), VType(2)), VType(3)),
+        NApp(NApp(NApp(NVar(0), VType(LLevel(1))), VType(LLevel(2))), VType(LLevel(3))),
       );
       final t = quote(1, v);
       expect(
         t,
-        const TApp(TApp(TApp(TBound(0), TType(1)), TType(2)), TType(3)),
+        const TApp(TApp(TApp(TBound(0), TType(LLevel(1))), TType(LLevel(2))), TType(LLevel(3))),
       );
     });
   });
@@ -285,8 +285,8 @@ void main() {
       // Start with TBound(0) as the function (which will look up a neutral).
       Term term = const TBound(0);
       for (var i = 0; i < depth; i++) {
-        // Apply to TType(0) each step.
-        term = TApp(term, const TType(0));
+        // Apply to TType(LLevel(0)) each step.
+        term = TApp(term, const TType(LLevel(0)));
       }
       // Env has one neutral at index 0, NVar(0).
       final env = const ENil().extend(const VNeutral(NVar(0)));
@@ -298,23 +298,23 @@ void main() {
     test('10,000-deep β-reduction does not blow the Dart stack', () {
       // Construct: apply a function that returns its argument, 10,000 times,
       // by layering (λx. x) applications.
-      // ((λx. x) ((λx. x) ((λx. x) ... TType(0))))
+      // ((λx. x) ((λx. x) ((λx. x) ... TType(LLevel(0)))))
       const depth = 10000;
-      const idLam = TLam(TType(0), TBound(0));
-      Term term = const TType(0);
+      const idLam = TLam(TType(LLevel(0)), TBound(0));
+      Term term = const TType(LLevel(0));
       for (var i = 0; i < depth; i++) {
         term = TApp(idLam, term);
       }
       final v = eval(term, const ENil());
-      expect((v as VType).level, 0);
+      expect((v as VType).level, const LLevel(0));
     });
 
     test('10,000 nested lambdas evaluate without blowing the stack', () {
-      // λ. λ. λ. ... TType(0), 10,000 deep.
+      // λ. λ. λ. ... TType(LLevel(0)), 10,000 deep.
       const depth = 10000;
-      Term term = const TType(0);
+      Term term = const TType(LLevel(0));
       for (var i = 0; i < depth; i++) {
-        term = TLam(const TType(0), term);
+        term = TLam(const TType(LLevel(0)), term);
       }
       final v = eval(term, const ENil());
       expect(v, isA<VLam>());
@@ -323,9 +323,9 @@ void main() {
     test('quoting a 10,000-deep nested VLam structure is stack-safe', () {
       // Build the lambda, evaluate, then quote, all three must be stack-safe.
       const depth = 10000;
-      Term term = const TType(0);
+      Term term = const TType(LLevel(0));
       for (var i = 0; i < depth; i++) {
-        term = TLam(const TType(0), term);
+        term = TLam(const TType(LLevel(0)), term);
       }
       final v = eval(term, const ENil());
       final t = quote(0, v);
@@ -341,9 +341,9 @@ void main() {
       // the quote phase of nf(), even though eval on its own handled the
       // same depth fine. We run nf() end-to-end to exercise the full path.
       const depth = 10000;
-      Term term = const TType(0);
+      Term term = const TType(LLevel(0));
       for (var i = 0; i < depth; i++) {
-        term = TLam(const TType(0), term);
+        term = TLam(const TType(LLevel(0)), term);
       }
       expect(nf(term), term);
     });
@@ -352,9 +352,9 @@ void main() {
       // Same regression shape but for Pi: every Pi codomain opened during
       // quote previously went through _applyClosure -> eval.
       const depth = 10000;
-      Term term = const TType(0);
+      Term term = const TType(LLevel(0));
       for (var i = 0; i < depth; i++) {
-        term = TPi(const TType(0), term);
+        term = TPi(const TType(LLevel(0)), term);
       }
       expect(nf(term), term);
     });

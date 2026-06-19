@@ -64,8 +64,20 @@ class _Printer {
   /// Counter for synthesized names when a binder has no hint.
   int synthCounter = 0;
 
+  /// Pretty-print a [Level] as a `Type` expression.
+  String _prettyLevel(Level l) => switch (l) {
+    LLevel(level: 0) => 'Type',
+    LLevel(:final level) => 'Type $level',
+    LVar(:final name) => 'Type $name',
+    LSucc(:final of) => 'Type (succ ${_prettyLevel(of)})',
+    LMax(:final lhs, :final rhs) =>
+      'Type (max ${_prettyLevel(lhs)} ${_prettyLevel(rhs)})',
+    LImax(:final lhs, :final rhs) =>
+      'Type (imax ${_prettyLevel(lhs)} ${_prettyLevel(rhs)})',
+  };
+
   String term(Term t, int prec) => switch (t) {
-    TType(:final level) => level == 0 ? 'Type' : 'Type $level',
+    TType(:final level) => _prettyLevel(level),
     TProp() => 'Prop',
     TBound(:final index) => _boundName(index),
     // TFree should not appear in well-formed kernel terms after

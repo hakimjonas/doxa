@@ -72,6 +72,11 @@ final class TopBindingEntry {
   /// (type params + value params). Null iff [recDecreasingArg] is null.
   final int? recArity;
 
+  /// When true, evaluating `TTop(name)` yields `VNeutral(NTop(name))`
+  /// instead of the binding's value, preventing unfolding during
+  /// conversion. Default false (transparent).
+  final bool isOpaque;
+
   /// Creates a top-binding entry. [recDecreasingArg]/[recArity] are set
   /// only for structurally-recursive `fun`s (see [recDecreasingArg]).
   const TopBindingEntry(
@@ -79,6 +84,7 @@ final class TopBindingEntry {
     this.value, {
     this.recDecreasingArg,
     this.recArity,
+    this.isOpaque = false,
   });
 }
 

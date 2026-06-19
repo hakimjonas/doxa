@@ -82,7 +82,7 @@ void main() {
   group('Block elaboration (de Bruijn)', () {
     test('body references bound name via TBound(0)', () {
       final t = ee('{ val x: Type = Type; x }');
-      expect(t, const TLet(TType(0), TType(0), TBound(0), name: 'x'));
+      expect(t, const TLet(TType(LLevel(0)), TType(LLevel(0)), TBound(0), name: 'x'));
     });
 
     test('two bindings: result refers to outer via TBound(1)', () {
@@ -91,9 +91,9 @@ void main() {
       expect(
         t,
         const TLet(
-          TType(0),
-          TType(0),
-          TLet(TType(0), TType(0), TBound(1), name: 'y'),
+          TType(LLevel(0)),
+          TType(LLevel(0)),
+          TLet(TType(LLevel(0)), TType(LLevel(0)), TBound(1), name: 'y'),
           name: 'x',
         ),
       );
@@ -101,9 +101,9 @@ void main() {
 
     test('elab infers an unannotated binding from the bound expr', () {
       // Binder type inferred from the bound expr: `Type : Type 1`, so the
-      // TLet's domain term is `TType(1)`.
+      // TLet's domain term is `TType(LLevel(1))`.
       final t = ee('{ val x = Type; x }');
-      expect(t, const TLet(TType(1), TType(0), TBound(0), name: 'x'));
+      expect(t, const TLet(TType(LLevel(1)), TType(LLevel(0)), TBound(0), name: 'x'));
     });
   });
 
@@ -112,7 +112,7 @@ void main() {
       final t = ee('{ val x: Type = Type 5; x }');
       final v = eval(t, const ENil());
       expect(v, isA<VType>());
-      expect((v as VType).level, 5);
+      expect((v as VType).level, const LLevel(5));
     });
 
     test('shared value across body uses', () {
@@ -121,8 +121,8 @@ void main() {
       // Normalizes to TPi(Type 3, Type 3): binding gone, both x resolved.
       expect(nf_, isA<TPi>());
       final pi = nf_ as TPi;
-      expect(pi.domain, const TType(3));
-      expect(pi.codomain, const TType(3));
+      expect(pi.domain, const TType(LLevel(3)));
+      expect(pi.codomain, const TType(LLevel(3)));
     });
   });
 
@@ -176,11 +176,11 @@ void main() {
       const depth = 10000;
       Term inner = const TBound(0);
       for (var i = 0; i < depth; i++) {
-        inner = TLet(const TType(0), const TType(0), inner);
+        inner = TLet(const TType(LLevel(0)), const TType(LLevel(0)), inner);
       }
       final v = eval(inner, const ENil());
       expect(v, isA<VType>());
-      expect((v as VType).level, 0);
+      expect((v as VType).level, const LLevel(0));
     });
   });
 
