@@ -25,3 +25,5 @@ HANDOVER_*.md
 .DS_Store
 Thumbs.db
 doc/
+tool/benchmark_aot
+tool/parse_ast_aot
