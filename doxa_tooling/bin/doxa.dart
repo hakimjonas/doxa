@@ -17,6 +17,7 @@ import 'dart:io';
 
 import 'package:doxa/src/check.dart';
 import 'package:doxa/src/prelude.dart' show loadPrelude, PreludeData;
+import 'package:doxa/src/source.dart' show SourceFile, AnsiColor;
 import 'package:doxa/src/elab.dart'
     show
         currentImportPath,
@@ -172,6 +173,7 @@ void _runRepl() {
 int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   final stdoutSink = out ?? stdout;
   final stderrSink = err ?? stderr;
+  final color = AnsiColor(stderrSink == stderr && stderr.hasTerminal);
 
   // Parse.
   final parseResult = parseProgram(source.text);
@@ -182,7 +184,8 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   };
   if (program == null) {
     stderrSink.write(
-      reportParseFailure(source, parseResult as Failure<ParseError, Object?>),
+      reportParseFailure(source,
+          parseResult as Failure<ParseError, Object?>, color: color),
     );
     return 1;
   }
@@ -240,10 +243,10 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
           armSpan,
         _ => decl.span,
       };
-      stderrSink.write(reportCheckError(source, e, reportSpan));
+      stderrSink.write(reportCheckError(source, e, reportSpan, color: color));
       return 1;
     } on ElabError catch (e) {
-      stderrSink.write(reportElabError(source, e));
+      stderrSink.write(reportElabError(source, e, color: color));
       return 1;
     }
   }

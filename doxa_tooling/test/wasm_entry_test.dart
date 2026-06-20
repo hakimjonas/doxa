@@ -45,8 +45,7 @@ val oops : Bool = zero
 ''';
       final result = checkSourceString(src);
       expect(result, contains('error: type mismatch'));
-      expect(result, contains('expected:'));
-      expect(result, contains('actual:'));
+      expect(result, contains('expected Bool, found Nat'));
     });
   });
 }

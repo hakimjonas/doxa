@@ -2,7 +2,8 @@
 ///
 /// A [SourceFile] pairs the raw input with an optional filename (for
 /// diagnostic output) and resolves byte offsets into line and column
-/// positions.
+/// positions. Also provides [formatContext] for Rust-style source
+/// snippets with carets in error messages.
 ///
 /// Line starts are computed once on construction so repeated line/col
 /// lookups during diagnostic formatting are O(log n) rather than O(n).
@@ -11,6 +12,34 @@
 library;
 
 import 'surface.dart';
+
+/// ANSI terminal colour codes for diagnostic output.
+///
+/// Each getter returns the escape sequence when colour is enabled,
+/// or an empty string when colour is disabled (e.g., piped output).
+final class AnsiColor {
+  final bool enabled;
+
+  const AnsiColor(this.enabled);
+
+  String get red => enabled ? '\x1b[31m' : '';
+  String get green => enabled ? '\x1b[32m' : '';
+  String get yellow => enabled ? '\x1b[33m' : '';
+  String get blue => enabled ? '\x1b[34m' : '';
+  String get magenta => enabled ? '\x1b[35m' : '';
+  String get cyan => enabled ? '\x1b[36m' : '';
+  String get bold => enabled ? '\x1b[1m' : '';
+  String get reset => enabled ? '\x1b[0m' : '';
+
+  /// Wrap [text] with [bold] and [red], then reset.
+  String error(String text) => '$bold$red$text$reset';
+
+  /// Wrap [text] with [bold] and [yellow], then reset.
+  String warning(String text) => '$bold$yellow$text$reset';
+
+  /// Wrap [text] with [bold] and [blue], then reset.
+  String label(String text) => '$bold$blue$text$reset';
+}
 
 /// A loaded source file.
 final class SourceFile {
@@ -55,6 +84,50 @@ final class SourceFile {
     if (span.isSynthetic) return '$filename:<synthesized>';
     final pos = positionAt(span.start);
     return '$filename:${pos.line}:${pos.column}';
+  }
+
+  /// Build a Rust-style source-context snippet for [span].
+  ///
+  /// Returns the offending line(s) with a line-number gutter, a caret
+  /// line pointing at the span, and optional [label] text.  When
+  /// [span] spans multiple lines, only the first line is shown.
+  ///
+  /// [color] controls ANSI escape sequences. Pass [AnsiColor(false)]
+  /// when output is piped or colour is disabled.
+  ///
+  /// The result does NOT include the error kind or message — only the
+  /// source snippet.  Callers prepend the kind/header and append any
+  /// notes.
+  String formatContext(DoxaSpan span, {String? label, AnsiColor? color}) {
+    if (span.isSynthetic) return '  at $filename:<synthesized>';
+    final c = color ?? const AnsiColor(false);
+    final pos = positionAt(span.start);
+    final line = lineAt(span.start);
+    final prefix = '${pos.line} | ';
+    final gutter = '  | ';
+    final col = pos.column - 1; // 0-based column for caret positioning
+    final spanLen =
+        span.start == span.end ? 1 : (span.end - span.start).clamp(1, line.length - col);
+
+    final buf = StringBuffer();
+    // Location header
+    buf.writeln('${c.bold}--> ${c.cyan}$filename:${pos.line}:${pos.column}${c.reset}');
+    buf.writeln(' $gutter');
+    // Source line
+    buf.write('${c.bold}$prefix${c.reset}');
+    buf.writeln(line);
+    // Caret line
+    buf.write(' $gutter');
+    buf.write(' ' * col);
+    buf.write('${c.bold}${c.red}');
+    buf.write('^' * spanLen);
+    buf.write('${c.reset}');
+    if (label != null) {
+      buf.write(' $label');
+    }
+    buf.writeln();
+    buf.writeln(' $gutter');
+    return buf.toString();
   }
 
   int _findLine(int offset) {

@@ -83,8 +83,7 @@ void main() {
       final out = reportCheckError(src, err, const DoxaSpan(16, 20));
       expect(out, contains('error: type mismatch'));
       expect(out, contains('input.doxa:1:17'));
-      expect(out, contains('expected: Type'));
-      expect(out, contains('actual:   Type 1'));
+      expect(out, contains('expected Type, found Type 1'));
     });
 
     test('TypeMismatch includes diff path when not top-level', () {
@@ -104,9 +103,9 @@ void main() {
       );
       final src = _src('unused');
       final out = reportCheckError(src, err, const DoxaSpan(0, 6));
-      expect(out, contains('first difference at codomain:'));
-      expect(out, contains('expected:  Type 1'));
-      expect(out, contains('actual:    Type'));
+      expect(out, contains('= note: first difference at codomain'));
+      expect(out, contains('expected: Type 1'));
+      expect(out, contains('actual:   Type'));
     });
 
     test('NotAFunction format', () {
