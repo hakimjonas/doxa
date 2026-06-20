@@ -19,11 +19,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:doxa/src/ctx.dart';
-import 'package:doxa/src/elab.dart';
+import 'package:doxa/src/elab.dart'
+    show checkDeclResult, currentImportPath, elabDecl, importedPaths, DeclResult, TopEnv, TopBinding, DataDecl;
 import 'package:doxa/src/env.dart';
 import 'package:doxa/src/eval.dart';
 import 'package:doxa/src/parse.dart';
-import 'package:doxa/src/surface.dart';
+import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
 import 'package:doxa/src/term.dart';
 import 'package:doxa/src/value.dart';
 import 'package:rumil/rumil.dart';
@@ -36,13 +37,26 @@ const String _preludeSource = '''
 data Eq[A: Type] : A -> A -> Prop {
   refl : (x: A) -> Eq[A] x x;
 }
+
+data Acc[A: Type] : (A -> A -> Prop) -> A -> Prop {
+  acc_intro : (R: A -> A -> Prop) -> (x: A) -> ((y: A) -> R y x -> Acc A R y) -> Acc A R x;
+}
 ''';
 
 // We can't import the cached prelude from web_check.dart (it's in
 // doxa_tooling, not doxa), so we inline a local prelude load.
-({List<TopBinding> bindings, List<DataDecl> dataDecls})? _preludeCache;
+({
+  List<TopBinding> bindings,
+  List<DataDecl> dataDecls,
+  Map<String, Set<String>> namespaceBindings,
+})?
+_preludeCache;
 
-({List<TopBinding> bindings, List<DataDecl> dataDecls}) _loadPrelude() {
+({
+  List<TopBinding> bindings,
+  List<DataDecl> dataDecls,
+  Map<String, Set<String>> namespaceBindings,
+}) _loadPrelude() {
   final cached = _preludeCache;
   if (cached != null) return cached;
   final r = parseProgram(_preludeSource);
@@ -54,15 +68,42 @@ data Eq[A: Type] : A -> A -> Prop {
   };
   var bindings = const <TopBinding>[];
   var dataDecls = const <DataDecl>[];
+  var namespaceBindings = <String, Set<String>>{};
   for (final decl in prog.decls) {
-    final produced = elabDecl(TopEnv(bindings, dataDecls), decl);
+    final produced = elabDecl(
+      TopEnv(bindings, dataDecls, const {}, namespaceBindings),
+      decl,
+    );
     final runningData = [...dataDecls, ...produced.dataDecls];
-    final finalized = checkDeclResult(TopEnv(bindings, runningData), produced);
+    final finalized = checkDeclResult(
+      TopEnv(bindings, runningData, const {}, namespaceBindings),
+      produced,
+    );
     bindings = [...bindings, ...finalized];
     dataDecls = runningData;
+    namespaceBindings = _mergeNamespace(
+      namespaceBindings,
+      produced.namespaceBindings,
+    );
   }
-  final result = (bindings: bindings, dataDecls: dataDecls);
+  final result = (
+    bindings: bindings,
+    dataDecls: dataDecls,
+    namespaceBindings: namespaceBindings,
+  );
   _preludeCache = result;
+  return result;
+}
+
+Map<String, Set<String>> _mergeNamespace(
+  Map<String, Set<String>> a,
+  Map<String, Set<String>> b,
+) {
+  if (b.isEmpty) return a;
+  final result = Map<String, Set<String>>.from(a);
+  for (final entry in b.entries) {
+    result[entry.key] = {...?result[entry.key], ...entry.value};
+  }
   return result;
 }
 
@@ -109,7 +150,8 @@ void main(List<String> args) {
       // The prelude is already seeded — re-checking it duplicates Eq.
       if (f.path.endsWith('prelude.doxa')) continue;
       final name = f.uri.pathSegments.last.replaceAll('.doxa', '');
-      workloads.add(Workload('stdlib/$name', _read(f), 'stdlib file'));
+      workloads.add(Workload('stdlib/$name', _read(f), 'stdlib file',
+          path: f.path));
     }
   } else {
     // Sub-package layout — try relative to doxa_tooling.
@@ -120,7 +162,8 @@ void main(List<String> args) {
       )) {
         if (!f.path.endsWith('.doxa')) continue;
         final name = f.uri.pathSegments.last.replaceAll('.doxa', '');
-        workloads.add(Workload('stdlib/$name', _readFull(f.path), 'stdlib file'));
+        workloads.add(Workload('stdlib/$name', _readFull(f.path), 'stdlib file',
+            path: f.path));
       }
     }
   }
@@ -128,7 +171,8 @@ void main(List<String> args) {
   // example/proofs.doxa
   final example = File('example/proofs.doxa');
   if (example.existsSync()) {
-    workloads.add(Workload('example/proofs', _read(example), 'example file'));
+    workloads.add(Workload('example/proofs', _read(example), 'example file',
+        path: example.path));
   }
 
   // ---- Scaled stdlib (synthetic) ----
@@ -202,8 +246,9 @@ final class Workload {
   final String name;
   final String source;
   final String category;
+  final String? path;
 
-  const Workload(this.name, this.source, this.category);
+  const Workload(this.name, this.source, this.category, {this.path});
 }
 
 final class BenchTiming {
@@ -265,18 +310,34 @@ final class BenchResult {
   sw.reset();
   sw.start();
 
-  // Seed the prelude so user declarations can reference Eq/refl.
+  // Seed the prelude so user declarations can reference Eq/refl/Acc.
   final prelude = _loadPrelude();
   var bindings = prelude.bindings;
   var dataDecls = prelude.dataDecls;
+  var namespaceBindings = prelude.namespaceBindings;
+
+  currentImportPath = w.path ?? 'bench.doxa';
+  importedPaths.clear();
 
   for (final decl in program.decls) {
     try {
-      final produced = elabDecl(TopEnv(bindings, dataDecls), decl);
+      final env = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
+      final produced = elabDecl(env, decl);
       final runningData = [...dataDecls, ...produced.dataDecls];
-      final finalized = checkDeclResult(TopEnv(bindings, runningData), produced);
+      final checkBindings =
+          decl.kind is SImportKind
+              ? [...bindings, ...produced.bindings]
+              : bindings;
+      final finalized = checkDeclResult(
+        TopEnv(checkBindings, runningData, const {}, namespaceBindings),
+        produced,
+      );
       bindings = [...bindings, ...finalized];
       dataDecls = runningData;
+      namespaceBindings = _mergeNamespace(
+        namespaceBindings,
+        produced.namespaceBindings,
+      );
     } on StackOverflowError {
       if (!silent) stderr.writeln('  ${w.name}: STACK OVERFLOW (elaborator recursion, known limitation)');
       return (const BenchTiming(-3, -3, -3), -3.0);

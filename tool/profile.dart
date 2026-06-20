@@ -1,30 +1,59 @@
 /// Quick profiling: run stdlib proofs and church depth 500 with breakdown.
 
 import 'dart:developer';
+import 'dart:io';
 import 'package:doxa/src/ctx.dart';
-import 'package:doxa/src/elab.dart';
+import 'package:doxa/src/elab.dart'
+    show checkDeclResult, currentImportPath, elabDecl, importedPaths, DeclResult, TopEnv, TopBinding, DataDecl;
 import 'package:doxa/src/env.dart';
 import 'package:doxa/src/eval.dart';
 import 'package:doxa/src/parse.dart';
 import 'package:doxa/src/pretty.dart';
-import 'package:doxa/src/surface.dart';
+import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
 import 'package:rumil/rumil.dart';
 
 const prelude = '''
 data Eq[A: Type] : A -> A -> Prop {
   refl : (x: A) -> Eq[A] x x;
 }
+
+data Acc[A: Type] : (A -> A -> Prop) -> A -> Prop {
+  acc_intro : (R: A -> A -> Prop) -> (x: A) -> ((y: A) -> R y x -> Acc A R y) -> Acc A R x;
+}
 ''';
+
+Map<String, Set<String>> _mergeNamespace(
+  Map<String, Set<String>> a,
+  Map<String, Set<String>> b,
+) {
+  if (b.isEmpty) return a;
+  final result = Map<String, Set<String>>.from(a);
+  for (final entry in b.entries) {
+    result[entry.key] = {...?result[entry.key], ...entry.value};
+  }
+  return result;
+}
 
 void main() {
   // Load prelude
   var bindings = <TopBinding>[];
   var dataDecls = <DataDecl>[];
-  for (final decl in (parseProgram(prelude).value as SProgram).decls) {
-    final p = elabDecl(TopEnv(bindings, dataDecls), decl);
+  var namespaceBindings = <String, Set<String>>{};
+  for (final decl in _parseProg(prelude).decls) {
+    final p = elabDecl(
+      TopEnv(bindings, dataDecls, const {}, namespaceBindings),
+      decl,
+    );
     final rd = [...dataDecls, ...p.dataDecls];
-    bindings = [...bindings, ...checkDeclResult(TopEnv(bindings, rd), p)];
+    bindings = [
+      ...bindings,
+      ...checkDeclResult(
+        TopEnv(bindings, rd, const {}, namespaceBindings),
+        p,
+      ),
+    ];
     dataDecls = rd;
+    namespaceBindings = _mergeNamespace(namespaceBindings, p.namespaceBindings);
   }
 
   // stdlib proofs
@@ -33,28 +62,38 @@ void main() {
   var totalParse = 0, totalElab = 0, totalCheck = 0, totalNf = 0;
 
   // Warmup
-  _check(src, bindings, dataDecls);
+  currentImportPath = 'lib/stdlib/proofs.doxa';
+  importedPaths.clear();
+  _check(src, bindings, dataDecls, namespaceBindings);
 
   // Timed run
+  SProgram stdlibProg = _parseProg(src);
   for (var i = 0; i < 3; i++) {
+    importedPaths.clear();
     sw.reset(); sw.start();
-    final prog = parseProgram(src).value as SProgram;
+    final prog = _parseProg(src);
     sw.stop(); totalParse += sw.elapsedMicroseconds;
 
-    var b = bindings.toList(), d = dataDecls.toList();
+    var b = bindings.toList(), d = dataDecls.toList(), ns = namespaceBindings;
     var elabUs = 0, checkUs = 0;
 
     for (final decl in prog.decls) {
       sw.reset(); sw.start();
-      final produced = elabDecl(TopEnv(b, d), decl);
+      final produced = elabDecl(TopEnv(b, d, const {}, ns), decl);
       sw.stop(); elabUs += sw.elapsedMicroseconds;
 
       sw.reset(); sw.start();
       final rd = [...d, ...produced.dataDecls];
-      final finalized = checkDeclResult(TopEnv(b, rd), produced);
+      final checkBindings =
+          decl.kind is SImportKind ? [...b, ...produced.bindings] : b;
+      final finalized = checkDeclResult(
+        TopEnv(checkBindings, rd, const {}, ns),
+        produced,
+      );
       sw.stop(); checkUs += sw.elapsedMicroseconds;
       b = [...b, ...finalized];
       d = rd;
+      ns = _mergeNamespace(ns, produced.namespaceBindings);
     }
     totalElab += elabUs;
     totalCheck += checkUs;
@@ -67,31 +106,33 @@ void main() {
   print('elab:   ${(totalElab~/n/1000).toStringAsFixed(2)}ms');
   print('check:  ${(totalCheck~/n/1000).toStringAsFixed(2)}ms');
   print('total:  ${((totalParse+totalElab+totalCheck)~/n/1000).toStringAsFixed(2)}ms');
-  print('decls:  ${(prog.decls.length)}');
+  print('decls:  ${stdlibProg.decls.length}');
 
   // Church depth 500
   print('');
   final churchSrc = _churchChain(500);
+  final churchProg = _parseProg(churchSrc);
   totalParse = 0; totalElab = 0; totalCheck = 0;
 
   for (var i = 0; i < 3; i++) {
     sw.reset(); sw.start();
-    final prog = parseProgram(churchSrc).value as SProgram;
+    final prog = _parseProg(churchSrc);
     sw.stop(); totalParse += sw.elapsedMicroseconds;
 
-    var b = bindings.toList(), d = dataDecls.toList();
+    var b = bindings.toList(), d = dataDecls.toList(), ns = namespaceBindings;
     var elabUs = 0, checkUs = 0;
     for (final decl in prog.decls) {
       sw.reset(); sw.start();
-      final produced = elabDecl(TopEnv(b, d), decl);
+      final produced = elabDecl(TopEnv(b, d, const {}, ns), decl);
       sw.stop(); elabUs += sw.elapsedMicroseconds;
 
       sw.reset(); sw.start();
       final rd = [...d, ...produced.dataDecls];
-      final finalized = checkDeclResult(TopEnv(b, rd), produced);
+      final finalized = checkDeclResult(TopEnv(b, rd, const {}, ns), produced);
       sw.stop(); checkUs += sw.elapsedMicroseconds;
       b = [...b, ...finalized];
       d = rd;
+      ns = _mergeNamespace(ns, produced.namespaceBindings);
     }
     totalElab += elabUs;
     totalCheck += checkUs;
@@ -102,17 +143,32 @@ void main() {
   print('elab:   ${(totalElab~/n/1000).toStringAsFixed(2)}ms');
   print('check:  ${(totalCheck~/n/1000).toStringAsFixed(2)}ms');
   print('total:  ${((totalParse+totalElab+totalCheck)~/n/1000).toStringAsFixed(2)}ms');
-  print('decls:  ${(prog.decls.length)}');
+  print('decls:  ${churchProg.decls.length}');
 }
 
-void _check(String src, List<TopBinding> bindings, List<DataDecl> dataDecls) {
-  final prog = parseProgram(src).value as SProgram;
-  var b = bindings.toList(), d = dataDecls.toList();
+SProgram _parseProg(String src) {
+  final r = parseProgram(src);
+  if (r is Success<ParseError, SProgram>) return r.value;
+  if (r is Partial<ParseError, SProgram>) return r.value;
+  throw StateError('parse failed');
+}
+
+void _check(String src, List<TopBinding> bindings, List<DataDecl> dataDecls,
+    Map<String, Set<String>> namespaceBindings) {
+  final prog = _parseProg(src);
+  var b = bindings.toList(), d = dataDecls.toList(), ns = namespaceBindings;
   for (final decl in prog.decls) {
-    final produced = elabDecl(TopEnv(b, d), decl);
+    final env = TopEnv(b, d, const {}, ns);
+    final produced = elabDecl(env, decl);
     final rd = [...d, ...produced.dataDecls];
-    b = [...b, ...checkDeclResult(TopEnv(b, rd), produced)];
+    final checkBindings =
+        decl.kind is SImportKind ? [...b, ...produced.bindings] : b;
+    b = [
+      ...b,
+      ...checkDeclResult(TopEnv(checkBindings, rd, const {}, ns), produced),
+    ];
     d = rd;
+    ns = _mergeNamespace(ns, produced.namespaceBindings);
   }
 }
 
@@ -128,5 +184,3 @@ String _churchChain(int depth) {
   for (var i = 0; i < depth; i++) buf.write(')');
   return buf.toString();
 }
-
-import 'dart:io';
