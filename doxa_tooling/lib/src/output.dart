@@ -94,10 +94,9 @@ final class DeclInfo {
   };
 }
 
-/// The source file failed to check.
-final class CheckFailure extends CheckOutput {
-  /// The error kind, e.g. `"parse_error"`, `"type_mismatch"`,
-  /// `"unresolved_name"`, etc.
+/// A single error within a [CheckFailure].
+final class CheckError {
+  /// The error kind, e.g. `"type_mismatch"`, `"unresolved_name"`, etc.
   final String kind;
 
   /// 1-based line number of the error.
@@ -119,8 +118,8 @@ final class CheckFailure extends CheckOutput {
   /// precise source location.
   final DoxaSpan? span;
 
-  /// Creates a failure result.
-  const CheckFailure({
+  /// Creates a check error.
+  const CheckError({
     required this.kind,
     required this.line,
     required this.column,
@@ -130,9 +129,8 @@ final class CheckFailure extends CheckOutput {
     this.span,
   });
 
-  @override
+  /// Serialise to a JSON-compatible map.
   Map<String, dynamic> toJson() => {
-    'status': 'failure',
     'kind': kind,
     'line': line,
     'column': column,
@@ -140,5 +138,45 @@ final class CheckFailure extends CheckOutput {
     if (actual != null) 'actual': actual,
     'message': message,
     if (span != null) 'span': {'start': span!.start, 'end': span!.end},
+  };
+}
+
+/// The source file failed to check.
+///
+/// Carries a list of individual [CheckError]s — one per declaration or
+/// parse failure. Backward-compat getters [message] and [span] delegate
+/// to the first error.
+final class CheckFailure extends CheckOutput {
+  /// The individual errors (one per declaration that failed).
+  final List<CheckError> errors;
+
+  /// Creates a failure result.
+  const CheckFailure({required this.errors});
+
+  /// Joined message text (backward compat).
+  String get message => errors.map((e) => e.message).join('\n\n');
+
+  /// Span of the first error (backward compat).
+  DoxaSpan? get span => errors.isNotEmpty ? errors.first.span : null;
+
+  /// Kind of the first error (backward compat).
+  String get kind => errors.isNotEmpty ? errors.first.kind : 'error';
+
+  /// Line of the first error (backward compat).
+  int get line => errors.isNotEmpty ? errors.first.line : 1;
+
+  /// Column of the first error (backward compat).
+  int get column => errors.isNotEmpty ? errors.first.column : 1;
+
+  /// Expected type from the first error (backward compat).
+  String? get expected => errors.isNotEmpty ? errors.first.expected : null;
+
+  /// Actual type from the first error (backward compat).
+  String? get actual => errors.isNotEmpty ? errors.first.actual : null;
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'status': 'failure',
+    'errors': [for (final e in errors) e.toJson()],
   };
 }

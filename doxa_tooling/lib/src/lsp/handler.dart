@@ -61,6 +61,15 @@ final class LspHandler {
       case 'textDocument/completion':
         return _handleCompletion(id as int, params!);
 
+      case 'textDocument/semanticTokens/full':
+        return _handleSemanticTokens(id as int, params!);
+
+      case 'textDocument/references':
+        return _handleReferences(id as int, params!);
+
+      case 'textDocument/rename':
+        return _handleRename(id as int, params!);
+
       case 'shutdown':
         return {'jsonrpc': '2.0', 'id': id, 'result': null};
 
@@ -83,8 +92,21 @@ final class LspHandler {
         'textDocumentSync': 1, // Full content sync
         'hoverProvider': true,
         'definitionProvider': true,
+        'referencesProvider': true,
+        'renameProvider': true,
         'completionProvider': <String, dynamic>{
           'triggerCharacters': <String>[],
+        },
+        'semanticTokensProvider': {
+          'legend': {
+            'tokenTypes': [
+              for (final t in LspSemanticTokenType.values) t.label,
+            ],
+            'tokenModifiers': [
+              for (final m in LspSemanticTokenModifier.values) m.label,
+            ],
+          },
+          'full': true,
         },
       },
       'serverInfo': {'name': 'doxa-lsp', 'version': '0.1.0'},
@@ -192,6 +214,139 @@ final class LspHandler {
     };
   }
 
+  /// Handle `textDocument/semanticTokens/full`.
+  Map<String, dynamic> _handleSemanticTokens(
+    int id,
+    Map<String, dynamic> params,
+  ) {
+    if (_lastSuccess == null) {
+      return {
+        'jsonrpc': '2.0',
+        'id': id,
+        'result': const LspSemanticTokens(data: <int>[]).toJson(),
+      };
+    }
+    final infos = _lastSuccess!.semInfo;
+    final data = <int>[];
+    var prevLine = 0;
+    var prevChar = 0;
+
+    for (final info in infos) {
+      final span = info.span;
+      if (span.isSynthetic) continue;
+
+      final pos = _positionAt(span.start);
+      final length = span.end - span.start;
+      if (length <= 0) continue;
+
+      final line = pos.line - 1;
+      final char = pos.column - 1;
+
+      // Delta-encode.
+      if (line == prevLine) {
+        data.add(0); // same line
+        data.add(char - prevChar);
+      } else {
+        data.add(line - prevLine);
+        data.add(char);
+      }
+      data.add(length);
+      data.add(_semanticTokenType(info.kind).legendIndex);
+      final modifier = _semanticTokenModifier(info.kind);
+      data.add(modifier?.bit ?? 0);
+
+      prevLine = line;
+      prevChar = char;
+    }
+
+    return {
+      'jsonrpc': '2.0',
+      'id': id,
+      'result': LspSemanticTokens(data: data).toJson(),
+    };
+  }
+
+  /// Map a [SemInfoKind] to a [LspSemanticTokenType].
+  LspSemanticTokenType _semanticTokenType(SemInfoKind kind) => switch (kind) {
+    SemInfoKind.dataType => LspSemanticTokenType.type_,
+    SemInfoKind.constructor => LspSemanticTokenType.enumMember,
+    SemInfoKind.topBinding => LspSemanticTokenType.variable,
+    SemInfoKind.localVar => LspSemanticTokenType.variable,
+    SemInfoKind.implicitParam => LspSemanticTokenType.parameter,
+    SemInfoKind.fieldProj => LspSemanticTokenType.property,
+  };
+
+  /// Map a [SemInfoKind] to a [LspSemanticTokenModifier], or null.
+  LspSemanticTokenModifier? _semanticTokenModifier(SemInfoKind kind) =>
+      switch (kind) {
+        SemInfoKind.topBinding => LspSemanticTokenModifier.readonly,
+        _ => null,
+      };
+
+  /// Handle `textDocument/references`.
+  Map<String, dynamic> _handleReferences(int id, Map<String, dynamic> params) {
+    final result = _buildResult(id, params, (offset) {
+      final info = _infoAt(offset);
+      if (info == null) return null;
+      return _referencesFor(info.name);
+    });
+    return {'jsonrpc': '2.0', 'id': id, if (result != null) 'result': result};
+  }
+
+  /// Handle `textDocument/rename`.
+  Map<String, dynamic> _handleRename(int id, Map<String, dynamic> params) {
+    final newName = params['newName'] as String?;
+    if (newName == null || newName.isEmpty) {
+      return {
+        'jsonrpc': '2.0',
+        'id': id,
+        'error': {'code': -32602, 'message': 'newName is required'},
+      };
+    }
+    final result = _buildResult(id, params, (offset) {
+      final info = _infoAt(offset);
+      if (info == null) return null;
+      final refs = _referencesFor(info.name);
+      if (refs.isEmpty) return null;
+      // Build text edits: one per reference span.
+      final edits = <LspTextEdit>[];
+      for (final ref in refs) {
+        edits.add(LspTextEdit(range: ref.range, newText: newName));
+      }
+      return LspWorkspaceEdit(changes: {_documentUri: edits}).toJson();
+    });
+    return {'jsonrpc': '2.0', 'id': id, if (result != null) 'result': result};
+  }
+
+  /// Find all references to [name] in the current document.
+  ///
+  /// Returns a list of LspLocation, one per occurrence (including the
+  /// definition site itself when a defSpan is available).
+  List<LspLocation> _referencesFor(String name) {
+    if (_lastSuccess == null) return <LspLocation>[];
+    final infos = _lastSuccess!.semInfo;
+    final locations = <LspLocation>[];
+    for (final info in infos) {
+      if (info.name == name && !info.span.isSynthetic) {
+        final pos = _positionAt(info.span.start);
+        final endPos = _positionAt(info.span.end);
+        locations.add(
+          LspLocation(
+            uri: _documentUri,
+            range: LspRange(
+              start: LspPosition(line: pos.line - 1, character: pos.column - 1),
+              end: LspPosition(
+                line: endPos.line - 1,
+                character: endPos.column - 1,
+              ),
+            ),
+          ),
+        );
+      }
+    }
+    return locations;
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
@@ -207,24 +362,33 @@ final class LspHandler {
       case final CheckFailure failure:
         _lastSuccess = null;
         final source = SourceFile(filename: _documentUri, text: _documentText);
-        final span =
-            failure.span ??
-            DoxaSpan(0, _documentText.isEmpty ? 0 : _documentText.length);
-        final pos = source.positionAt(span.start);
-        final endPos = source.positionAt(span.end);
-        final diagnostic = LspDiagnostic(
-          range: LspRange(
-            start: LspPosition(line: pos.line - 1, character: pos.column - 1),
-            end: LspPosition(
-              line: endPos.line - 1,
-              character: endPos.column - 1,
+        final diagnostics = <LspDiagnostic>[];
+        for (final error in failure.errors) {
+          final pos =
+              error.span != null
+                  ? source.positionAt(error.span!.start)
+                  : source.positionAt(0);
+          final endPos =
+              error.span != null ? source.positionAt(error.span!.end) : pos;
+          diagnostics.add(
+            LspDiagnostic(
+              range: LspRange(
+                start: LspPosition(
+                  line: pos.line - 1,
+                  character: pos.column - 1,
+                ),
+                end: LspPosition(
+                  line: endPos.line - 1,
+                  character: endPos.column - 1,
+                ),
+              ),
+              severity: LspDiagnosticSeverity.error,
+              message: error.message,
+              source: 'doxa',
             ),
-          ),
-          severity: LspDiagnosticSeverity.error,
-          message: failure.message,
-          source: 'doxa',
-        );
-        _publishDiagnostics([diagnostic]);
+          );
+        }
+        _publishDiagnostics(diagnostics);
     }
   }
 

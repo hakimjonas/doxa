@@ -21,9 +21,11 @@ import 'package:doxa/src/pretty.dart';
 import 'package:doxa/src/report.dart';
 import 'package:doxa/src/source.dart';
 import 'package:doxa/src/surface.dart';
+import 'package:doxa/src/term.dart' show TPi, TBound, TData, Term, Icit;
 
 /// Meta-command mode: which part of the expression to display.
 enum _MetaMode { type, norm }
+
 /// session state.
 typedef ReplStep = (ReplResult, ReplSession);
 
@@ -32,6 +34,7 @@ sealed class ReplResult {
   /// Base constructor.
   const ReplResult();
 }
+
 /// An expression was successfully elaborated and its type inferred.
 final class ReplExprResult extends ReplResult {
   /// Pretty-printed inferred type.
@@ -199,6 +202,8 @@ final class ReplSession {
             'Meta-commands:\n'
             '  :type <expr>   Elaborate and show the type\n'
             '  :norm <expr>   Elaborate and show the normal form\n'
+            '  :browse        List all names in scope with their types\n'
+            '  :search <str>  Filter :browse to names containing <str>\n'
             '  :help          Show this help\n'
             '  :quit          Exit the REPL\n'
             '\n'
@@ -216,6 +221,13 @@ final class ReplSession {
           return (const ReplError(':norm requires an expression'), this);
         }
         return _metaExpr(rest, mode: _MetaMode.norm);
+      case ':browse':
+        return (ReplMeta(_browse()), this);
+      case ':search':
+        if (rest.isEmpty) {
+          return (const ReplError(':search requires a substring'), this);
+        }
+        return (ReplMeta(_browse(filter: rest)), this);
       default:
         return (ReplError('unknown command: $cmd'), this);
     }
@@ -332,6 +344,84 @@ final class ReplSession {
       };
     }
     return ENil.withRegistries(dataDecls: dataDecls, topBindings: acc);
+  }
+
+  /// Build the term-level signature of a data type: `(params) -> (indices) -> sort`.
+  Term _dataSignatureTerm(DataDecl d) {
+    Term result = d.sort;
+    for (var i = d.indices.length - 1; i >= 0; i--) {
+      final e = d.indices[i];
+      result = TPi(e.type, result, name: e.name);
+    }
+    for (var i = d.params.length - 1; i >= 0; i--) {
+      final e = d.params[i];
+      result = TPi(e.type, result, name: e.name);
+    }
+    return result;
+  }
+
+  /// Build the term-level signature of a constructor.
+  Term _ctorSignatureTerm(DataDecl d, CtorDecl c) {
+    final paramCount = d.params.length;
+    final argCount = c.args.length;
+    final resultArgs = <Term>[
+      for (var i = 0; i < paramCount; i++)
+        TBound(argCount + (paramCount - 1 - i)),
+      ...c.resultIndices,
+    ];
+    Term result = TData(d.name, resultArgs);
+    for (var i = argCount - 1; i >= 0; i--) {
+      final e = c.args[i];
+      result = TPi(e.type, result, name: e.name);
+    }
+    for (var i = paramCount - 1; i >= 0; i--) {
+      final e = d.params[i];
+      result = TPi(e.type, result, name: e.name, icit: Icit.implicit);
+    }
+    return result;
+  }
+
+  /// Collect all names in scope with their pretty-printed type strings.
+  ///
+  /// If [filter] is provided, only names containing the substring
+  /// (case-insensitive) are included.
+  String _browse({String? filter}) {
+    final lines = <(String, String)>[];
+
+    for (final b in bindings) {
+      final typeStr = prettyTerm(b.type, outerDepth: 0);
+      lines.add((b.name, '${b.name} : $typeStr'));
+    }
+
+    for (final d in dataDecls) {
+      final sigTerm = _dataSignatureTerm(d);
+      final typeStr = prettyTerm(sigTerm, outerDepth: 0);
+      final ctorCount = d.ctors.length;
+      lines.add((
+        d.name,
+        '${d.name} : $typeStr (data, $ctorCount '
+            '${ctorCount == 1 ? "ctor" : "ctors"})',
+      ));
+
+      for (final c in d.ctors) {
+        final ctorSigTerm = _ctorSignatureTerm(d, c);
+        final ctorTypeStr = prettyTerm(ctorSigTerm, outerDepth: 0);
+        lines.add((c.name, '${c.name} : $ctorTypeStr'));
+      }
+    }
+
+    // Sort alphabetically by name.
+    lines.sort((a, b) => a.$1.compareTo(b.$1));
+
+    // Apply filter if provided.
+    final filterLower = filter?.toLowerCase();
+    final result = StringBuffer();
+    for (final entry in lines) {
+      if (filterLower == null || entry.$1.toLowerCase().contains(filterLower)) {
+        result.writeln(entry.$2);
+      }
+    }
+    return result.toString().trimRight();
   }
 
   /// Format a Rumil parse failure for REPL display.

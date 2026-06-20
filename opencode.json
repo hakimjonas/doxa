@@ -5,5 +5,21 @@
       "command": ["doxa", "lsp"],
       "extensions": [".doxa"]
     }
+  },
+  "formatter": {
+    "doxa": {
+      "command": ["doxa", "fmt", "--stdout"],
+      "extensions": [".doxa"]
+    }
+  },
+  "command": {
+    "doxa-check": {
+      "template": "doxa check $FILE",
+      "description": "Type-check the current Doxa file"
+    },
+    "doxa-check-watch": {
+      "template": "doxa check --watch $FILE",
+      "description": "Watch and re-check the current Doxa file on save"
+    }
   }
 }

@@ -28,6 +28,7 @@ export 'src/elab.dart'
         elabDecl,
         checkDeclResult,
         elabExpr,
+        declNames,
         TopBinding,
         TopEnv,
         CorecursiveGroup,

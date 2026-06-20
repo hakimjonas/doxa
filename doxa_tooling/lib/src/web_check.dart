@@ -48,10 +48,14 @@ CheckOutput checkSourceOutput(
     final column = failure.furthest.column;
     final message = reportParseFailure(source, failure);
     return CheckFailure(
-      kind: 'parse_error',
-      line: line,
-      column: column,
-      message: message,
+      errors: [
+        CheckError(
+          kind: 'parse_error',
+          line: line,
+          column: column,
+          message: message,
+        ),
+      ],
     );
   }
 
@@ -64,6 +68,10 @@ CheckOutput checkSourceOutput(
   final allSemInfos = <SemInfo>[];
   currentImportPath = filename;
   importedPaths.clear();
+
+  // Multi-error accumulator.
+  final errors = <Map<String, dynamic>>[];
+  final poisonedNames = <String>{};
 
   for (final decl in program.decls) {
     final String currentKind = switch (decl.kind) {
@@ -151,26 +159,49 @@ CheckOutput checkSourceOutput(
         ),
         _ => (null, null),
       };
-      return CheckFailure(
-        kind: _checkErrorKind(e),
-        line: pos.line,
-        column: pos.column,
-        expected: expected,
-        actual: actual,
-        message: message,
-        span: reportSpan.isSynthetic ? null : reportSpan,
-      );
+      errors.add({
+        'kind': _checkErrorKind(e),
+        'line': pos.line,
+        'column': pos.column,
+        'expected': expected,
+        'actual': actual,
+        'message': message,
+        'span': reportSpan.isSynthetic ? null : reportSpan,
+      });
+      for (final n in declNames(decl)) {
+        poisonedNames.add(n);
+      }
     } on ElabError catch (e) {
       final message = reportElabError(source, e);
       final pos = source.positionAt(e.span.start);
-      return CheckFailure(
-        kind: _elabErrorKind(e),
-        line: pos.line,
-        column: pos.column,
-        message: message,
-        span: e.span.isSynthetic ? null : e.span,
-      );
+      errors.add({
+        'kind': _elabErrorKind(e),
+        'line': pos.line,
+        'column': pos.column,
+        'message': message,
+        'span': e.span.isSynthetic ? null : e.span,
+      });
+      for (final n in declNames(decl)) {
+        poisonedNames.add(n);
+      }
     }
+  }
+
+  if (errors.isNotEmpty) {
+    return CheckFailure(
+      errors: [
+        for (final e in errors)
+          CheckError(
+            kind: e['kind'] as String,
+            line: e['line'] as int,
+            column: e['column'] as int,
+            expected: e['expected'] as String?,
+            actual: e['actual'] as String?,
+            message: e['message'] as String,
+            span: e['span'] as DoxaSpan?,
+          ),
+      ],
+    );
   }
 
   // Compute normal forms for val/fun declarations in the full environment

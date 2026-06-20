@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main, doxa-extended]
+  pull_request:
+    branches: [main, doxa-extended]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install dependencies (workspace root)
+        run: dart pub get
+
+      - name: Analyze (doxa core)
+        working-directory: ./doxa
+        run: dart analyze
+
+      - name: Analyze (doxa_tooling)
+        working-directory: ./doxa_tooling
+        run: dart analyze
+
+      - name: Test (doxa core)
+        working-directory: ./doxa
+        run: dart test
+
+      - name: Test (doxa_tooling)
+        working-directory: ./doxa_tooling
+        run: dart test
+
+      - name: Format check
+        run: dart format --set-exit-if-changed doxa/ doxa_tooling/
+
+      - name: Build doxa CLI
+        working-directory: ./doxa_tooling
+        run: dart compile exe bin/doxa.dart -o /tmp/doxa
+
+      - name: Check all .doxa files are formatted
+        run: |
+          for f in lib/stdlib/*.doxa example/*.doxa doxa_tooling/test/programs/positive/*.doxa; do
+            /tmp/doxa fmt --check "$f"
+          done
+
+      - name: Type-check all .doxa files
+        run: |
+          for f in lib/stdlib/*.doxa; do
+            if [ "$(basename "$f")" != "prelude.doxa" ]; then
+              /tmp/doxa check "$f"
+            fi
+          done
+          for f in example/*.doxa; do
+            /tmp/doxa check "$f"
+          done

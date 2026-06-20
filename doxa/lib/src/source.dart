@@ -107,11 +107,15 @@ final class SourceFile {
     final gutter = '  | ';
     final col = pos.column - 1; // 0-based column for caret positioning
     final spanLen =
-        span.start == span.end ? 1 : (span.end - span.start).clamp(1, line.length - col);
+        span.start == span.end
+            ? 1
+            : (span.end - span.start).clamp(1, line.length - col);
 
     final buf = StringBuffer();
     // Location header
-    buf.writeln('${c.bold}--> ${c.cyan}$filename:${pos.line}:${pos.column}${c.reset}');
+    buf.writeln(
+      '${c.bold}--> ${c.cyan}$filename:${pos.line}:${pos.column}${c.reset}',
+    );
     buf.writeln(' $gutter');
     // Source line
     buf.write('${c.bold}$prefix${c.reset}');

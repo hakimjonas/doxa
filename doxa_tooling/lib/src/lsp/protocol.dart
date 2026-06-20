@@ -170,6 +170,130 @@ final class LspCompletionItem {
   };
 }
 
+/// A text edit that replaces a range of text.
+final class LspTextEdit {
+  /// The range to replace.
+  final LspRange range;
+
+  /// The new text.
+  final String newText;
+
+  /// Creates a text edit.
+  const LspTextEdit({required this.range, required this.newText});
+
+  /// Serialise to a JSON-compatible map.
+  Map<String, dynamic> toJson() => {
+    'range': range.toJson(),
+    'newText': newText,
+  };
+}
+
+/// A workspace edit containing changes to documents.
+final class LspWorkspaceEdit {
+  /// Changes keyed by document URI.
+  final Map<String, List<LspTextEdit>> changes;
+
+  /// Creates a workspace edit.
+  const LspWorkspaceEdit({required this.changes});
+
+  /// Serialise to a JSON-compatible map.
+  Map<String, dynamic> toJson() => {
+    'changes': {
+      for (final entry in changes.entries)
+        entry.key: [for (final edit in entry.value) edit.toJson()],
+    },
+  };
+}
+
+/// Semantic tokens returned by `textDocument/semanticTokens/full`.
+final class LspSemanticTokens {
+  /// The flat token data array (delta-encoded).
+  final List<int> data;
+
+  /// Creates semantic tokens.
+  const LspSemanticTokens({required this.data});
+
+  /// Serialise to a JSON-compatible map.
+  Map<String, dynamic> toJson() => {'data': data};
+}
+
+/// Semantic token types registered by the server.
+///
+/// Each index corresponds to an entry in the token types legend.
+enum LspSemanticTokenType {
+  /// `type` (1)
+  type_,
+
+  /// `class` (2)
+  class_,
+
+  /// `enumMember` (10)
+  enumMember,
+
+  /// `variable` (8)
+  variable,
+
+  /// `function` (12)
+  function,
+
+  /// `method` (13)
+  method,
+
+  /// `parameter` (7)
+  parameter,
+
+  /// `property` (9)
+  property,
+
+  /// `keyword` (15)
+  keyword,
+
+  /// `modifier` (16)
+  modifier,
+
+  /// `namespace` (0)
+  namespace;
+
+  /// The string representation for the legend.
+  String get label => switch (this) {
+    LspSemanticTokenType.type_ => 'type',
+    LspSemanticTokenType.class_ => 'class',
+    LspSemanticTokenType.enumMember => 'enumMember',
+    LspSemanticTokenType.variable => 'variable',
+    LspSemanticTokenType.function => 'function',
+    LspSemanticTokenType.method => 'method',
+    LspSemanticTokenType.parameter => 'parameter',
+    LspSemanticTokenType.property => 'property',
+    LspSemanticTokenType.keyword => 'keyword',
+    LspSemanticTokenType.modifier => 'modifier',
+    LspSemanticTokenType.namespace => 'namespace',
+  };
+
+  /// The index in the legend array.
+  int get legendIndex {
+    var i = 0;
+    for (final t in LspSemanticTokenType.values) {
+      if (t == this) return i;
+      i++;
+    }
+    return 0;
+  }
+}
+
+/// Semantic token modifiers.
+enum LspSemanticTokenModifier {
+  /// `readonly`
+  readonly;
+
+  /// The string representation for the legend.
+  String get label => switch (this) {
+    LspSemanticTokenModifier.readonly => 'readonly',
+  };
+
+  /// The bitmask for encoding (1 << index).
+  int get bit => 1 << index;
+}
+
 /// A completion list returned by `textDocument/completion`.
 final class LspCompletionList {
   /// True if the list is not complete (e.g. the user should continue

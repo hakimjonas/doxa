@@ -1,0 +1,54 @@
+{
+  "name": "doxa",
+  "displayName": "Doxa",
+  "description": "Doxa language support — syntax highlighting, bracket matching, and LSP-powered diagnostics, hover, go-to-definition, and completion",
+  "version": "0.1.0",
+  "publisher": "doxa-lang",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "activationEvents": [
+    "onLanguage:doxa"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "doxa",
+        "aliases": [
+          "Doxa",
+          "doxa"
+        ],
+        "extensions": [
+          ".doxa"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "doxa",
+        "scopeName": "source.doxa",
+        "path": "./syntaxes/doxa.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run esbuild",
+    "esbuild": "node esbuild.js",
+    "package": "vsce package",
+    "lint": "echo 'no linter configured'"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^2.22.0",
+    "esbuild": "^0.19.0"
+  }
+}

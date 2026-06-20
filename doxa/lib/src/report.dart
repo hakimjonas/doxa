@@ -23,8 +23,11 @@ import 'surface.dart';
 import 'value.dart';
 
 /// Format a Rumil [ParseError] against [source].
-String reportParseError(SourceFile source, ParseError error,
-    {AnsiColor? color}) {
+String reportParseError(
+  SourceFile source,
+  ParseError error, {
+  AnsiColor? color,
+}) {
   final c = color ?? const AnsiColor(false);
   final sb = StringBuffer();
   sb.writeln("${c.error('error')}: parse error");
@@ -103,9 +106,7 @@ String reportCheckError(
     case NotAFunction(:final actualType):
       sb.writeln("${c.error('error')}: not a function");
       sb.write(source.formatContext(span, color: c));
-      sb.writeln(
-        '  applied value has type: ${_prettyValueAt(actualType, 0)}',
-      );
+      sb.writeln('  applied value has type: ${_prettyValueAt(actualType, 0)}');
     case NotAType(:final actualType):
       sb.writeln("${c.error('error')}: not a type");
       sb.write(source.formatContext(span, color: c));
@@ -141,14 +142,14 @@ String reportCheckError(
         '${expectedArity == 1 ? '' : 's'}, got $gotArity',
       );
     case MatchMotiveRequired():
-      sb.writeln("${c.error('error')}: match expression needs a motive in this position");
+      sb.writeln(
+        "${c.error('error')}: match expression needs a motive in this position",
+      );
       sb.write(source.formatContext(span, color: c));
       sb.writeln(
         '  A match used in a position where its type cannot be inferred',
       );
-      sb.writeln(
-        '  from context must carry an explicit `returning <type>`',
-      );
+      sb.writeln('  from context must carry an explicit `returning <type>`');
       sb.writeln(
         '  clause. Alternatively, annotate the enclosing `val` or `fun` '
         'return type.',
@@ -158,7 +159,9 @@ String reportCheckError(
       :final armCtorDataName,
       :final scrutineeDataName,
     ):
-      sb.writeln("${c.error('error')}: match arm does not fit the scrutinee type");
+      sb.writeln(
+        "${c.error('error')}: match arm does not fit the scrutinee type",
+      );
       sb.write(source.formatContext(span, color: c));
       if (armCtorDataName.isEmpty) {
         sb.writeln(
@@ -172,7 +175,9 @@ String reportCheckError(
         sb.writeln('  the scrutinee has inductive type $scrutineeDataName.');
       }
     case MatchScrutineeNotInductive(:final actualType):
-      sb.writeln("${c.error('error')}: match scrutinee is not an inductive-type value");
+      sb.writeln(
+        "${c.error('error')}: match scrutinee is not an inductive-type value",
+      );
       sb.write(source.formatContext(span, color: c));
       sb.writeln('  scrutinee has type: ${_prettyValueAt(actualType, 0)}');
       sb.writeln('  `match` requires a scrutinee whose type is a registered');
@@ -218,7 +223,9 @@ String reportCheckError(
         'where its quotient type is known (e.g. as an argument).',
       );
     case QuotFnNotRespectingRelation(:final got, :final expected):
-      sb.writeln("${c.error('error')}: quotient lift function does not respect the relation");
+      sb.writeln(
+        "${c.error('error')}: quotient lift function does not respect the relation",
+      );
       sb.write(source.formatContext(span, color: c));
       sb.writeln(
         '  expected compatibility proof type: '
@@ -230,8 +237,7 @@ String reportCheckError(
 }
 
 /// Format an [ElabError] against [source].
-String reportElabError(SourceFile source, ElabError error,
-    {AnsiColor? color}) {
+String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
   final c = color ?? const AnsiColor(false);
   final sb = StringBuffer();
   switch (error) {
@@ -252,9 +258,7 @@ String reportElabError(SourceFile source, ElabError error,
     case NonStructuralRecursion(:final calleeName, :final span):
       sb.writeln("${c.error('error')}: non-structural recursion");
       sb.write(source.formatContext(span, color: c));
-      sb.writeln(
-        '  The call to "$calleeName" does not pass a strict sub-term',
-      );
+      sb.writeln('  The call to "$calleeName" does not pass a strict sub-term');
       sb.writeln(
         '  of the function\'s designated decreasing argument. Pattern binders',
       );
@@ -264,13 +268,17 @@ String reportElabError(SourceFile source, ElabError error,
       sb.writeln('  sub-terms. This is the SPEC §8.6 soundness rule');
       sb.writeln('  for CIC termination.');
     case DataSortNotASort(:final dataName, :final span):
-      sb.writeln("${c.error('error')}: data declaration signature must end in a sort");
+      sb.writeln(
+        "${c.error('error')}: data declaration signature must end in a sort",
+      );
       sb.write(source.formatContext(span, color: c));
       sb.writeln(
         '  "$dataName"\'s signature must end in `Type n`, `Prop`, or `SProp`.',
       );
     case SPropFieldNotProofIrrelevant(:final fieldName, :final span):
-      sb.writeln("${c.error('error')}: SProp-inductive field is not SProp-sorted");
+      sb.writeln(
+        "${c.error('error')}: SProp-inductive field is not SProp-sorted",
+      );
       sb.write(source.formatContext(span, color: c));
       sb.writeln(
         '  "$fieldName" has a non-SProp type. All fields of an SProp-sorted',
@@ -289,7 +297,9 @@ String reportElabError(SourceFile source, ElabError error,
       :final span,
       :final reason,
     ):
-      sb.writeln("${c.error('error')}: constructor result type does not match its data declaration");
+      sb.writeln(
+        "${c.error('error')}: constructor result type does not match its data declaration",
+      );
       sb.write(source.formatContext(span, color: c));
       sb.writeln('  $dataName.$ctorName: $reason');
     case PositivityViolation(
@@ -304,15 +314,15 @@ String reportElabError(SourceFile source, ElabError error,
         '  $dataName.$ctorName\'s argument ${argIndex + 1} mentions '
         "'$dataName' in a strictly-negative position.",
       );
-      sb.writeln(
-        '  An inductive type may appear on the RIGHT of arrows in a',
-      );
+      sb.writeln('  An inductive type may appear on the RIGHT of arrows in a');
       sb.writeln(
         '  constructor\'s argument types (subterm recursion), but not',
       );
       sb.writeln('  on the LEFT (negative position).');
     case MatchIndeterminateType(:final span):
-      sb.writeln("${c.error('error')}: match scrutinee type cannot be determined");
+      sb.writeln(
+        "${c.error('error')}: match scrutinee type cannot be determined",
+      );
       sb.write(source.formatContext(span, color: c));
       sb.writeln('  Add at least one `case <ctor>` arm or an explicit');
       sb.writeln('  `returning <type>` clause.');
@@ -328,7 +338,9 @@ String reportElabError(SourceFile source, ElabError error,
       :final scrutineeDataName,
       :final span,
     ):
-      sb.writeln("${c.error('error')}: constructor does not match scrutinee type");
+      sb.writeln(
+        "${c.error('error')}: constructor does not match scrutinee type",
+      );
       sb.write(source.formatContext(span, color: c));
       sb.writeln('  "$ctorName" is a constructor of $ctorDataName, but the');
       sb.writeln('  scrutinee has inductive type $scrutineeDataName.');
@@ -338,7 +350,9 @@ String reportElabError(SourceFile source, ElabError error,
       :final expectedBinders,
       :final span,
     ):
-      sb.writeln("${c.error('error')}: match arm pattern has the wrong number of binders");
+      sb.writeln(
+        "${c.error('error')}: match arm pattern has the wrong number of binders",
+      );
       sb.write(source.formatContext(span, color: c));
       sb.writeln(
         '  "$ctorName" takes $expectedBinders argument'
@@ -375,7 +389,9 @@ String reportElabError(SourceFile source, ElabError error,
       :final paramName,
       :final span,
     ):
-      sb.writeln("${c.error('error')}: struct annotation references non-existent parameter");
+      sb.writeln(
+        "${c.error('error')}: struct annotation references non-existent parameter",
+      );
       sb.write(source.formatContext(span, color: c));
       sb.writeln('  "$funName" has no value parameter named "$paramName".');
       sb.writeln(
@@ -435,5 +451,4 @@ String _prettyValueAt(
   Value v,
   int level, [
   List<String?> outerNames = const <String?>[],
-]) =>
-    prettyTerm(quote(level, v), outerDepth: level, outerNames: outerNames);
+]) => prettyTerm(quote(level, v), outerDepth: level, outerNames: outerNames);

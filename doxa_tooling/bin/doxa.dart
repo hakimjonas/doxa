@@ -27,7 +27,9 @@ import 'package:doxa/src/elab.dart'
         importedPaths,
         elabDecl,
         checkDeclResult,
+        declNames,
         ElabError,
+        UnresolvedName,
         TopEnv,
         TopBinding,
         DataDecl,
@@ -35,7 +37,19 @@ import 'package:doxa/src/elab.dart'
 import 'package:doxa/src/parse.dart';
 import 'package:doxa/src/report.dart';
 import 'package:doxa/src/source.dart';
-import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
+import 'package:doxa/src/surface.dart'
+    show
+        SProgram,
+        SImportKind,
+        SDecl,
+        SValKind,
+        STypeAliasKind,
+        SFunKind,
+        SFunBlockKind,
+        SDataKind,
+        SDataBlockKind,
+        STypeclassKind,
+        SImplKind;
 import 'package:doxa_tooling/src/format.dart' show formatSource, isFormatted;
 import 'package:doxa_tooling/src/lsp/handler.dart';
 import 'package:doxa_tooling/src/lsp/transport.dart';
@@ -315,6 +329,11 @@ void _runRepl() {
 /// Returns the exit code: 0 on success, 1 on parse/elab/check errors.
 /// Exposed as a library function so tests can drive the whole pipeline
 /// without spawning a subprocess.
+///
+/// Collects ALL errors in a single pass and reports them together, each
+/// with its own source context snippet. Errors are separated by a blank
+/// line. Subsequent declarations that depend on a failed one are
+/// gracefully skipped.
 int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   final stdoutSink = out ?? stdout;
   final stderrSink = err ?? stderr;
@@ -350,6 +369,12 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   // Set the current file path so imports can resolve relative paths.
   currentImportPath = source.filename;
   importedPaths.clear();
+
+  // Multi-error accumulator.
+  final diagnostics = <String>[];
+  // Names of failed declarations; subsequent decls that reference
+  // them will also fail, and we can annotate those diagnostics.
+  final poisonedNames = <String>{};
 
   for (final decl in program.decls) {
     final env = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
@@ -391,12 +416,30 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
           armSpan,
         _ => decl.span,
       };
-      stderrSink.write(reportCheckError(source, e, reportSpan, color: color));
-      return 1;
+      diagnostics.add(reportCheckError(source, e, reportSpan, color: color));
+      for (final n in declNames(decl)) {
+        poisonedNames.add(n);
+      }
     } on ElabError catch (e) {
-      stderrSink.write(reportElabError(source, e, color: color));
-      return 1;
+      final msg = reportElabError(source, e, color: color);
+      // Annotate unresolved-name errors that reference a poisoned
+      // (previously failed) declaration.
+      if (e is UnresolvedName && poisonedNames.contains(e.name)) {
+        diagnostics.add(
+          '$msg  note: the declaration of "${e.name}" failed earlier\n',
+        );
+      } else {
+        diagnostics.add(msg);
+      }
+      for (final n in declNames(decl)) {
+        poisonedNames.add(n);
+      }
     }
+  }
+
+  if (diagnostics.isNotEmpty) {
+    stderrSink.write(diagnostics.join('\n'));
+    return 1;
   }
 
   // Report only the USER decl count (subtract the prelude). An empty

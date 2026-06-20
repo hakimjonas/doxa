@@ -5,6 +5,7 @@
 /// CLI, REPL, LSP, benchmark, profiler — use this module to avoid
 /// duplicating the prelude source and loading logic.
 library;
+
 import 'package:rumil/rumil.dart';
 
 import 'elab.dart'

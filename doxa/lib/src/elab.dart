@@ -1305,6 +1305,43 @@ typedef DeclResult =
 /// [CtorResultShapeMismatch] on the usual elaboration errors.
 DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
 
+/// Extract all names defined by a declaration, for poison tracking /
+/// diagnostic contexts.
+///
+/// When a declaration fails, all its names are marked as "poisoned" so
+/// subsequent declarations that reference them get a clear diagnostic
+/// rather than an opaque "unresolved name" error.
+Set<String> declNames(SDecl decl) {
+  switch (decl.kind) {
+    case SValKind(:final name):
+    case STypeAliasKind(:final name):
+    case SFunKind(:final name):
+      return {name};
+    case SFunBlockKind(:final members):
+      return {for (final m in members) m.fun.name};
+    case SDataKind(:final name, :final ctors):
+      return {
+        name,
+        ...{for (final c in ctors) c.name},
+      };
+    case SDataBlockKind(:final members):
+      final names = <String>{};
+      for (final m in members) {
+        names.add(m.data.name);
+        for (final c in m.data.ctors) {
+          names.add(c.name);
+        }
+      }
+      return names;
+    case SImportKind(:final path):
+      return {path};
+    case STypeclassKind(:final name):
+      return {name};
+    case SImplKind():
+      return {};
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Tactic elaboration
 // ---------------------------------------------------------------------------
