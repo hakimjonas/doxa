@@ -13,7 +13,6 @@ import 'elab.dart'
         TopEnv,
         TopBinding,
         DataDecl,
-        DeclResult,
         checkDeclResult,
         elabDecl,
         mergeNamespace;

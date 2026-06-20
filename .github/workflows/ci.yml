@@ -19,7 +19,15 @@ jobs:
         with:
           sdk: stable
 
-      - name: Install dependencies (workspace root)
+      - name: Install dependencies (workspace)
+        run: dart pub get
+
+      - name: Install dependencies (doxa core)
+        working-directory: ./doxa
+        run: dart pub get
+
+      - name: Install dependencies (doxa_tooling)
+        working-directory: ./doxa_tooling
         run: dart pub get
 
       - name: Analyze (doxa core)
