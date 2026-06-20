@@ -19,93 +19,15 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:doxa/src/ctx.dart';
-import 'package:doxa/src/elab.dart'
-    show checkDeclResult, currentImportPath, elabDecl, importedPaths, DeclResult, TopEnv, TopBinding, DataDecl;
+import 'package:doxa/src/elab.dart';
 import 'package:doxa/src/env.dart';
 import 'package:doxa/src/eval.dart';
 import 'package:doxa/src/parse.dart';
+import 'package:doxa/src/prelude.dart' show loadPrelude, mergeNamespace;
 import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
 import 'package:doxa/src/term.dart';
 import 'package:doxa/src/value.dart';
 import 'package:rumil/rumil.dart';
-
-// ---------------------------------------------------------------------------
-// Prelude
-// ---------------------------------------------------------------------------
-
-const String _preludeSource = '''
-data Eq[A: Type] : A -> A -> Prop {
-  refl : (x: A) -> Eq[A] x x;
-}
-
-data Acc[A: Type] : (A -> A -> Prop) -> A -> Prop {
-  acc_intro : (R: A -> A -> Prop) -> (x: A) -> ((y: A) -> R y x -> Acc A R y) -> Acc A R x;
-}
-''';
-
-// We can't import the cached prelude from web_check.dart (it's in
-// doxa_tooling, not doxa), so we inline a local prelude load.
-({
-  List<TopBinding> bindings,
-  List<DataDecl> dataDecls,
-  Map<String, Set<String>> namespaceBindings,
-})?
-_preludeCache;
-
-({
-  List<TopBinding> bindings,
-  List<DataDecl> dataDecls,
-  Map<String, Set<String>> namespaceBindings,
-}) _loadPrelude() {
-  final cached = _preludeCache;
-  if (cached != null) return cached;
-  final r = parseProgram(_preludeSource);
-  final prog = switch (r) {
-    Success<ParseError, SProgram>(:final value) => value,
-    Partial<ParseError, SProgram>(:final value) => value,
-    Failure<ParseError, SProgram>() =>
-      throw StateError('prelude parse failed'),
-  };
-  var bindings = const <TopBinding>[];
-  var dataDecls = const <DataDecl>[];
-  var namespaceBindings = <String, Set<String>>{};
-  for (final decl in prog.decls) {
-    final produced = elabDecl(
-      TopEnv(bindings, dataDecls, const {}, namespaceBindings),
-      decl,
-    );
-    final runningData = [...dataDecls, ...produced.dataDecls];
-    final finalized = checkDeclResult(
-      TopEnv(bindings, runningData, const {}, namespaceBindings),
-      produced,
-    );
-    bindings = [...bindings, ...finalized];
-    dataDecls = runningData;
-    namespaceBindings = _mergeNamespace(
-      namespaceBindings,
-      produced.namespaceBindings,
-    );
-  }
-  final result = (
-    bindings: bindings,
-    dataDecls: dataDecls,
-    namespaceBindings: namespaceBindings,
-  );
-  _preludeCache = result;
-  return result;
-}
-
-Map<String, Set<String>> _mergeNamespace(
-  Map<String, Set<String>> a,
-  Map<String, Set<String>> b,
-) {
-  if (b.isEmpty) return a;
-  final result = Map<String, Set<String>>.from(a);
-  for (final entry in b.entries) {
-    result[entry.key] = {...?result[entry.key], ...entry.value};
-  }
-  return result;
-}
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -311,7 +233,7 @@ final class BenchResult {
   sw.start();
 
   // Seed the prelude so user declarations can reference Eq/refl/Acc.
-  final prelude = _loadPrelude();
+  final prelude = loadPrelude();
   var bindings = prelude.bindings;
   var dataDecls = prelude.dataDecls;
   var namespaceBindings = prelude.namespaceBindings;
@@ -334,7 +256,7 @@ final class BenchResult {
       );
       bindings = [...bindings, ...finalized];
       dataDecls = runningData;
-      namespaceBindings = _mergeNamespace(
+      namespaceBindings = mergeNamespace(
         namespaceBindings,
         produced.namespaceBindings,
       );

@@ -1242,14 +1242,15 @@ TopEnv elabProgram(SProgram program) =>
         [...env.bindings, ...produced.bindings],
         [...env.dataDecls, ...produced.dataDecls],
         {...env.classRegistry, ...produced.classRegistry},
-        _mergeNamespace(env.namespaceBindings, produced.namespaceBindings),
+        mergeNamespace(env.namespaceBindings, produced.namespaceBindings),
       );
     });
 
-Map<String, Set<String>> _mergeNamespace(
+Map<String, Set<String>> mergeNamespace(
   Map<String, Set<String>> a,
   Map<String, Set<String>> b,
 ) {
+  if (b.isEmpty) return a;
   final result = Map<String, Set<String>>.from(a);
   for (final entry in b.entries) {
     result[entry.key] = {...?result[entry.key], ...entry.value};
@@ -3450,7 +3451,7 @@ DeclResult _processImport(
         [...topEnv.bindings, ...localBindings],
         [...topEnv.dataDecls, ...localDataDecls],
         const {},
-        _mergeNamespace(topEnv.namespaceBindings, localNamespace),
+        mergeNamespace(topEnv.namespaceBindings, localNamespace),
       );
       final produced = _elabDecl(runningEnv, decl);
       final runningData = [...localDataDecls, ...produced.dataDecls];
@@ -3464,12 +3465,12 @@ DeclResult _processImport(
         checkBindings,
         [...topEnv.dataDecls, ...runningData],
         const {},
-        _mergeNamespace(topEnv.namespaceBindings, localNamespace),
+        mergeNamespace(topEnv.namespaceBindings, localNamespace),
       );
       final finalized = checkDeclResult(checkEnv, produced);
       localBindings = [...localBindings, ...finalized];
       localDataDecls = runningData;
-      localNamespace = _mergeNamespace(
+      localNamespace = mergeNamespace(
         localNamespace,
         produced.namespaceBindings,
       );

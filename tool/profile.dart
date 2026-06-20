@@ -4,10 +4,18 @@ import 'dart:developer';
 import 'dart:io';
 import 'package:doxa/src/ctx.dart';
 import 'package:doxa/src/elab.dart'
-    show checkDeclResult, currentImportPath, elabDecl, importedPaths, DeclResult, TopEnv, TopBinding, DataDecl;
+    show
+        checkDeclResult,
+        currentImportPath,
+        elabDecl,
+        importedPaths,
+        TopEnv,
+        TopBinding,
+        DataDecl;
 import 'package:doxa/src/env.dart';
 import 'package:doxa/src/eval.dart';
 import 'package:doxa/src/parse.dart';
+import 'package:doxa/src/prelude.dart' show mergeNamespace;
 import 'package:doxa/src/pretty.dart';
 import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
 import 'package:rumil/rumil.dart';
@@ -21,18 +29,6 @@ data Acc[A: Type] : (A -> A -> Prop) -> A -> Prop {
   acc_intro : (R: A -> A -> Prop) -> (x: A) -> ((y: A) -> R y x -> Acc A R y) -> Acc A R x;
 }
 ''';
-
-Map<String, Set<String>> _mergeNamespace(
-  Map<String, Set<String>> a,
-  Map<String, Set<String>> b,
-) {
-  if (b.isEmpty) return a;
-  final result = Map<String, Set<String>>.from(a);
-  for (final entry in b.entries) {
-    result[entry.key] = {...?result[entry.key], ...entry.value};
-  }
-  return result;
-}
 
 void main() {
   // Load prelude
@@ -53,7 +49,7 @@ void main() {
       ),
     ];
     dataDecls = rd;
-    namespaceBindings = _mergeNamespace(namespaceBindings, p.namespaceBindings);
+    namespaceBindings = mergeNamespace(namespaceBindings, p.namespaceBindings);
   }
 
   // stdlib proofs
@@ -93,7 +89,7 @@ void main() {
       sw.stop(); checkUs += sw.elapsedMicroseconds;
       b = [...b, ...finalized];
       d = rd;
-      ns = _mergeNamespace(ns, produced.namespaceBindings);
+      ns = mergeNamespace(ns, produced.namespaceBindings);
     }
     totalElab += elabUs;
     totalCheck += checkUs;
@@ -132,7 +128,7 @@ void main() {
       sw.stop(); checkUs += sw.elapsedMicroseconds;
       b = [...b, ...finalized];
       d = rd;
-      ns = _mergeNamespace(ns, produced.namespaceBindings);
+      ns = mergeNamespace(ns, produced.namespaceBindings);
     }
     totalElab += elabUs;
     totalCheck += checkUs;
@@ -168,7 +164,7 @@ void _check(String src, List<TopBinding> bindings, List<DataDecl> dataDecls,
       ...checkDeclResult(TopEnv(checkBindings, rd, const {}, ns), produced),
     ];
     d = rd;
-    ns = _mergeNamespace(ns, produced.namespaceBindings);
+    ns = mergeNamespace(ns, produced.namespaceBindings);
   }
 }
 

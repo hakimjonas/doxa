@@ -10,6 +10,7 @@ import 'package:doxa/src/parse.dart';
 import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
 import 'package:doxa/src/term.dart';
 import 'package:doxa/src/value.dart';
+import 'package:doxa/src/prelude.dart' show mergeNamespace;
 import 'package:rumil/rumil.dart';
 import 'dart:io';
 import 'dart:math';
@@ -24,18 +25,6 @@ data Acc[A: Type] : (A -> A -> Prop) -> A -> Prop {
 }
 ''';
 
-Map<String, Set<String>> _mergeNamespace(
-  Map<String, Set<String>> a,
-  Map<String, Set<String>> b,
-) {
-  if (b.isEmpty) return a;
-  final result = Map<String, Set<String>>.from(a);
-  for (final entry in b.entries) {
-    result[entry.key] = {...?result[entry.key], ...entry.value};
-  }
-  return result;
-}
-
 void main() {
   // Seed prelude
   var b = <TopBinding>[], d = <DataDecl>[], ns = <String, Set<String>>{};
@@ -44,7 +33,7 @@ void main() {
     final rd = [...d, ...prod.dataDecls];
     b = [...b, ...checkDeclResult(TopEnv(b, rd, const {}, ns), prod)];
     d = rd;
-    ns = _mergeNamespace(ns, prod.namespaceBindings);
+    ns = mergeNamespace(ns, prod.namespaceBindings);
   }
 
   profileStdlib(b, d, ns);
@@ -91,7 +80,7 @@ void profileStdlib(List<TopBinding> bindings, List<DataDecl> dataDecls,
       );
       sw.stop(); checkAcc += sw.elapsedMicroseconds;
       b = [...b, ...fin]; d = rd;
-      ns = _mergeNamespace(ns, prod.namespaceBindings);
+      ns = mergeNamespace(ns, prod.namespaceBindings);
     }
     elabUs += elabAcc; checkUs += checkAcc;
   }
@@ -134,7 +123,7 @@ val chain : Nat = ${List.filled(depth, 'id(').join() + 'zero' + List.filled(dept
       final fin = checkDeclResult(TopEnv(b, rd, const {}, ns), prod);
       sw.stop(); checkAcc += sw.elapsedMicroseconds;
       b = [...b, ...fin]; d = rd;
-      ns = _mergeNamespace(ns, prod.namespaceBindings);
+      ns = mergeNamespace(ns, prod.namespaceBindings);
     }
     elabUs += elabAcc; checkUs += checkAcc;
   }
@@ -224,6 +213,6 @@ void _check(SProgram prog, List<TopBinding> bindings, List<DataDecl> dataDecls,
       ),
     ];
     d = rd;
-    ns = _mergeNamespace(ns, prod.namespaceBindings);
+    ns = mergeNamespace(ns, prod.namespaceBindings);
   }
 }

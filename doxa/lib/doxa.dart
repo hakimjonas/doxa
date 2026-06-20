@@ -31,6 +31,7 @@ export 'src/elab.dart'
         TopBinding,
         TopEnv,
         CorecursiveGroup,
+        mergeNamespace,
         ElabError,
         UnresolvedName,
         DuplicateDeclaration,
@@ -52,3 +53,4 @@ export 'src/pretty.dart';
 export 'src/report.dart';
 export 'src/source.dart';
 export 'src/sem_info.dart';
+export 'src/prelude.dart';

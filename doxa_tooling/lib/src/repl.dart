@@ -16,6 +16,7 @@ import 'package:doxa/src/elab.dart';
 import 'package:doxa/src/env.dart';
 import 'package:doxa/src/eval.dart';
 import 'package:doxa/src/parse.dart';
+import 'package:doxa/src/prelude.dart' show mergeNamespace;
 import 'package:doxa/src/pretty.dart';
 import 'package:doxa/src/report.dart';
 import 'package:doxa/src/source.dart';
@@ -30,18 +31,6 @@ sealed class ReplResult {
   /// Base constructor.
   const ReplResult();
 }
-
-Map<String, Set<String>> _mergeNamespace(
-  Map<String, Set<String>> a,
-  Map<String, Set<String>> b,
-) {
-  final result = Map<String, Set<String>>.from(a);
-  for (final entry in b.entries) {
-    result[entry.key] = {...?result[entry.key], ...entry.value};
-  }
-  return result;
-}
-
 /// An expression was successfully elaborated and its type inferred.
 final class ReplExprResult extends ReplResult {
   /// Pretty-printed inferred type.
@@ -199,7 +188,7 @@ final class ReplSession {
 
       final newBindings = [...bindings, ...finalized];
       final newDataDecls = runningData;
-      final newNs = _mergeNamespace(
+      final newNs = mergeNamespace(
         namespaceBindings,
         produced.namespaceBindings,
       );

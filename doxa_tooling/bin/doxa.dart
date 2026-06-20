@@ -16,6 +16,7 @@ library;
 import 'dart:io';
 
 import 'package:doxa/src/check.dart';
+import 'package:doxa/src/prelude.dart' show loadPrelude, PreludeData;
 import 'package:doxa/src/elab.dart'
     show
         currentImportPath,
@@ -25,7 +26,8 @@ import 'package:doxa/src/elab.dart'
         ElabError,
         TopEnv,
         TopBinding,
-        DataDecl;
+        DataDecl,
+        mergeNamespace;
 import 'package:doxa/src/parse.dart';
 import 'package:doxa/src/report.dart';
 import 'package:doxa/src/source.dart';
@@ -121,7 +123,7 @@ void _runLsp() {
 /// each one, printing only results. In interactive mode, shows a prompt
 /// and banner.
 void _runRepl() {
-  final prelude = _loadPrelude();
+  final prelude = loadPrelude();
   var session = ReplSession(
     bindings: prelude.bindings,
     dataDecls: prelude.dataDecls,
@@ -162,97 +164,6 @@ void _runRepl() {
   }
 }
 
-/// The Doxa prelude, ambient declarations loaded before user code.
-///
-/// Holds `Eq` (SPEC §8.9). Users never import the prelude; its names
-/// are in scope ambiently, matching Lean 4's prelude discipline.
-///
-/// The prelude source text is embedded as a const string so the
-/// CLI binary is self-contained (no runtime file resolution for
-/// the bootstrap). The canonical source lives at
-/// `lib/stdlib/prelude.doxa`; keep the two in sync.
-const String _preludeSource = '''
-data Eq[A: Type] : A -> A -> Prop {
-  refl : (x: A) -> Eq[A] x x;
-}
-
-data Acc[A: Type] : (A -> A -> Prop) -> A -> Prop {
-  acc_intro : (R: A -> A -> Prop) -> (x: A) -> ((y: A) -> R y x -> Acc A R y) -> Acc A R x;
-}
-''';
-
-/// Elaborated prelude, cached after the first call. The prelude is a
-/// fixed program; there's no reason to re-elaborate it per user file.
-({
-  List<TopBinding> bindings,
-  List<DataDecl> dataDecls,
-  Map<String, Set<String>> namespaceBindings,
-})?
-_preludeCache;
-
-({
-  List<TopBinding> bindings,
-  List<DataDecl> dataDecls,
-  Map<String, Set<String>> namespaceBindings,
-})
-_loadPrelude() {
-  final cached = _preludeCache;
-  if (cached != null) return cached;
-  final r = parseProgram(_preludeSource);
-  final prog = switch (r) {
-    Success<ParseError, SProgram>(:final value) => value,
-    Partial<ParseError, SProgram>(:final value) => value,
-    _ =>
-      throw StateError(
-        'prelude failed to parse; this is a kernel bug, '
-        'lib/stdlib/prelude.doxa must stay in sync',
-      ),
-  };
-  // Elaborate + check decl-by-decl with the same discipline as
-  // checkSource. A broken prelude throws here and fails fast with
-  // a kernel-invariant violation, the prelude is a fixed trusted
-  // source, so any failure is our bug, not the user's.
-  var bindings = const <TopBinding>[];
-  var dataDecls = const <DataDecl>[];
-  var namespaceBindings = <String, Set<String>>{};
-  for (final decl in prog.decls) {
-    final env = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
-    final produced = elabDecl(env, decl);
-    final runningData = [...dataDecls, ...produced.dataDecls];
-    final runningEnv = TopEnv(
-      bindings,
-      runningData,
-      const {},
-      namespaceBindings,
-    );
-    final finalized = checkDeclResult(runningEnv, produced);
-    bindings = [...bindings, ...finalized];
-    dataDecls = runningData;
-    namespaceBindings = _mergeNamespace(
-      namespaceBindings,
-      produced.namespaceBindings,
-    );
-  }
-  final result = (
-    bindings: bindings,
-    dataDecls: dataDecls,
-    namespaceBindings: namespaceBindings,
-  );
-  _preludeCache = result;
-  return result;
-}
-
-Map<String, Set<String>> _mergeNamespace(
-  Map<String, Set<String>> a,
-  Map<String, Set<String>> b,
-) {
-  final result = Map<String, Set<String>>.from(a);
-  for (final entry in b.entries) {
-    result[entry.key] = {...?result[entry.key], ...entry.value};
-  }
-  return result;
-}
-
 /// Type-check [source] and print diagnostics.
 ///
 /// Returns the exit code: 0 on success, 1 on parse/elab/check errors.
@@ -277,10 +188,9 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   }
 
   // Seed bindings + dataDecls from the prelude so user code can
-  // reference `Eq` and any other ambient names without redeclaring
-  // them. The prelude has already been type-checked in _loadPrelude;
-  // we trust its contents at this point.
-  final prelude = _loadPrelude();
+  // reference `Eq`, `Acc`, and any other ambient names without
+  // redeclaring them.
+  final prelude = loadPrelude();
   final preludeDeclCount = prelude.bindings.length + prelude.dataDecls.length;
   var bindings = prelude.bindings;
   var dataDecls = prelude.dataDecls;
@@ -315,7 +225,7 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
       final finalized = checkDeclResult(runningEnv, produced);
       bindings = [...bindings, ...finalized];
       dataDecls = runningData;
-      namespaceBindings = _mergeNamespace(
+      namespaceBindings = mergeNamespace(
         namespaceBindings,
         produced.namespaceBindings,
       );
