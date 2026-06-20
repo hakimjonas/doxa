@@ -40,12 +40,7 @@ import 'package:doxa_tooling/src/format.dart' show formatSource, isFormatted;
 import 'package:doxa_tooling/src/lsp/handler.dart';
 import 'package:doxa_tooling/src/lsp/transport.dart';
 import 'package:doxa_tooling/src/repl.dart'
-    show
-        ReplSession,
-        ReplDeclResult,
-        ReplExprResult,
-        ReplError,
-        ReplMeta;
+    show ReplSession, ReplDeclResult, ReplExprResult, ReplError, ReplMeta;
 import 'package:doxa_tooling/src/web_check.dart';
 import 'package:rumil/rumil.dart';
 
