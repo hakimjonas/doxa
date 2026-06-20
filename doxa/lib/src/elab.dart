@@ -154,7 +154,7 @@ final class TerminationByParamNotFound extends ElabError {
   /// Creates a termination-by-param-not-found error.
   const TerminationByParamNotFound(this.funName, this.paramName, this.span);
 
-  @override
+  /// Human-readable error message.
   String get message =>
       'termination_by parameter "$paramName" not found '
       'in value parameters of fun "$funName"';
@@ -3188,6 +3188,7 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
 }
 
 /// Build a synthetic lambda body from a method's body and param names.
+// ignore: unused_element
 Term _buildMethodLambda(
   List<(String, SExpr)> params,
   Term body,
@@ -3201,6 +3202,7 @@ Term _buildMethodLambda(
 }
 
 /// Build a surface Pi type for a method: `(x1: T1) -> ... -> (xn: Tn) -> R`.
+// ignore: unused_element
 SExpr _buildMethodPiType(
   String name,
   List<(String, SExpr)> params,
@@ -3365,6 +3367,7 @@ DeclResult _elabImpl(
       member.body,
       metas: metas,
     );
+    // ignore: unused_local_variable
     final typeTerm = _buildFunType(
       topEnv,
       [
@@ -5193,7 +5196,7 @@ bool _occursInAny(Set<String> dataNames, Term term) => switch (term) {
     _occursInAny(dataNames, quot) ||
         _occursInAny(dataNames, fn) ||
         _occursInAny(dataNames, proof),
-  TProj(:final expr, :final fieldName) => _occursInAny(dataNames, expr),
+  TProj(:final expr, fieldName: final _) => _occursInAny(dataNames, expr),
 };
 
 /// True if any name in [dataNames] appears only in strictly-positive
@@ -5340,7 +5343,7 @@ switch (term) {
     _isParamStrictlyPositive(quot, boundVar) &&
         _isParamStrictlyPositive(fn, boundVar) &&
         _isParamStrictlyPositive(proof, boundVar),
-  TProj(:final expr, :final fieldName) => _isParamStrictlyPositive(
+  TProj(:final expr, fieldName: final _) => _isParamStrictlyPositive(
     expr,
     boundVar,
   ),
@@ -5373,7 +5376,7 @@ bool _boundOccursIn(Term term, int target) => switch (term) {
     _boundOccursIn(quot, target) ||
         _boundOccursIn(fn, target) ||
         _boundOccursIn(proof, target),
-  TProj(:final expr, :final fieldName) => _boundOccursIn(expr, target),
+  TProj(:final expr, fieldName: final _) => _boundOccursIn(expr, target),
 };
 
 /// Compute the per-parameter covariance list for an elaborated data

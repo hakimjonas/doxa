@@ -316,5 +316,5 @@ bool _refBound(Term t, int depth) => switch (t) {
   TQuotMk(:final arg) => _refBound(arg, depth),
   TQuotLift(:final quot, :final fn, :final proof) =>
     _refBound(quot, depth) || _refBound(fn, depth) || _refBound(proof, depth),
-  TProj(:final expr, :final fieldName) => _refBound(expr, depth),
+  TProj(:final expr, fieldName: final _) => _refBound(expr, depth),
 };

@@ -19,8 +19,8 @@ library;
 import 'dart:io';
 
 import 'package:doxa/src/check.dart';
-import 'package:doxa/src/prelude.dart' show loadPrelude, PreludeData;
-import 'package:doxa/src/source.dart' show SourceFile, AnsiColor;
+import 'package:doxa/src/prelude.dart' show loadPrelude;
+import 'package:doxa/src/source.dart' show AnsiColor;
 import 'package:doxa/src/elab.dart'
     show
         currentImportPath,
@@ -31,32 +31,17 @@ import 'package:doxa/src/elab.dart'
         ElabError,
         UnresolvedName,
         TopEnv,
-        TopBinding,
-        DataDecl,
         mergeNamespace;
 import 'package:doxa/src/parse.dart';
 import 'package:doxa/src/report.dart';
-import 'package:doxa/src/source.dart';
-import 'package:doxa/src/surface.dart'
-    show
-        SProgram,
-        SImportKind,
-        SDecl,
-        SValKind,
-        STypeAliasKind,
-        SFunKind,
-        SFunBlockKind,
-        SDataKind,
-        SDataBlockKind,
-        STypeclassKind,
-        SImplKind;
+import 'package:doxa/src/source.dart' show SourceFile;
+import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
 import 'package:doxa_tooling/src/format.dart' show formatSource, isFormatted;
 import 'package:doxa_tooling/src/lsp/handler.dart';
 import 'package:doxa_tooling/src/lsp/transport.dart';
 import 'package:doxa_tooling/src/repl.dart'
     show
         ReplSession,
-        ReplResult,
         ReplDeclResult,
         ReplExprResult,
         ReplError,

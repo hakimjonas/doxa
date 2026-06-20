@@ -8,7 +8,6 @@ library;
 import '../output.dart';
 import 'package:doxa/src/sem_info.dart';
 import 'package:doxa/src/source.dart';
-import 'package:doxa/src/surface.dart';
 import '../web_check.dart';
 import 'protocol.dart';
 import 'transport.dart';

@@ -4,7 +4,6 @@ library;
 import 'package:doxa/src/parse.dart';
 import 'package:doxa/src/surface.dart';
 import 'package:doxa/src/elab.dart';
-import 'package:doxa/src/term.dart';
 import 'package:rumil/rumil.dart';
 import 'package:test/test.dart';
 

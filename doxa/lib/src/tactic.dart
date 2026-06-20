@@ -21,7 +21,6 @@ library;
 import 'ctx.dart';
 import 'eval.dart';
 import 'meta.dart';
-import 'registry.dart';
 import 'term.dart';
 import 'value.dart';
 
@@ -118,7 +117,7 @@ typedef TacticFn = TacticResult Function(TacticState state);
 TacticFn seq(TacticFn t1, TacticFn t2) => (s) {
   final r1 = t1(s);
   return switch (r1) {
-    TacticOk(:final term, :final metas, :final subMeta) => t2(
+    TacticOk(term: final _, :final metas, :final subMeta) => t2(
       TacticState(metas, s.ctx, subMeta ?? s.currentMeta),
     ),
     TacticFail _ => r1,
@@ -150,6 +149,7 @@ TacticResult intro(TacticState s) {
   // Extend context with the binder of type dom.
   final newCtx = s.ctx.extend(pi.domain);
   // Track the binder name for later resolution in exact/apply.
+  // ignore: unused_local_variable
   final newNames = [freshName, ...s.binderNames];
   // Evaluate the codomain under the extended context to get the subgoal type.
   final codArg = VNeutral(NVar(newCtx.level - 1));

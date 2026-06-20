@@ -16,7 +16,6 @@ import 'package:doxa/src/elab.dart';
 import 'package:doxa/src/env.dart';
 import 'package:doxa/src/eval.dart';
 import 'package:doxa/src/parse.dart';
-import 'package:doxa/src/prelude.dart' show mergeNamespace;
 import 'package:doxa/src/pretty.dart';
 import 'package:doxa/src/report.dart';
 import 'package:doxa/src/source.dart';

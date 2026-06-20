@@ -22,7 +22,7 @@ import 'package:doxa/src/env.dart';
 import 'package:doxa/src/eval.dart';
 import 'output.dart';
 import 'package:doxa/src/parse.dart';
-import 'package:doxa/src/prelude.dart' show loadPrelude, mergeNamespace;
+import 'package:doxa/src/prelude.dart' show loadPrelude;
 import 'package:doxa/src/pretty.dart';
 import 'package:doxa/src/report.dart';
 import 'package:doxa/src/sem_info.dart';
