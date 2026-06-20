@@ -1,7 +1,6 @@
 // Prop -> Prop elimination is permitted: matching on a Prop-sorted scrutinee
 // to produce a Prop-sorted value is allowed (the restriction forbids only
 // Prop -> Type).
-
 data PT : Prop {
   p1 : PT;
   p2 : PT;
@@ -12,7 +11,7 @@ data QT : Prop {
   q2 : QT;
 }
 
-fun pmap(x: PT): QT = match x {
+fun pmap(x: PT) : QT = match x {
   case p1 => q1
   case p2 => q2
 }

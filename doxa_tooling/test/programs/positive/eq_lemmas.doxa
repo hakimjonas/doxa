@@ -1,54 +1,33 @@
 // Derived equality library (sym, trans, cong, subst) smoke test: the lemmas
 // compile as authored and compose correctly on a small Nat example, in
 // implicit style where call sites elide the type and index arguments.
-
 data Nat : Type {
   zero : Nat;
   succ : Nat -> Nat;
 }
-
 // --- lemmas ---
 
-fun sym{A: Type}{x: A}{y: A}(p: Eq[A] x y): Eq[A] y x =
-  Eq.rec A
-    ((a: A) => (b: A) => (_: Eq[A] a b) => Eq[A] b a)
-    ((z: A) => refl z)
-    x y p
+fun sym{A: Type, x: A, y: A}(p: Eq A x y) : Eq A y x = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b a) ((z: A) => refl z) x y p
 
-fun trans{A: Type}{x: A}{y: A}{z: A}(p: Eq[A] x y, q: Eq[A] y z): Eq[A] x z =
-  Eq.rec A
-    ((a: A) => (b: A) => (_: Eq[A] a b) => Eq[A] b z -> Eq[A] a z)
-    ((w: A) => (r: Eq[A] w z) => r)
-    x y p q
+fun trans{A: Type, x: A, y: A, z: A}(p: Eq A x y, q: Eq A y z) : Eq A x z = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b z -> Eq A a z) ((w: A) => (r: Eq A w z) => r) x y p q
 
-fun cong{A: Type}{B: Type}{x: A}{y: A}(f: A -> B, p: Eq[A] x y): Eq[B] (f x) (f y) =
-  Eq.rec A
-    ((a: A) => (b: A) => (_: Eq[A] a b) => Eq[B] (f a) (f b))
-    ((z: A) => refl (f z))
-    x y p
+fun cong{A: Type, B: Type, x: A, y: A}(f: A -> B, p: Eq A x y) : Eq B (f x) (f y) = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) ((z: A) => refl (f z)) x y p
 
-fun subst{A: Type}{x: A}{y: A}(P: A -> Type, p: Eq[A] x y, px: P x): P y =
-  Eq.rect A
-    ((a: A) => (b: A) => (_: Eq[A] a b) => P a -> P b)
-    ((z: A) => (pz: P z) => pz)
-    x y p px
-
+fun subst{A: Type, x: A, y: A}(P: A -> Type, p: Eq A x y, px: P x) : P y = Eq.rect A ((a: A) => (b: A) => (_: Eq A a b) => P a -> P b) ((z: A) => (pz: P z) => pz) x y p px
 // --- usage: small proofs via the implicit-style lemmas ---
-
 // sym on a trivially-equal Nat. Pattern unification solves A, x, y
 // from `refl zero : Eq[Nat] zero zero`.
-val s1 : Eq[Nat] zero zero = sym (refl zero)
 
+val s1 : Eq Nat zero zero = sym (refl zero)
 // trans chaining two refls. Solves A, x, y, z from the two proofs.
-val t1 : Eq[Nat] zero zero = trans (refl zero) (refl zero)
 
+val t1 : Eq Nat zero zero = trans (refl zero) (refl zero)
 // cong with succ: zero = zero implies succ zero = succ zero. Ctor `succ`
 // must be eta-expanded into a lambda to serve as a function argument.
-val c1 : Eq[Nat] (succ zero) (succ zero) =
-  cong ((n: Nat) => succ n) (refl zero)
 
+val c1 : Eq Nat (succ zero) (succ zero) = cong ((n: Nat) => succ n) (refl zero)
 // subst transporting a Nat from one index to another. P is the
 // constant-Nat motive, passed explicitly (pattern unification can't
 // solve higher-order motive metas).
-val ss1 : Nat =
-  subst ((_: Nat) => Nat) (refl zero) (succ zero)
+
+val ss1 : Nat = subst ((_: Nat) => Nat) (refl zero) (succ zero)

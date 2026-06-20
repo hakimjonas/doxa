@@ -1,27 +1,23 @@
 // Nested positivity: RoseTree[A]'s recursive occurrence sits inside
 // List[RoseTree[A]], admitted because List is covariant in its parameter
 // (the self-reference never lands in a strictly-negative position).
-
 data List[A: Type] : Type {
-  nil  : List[A];
-  cons : A -> List[A] -> List[A];
+  nil : List A;
+  cons : A -> List A -> List A;
 }
 
 data RoseTree[A: Type] : Type {
-  node : A -> List[RoseTree[A]] -> RoseTree[A];
+  node : A -> List (RoseTree A) -> RoseTree A;
 }
 
 data Nat : Type {
   zero : Nat;
   succ : Nat -> Nat;
 }
-
 // A RoseTree[Nat] with no children.
-val leaf : RoseTree[Nat] =
-  node zero nil
 
+val leaf : RoseTree Nat = node zero nil
 // A RoseTree[Nat] whose root holds `succ zero` and has one child
 // (a leaf).
-val oneChild : RoseTree[Nat] =
-  node (succ zero)
-    (cons leaf nil)
+
+val oneChild : RoseTree Nat = node (succ zero) (cons leaf nil)

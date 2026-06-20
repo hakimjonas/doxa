@@ -1,19 +1,13 @@
 // Native Nat and `plus` through the auto-generated dependent eliminator
 // Nat.rec. `plus m n` recurses on m: zero-case returns n, succ-case wraps
 // the recursive result in one more `succ`.
-
 data Nat : Type {
   zero : Nat;
   succ : Nat -> Nat;
 }
 
-val plus : Nat -> Nat -> Nat =
-  (m: Nat) => (n: Nat) =>
-    Nat.rec
-      ((_: Nat) => Nat)
-      n
-      ((_: Nat) => (rec: Nat) => succ rec)
-      m
+val plus : Nat -> Nat -> Nat = (m: Nat) => (n: Nat) => Nat.rec ((_: Nat) => Nat) n ((_: Nat) => (rec: Nat) => succ rec) m
 
-val two  : Nat = succ (succ zero)
+val two : Nat = succ (succ zero)
+
 val four : Nat = plus two two

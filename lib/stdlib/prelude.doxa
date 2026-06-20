@@ -14,9 +14,8 @@
 // elimination into Type follows from SPEC §8.2's singleton rule
 // (one ctor with no informative args, `refl`'s single arg `x` is
 // index-determined, non-informative).
-
 data Eq[A: Type] : A -> A -> Prop {
-  refl : (x: A) -> Eq[A] x x;
+  refl : (x: A) -> Eq A x x;
 }
 
 data Acc[A: Type] : (A -> A -> Prop) -> A -> Prop {

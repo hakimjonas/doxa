@@ -2,18 +2,18 @@
 // Type-sorted motive because it has one ctor whose only arg is
 // index-determined (non-informative). `transport` below is the J-rule in
 // minimal form.
-
 data Nat : Type {
   zero : Nat;
   succ : Nat -> Nat;
 }
-
 // Transport a Nat across an Eq on Nat. For our minimal test we use
 // a simple constant motive, P a = Nat, but the kernel wouldn't
 // care if the motive were indexed.
-fun transport(a: Nat, b: Nat, p: Eq[Nat] a b, x: Nat): Nat = match p {
+
+fun transport(a: Nat, b: Nat, p: Eq Nat a b, x: Nat) : Nat = match p {
   case refl y => x
 }
 
 val zero2 : Nat = transport zero zero (refl zero) zero
-val one   : Nat = transport zero zero (refl zero) (succ zero)
+
+val one : Nat = transport zero zero (refl zero) (succ zero)

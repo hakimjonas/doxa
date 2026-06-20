@@ -10,27 +10,26 @@
 // map/filter/fold) second. This matches Coq's shape; Lean 4's
 // `List.map f xs` order would require a `{struct}` annotation to be
 // admissible.
-
-import "nat.doxa"
 import "bool.doxa"
 
+import "nat.doxa"
+
 data List[A: Type] : Type {
-  nil : List[A];
-  cons : A -> List[A] -> List[A];
+  nil : List A;
+  cons : A -> List A -> List A;
 }
 
-fun map{A: Type}{B: Type}(xs: List[A], f: A -> B): List[B] = match xs {
+fun map{A: Type, B: Type}(xs: List A, f: A -> B) : List B = match xs {
   case nil => nil
   case cons x rest => cons (f x) (map rest f)
 }
 
-fun fold{A: Type}{B: Type}(xs: List[A], f: A -> B -> B, init: B): B =
-  match xs {
-    case nil => init
-    case cons x rest => f x (fold rest f init)
-  }
+fun fold{A: Type, B: Type}(xs: List A, f: A -> B -> B, init: B) : B = match xs {
+  case nil => init
+  case cons x rest => f x (fold rest f init)
+}
 
-fun filter{A: Type}(xs: List[A], p: A -> Bool): List[A] = match xs {
+fun filter{A: Type}(xs: List A, p: A -> Bool) : List A = match xs {
   case nil => nil
   case cons x rest => match p x {
     case true_ => cons x (filter rest p)
@@ -38,17 +37,17 @@ fun filter{A: Type}(xs: List[A], p: A -> Bool): List[A] = match xs {
   }
 }
 
-fun length{A: Type}(xs: List[A]): Nat = match xs {
+fun length{A: Type}(xs: List A) : Nat = match xs {
   case nil => zero
   case cons _ rest => succ (length rest)
 }
 
-fun append{A: Type}(xs: List[A], ys: List[A]): List[A] = match xs {
+fun append{A: Type}(xs: List A, ys: List A) : List A = match xs {
   case nil => ys
   case cons x rest => cons x (append rest ys)
 }
 
-fun reverse{A: Type}(xs: List[A]): List[A] = match xs {
+fun reverse{A: Type}(xs: List A) : List A = match xs {
   case nil => nil
   case cons x rest => append (reverse rest) (cons x nil)
 }

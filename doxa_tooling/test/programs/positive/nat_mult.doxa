@@ -1,27 +1,16 @@
 // `mult` on native Nat through nested Nat.rec calls: mult recurses on m,
 // the zero case returns zero and the succ case returns `plus n (mult m_ n)`.
-
 data Nat : Type {
   zero : Nat;
   succ : Nat -> Nat;
 }
 
-val plus : Nat -> Nat -> Nat =
-  (m: Nat) => (n: Nat) =>
-    Nat.rec
-      ((_: Nat) => Nat)
-      n
-      ((_: Nat) => (rec: Nat) => succ rec)
-      m
+val plus : Nat -> Nat -> Nat = (m: Nat) => (n: Nat) => Nat.rec ((_: Nat) => Nat) n ((_: Nat) => (rec: Nat) => succ rec) m
 
-val mult : Nat -> Nat -> Nat =
-  (m: Nat) => (n: Nat) =>
-    Nat.rec
-      ((_: Nat) => Nat)
-      zero
-      ((_: Nat) => (rec: Nat) => plus n rec)
-      m
+val mult : Nat -> Nat -> Nat = (m: Nat) => (n: Nat) => Nat.rec ((_: Nat) => Nat) zero ((_: Nat) => (rec: Nat) => plus n rec) m
 
-val two  : Nat = succ (succ zero)
+val two : Nat = succ (succ zero)
+
 val four : Nat = mult two two
-val six  : Nat = mult two (succ two)
+
+val six : Nat = mult two (succ two)

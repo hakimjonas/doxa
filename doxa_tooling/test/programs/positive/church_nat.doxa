@@ -1,14 +1,13 @@
 // Church-encoded natural numbers (pure CoC, no inductive types): a numeral
 // n takes a type A, a successor s : A -> A, and a zero z, applying s n times.
-
 type Nat = (A: Type) -> (A -> A) -> A -> A
 
-val zero: Nat =
-  (A: Type) => (s: A -> A) => (z: A) => z
+val zero : Nat = (A: Type) => (s: A -> A) => (z: A) => z
 
-val succ: Nat -> Nat =
-  (n: Nat) => (A: Type) => (s: A -> A) => (z: A) => s (n A s z)
+val succ : Nat -> Nat = (n: Nat) => (A: Type) => (s: A -> A) => (z: A) => s (n A s z)
 
-val one: Nat = succ zero
-val two: Nat = succ one
-val three: Nat = succ two
+val one : Nat = succ zero
+
+val two : Nat = succ one
+
+val three : Nat = succ two

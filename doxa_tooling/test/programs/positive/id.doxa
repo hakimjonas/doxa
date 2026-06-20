@@ -1,3 +1,2 @@
 // The dependent identity function: given any type A and any x : A, returns x.
-
-fun id[A: Type](x: A): A = x
+fun id[A: Type](x: A) : A = x

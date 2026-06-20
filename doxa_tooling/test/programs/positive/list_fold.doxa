@@ -1,34 +1,34 @@
 // Left-fold on List[Nat] via match: sum the elements.
-
 data Nat : Type {
   zero : Nat;
   succ : Nat -> Nat;
 }
 
 data List[A: Type] : Type {
-  nil  : List[A];
-  cons : A -> List[A] -> List[A];
+  nil : List A;
+  cons : A -> List A -> List A;
 }
 
-fun plus(m: Nat, n: Nat): Nat = match m {
+fun plus(m: Nat, n: Nat) : Nat = match m {
   case zero => n
   case succ m_ => succ (plus m_ n)
 }
-
 // Recurse on the list; accumulator passes through untouched.
 // The designated decreasing arg is `xs`, the first explicit arg.
-fun sumAcc(xs: List[Nat], acc: Nat): Nat = match xs {
+
+fun sumAcc(xs: List Nat, acc: Nat) : Nat = match xs {
   case nil => acc
   case cons x rest => sumAcc rest (plus acc x)
 }
 
-fun sum(xs: List[Nat]): Nat = sumAcc xs zero
+fun sum(xs: List Nat) : Nat = sumAcc xs zero
 
-val one   : Nat = succ zero
-val two   : Nat = succ one
+val one : Nat = succ zero
+
+val two : Nat = succ one
+
 val three : Nat = succ two
 
-val xs    : List[Nat] =
-  cons one (cons two (cons three (nil)))
+val xs : List Nat = cons one (cons two (cons three nil))
 
 val total : Nat = sum xs

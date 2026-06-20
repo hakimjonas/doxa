@@ -1,6 +1,5 @@
 // `const{A, B}(x, y) = x` with two implicit type parameters, both solved by
 // pattern unification against the explicit argument types at the call site.
-
 data Nat : Type {
   zero : Nat;
   succ : Nat -> Nat;
@@ -11,6 +10,6 @@ data Bool : Type {
   f_ : Bool;
 }
 
-fun const_{A: Type, B: Type}(x: A, y: B): A = x
+fun const_{A: Type, B: Type}(x: A, y: B) : A = x
 
 val n : Nat = const_ zero t_

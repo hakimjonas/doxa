@@ -58,8 +58,7 @@ void main() {
 
     test('fun declaration with multiple explicit type params grouped', () {
       final input = 'fun compose[A: Type, B: Type](f: B, g: A) : A = f';
-      final expected =
-          'fun compose[A: Type, B: Type](f: B, g: A) : A = f\n';
+      final expected = 'fun compose[A: Type, B: Type](f: B, g: A) : A = f\n';
       expect(formatSource(input), equals(expected));
     });
 
@@ -73,10 +72,8 @@ void main() {
     });
 
     test('fun declaration with struct annotation', () {
-      final input =
-          'fun f(a: Nat, b: Nat) : Nat {struct a} = plus a b';
-      final expected =
-          'fun f(a: Nat, b: Nat) : Nat {struct a} = plus a b\n';
+      final input = 'fun f(a: Nat, b: Nat) : Nat {struct a} = plus a b';
+      final expected = 'fun f(a: Nat, b: Nat) : Nat {struct a} = plus a b\n';
       expect(formatSource(input), equals(expected));
     });
 

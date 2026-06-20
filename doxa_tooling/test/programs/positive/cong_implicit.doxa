@@ -1,14 +1,13 @@
 // Eq.cong in implicit style. Note: the function `f` must be eta-wrapped if
 // it's a constructor (`(n: Nat) => succ n`, not bare `succ`), since ctors
 // fold their args via TConstr and can't be used in higher-order position.
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
 
-data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+fun cong{A: Type, B: Type, x: A, y: A}(f: A -> B, p: Eq A x y) : Eq B (f x) (f y) = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) ((z: A) => refl (f z)) x y p
 
-fun cong{A: Type}{B: Type}{x: A}{y: A}(f: A -> B, p: Eq[A] x y): Eq[B] (f x) (f y) =
-  Eq.rec A
-    ((a: A) => (b: A) => (_: Eq[A] a b) => Eq[B] (f a) (f b))
-    ((z: A) => refl (f z))
-    x y p
+val p : Eq Nat zero zero = refl zero
 
-val p : Eq[Nat] zero zero = refl zero
-val q : Eq[Nat] (succ zero) (succ zero) = cong ((n: Nat) => succ n) p
+val q : Eq Nat (succ zero) (succ zero) = cong ((n: Nat) => succ n) p

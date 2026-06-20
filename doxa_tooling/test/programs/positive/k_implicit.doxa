@@ -1,9 +1,15 @@
 // K combinator in implicit style: call sites elide both type arguments,
 // pattern unification solving each from the corresponding value's type.
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
 
-data Nat : Type { zero : Nat; succ : Nat -> Nat; }
-data Bool : Type { t_ : Bool; f_ : Bool; }
+data Bool : Type {
+  t_ : Bool;
+  f_ : Bool;
+}
 
-fun k{A: Type}{B: Type}(x: A, y: B): A = x
+fun k{A: Type, B: Type}(x: A, y: B) : A = x
 
 val n : Nat = k zero t_

@@ -300,11 +300,12 @@ class _Formatter {
     _write('}');
   }
 
-  void _visitFun(SFunKind k) {
+  void _visitFun(SFunKind k, {bool withKeyword = true}) {
     if (k.isOpaque) {
       _write('opaque ');
     }
-    _write('fun ${k.name}');
+    if (withKeyword) _write('fun ');
+    _write(k.name);
     _visitFunTypeParams(k.typeParams);
     _write('(');
     for (var i = 0; i < k.params.length; i++) {
@@ -429,7 +430,7 @@ class _Formatter {
         _space();
         _write('and ');
       }
-      _visitFun(k.members[i].fun);
+      _visitFun(k.members[i].fun, withKeyword: i == 0);
     }
   }
 
@@ -572,7 +573,8 @@ class _Formatter {
     final needsParens =
         arg.kind is SLamKind ||
         (arg.kind is SPiKind && (arg.kind as SPiKind).param != null) ||
-        arg.kind is SAppKind;
+        arg.kind is SAppKind ||
+        arg.kind is SLetKind;
     if (needsParens) {
       _write('(');
       _visit(arg);
@@ -785,7 +787,11 @@ class _Formatter {
     var i = 0;
     while (i < params.length) {
       final icity = params[i].isImplicit;
-      if (icity) { _write('{'); } else { _write('['); }
+      if (icity) {
+        _write('{');
+      } else {
+        _write('[');
+      }
       var first = true;
       while (i < params.length && params[i].isImplicit == icity) {
         if (!first) _write(', ');
@@ -817,9 +823,7 @@ class _Formatter {
   /// expression. The parser cannot distinguish
   /// `fun f(): T termination_by (x)` from `App(App(T, term_by), x)`,
   /// so we walk the return-type AST to detect it.
-  ({List<String>? tby, SExpr realRet}) _extractTerminationBy(
-    SExpr returnType,
-  ) {
+  ({List<String>? tby, SExpr realRet}) _extractTerminationBy(SExpr returnType) {
     final chain = <SAppKind>[];
     SExpr? cur = returnType;
     while (cur != null && cur.kind is SAppKind) {

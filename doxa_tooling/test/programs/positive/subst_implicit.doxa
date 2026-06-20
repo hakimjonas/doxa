@@ -1,15 +1,15 @@
 // Eq.subst in implicit style: only {A}{x}{y} are implicit. The motive `P`
 // stays explicit because pattern unification can't solve higher-order
 // (motive-as-function) metavariables.
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
 
-data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+fun subst{A: Type, x: A, y: A}(P: A -> Type, p: Eq A x y, px: P x) : P y = Eq.rect A ((a: A) => (b: A) => (_: Eq A a b) => P a -> P b) ((z: A) => (pz: P z) => pz) x y p px
 
-fun subst{A: Type}{x: A}{y: A}(P: A -> Type, p: Eq[A] x y, px: P x): P y =
-  Eq.rect A
-    ((a: A) => (b: A) => (_: Eq[A] a b) => P a -> P b)
-    ((z: A) => (pz: P z) => pz)
-    x y p px
+val p : Eq Nat zero zero = refl zero
 
-val p : Eq[Nat] zero zero = refl zero
 val motive : Nat -> Type = (n: Nat) => Nat
+
 val py : Nat = subst motive p zero

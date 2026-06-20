@@ -12,13 +12,15 @@
 //    explicit proof argument's inferred type.
 //
 // Shared modules are imported instead of redeclared.
-
-import "nat.doxa"
-import "list.doxa"
-import "vec.doxa"
-import "eq.doxa"
 import "bool.doxa"
 
+import "eq.doxa"
+
+import "list.doxa"
+
+import "nat.doxa"
+
+import "vec.doxa"
 // --- Derived Eq lemmas (explicit style) ------------------------------------
 //
 // Explicit-style sym/trans/cong for proofs whose composition
@@ -27,31 +29,11 @@ import "bool.doxa"
 // definitionally equal to the implicit versions, they just pass
 // types positionally.
 
-val sym_e : (A: Type) -> (x: A) -> (y: A) -> Eq[A] x y -> Eq[A] y x =
-  (A: Type) => (x: A) => (y: A) => (p: Eq[A] x y) =>
-    Eq.rec A
-      ((a: A) => (b: A) => (_: Eq[A] a b) => Eq[A] b a)
-      ((z: A) => refl z)
-      x y p
+val sym_e : (A: Type) -> (x: A) -> (y: A) -> Eq A x y -> Eq A y x = (A: Type) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b a) ((z: A) => refl z) x y p
 
-val trans_e : (A: Type) -> (x: A) -> (y: A) -> (z: A)
-           -> Eq[A] x y -> Eq[A] y z -> Eq[A] x z =
-  (A: Type) => (x: A) => (y: A) => (z: A) =>
-    (p: Eq[A] x y) => (q: Eq[A] y z) =>
-      Eq.rec A
-        ((a: A) => (b: A) => (_: Eq[A] a b) => Eq[A] b z -> Eq[A] a z)
-        ((w: A) => (r: Eq[A] w z) => r)
-        x y p q
+val trans_e : (A: Type) -> (x: A) -> (y: A) -> (z: A) -> Eq A x y -> Eq A y z -> Eq A x z = (A: Type) => (x: A) => (y: A) => (z: A) => (p: Eq A x y) => (q: Eq A y z) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b z -> Eq A a z) ((w: A) => (r: Eq A w z) => r) x y p q
 
-val cong_e : (A: Type) -> (B: Type) -> (f: A -> B)
-          -> (x: A) -> (y: A) -> Eq[A] x y -> Eq[B] (f x) (f y) =
-  (A: Type) => (B: Type) => (f: A -> B) =>
-    (x: A) => (y: A) => (p: Eq[A] x y) =>
-      Eq.rec A
-        ((a: A) => (b: A) => (_: Eq[A] a b) => Eq[B] (f a) (f b))
-        ((z: A) => refl (f z))
-        x y p
-
+val cong_e : (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x y -> Eq B (f x) (f y) = (A: Type) => (B: Type) => (f: A -> B) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) ((z: A) => refl (f z)) x y p
 // --- Nat-domain proofs (implicit style) -----------------------------------
 //
 // These proofs compose `cong`/`trans`/`sym` in implicit style.
@@ -62,63 +44,17 @@ val cong_e : (A: Type) -> (B: Type) -> (f: A -> B)
 // carry the same source match, one captured under a β-reduced env
 // and one not, and they must still be recognised as equal.
 
-val plus_zero : (n: Nat) -> Eq[Nat] (plus n zero) n =
-  Nat.ind
-    ((k: Nat) => Eq[Nat] (plus k zero) k)
-    (refl zero)
-    ((m: Nat) => (ih: Eq[Nat] (plus m zero) m) =>
-       cong ((k: Nat) => succ k) ih)
+val plus_zero : (n: Nat) -> Eq Nat (plus n zero) n = Nat.ind ((k: Nat) => Eq Nat (plus k zero) k) (refl zero) ((m: Nat) => (ih: Eq Nat (plus m zero) m) => cong ((k: Nat) => succ k) ih)
 
-val plus_succ : (m: Nat) -> (n: Nat)
-             -> Eq[Nat] (plus m (succ n)) (succ (plus m n)) =
-  (m: Nat) =>
-    Nat.ind
-      ((k: Nat) => (n: Nat) -> Eq[Nat] (plus k (succ n)) (succ (plus k n)))
-      ((n: Nat) => refl (succ n))
-      ((k: Nat) => (ih: (n: Nat) -> Eq[Nat] (plus k (succ n)) (succ (plus k n))) =>
-        (n: Nat) => cong ((x: Nat) => succ x) (ih n))
-      m
+val plus_succ : (m: Nat) -> (n: Nat) -> Eq Nat (plus m (succ n)) (succ (plus m n)) = (m: Nat) => Nat.ind ((k: Nat) => (n: Nat) -> Eq Nat (plus k (succ n)) (succ (plus k n))) ((n: Nat) => refl (succ n)) ((k: Nat) => (ih: (n: Nat) -> Eq Nat (plus k (succ n)) (succ (plus k n))) => (n: Nat) => cong ((x: Nat) => succ x) (ih n)) m
 
-val plus_comm : (m: Nat) -> (n: Nat) -> Eq[Nat] (plus m n) (plus n m) =
-  (m: Nat) =>
-    Nat.ind
-      ((k: Nat) => (n: Nat) -> Eq[Nat] (plus k n) (plus n k))
-      ((n: Nat) => sym_e Nat (plus n zero) n (plus_zero n))
-      ((k: Nat) => (ih: (n: Nat) -> Eq[Nat] (plus k n) (plus n k)) =>
-        (n: Nat) =>
-          trans_e Nat
-            (succ (plus k n)) (succ (plus n k)) (plus n (succ k))
-            (cong_e Nat Nat ((x: Nat) => succ x) (plus k n) (plus n k) (ih n))
-            (sym_e Nat (plus n (succ k)) (succ (plus n k)) (plus_succ n k)))
-      m
+val plus_comm : (m: Nat) -> (n: Nat) -> Eq Nat (plus m n) (plus n m) = (m: Nat) => Nat.ind ((k: Nat) => (n: Nat) -> Eq Nat (plus k n) (plus n k)) ((n: Nat) => sym_e Nat (plus n zero) n (plus_zero n)) ((k: Nat) => (ih: (n: Nat) -> Eq Nat (plus k n) (plus n k)) => (n: Nat) => trans_e Nat (succ (plus k n)) (succ (plus n k)) (plus n (succ k)) (cong_e Nat Nat ((x: Nat) => succ x) (plus k n) (plus n k) (ih n)) (sym_e Nat (plus n (succ k)) (succ (plus n k)) (plus_succ n k))) m
 
-val mult_zero : (n: Nat) -> Eq[Nat] (mult n zero) zero =
-  Nat.ind
-    ((k: Nat) => Eq[Nat] (mult k zero) zero)
-    (refl zero)
-    ((m: Nat) => (ih: Eq[Nat] (mult m zero) zero) => ih)
+val mult_zero : (n: Nat) -> Eq Nat (mult n zero) zero = Nat.ind ((k: Nat) => Eq Nat (mult k zero) zero) (refl zero) ((m: Nat) => (ih: Eq Nat (mult m zero) zero) => ih)
 
-val mult_one : (n: Nat) -> Eq[Nat] (mult n (succ zero)) n =
-  Nat.ind
-    ((k: Nat) => Eq[Nat] (mult k (succ zero)) k)
-    (refl zero)
-    ((m: Nat) => (ih: Eq[Nat] (mult m (succ zero)) m) =>
-       cong ((k: Nat) => succ k) ih)
+val mult_one : (n: Nat) -> Eq Nat (mult n (succ zero)) n = Nat.ind ((k: Nat) => Eq Nat (mult k (succ zero)) k) (refl zero) ((m: Nat) => (ih: Eq Nat (mult m (succ zero)) m) => cong ((k: Nat) => succ k) ih)
 
-val plus_assoc : (m: Nat) -> (n: Nat) -> (p: Nat)
-              -> Eq[Nat] (plus (plus m n) p) (plus m (plus n p)) =
-  (m: Nat) =>
-    Nat.ind
-      ((k: Nat) => (n: Nat) -> (p: Nat)
-         -> Eq[Nat] (plus (plus k n) p) (plus k (plus n p)))
-      ((n: Nat) => (p: Nat) => refl (plus n p))
-      ((k: Nat) =>
-        (ih: (n: Nat) -> (p: Nat)
-            -> Eq[Nat] (plus (plus k n) p) (plus k (plus n p))) =>
-        (n: Nat) => (p: Nat) =>
-          cong ((x: Nat) => succ x) (ih n p))
-      m
-
+val plus_assoc : (m: Nat) -> (n: Nat) -> (p: Nat) -> Eq Nat (plus (plus m n) p) (plus m (plus n p)) = (m: Nat) => Nat.ind ((k: Nat) => (n: Nat) -> (p: Nat) -> Eq Nat (plus (plus k n) p) (plus k (plus n p))) ((n: Nat) => (p: Nat) => refl (plus n p)) ((k: Nat) => (ih: (n: Nat) -> (p: Nat) -> Eq Nat (plus (plus k n) p) (plus k (plus n p))) => (n: Nat) => (p: Nat) => cong ((x: Nat) => succ x) (ih n p)) m
 // --- List-domain proofs ---------------------------------------------------
 //
 // Parametric-type variants of the Nat-domain proofs above, in natural
@@ -126,81 +62,18 @@ val plus_assoc : (m: Nat) -> (n: Nat) -> (p: Nat)
 // type-check via scope-aware TMeta-spine handling; `map_compose` (below)
 // additionally needs guarded delta-reduction.
 
-val append_nil : (A: Type) -> (xs: List[A]) ->
-                 Eq[List[A]] (append xs nil) xs =
-  (A: Type) =>
-    List.ind A
-      ((ys: List[A]) => Eq[List[A]] (append ys nil) ys)
-      (refl nil)
-      ((h: A) => (t: List[A]) => (ih: Eq[List[A]] (append t nil) t) =>
-         cong_e (List[A]) (List[A])
-           ((ts: List[A]) => cons h ts)
-           (append t nil) t ih)
+val append_nil : (A: Type) -> (xs: List A) -> Eq (List A) (append xs nil) xs = (A: Type) => List.ind A ((ys: List A) => Eq (List A) (append ys nil) ys) (refl nil) ((h: A) => (t: List A) => (ih: Eq (List A) (append t nil) t) => cong_e (List A) (List A) ((ts: List A) => cons h ts) (append t nil) t ih)
 
-val append_assoc : (A: Type) -> (xs: List[A]) -> (ys: List[A])
-                -> (zs: List[A])
-                -> Eq[List[A]] (append (append xs ys) zs)
-                               (append xs (append ys zs)) =
-  (A: Type) =>
-    List.ind A
-      ((xs: List[A]) => (ys: List[A]) -> (zs: List[A])
-        -> Eq[List[A]] (append (append xs ys) zs)
-                       (append xs (append ys zs)))
-      ((ys: List[A]) => (zs: List[A]) =>
-         refl (append ys zs))
-      ((h: A) => (t: List[A]) =>
-       (ih: (ys: List[A]) -> (zs: List[A])
-           -> Eq[List[A]] (append (append t ys) zs)
-                          (append t (append ys zs))) =>
-       (ys: List[A]) => (zs: List[A]) =>
-         cong_e (List[A]) (List[A])
-           ((ts: List[A]) => cons h ts)
-           (append (append t ys) zs)
-           (append t (append ys zs))
-           (ih ys zs))
-
+val append_assoc : (A: Type) -> (xs: List A) -> (ys: List A) -> (zs: List A) -> Eq (List A) (append (append xs ys) zs) (append xs (append ys zs)) = (A: Type) => List.ind A ((xs: List A) => (ys: List A) -> (zs: List A) -> Eq (List A) (append (append xs ys) zs) (append xs (append ys zs))) ((ys: List A) => (zs: List A) => refl (append ys zs)) ((h: A) => (t: List A) => (ih: (ys: List A) -> (zs: List A) -> Eq (List A) (append (append t ys) zs) (append t (append ys zs))) => (ys: List A) => (zs: List A) => cong_e (List A) (List A) ((ts: List A) => cons h ts) (append (append t ys) zs) (append t (append ys zs)) (ih ys zs))
 // The double-`map` nesting in the statement exercises guarded
 // delta-reduction (SPEC §8.6 fix-reduction): a recursive `fun` stays
 // folded while its decreasing argument is a neutral, so `map t f`
 // remains a depth-portable `TTop(map)` application rather than a
 // stuck value frozen at one depth and re-evaluated at another.
-val map_compose : (A: Type) -> (B: Type) -> (C: Type)
-               -> (f: A -> B) -> (g: B -> C) -> (xs: List[A])
-               -> Eq[List[C]] (map (map xs f) g)
-                              (map xs ((a: A) => g (f a))) =
-  (A: Type) => (B: Type) => (C: Type) =>
-  (f: A -> B) => (g: B -> C) =>
-    List.ind A
-      ((xs: List[A]) => Eq[List[C]] (map (map xs f) g)
-                                    (map xs ((a: A) => g (f a))))
-      (refl nil)
-      ((h: A) => (t: List[A]) =>
-       (ih: Eq[List[C]] (map (map t f) g)
-                        (map t ((a: A) => g (f a)))) =>
-         cong_e (List[C]) (List[C])
-           ((ts: List[C]) => cons (g (f h)) ts)
-           (map (map t f) g)
-           (map t ((a: A) => g (f a)))
-           ih)
 
-val length_append : (A: Type) -> (xs: List[A]) -> (ys: List[A])
-                 -> Eq[Nat] (length (append xs ys))
-                            (plus (length xs) (length ys)) =
-  (A: Type) =>
-    List.ind A
-      ((xs: List[A]) => (ys: List[A])
-        -> Eq[Nat] (length (append xs ys))
-                   (plus (length xs) (length ys)))
-      ((ys: List[A]) => refl (length ys))
-      ((h: A) => (t: List[A]) =>
-       (ih: (ys: List[A]) -> Eq[Nat] (length (append t ys))
-                                     (plus (length t) (length ys))) =>
-       (ys: List[A]) =>
-         cong_e Nat Nat ((k: Nat) => succ k)
-           (length (append t ys))
-           (plus (length t) (length ys))
-           (ih ys))
+val map_compose : (A: Type) -> (B: Type) -> (C: Type) -> (f: A -> B) -> (g: B -> C) -> (xs: List A) -> Eq (List C) (map (map xs f) g) (map xs ((a: A) => g (f a))) = (A: Type) => (B: Type) => (C: Type) => (f: A -> B) => (g: B -> C) => List.ind A ((xs: List A) => Eq (List C) (map (map xs f) g) (map xs ((a: A) => g (f a)))) (refl nil) ((h: A) => (t: List A) => (ih: Eq (List C) (map (map t f) g) (map t ((a: A) => g (f a)))) => cong_e (List C) (List C) ((ts: List C) => cons (g (f h)) ts) (map (map t f) g) (map t ((a: A) => g (f a))) ih)
 
+val length_append : (A: Type) -> (xs: List A) -> (ys: List A) -> Eq Nat (length (append xs ys)) (plus (length xs) (length ys)) = (A: Type) => List.ind A ((xs: List A) => (ys: List A) -> Eq Nat (length (append xs ys)) (plus (length xs) (length ys))) ((ys: List A) => refl (length ys)) ((h: A) => (t: List A) => (ih: (ys: List A) -> Eq Nat (length (append t ys)) (plus (length t) (length ys))) => (ys: List A) => cong_e Nat Nat ((k: Nat) => succ k) (length (append t ys)) (plus (length t) (length ys)) (ih ys))
 // --- Refutation: distinct constructors are not equal --------------------
 //
 // These prove negations, not equations: from an impossible equality we
@@ -210,32 +83,23 @@ val length_append : (A: Type) -> (xs: List[A]) -> (ys: List[A])
 // at the other. Transporting the provable case across the bogus equality
 // (via Eq.rec) lands in `False`.
 
-data False : Prop { }
+data False : Prop {
+  
+}
 
-fun isZero(n: Nat): Prop = match n {
-  case zero => Eq[Nat] zero zero
+fun isZero(n: Nat) : Prop = match n {
+  case zero => Eq Nat zero zero
   case succ k => False
 }
 
-fun isTrue(b: Bool): Prop = match b {
-  case true_ => Eq[Bool] true_ true_
+fun isTrue(b: Bool) : Prop = match b {
+  case true_ => Eq Bool true_ true_
   case false_ => False
 }
 
-val succ_ne_zero : (n: Nat) -> Eq[Nat] (succ n) zero -> False =
-  (n: Nat) => (p: Eq[Nat] (succ n) zero) =>
-    Eq.rec Nat
-      ((a: Nat) => (b: Nat) => (_: Eq[Nat] a b) => isZero b -> isZero a)
-      ((z: Nat) => (h: isZero z) => h)
-      (succ n) zero p (refl zero)
+val succ_ne_zero : (n: Nat) -> Eq Nat (succ n) zero -> False = (n: Nat) => (p: Eq Nat (succ n) zero) => Eq.rec Nat ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => isZero b -> isZero a) ((z: Nat) => (h: isZero z) => h) (succ n) zero p (refl zero)
 
-val true_ne_false : Eq[Bool] true_ false_ -> False =
-  (p: Eq[Bool] true_ false_) =>
-    Eq.rec Bool
-      ((a: Bool) => (b: Bool) => (_: Eq[Bool] a b) => isTrue a -> isTrue b)
-      ((z: Bool) => (h: isTrue z) => h)
-      true_ false_ p (refl true_)
-
+val true_ne_false : Eq Bool true_ false_ -> False = (p: Eq Bool true_ false_) => Eq.rec Bool ((a: Bool) => (b: Bool) => (_: Eq Bool a b) => isTrue a -> isTrue b) ((z: Bool) => (h: isTrue z) => h) true_ false_ p (refl true_)
 // --- Theorems about an indexed family -----------------------------------
 //
 // `Vec[A] n` is length-indexed: the length lives in the type. These prove
@@ -244,12 +108,4 @@ val true_ne_false : Eq[Bool] true_ false_ -> False =
 // This is the part that requires elaboration, indexed-family recursion,
 // and dependent motives to cohere, beyond merely computing with the type.
 
-val vlength_index : (A: Type) -> (n: Nat) -> (v: Vec[A] n)
-                 -> Eq[Nat] (vlength v) n =
-  (A: Type) =>
-    Vec.ind A
-      ((m: Nat) => (w: Vec[A] m) => Eq[Nat] (vlength w) m)
-      (refl zero)
-      ((k: Nat) => (x: A) => (rest: Vec[A] k)
-        => (ih: Eq[Nat] (vlength rest) k) =>
-         cong ((j: Nat) => succ j) ih)
+val vlength_index : (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) n = (A: Type) => Vec.ind A ((m: Nat) => (w: Vec A m) => Eq Nat (vlength w) m) (refl zero) ((k: Nat) => (x: A) => (rest: Vec A k) => (ih: Eq Nat (vlength rest) k) => cong ((j: Nat) => succ j) ih)
