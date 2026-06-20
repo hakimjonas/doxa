@@ -319,6 +319,8 @@ String _elabErrorKind(ElabError e) => switch (e) {
   CyclicImport _ => 'cyclic_import',
   ImportFileNotFound _ => 'import_file_not_found',
   StructAnnotationNotFound _ => 'struct_annotation_not_found',
+  TacticFailed _ => 'tactic_failed',
+  TacticIncomplete _ => 'tactic_incomplete',
 };
 
 /// Pretty-print a [Value] by quoting at [level] and rendering.

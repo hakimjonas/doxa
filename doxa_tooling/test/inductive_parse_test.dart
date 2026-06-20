@@ -75,6 +75,7 @@ SExprKind _shape(SExpr e) {
       SExpr(_shape(fn), DoxaSpan.synthetic),
       SExpr(_shape(proof), DoxaSpan.synthetic),
     ),
+    SByKind() => k,
   };
 }
 

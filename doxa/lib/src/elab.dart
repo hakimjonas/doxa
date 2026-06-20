@@ -37,6 +37,7 @@ import 'pretty.dart';
 import 'registry.dart';
 import 'sem_info.dart';
 import 'surface.dart';
+import 'tactic.dart' hide conv, ConvResult, ConvOk, ConvMismatch;
 import 'term.dart';
 import 'value.dart';
 
@@ -504,6 +505,35 @@ final class ImportFileNotFound extends ElabError {
 
   @override
   String toString() => 'ImportFileNotFound($path @ $span)';
+}
+
+/// A tactic block `by { ... }` failed during elaboration.
+final class TacticFailed extends ElabError {
+  /// The failure message from the tactic engine.
+  final String message;
+
+  /// The source span of the `by` block.
+  @override
+  final DoxaSpan span;
+
+  /// Creates a tactic failure error.
+  const TacticFailed(this.message, this.span);
+
+  @override
+  String toString() => 'TacticFailed($message @ $span)';
+}
+
+/// A tactic block `by { ... }` finished but did not solve the goal.
+final class TacticIncomplete extends ElabError {
+  /// The source span of the `by` block.
+  @override
+  final DoxaSpan span;
+
+  /// Creates an incomplete-tactic error.
+  const TacticIncomplete(this.span);
+
+  @override
+  String toString() => 'TacticIncomplete(@ $span)';
 }
 
 // ---------------------------------------------------------------------------
@@ -1091,6 +1121,164 @@ typedef DeclResult =
 DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
 
 // ---------------------------------------------------------------------------
+// Tactic elaboration
+// ---------------------------------------------------------------------------
+
+/// Elaborate a `by { ... }` tactic block against an expected type.
+///
+/// Creates a fresh goal meta, compiles the tactic steps, and runs them.
+/// If no alternative succeeds, throws [TacticFailed].
+Term _elabTacticBlock(
+  _ElabState state,
+  SByKind kind,
+  Value expected,
+  DoxaSpan span,
+) {
+  final metas = state.ctx.metas;
+  if (metas == null) {
+    throw StateError('SByKind elaboration requires a MetaContext');
+  }
+  // Create a fresh meta for the goal type.
+  final goalMetaId = metas.freshTermMeta(expected, state.ctx);
+  // Try each alternative in order.
+  for (final alt in kind.steps) {
+    final tstate = TacticState(metas, state.ctx, goalMetaId);
+    final result = _runTacticSteps(alt, tstate, state);
+    if (result is TacticOk) {
+      try {
+        return metas.solutionOf(goalMetaId);
+      } catch (_) {
+        continue;
+      }
+    }
+  }
+  throw TacticFailed('tactic block: no alternative succeeded', span);
+}
+
+/// Run a sequence of tactic steps, using [_ElabState] for expression
+/// elaboration so local binders introduced by `intro` are visible.
+TacticResult _runTacticSteps(
+  List<STacticStep> steps,
+  TacticState tstate,
+  _ElabState est,
+) {
+  var currentTstate = tstate;
+  var currentEst = est;
+  for (final step in steps) {
+    final (result, newEst) = switch (step) {
+      STacticIntro(:final name) =>
+        _runIntro(currentTstate, currentEst, name: name),
+      STacticExact(:final expr) =>
+        (_runExact(expr, currentTstate, currentEst), currentEst),
+      STacticApply(:final expr) =>
+        (_runApply(expr, currentTstate, currentEst), currentEst),
+      STacticRefl() => (_runRefl(currentTstate), currentEst),
+      STacticRewrite(:final expr) =>
+        (_runRewrite(expr, currentTstate, currentEst), currentEst),
+      STacticInduction(:final name) =>
+        (_runInduction(name, currentTstate), currentEst),
+      STacticTrivial() => (_runTrivial(currentTstate), currentEst),
+    };
+    switch (result) {
+      case TacticOk(:final term, :final metas, :final subMeta):
+        if (subMeta != null) {
+          currentTstate.metas.solve(currentTstate.currentMeta, term);
+        }
+        // Use the updated ctx and names from the new _ElabState
+        // (intro extends both ctx and local name scope).
+        currentTstate = TacticState(
+          metas,
+          newEst.ctx,
+          subMeta ?? currentTstate.currentMeta,
+          currentTstate.binderNames,
+        );
+        currentEst = newEst;
+      case TacticFail():
+        return result;
+    }
+  }
+  return TacticOk(
+    const TType(LLevel(0)),
+    currentTstate.metas,
+  );
+}
+
+(TacticResult, _ElabState) _runIntro(
+  TacticState tstate,
+  _ElabState est, {
+  String? name,
+}) {
+  final goalType = tstate.goalType;
+  if (goalType is! VPi) {
+    return (const TacticFail('intro: goal is not a function type'), est);
+  }
+  final pi = goalType;
+  final freshName = name ?? pi.name ?? 'h';
+  // Extend the TacticState's Ctx.
+  final newCtx = tstate.ctx.extend(pi.domain);
+  // Update the ElabState's names so further tactics can resolve `freshName`.
+  final newEst = est.push(freshName, pi.domain);
+  final codArg = VNeutral(NVar(newCtx.level - 1));
+  final codVal = eval(pi.codomain.body, pi.codomain.env.extend(codArg));
+  final subMetaId = tstate.metas.freshTermMeta(codVal, newCtx);
+  final bodyTerm = TMeta(subMetaId);
+  final lamTerm = TLam(
+    quote(tstate.ctx.level, pi.domain),
+    bodyTerm,
+    name: freshName,
+  );
+  return (TacticOk(lamTerm, tstate.metas, subMeta: subMetaId), newEst);
+}
+
+TacticResult _runExact(SExpr expr, TacticState tstate, _ElabState est) {
+  // Try to elaborate the expression using the full elaborator with the
+  // tactic's local scope.
+  Term term;
+  try {
+    term = _elabExpr(est.topEnv, est.names, expr, metas: est.ctx.metas);
+  } catch (_) {
+    // Fallback: if the expression is a simple identifier, look it up
+    // in the local scope and construct a TBound.
+    if (expr.kind case SIdentKind(:final name)) {
+      final idx = est.names.indexOf(name);
+      if (idx >= 0) {
+        term = TBound(idx);
+      } else {
+        return TacticFail('exact: unresolved name "$name"');
+      }
+    } else {
+      rethrow;
+    }
+  }
+  return exact(term)(tstate);
+}
+
+TacticResult _runApply(SExpr expr, TacticState tstate, _ElabState est) {
+  final topEnv = est.topEnv;
+  final names = est.names;
+  final term = _elabExpr(topEnv, names, expr);
+  return tacticApply(term)(tstate);
+}
+
+TacticResult _runRefl(TacticState tstate) => refl(tstate);
+
+TacticResult _runRewrite(
+  SExpr expr,
+  TacticState tstate,
+  _ElabState est,
+) {
+  final topEnv = est.topEnv;
+  final names = est.names;
+  final term = _elabExpr(topEnv, names, expr);
+  return rewrite(term)(tstate);
+}
+
+TacticResult _runInduction(String name, TacticState tstate) =>
+    induction(name)(tstate);
+
+TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
+
+// ---------------------------------------------------------------------------
 // Expression elaboration
 // ---------------------------------------------------------------------------
 
@@ -1561,6 +1749,12 @@ DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
       final (proofT, proofV) = _inferExpr(state, proof);
       // We need the quotient to apply the lift to. Create a placeholder.
       return (TQuotLift(TType(_l0), fnT, proofT), _vType0);
+
+    case SByKind():
+      throw TacticFailed(
+        'by { ... } requires an expected type (check mode)',
+        expr.span,
+      );
   }
 }
 
@@ -1741,6 +1935,11 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
   //    fail here, closing that gap requires a meta-driven path.
   if (kind is SMatchKind && kind.motive == null) {
     return _elabMatch(state, expr, expected: expected);
+  }
+
+  // 3.5. SByKind: tactic block. Check against expected type.
+  if (kind is SByKind) {
+    return _elabTacticBlock(state, kind, expected, expr.span);
   }
 
   // 4. Infer-then-conv fallback.
@@ -2094,6 +2293,7 @@ Term _elabExpr(
     case SQuotKind():
     case SQuotMkKind():
     case SQuotLiftKind():
+    case SByKind():
       final (term, _) = _inferExpr(
         _shimState(topEnv, locals, metas: metas),
         expr,
@@ -3364,6 +3564,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
       );
+    case SByKind():
+      return;
   }
 }
 
@@ -3450,6 +3652,8 @@ bool _hasRecursiveReferenceAt(
     case SQuotLiftKind(:final fn, :final proof):
       return _hasRecursiveReferenceAt(fn, blockMembers, shadowed) ||
           _hasRecursiveReferenceAt(proof, blockMembers, shadowed);
+    case SByKind():
+      return false;
   }
 }
 
@@ -4063,6 +4267,8 @@ void _collectRefs(
     case SQuotLiftKind(:final fn, :final proof):
       _collectRefs(fn, blockMembers, shadowed, acc);
       _collectRefs(proof, blockMembers, shadowed, acc);
+    case SByKind():
+      break;
   }
 }
 

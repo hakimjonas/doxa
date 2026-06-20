@@ -415,6 +415,17 @@ String reportElabError(SourceFile source, ElabError error) {
         '  The `{struct name}` annotation must name a value parameter',
       );
       sb.writeln('  of the annotated function.');
+    case TacticFailed(:final message, :final span):
+      sb.writeln('error: tactic failed');
+      sb.writeln('  at ${source.formatStart(span)}');
+      sb.writeln('  $message');
+    case TacticIncomplete(:final span):
+      sb.writeln('error: tactic block did not solve the goal');
+      sb.writeln('  at ${source.formatStart(span)}');
+      sb.writeln(
+        '  The tactic sequence finished but the goal remains unsolved.',
+      );
+      sb.writeln('  Add more steps or a different approach.');
   }
   return sb.toString();
 }

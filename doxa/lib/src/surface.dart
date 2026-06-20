@@ -917,6 +917,93 @@ final class SDecl {
   String toString() => 'SDecl($kind @ $span)';
 }
 
+/// A tactic step in a `by { ... }` block.
+sealed class STacticStep {
+  const STacticStep();
+}
+
+/// `intro name?`: introduces a Pi binder (optionally naming it).
+final class STacticIntro extends STacticStep {
+  final String? name;
+  const STacticIntro(this.name);
+  @override
+  String toString() => 'STacticIntro(${name ?? "_"})';
+}
+
+/// `exact expr`: provides an explicit proof term.
+final class STacticExact extends STacticStep {
+  final SExpr expr;
+  const STacticExact(this.expr);
+  @override
+  String toString() => 'STacticExact($expr)';
+}
+
+/// `apply expr`: applies a lemma, creating subgoals for its arguments.
+final class STacticApply extends STacticStep {
+  final SExpr expr;
+  const STacticApply(this.expr);
+  @override
+  String toString() => 'STacticApply($expr)';
+}
+
+/// `refl`: closes `Eq A x x` goals using reflexivity.
+final class STacticRefl extends STacticStep {
+  const STacticRefl();
+  @override
+  String toString() => 'STacticRefl';
+}
+
+/// `rewrite expr`: rewrites the goal using an equality proof.
+final class STacticRewrite extends STacticStep {
+  final SExpr expr;
+  const STacticRewrite(this.expr);
+  @override
+  String toString() => 'STacticRewrite($expr)';
+}
+
+/// `induction name`: performs case analysis on a variable.
+final class STacticInduction extends STacticStep {
+  final String name;
+  const STacticInduction(this.name);
+  @override
+  String toString() => 'STacticInduction($name)';
+}
+
+/// `trivial`: tries `refl` and simple context lookups.
+final class STacticTrivial extends STacticStep {
+  const STacticTrivial();
+  @override
+  String toString() => 'STacticTrivial';
+}
+
+/// A tactic block: `by { step; step; ... }`.
+///
+/// An atom-level expression that creates a fresh goal meta and runs the
+/// tactic sequence against it. When the tactic sequence solves the meta,
+/// the resulting term replaces the `by` block at elaboration time.
+final class SByKind extends SExprKind {
+  /// The tactic steps (may include `|` for alternatives at each position).
+  final List<List<STacticStep>> steps;
+
+  /// Creates a by-block expression.
+  ///
+  /// [steps] is a list of alternatives: each element is a list of
+  /// sequentially-composed steps. The first alternative that succeeds
+  /// is used. For simple sequences without alternatives, wrap in a
+  /// single-element list.
+  const SByKind(this.steps);
+
+  @override
+  bool operator ==(Object other) =>
+      other is SByKind && _listEq(other.steps, steps);
+
+  @override
+  int get hashCode => Object.hash('SByKind', Object.hashAll(steps.map(Object.hashAll)));
+
+  @override
+  String toString() => 'SByKind($steps)';
+}
+
 /// A Doxa program: a sequence of declarations.
 final class SProgram {
   /// The program's declarations in source order.

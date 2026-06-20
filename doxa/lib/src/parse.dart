@@ -107,6 +107,8 @@ const Set<String> _reserved = {
   'case',
   'returning',
   'import',
+  'theorem',
+  'by',
   'Type',
   'Prop',
   'SProp',
@@ -699,7 +701,7 @@ final Parser<ParseError, SExpr> _identAtom = position<ParseError>().flatMap(
 final Parser<ParseError, SExpr> _atomImpl = () {
   // Order: sort keywords first (so they're not eaten by ident), then
   // parenthesized expression, then a brace block, then quotient forms,
-  // then identifier-with-optional-type-args.
+  // then tactic by-block, then identifier-with-optional-type-args.
   final typeAtom = _spanned(_typeKind);
   final propAtom = _spanned(_propKind);
   final spropAtom = _spanned(_spropKind);
@@ -744,6 +746,13 @@ final Parser<ParseError, SExpr> _atomImpl = () {
               ),
         ),
   );
+  // Tactic by-block: `by { ... }`.
+  final byAtom = position<ParseError>().flatMap(
+    (start) => _tacticBlock.zip(position<ParseError>()).map(
+      (pair) => SExpr(SByKind(pair.$1), DoxaSpan(start, pair.$2)),
+    ),
+  );
+
   return typeAtom |
       propAtom |
       spropAtom |
@@ -752,6 +761,7 @@ final Parser<ParseError, SExpr> _atomImpl = () {
       quotAtom |
       mkAtom |
       liftAtom |
+      byAtom |
       _identAtom;
 }();
 
@@ -1080,9 +1090,70 @@ final Parser<ParseError, SDecl> _dataDecl = position<ParseError>().flatMap(
       ),
 );
 
+// ===========================================================================
+// Tactics and theorem declarations.
+// ===========================================================================
+
+/// A single tactic step inside a `by { ... }` block.
+final Parser<ParseError, STacticStep> _tacticStep =
+    _keyword('intro')
+        .skipThen(_ident.optional)
+        .map<STacticStep>((name) => STacticIntro(name)) |
+    _keyword('exact')
+        .skipThen(defer(() => _expr))
+        .map<STacticStep>((e) => STacticExact(e)) |
+    _keyword('apply')
+        .skipThen(defer(() => _expr))
+        .map<STacticStep>((e) => STacticApply(e)) |
+    _keyword('refl').map<STacticStep>((_) => const STacticRefl()) |
+    _keyword('rewrite')
+        .skipThen(defer(() => _expr))
+        .map<STacticStep>((e) => STacticRewrite(e)) |
+    _keyword('induction')
+        .skipThen(_ident)
+        .map<STacticStep>((name) => STacticInduction(name)) |
+    _keyword('trivial').map<STacticStep>((_) => const STacticTrivial());
+
+/// A sequence of tactic steps separated by `;`: `step; step; ...`.
+final Parser<ParseError, List<STacticStep>> _tacticAlternative =
+    _tacticStep.sepBy1(_sym(';'));
+
+/// A `by { ... }` block: `by { alt1 | alt2 | ... }`.
+///
+/// Returns the list of alternatives, each alternative being a list of
+/// sequentially-composed steps.
+final Parser<ParseError, List<List<STacticStep>>> _tacticBlock =
+    _keyword('by')
+        .skipThen(_sym('{'))
+        .skipThen(_tacticAlternative.sepBy1(_sym('|')))
+        .thenSkip(_sym('}'));
+
+/// A `theorem` declaration: `theorem name : type := expr`.
+///
+/// Desugars to a [SValKind] with the same structure as `val`.
+/// Accepts both `:=` and `=` as the body marker.
+final Parser<ParseError, SDecl> _theoremDecl = position<ParseError>().flatMap(
+  (start) => _keyword('theorem')
+      .skipThen(_ident)
+      .flatMap(
+        (name) => _sym(':')
+            .skipThen(_expr)
+            .flatMap(
+              (type) => (_sym(':').skipThen(_sym('=')) | _sym('='))
+                  .skipThen(_expr.zip(position<ParseError>()))
+                  .map(
+                    (pair) => SDecl(
+                      SValKind(name, type, pair.$1),
+                      DoxaSpan(start, pair.$2),
+                    ),
+                  ),
+            ),
+      ),
+);
+
 /// Any declaration.
 final Parser<ParseError, SDecl> _decl =
-    _importDecl | _valDecl | _typeDecl | _funDecl | _dataDecl;
+    _importDecl | _theoremDecl | _valDecl | _typeDecl | _funDecl | _dataDecl;
 
 /// A program: leading whitespace, declarations, trailing whitespace, eof.
 final Parser<ParseError, SProgram> _program = _ws
