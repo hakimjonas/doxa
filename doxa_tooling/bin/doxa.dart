@@ -1,4 +1,5 @@
-/// Doxa CLI: `doxa check [--json] FILE`, `doxa repl`, or `doxa lsp`.
+/// Doxa CLI: `doxa check [--json] FILE`, `doxa fmt [--check] [--stdout] FILE`,
+/// `doxa repl`, or `doxa lsp`.
 ///
 /// Parses a Doxa source file, elaborates each top-level declaration,
 /// and type-checks each declaration's body against its declared type.
@@ -7,6 +8,8 @@
 ///
 /// When `--json` is passed, the output is structured JSON (same exit
 /// code discipline).
+///
+/// The `fmt` subcommand formats a Doxa source file to canonical style.
 ///
 /// The `repl` subcommand starts an interactive read-eval-print loop.
 ///
@@ -33,10 +36,17 @@ import 'package:doxa/src/parse.dart';
 import 'package:doxa/src/report.dart';
 import 'package:doxa/src/source.dart';
 import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
+import 'package:doxa_tooling/src/format.dart' show formatSource, isFormatted;
 import 'package:doxa_tooling/src/lsp/handler.dart';
 import 'package:doxa_tooling/src/lsp/transport.dart';
 import 'package:doxa_tooling/src/repl.dart'
-    show ReplSession, ReplResult, ReplDeclResult, ReplExprResult, ReplError, ReplMeta;
+    show
+        ReplSession,
+        ReplResult,
+        ReplDeclResult,
+        ReplExprResult,
+        ReplError,
+        ReplMeta;
 import 'package:doxa_tooling/src/web_check.dart';
 import 'package:rumil/rumil.dart';
 
@@ -47,6 +57,10 @@ void main(List<String> args) {
   }
   if (args.isNotEmpty && args[0] == 'repl') {
     _runRepl();
+    return;
+  }
+  if (args.isNotEmpty && args[0] == 'fmt') {
+    _runFmt(args);
     return;
   }
 
@@ -92,6 +106,59 @@ void main(List<String> args) {
   exit(checkSource(source));
 }
 
+/// Run the formatter.
+///
+/// `doxa fmt FILE` — formats in-place.
+/// `doxa fmt --check FILE` — exits 0 if already formatted, 1 otherwise.
+/// `doxa fmt --stdout FILE` — writes formatted result to stdout.
+void _runFmt(List<String> args) {
+  var checkMode = false;
+  var stdoutMode = false;
+  String path;
+
+  if (args.length >= 3 && args[1] == '--check') {
+    checkMode = true;
+    path = args[2];
+  } else if (args.length >= 3 && args[1] == '--stdout') {
+    stdoutMode = true;
+    path = args[2];
+  } else if (args.length >= 2) {
+    path = args[1];
+    if (path.startsWith('--')) {
+      _usage();
+      exit(2);
+    }
+  } else {
+    _usage();
+    exit(2);
+  }
+
+  final file = File(path);
+  if (!file.existsSync()) {
+    stderr.writeln('doxa: file not found: $path');
+    exit(2);
+  }
+
+  final text = file.readAsStringSync();
+
+  if (checkMode) {
+    if (isFormatted(text)) {
+      exit(0);
+    } else {
+      stderr.writeln('$path: would reformat');
+      exit(1);
+    }
+  }
+
+  final formatted = formatSource(text);
+
+  if (stdoutMode) {
+    stdout.write(formatted);
+  } else {
+    file.writeAsStringSync(formatted);
+  }
+}
+
 void _usage() {
   stderr.writeln('Usage: doxa check [--json] [--watch] FILE');
   stderr.writeln('');
@@ -105,6 +172,18 @@ void _usage() {
   stderr.writeln('');
   stderr.writeln(
     '  --watch   Watch the file for changes and re-check on save.',
+  );
+  stderr.writeln('');
+  stderr.writeln('  doxa fmt [--check] [--stdout] FILE');
+  stderr.writeln('');
+  stderr.writeln('  Format a .doxa file to canonical style.');
+  stderr.writeln('');
+  stderr.writeln(
+    '  --check   Exit 0 if already formatted, 1 if changes needed.',
+  );
+  stderr.writeln('');
+  stderr.writeln(
+    '  --stdout  Write formatted result to stdout instead of in-place.',
   );
   stderr.writeln('');
   stderr.writeln('  doxa repl');
@@ -250,8 +329,11 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   };
   if (program == null) {
     stderrSink.write(
-      reportParseFailure(source,
-          parseResult as Failure<ParseError, Object?>, color: color),
+      reportParseFailure(
+        source,
+        parseResult as Failure<ParseError, Object?>,
+        color: color,
+      ),
     );
     return 1;
   }
