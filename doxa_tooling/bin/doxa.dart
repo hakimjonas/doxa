@@ -51,13 +51,16 @@ void main(List<String> args) {
   }
 
   var jsonFlag = false;
+  var watchFlag = false;
   String path;
 
-  if (args.length == 3 && args[0] == 'check' && args[1] == '--json') {
+  if (args.length >= 3 && args[0] == 'check' && args[1] == '--json') {
     jsonFlag = true;
     path = args[2];
-  } else if (args.length == 2 && args[0] == 'check') {
+    watchFlag = args.length >= 4 && args[3] == '--watch';
+  } else if (args.length >= 2 && args[0] == 'check') {
     path = args[1];
+    watchFlag = args.length >= 3 && args[2] == '--watch';
   } else {
     _usage();
     exit(2);
@@ -68,21 +71,29 @@ void main(List<String> args) {
     stderr.writeln('doxa: file not found: $path');
     exit(2);
   }
-  final text = file.readAsStringSync();
-  final source = SourceFile(filename: path, text: text);
 
   if (jsonFlag) {
+    if (watchFlag) {
+      _watch(file, json: true);
+      return;
+    }
+    final text = file.readAsStringSync();
     stdout.writeln(checkSourceJson(text, filename: path));
-    // checkSourceJson always succeeds at serialising; errors are encoded
-    // in the JSON. Exit 0 so the consumer can inspect the status field.
     exit(0);
   }
 
+  if (watchFlag) {
+    _watch(file);
+    return;
+  }
+
+  final text = file.readAsStringSync();
+  final source = SourceFile(filename: path, text: text);
   exit(checkSource(source));
 }
 
 void _usage() {
-  stderr.writeln('Usage: doxa check [--json] FILE');
+  stderr.writeln('Usage: doxa check [--json] [--watch] FILE');
   stderr.writeln('');
   stderr.writeln('  Parse, elaborate, and type-check a Doxa source file.');
   stderr.writeln('  Exits 0 on success, 1 on type or parse errors, 2 on');
@@ -92,6 +103,10 @@ void _usage() {
     '  --json    Output structured JSON instead of human-readable text.',
   );
   stderr.writeln('');
+  stderr.writeln(
+    '  --watch   Watch the file for changes and re-check on save.',
+  );
+  stderr.writeln('');
   stderr.writeln('  doxa repl');
   stderr.writeln('');
   stderr.writeln('  Start an interactive REPL session.');
@@ -99,6 +114,54 @@ void _usage() {
   stderr.writeln('  doxa lsp');
   stderr.writeln('');
   stderr.writeln('  Start the LSP language server over stdio.');
+}
+
+/// Watch [file] for changes and re-check on every modification.
+/// Prints a clear-screen marker and the new result each time.
+void _watch(File file, {bool json = false}) {
+  stderr.writeln('Watching ${file.path} for changes...');
+  stderr.writeln('');
+
+  // Initial check.
+  _checkFile(file, json: json);
+
+  // Watch for modifications. Dart's File.watch() uses inotify/FSEvents
+  // under the hood and fires on write + close (i.e., editor save).
+  final watcher = file.watch();
+  watcher.listen((event) {
+    if (event.type == FileSystemEvent.modify) {
+      _checkFile(file, json: json);
+    }
+  });
+
+  // Keep the process alive.
+  stdin.listen((_) {}); // drain stdin, don't exit on EOF
+}
+
+/// Re-read [file] and run the check pipeline, printing the result.
+void _checkFile(File file, {bool json = false}) {
+  // Read current content. If the file was deleted (rare race), skip.
+  if (!file.existsSync()) {
+    stderr.writeln('[file deleted]');
+    return;
+  }
+  final text = file.readAsStringSync();
+  final source = SourceFile(filename: file.path, text: text);
+
+  // Clear screen for a clean re-display.
+  stdout.write('\x1b[2J\x1b[H');
+  stdout.writeln('=== ${file.path} ===');
+  stdout.writeln('');
+
+  if (json) {
+    stdout.writeln(checkSourceJson(text, filename: file.path));
+  } else {
+    final code = checkSource(source);
+    if (code == 0) {
+      stdout.writeln('OK');
+    }
+  }
+  stdout.writeln('');
 }
 
 /// Run the LSP server.
