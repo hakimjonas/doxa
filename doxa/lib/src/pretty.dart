@@ -269,9 +269,9 @@ class _Printer {
 
   String _constr(String dataName, String ctorName, List<Term> args, int prec) {
     // Constructors are printed as `ctorName` or `ctorName a1 a2 ...`.
-    // The data parameters occupy the initial positions in `args` but
-    // they're usually redundant (inferred from the ctor's expected
-    // type); for now we print them all for unambiguity.
+    // The data parameters occupy the initial positions in `args` and are
+    // inferable from the expected type at the call site; for clarity we
+    // print them all.
     if (args.isEmpty) return ctorName;
     final parts = [ctorName, for (final a in args) term(a, _precAppArg)];
     final s = parts.join(' ');

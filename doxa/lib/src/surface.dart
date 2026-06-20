@@ -90,7 +90,7 @@ final class SIdentKind extends SExprKind {
 /// A qualified name: `<qualifier>.<name>`.
 ///
 /// Produced by the parser for source forms like `Nat.rec` or
-/// `Map.Inner.foo`. The qualifier is itself an [SExpr], typically
+/// `Map.Inner.foo`. The qualifier is itself an [SExpr] (a plain
 /// an [SIdentKind] or another [SDotKind] (nested dots parse as a
 /// left-folded chain via a postfix `.ident` star).
 ///
@@ -318,7 +318,7 @@ final class SPiKind extends SExprKind {
 ///   expected type.
 /// * [cases]: the case arms in source order. Each is either an
 ///   [SMatchCase] (a ctor pattern with binders) or an [SWildcardCase].
-///   Arms take no separator, `case` serves as its own terminator. See
+///   Arms take no separator; `case` is its own terminator. See
 ///   SYNTAX.md's note on why this diverges from `data` ctor lists (where
 ///   `;` is grammatically required).
 final class SMatchKind extends SExprKind {
@@ -544,7 +544,8 @@ final class SImportKind extends SDeclKind {
       _listEq(other.importedNames, importedNames);
 
   @override
-  int get hashCode => Object.hash('SImportKind', path, Object.hashAll(importedNames));
+  int get hashCode =>
+      Object.hash('SImportKind', path, Object.hashAll(importedNames));
 
   @override
   String toString() =>
@@ -808,14 +809,8 @@ final class SFunTypeParam {
 
   @override
   String toString() {
-    final cPart =
-        constraints.isEmpty
-            ? ''
-            : ' : ${constraints.join(" & ")}';
-    final brackets =
-        isImplicit
-            ? '{$name$cPart}'
-            : '[$name$cPart]';
+    final cPart = constraints.isEmpty ? '' : ' : ${constraints.join(" & ")}';
+    final brackets = isImplicit ? '{$name$cPart}' : '[$name$cPart]';
     return brackets;
   }
 }
@@ -881,13 +876,8 @@ final class STypeclassKind extends SDeclKind {
       other.methods == methods;
 
   @override
-  int get hashCode => Object.hash(
-    'STypeclassKind',
-    name,
-    typeParams,
-    superclass,
-    methods,
-  );
+  int get hashCode =>
+      Object.hash('STypeclassKind', name, typeParams, superclass, methods);
 
   @override
   String toString() =>
@@ -916,12 +906,10 @@ final class SImplKind extends SDeclKind {
       other.members == members;
 
   @override
-  int get hashCode =>
-      Object.hash('SImplKind', name, typeclassRef, members);
+  int get hashCode => Object.hash('SImplKind', name, typeclassRef, members);
 
   @override
-  String toString() =>
-      'SImplKind($name, $typeclassRef, members: $members)';
+  String toString() => 'SImplKind($name, $typeclassRef, members: $members)';
 }
 
 /// An inductive type declaration: `data Name[params] : indices -> sort { ctors }`.
@@ -1112,7 +1100,8 @@ final class SIntersectionKind extends SExprKind {
       other is SIntersectionKind && _listEq(other.constraints, constraints);
 
   @override
-  int get hashCode => Object.hash('SIntersectionKind', Object.hashAll(constraints));
+  int get hashCode =>
+      Object.hash('SIntersectionKind', Object.hashAll(constraints));
 
   @override
   String toString() => 'SIntersectionKind(${constraints.join(" & ")})';
@@ -1140,7 +1129,8 @@ final class SByKind extends SExprKind {
       other is SByKind && _listEq(other.steps, steps);
 
   @override
-  int get hashCode => Object.hash('SByKind', Object.hashAll(steps.map(Object.hashAll)));
+  int get hashCode =>
+      Object.hash('SByKind', Object.hashAll(steps.map(Object.hashAll)));
 
   @override
   String toString() => 'SByKind($steps)';

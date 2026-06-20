@@ -133,43 +133,40 @@ void main() {
     // known-correct. For a head that resolves to the SAME absolute
     // NVar(ℓ), a non-trivial env must quote to the SAME index a trivial
     // env does. This removes any reliance on my index arithmetic.
-    test(
-      'non-trivial must agree with trivial for the same NVar (L==d)',
-      () {
-        // Trivial depth-4 identity env; headIdx=2 -> slot0 -> NVar(3).
-        final triv = envOf([
-          const VNeutral(NVar(3)),
-          const VNeutral(NVar(2)),
-          const VNeutral(NVar(1)),
-          const VNeutral(NVar(0)),
-        ]);
-        final trivHead = consHead(
-          quote(4, stuckMatch(env: triv, scrutLevel: 5, headIdx: 2)),
-        );
-        // Non-trivial depth-4 env whose slot0 ALSO holds NVar(3).
-        final inner = stuckMatch(
-          env: envOf([const VNeutral(NVar(0))]),
-          scrutLevel: 0,
-          headIdx: 2,
-        );
-        final nontriv = envOf([
-          const VNeutral(NVar(3)), // #0 = same NVar(3)
-          inner, // #1 makes it non-trivial
-          const VNeutral(NVar(1)),
-          const VNeutral(NVar(0)),
-        ]);
-        final ntHead = consHead(
-          quote(4, stuckMatch(env: nontriv, scrutLevel: 5, headIdx: 2)),
-        );
-        expect(
-          ntHead,
-          trivHead,
-          reason:
-              'same head NVar must quote identically regardless of '
-              'whether the env is trivial-identity',
-        );
-      },
-    );
+    test('non-trivial must agree with trivial for the same NVar (L==d)', () {
+      // Trivial depth-4 identity env; headIdx=2 -> slot0 -> NVar(3).
+      final triv = envOf([
+        const VNeutral(NVar(3)),
+        const VNeutral(NVar(2)),
+        const VNeutral(NVar(1)),
+        const VNeutral(NVar(0)),
+      ]);
+      final trivHead = consHead(
+        quote(4, stuckMatch(env: triv, scrutLevel: 5, headIdx: 2)),
+      );
+      // Non-trivial depth-4 env whose slot0 ALSO holds NVar(3).
+      final inner = stuckMatch(
+        env: envOf([const VNeutral(NVar(0))]),
+        scrutLevel: 0,
+        headIdx: 2,
+      );
+      final nontriv = envOf([
+        const VNeutral(NVar(3)), // #0 = same NVar(3)
+        inner, // #1 makes it non-trivial
+        const VNeutral(NVar(1)),
+        const VNeutral(NVar(0)),
+      ]);
+      final ntHead = consHead(
+        quote(4, stuckMatch(env: nontriv, scrutLevel: 5, headIdx: 2)),
+      );
+      expect(
+        ntHead,
+        trivHead,
+        reason:
+            'same head NVar must quote identically regardless of '
+            'whether the env is trivial-identity',
+      );
+    });
 
     test('non-trivial must agree with trivial for the same NVar (L>d)', () {
       // Trivial depth-4 env quoted at 7; headIdx=2 -> NVar(3).

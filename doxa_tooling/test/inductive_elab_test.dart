@@ -240,9 +240,11 @@ data T : Nat { it : T; }
     test('product form fields desugar to single mk constructor', () {
       // `unit : Type` in `data Unit` is a product field (no Unit ref),
       // desugars to `mk : (unit: Type) -> Unit`.
-      final env = elabProgram(_parse('''
+      final env = elabProgram(
+        _parse('''
 data Unit : Type { unit : Type; }
-'''));
+'''),
+      );
       expect(env.dataDecls, hasLength(1));
       final data = env.dataDecls.first;
       expect(data.name, 'Unit');

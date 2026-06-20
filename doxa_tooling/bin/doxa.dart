@@ -16,7 +16,16 @@ library;
 import 'dart:io';
 
 import 'package:doxa/src/check.dart';
-import 'package:doxa/src/elab.dart' show currentImportPath, importedPaths, elabDecl, checkDeclResult, ElabError, TopEnv, TopBinding, DataDecl;
+import 'package:doxa/src/elab.dart'
+    show
+        currentImportPath,
+        importedPaths,
+        elabDecl,
+        checkDeclResult,
+        ElabError,
+        TopEnv,
+        TopBinding,
+        DataDecl;
 import 'package:doxa/src/parse.dart';
 import 'package:doxa/src/report.dart';
 import 'package:doxa/src/source.dart';
@@ -252,9 +261,10 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
       // For import decls, expand the env to include the import's own
       // bindings so checkDeclResult can verify cross-references within
       // the imported module.
-      final checkBindings = decl.kind is SImportKind
-          ? [...bindings, ...produced.bindings]
-          : bindings;
+      final checkBindings =
+          decl.kind is SImportKind
+              ? [...bindings, ...produced.bindings]
+              : bindings;
       final runningEnv = TopEnv(checkBindings, runningData);
       final finalized = checkDeclResult(runningEnv, produced);
       bindings = [...bindings, ...finalized];

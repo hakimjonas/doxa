@@ -86,7 +86,7 @@ final class TermMetaUnsolved extends MetaEntry {
 /// the solution is problematic because pattern-unif solutions can
 /// contain quoted stuck forms (e.g. `TMatch(null motive)`) that are
 /// only well-typed in a specific check context, not standalone
-/// infer. Lean/Coq/Agda all store a meta's type separately from
+/// infer. In Lean, Coq, and Agda, a meta's type is stored separately from
 /// its solution; this mirrors that discipline.
 final class TermMetaSolved extends MetaEntry {
   /// The solution term. Closed under the local context [localCtx]
@@ -504,7 +504,7 @@ Term inlineSolvedMetas(Term term, MetaContext metas, {int outerDepth = 0}) {
 /// that point the predicate becomes scope- and spine-sensitive.
 ///
 /// For [TermMetaSolved] it unconditionally returns true, mirroring
-/// Lean: solved entries are always inlined, and the delayed path is
+/// Lean: solved entries are inlined unconditionally; the delayed path
 /// the one that declines.
 bool _solutionAdmissibleAtDepth(TermMetaSolved entry, int walkerDepth) =>
     // Solved pattern-unif solutions are closed λ-chains; admissible

@@ -552,8 +552,7 @@ final class NoInstanceFound extends ElabError {
   const NoInstanceFound(this.className, this.targetType, this.span);
 
   @override
-  String toString() =>
-      'NoInstanceFound($className for $targetType @ $span)';
+  String toString() => 'NoInstanceFound($className for $targetType @ $span)';
 }
 
 /// Multiple overlapping instances were found for the same type.
@@ -615,14 +614,13 @@ final class ClassInfo {
     this.instances = const [],
   });
 
-  ClassInfo withInstance(InstanceInfo info) =>
-      ClassInfo(
-        className: className,
-        typeParams: typeParams,
-        methods: methods,
-        superclassName: superclassName,
-        instances: [...instances, info],
-      );
+  ClassInfo withInstance(InstanceInfo info) => ClassInfo(
+    className: className,
+    typeParams: typeParams,
+    methods: methods,
+    superclassName: superclassName,
+    instances: [...instances, info],
+  );
 }
 
 /// A registered instance of a typeclass.
@@ -832,7 +830,7 @@ final class TopBinding {
 
 /// A co-recursive group of `fun` bindings.
 ///
-/// A [CorecursiveGroup] marks a set of [TopBinding]s that form an
+/// A [CorecursiveGroup] is a set of [TopBinding]s that form an
 /// atomic scoping unit: they must all be in `Ctx` before any of their
 /// bodies is type-checked, because each member's body may reference
 /// any member (itself or siblings). Mutual-block declarations
@@ -915,7 +913,11 @@ final class TopEnv {
 
   /// Creates a top environment wrapping [bindings] and optional
   /// inductive [dataDecls] and [classRegistry].
-  const TopEnv(this.bindings, [this.dataDecls = const <DataDecl>[], this.classRegistry = const {}]);
+  const TopEnv(
+    this.bindings, [
+    this.dataDecls = const <DataDecl>[],
+    this.classRegistry = const {},
+  ]);
 
   /// The empty top environment.
   static const TopEnv empty = TopEnv(<TopBinding>[]);
@@ -1278,17 +1280,28 @@ TacticResult _runTacticSteps(
   var currentEst = est;
   for (final step in steps) {
     final (result, newEst) = switch (step) {
-      STacticIntro(:final name) =>
-        _runIntro(currentTstate, currentEst, name: name),
-      STacticExact(:final expr) =>
-        (_runExact(expr, currentTstate, currentEst), currentEst),
-      STacticApply(:final expr) =>
-        (_runApply(expr, currentTstate, currentEst), currentEst),
+      STacticIntro(:final name) => _runIntro(
+        currentTstate,
+        currentEst,
+        name: name,
+      ),
+      STacticExact(:final expr) => (
+        _runExact(expr, currentTstate, currentEst),
+        currentEst,
+      ),
+      STacticApply(:final expr) => (
+        _runApply(expr, currentTstate, currentEst),
+        currentEst,
+      ),
       STacticRefl() => (_runRefl(currentTstate), currentEst),
-      STacticRewrite(:final expr) =>
-        (_runRewrite(expr, currentTstate, currentEst), currentEst),
-      STacticInduction(:final name) =>
-        (_runInduction(name, currentTstate), currentEst),
+      STacticRewrite(:final expr) => (
+        _runRewrite(expr, currentTstate, currentEst),
+        currentEst,
+      ),
+      STacticInduction(:final name) => (
+        _runInduction(name, currentTstate),
+        currentEst,
+      ),
       STacticTrivial() => (_runTrivial(currentTstate), currentEst),
     };
     switch (result) {
@@ -1309,10 +1322,7 @@ TacticResult _runTacticSteps(
         return result;
     }
   }
-  return TacticOk(
-    const TType(LLevel(0)),
-    currentTstate.metas,
-  );
+  return TacticOk(const TType(LLevel(0)), currentTstate.metas);
 }
 
 (TacticResult, _ElabState) _runIntro(
@@ -1374,11 +1384,7 @@ TacticResult _runApply(SExpr expr, TacticState tstate, _ElabState est) {
 
 TacticResult _runRefl(TacticState tstate) => refl(tstate);
 
-TacticResult _runRewrite(
-  SExpr expr,
-  TacticState tstate,
-  _ElabState est,
-) {
+TacticResult _runRewrite(SExpr expr, TacticState tstate, _ElabState est) {
   final topEnv = est.topEnv;
   final names = est.names;
   final term = _elabExpr(topEnv, names, expr);
@@ -1915,7 +1921,7 @@ void _recordSemInfo(
 ///      SLam's annotation, unify with `expected.domain`, push state,
 ///      check body against the opened codomain. The surface grammar
 ///      only produces annotated SLam today, so the no-domain branch
-///      is future-proofing substrate.
+///      is substrate for future unannotated-lambda inference.
 ///
 ///   3. **SMatchKind without `returning`**. Emit
 ///      TMatch with motive=null; the kernel's check-mode TMatch path
@@ -2186,7 +2192,8 @@ Term _ctorSignatureTerm(DataDecl d, CtorDecl c) {
   while (curV is VPi && curV.icit == Icit.implicit) {
     // Check if this implicit is class-constrained (instance search).
     final domain = curV.domain;
-    if (domain is VData && state.topEnv.classRegistry.containsKey(domain.name)) {
+    if (domain is VData &&
+        state.topEnv.classRegistry.containsKey(domain.name)) {
       final className = domain.name;
       final classInfo = state.topEnv.classRegistry[className]!;
       // Try to find a matching instance. The domain args are the
@@ -2222,9 +2229,7 @@ Term _ctorSignatureTerm(DataDecl d, CtorDecl c) {
         };
         curV = eval(
           curV.codomain.body,
-          curV.codomain.env.extend(
-            eval(instanceTerm, state.ctx.env),
-          ),
+          curV.codomain.env.extend(eval(instanceTerm, state.ctx.env)),
         );
         continue;
       }
@@ -2940,7 +2945,12 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
       );
 
     case SImportKind(:final path, :final importedNames):
-      return _processImport(topEnv, path, decl.span, importedNames: importedNames);
+      return _processImport(
+        topEnv,
+        path,
+        decl.span,
+        importedNames: importedNames,
+      );
 
     case SFunBlockKind(:final members):
       // Mutual `fun ... and ...` block. The block-level _elabFunBlock
@@ -2965,8 +2975,21 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
         classRegistry: const {},
       );
 
-    case STypeclassKind(:final name, :final typeParams, :final methods, :final superclass):
-      return _elabTypeclass(topEnv, decl.span, name, typeParams, methods, superclass, metas: metas);
+    case STypeclassKind(
+      :final name,
+      :final typeParams,
+      :final methods,
+      :final superclass,
+    ):
+      return _elabTypeclass(
+        topEnv,
+        decl.span,
+        name,
+        typeParams,
+        methods,
+        superclass,
+        metas: metas,
+      );
 
     case SImplKind(:final typeclassRef, :final members):
       return _elabImpl(topEnv, decl.span, typeclassRef, members, metas: metas);
@@ -3076,12 +3099,19 @@ DeclResult _elabTypeclass(
     dataDecls: [dataDecl],
     corecursiveGroup: null,
     metas: metas,
-    classRegistry: {name: ClassInfo(
-      className: name,
-      typeParams: typeParams.map((t) => t.$1).toList(),
-      methods: methodInfos,
-      superclassName: superclass != null ? (superclass.kind is SIdentKind ? (superclass.kind as SIdentKind).name : null) : null,
-    )},
+    classRegistry: {
+      name: ClassInfo(
+        className: name,
+        typeParams: typeParams.map((t) => t.$1).toList(),
+        methods: methodInfos,
+        superclassName:
+            superclass != null
+                ? (superclass.kind is SIdentKind
+                    ? (superclass.kind as SIdentKind).name
+                    : null)
+                : null,
+      ),
+    },
   );
 }
 
@@ -3113,14 +3143,16 @@ DeclResult _elabImpl(
 
   final classInfo = topEnv.classRegistry[className];
   if (classInfo == null) {
-    throw UnresolvedName(
-      'typeclass "$className" not found',
-      typeclassRef.span,
-    );
+    throw UnresolvedName('typeclass "$className" not found', typeclassRef.span);
   }
 
   // Elaborate the typeclass reference to get its full type.
-  final refTerm = _elabExpr(topEnv, const _LocalNil(), typeclassRef, metas: metas);
+  final refTerm = _elabExpr(
+    topEnv,
+    const _LocalNil(),
+    typeclassRef,
+    metas: metas,
+  );
 
   // Build the constructor application: mk(method1, method2, ...)
   // First, elaborate each method body as a lambda.
@@ -3128,13 +3160,19 @@ DeclResult _elabImpl(
 
   for (final member in members) {
     // Find the corresponding method in the class.
-    final methodInfo = classInfo.methods.where((m) => m.$1 == member.name).firstOrNull;
+    final methodInfo =
+        classInfo.methods.where((m) => m.$1 == member.name).firstOrNull;
     if (methodInfo == null) {
       // Unknown method - this will be caught by type checking.
       break;
     }
     // Elaborate the method body as a function.
-    final bodyTerm = _elabExpr(topEnv, const _LocalNil(), member.body, metas: metas);
+    final bodyTerm = _elabExpr(
+      topEnv,
+      const _LocalNil(),
+      member.body,
+      metas: metas,
+    );
     final typeTerm = _buildFunType(
       topEnv,
       [
@@ -3181,19 +3219,14 @@ DeclResult _elabImpl(
 
   return (
     bindings: [
-      TopBinding(
-        name: instanceName,
-        type: refTerm,
-        term: implTerm,
-        span: span,
-      ),
+      TopBinding(name: instanceName, type: refTerm, term: implTerm, span: span),
     ],
     dataDecls: const <DataDecl>[],
     corecursiveGroup: null,
     metas: metas,
-    classRegistry: {className: classInfo.withInstance(
-      InstanceInfo(targetType, instanceName),
-    )},
+    classRegistry: {
+      className: classInfo.withInstance(InstanceInfo(targetType, instanceName)),
+    },
   );
 }
 
@@ -3278,12 +3311,10 @@ DeclResult _processImport(
 
     // Selective import: filter to only the named bindings.
     if (importedNames.isNotEmpty) {
-      localBindings = localBindings
-          .where((b) => importedNames.contains(b.name))
-          .toList();
-      localDataDecls = localDataDecls
-          .where((d) => importedNames.contains(d.name))
-          .toList();
+      localBindings =
+          localBindings.where((b) => importedNames.contains(b.name)).toList();
+      localDataDecls =
+          localDataDecls.where((d) => importedNames.contains(d.name)).toList();
     }
 
     // Check for duplicates against the calling topEnv.
@@ -3325,14 +3356,10 @@ DeclResult _processImport(
 /// Elaborate a single `fun` into a [TopBinding].
 /// Build implicit [SExpr] for a constraint applied to a type param:
 /// `App(constraintExpr, Ident(paramName))`.
-SExpr _constraintApp(SExpr constraint, String paramName) =>
-    SExpr(
-      SAppKind(
-        constraint,
-        SExpr(SIdentKind(paramName), DoxaSpan.synthetic),
-      ),
-      DoxaSpan.synthetic,
-    );
+SExpr _constraintApp(SExpr constraint, String paramName) => SExpr(
+  SAppKind(constraint, SExpr(SIdentKind(paramName), DoxaSpan.synthetic)),
+  DoxaSpan.synthetic,
+);
 
 /// Build constraint binders for a type parameter with constraints.
 /// Each constraint becomes an implicit binder: `(inst: Eq[A])`.
@@ -4411,11 +4438,11 @@ List<CtorDecl> _elabDataCtors(
 /// universe polymorphism would collapse these into a single
 /// sort-polymorphic recursor):
 ///
-///   * `T.rec`, always emitted. Motive target sort = data's declared
+///   * `T.rec`, emitted for every inductive. Motive target sort = data's declared
 ///     sort. For Prop data this is the J-rule-shape recursor; for
 ///     Type data this is the induction-over-values recursor.
 ///   * `T.ind`, emitted for Type-sorted data. Motive target sort =
-///     `Prop`. The "Prop-motive" variant: always valid (Type → Prop
+///     `Prop`. The "Prop-motive" variant: sound for every inductive (Type → Prop
 ///     elimination has no singleton restriction), used for proving
 ///     Prop-sorted properties by induction on values. Needed for
 ///     `plus_zero`/`plus_succ`/`plus_comm` style proofs.
@@ -4884,7 +4911,7 @@ bool _strictlyPositiveInAny(
   Term term, {
   List<DataDecl> registry = const <DataDecl>[],
 }) {
-  // 1. Absent → trivially positive.
+  // 1. Absent from the term → no occurrence, so positive.
   if (!_occursInAny(dataNames, term)) return true;
 
   // 2. Saturated-head occurrence of a forbidden name: T args where T
@@ -4951,7 +4978,8 @@ bool _strictlyPositiveInAny(
 /// descended past from the ctor-arg's original scope; the target
 /// param-binder index shifts by +1 per binder crossed.
 bool _isParamStrictlyPositive(Term term, int boundVar) =>
-// TBound alone is "positive" trivially, negative positions are
+// TBound alone is positive — a bare bound variable reference.
+// Negative positions are
 // only created by appearing in a Pi domain, which is guarded
 // below by explicitly refusing to enter if the param occurs
 // in the domain.

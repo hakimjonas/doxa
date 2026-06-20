@@ -36,22 +36,36 @@ by the test suite:
 - A **small, auditable** implementation: the kernel is under a reviewer's budget to read end-to-end.
 - **dart2wasm compilation** producing a WasmGC artifact plus a browser harness.
 
-### 1.1a A larger system this could grow into
+### 1.1a Built extensions
 
-The kernel could serve as the trusted core of a fuller proof assistant.
-The pieces below are **not built**; they are directions the design
-leaves room for, and the kernel's architecture is shaped to admit them
-without a rewrite (the spec sections that follow describe their intended
-semantics). They are recorded as possible directions, not as design
-that exists, a release commitment, or a timeline.
+The following features, originally listed as future directions in earlier
+editions of this document, are now built and exercised by the test suite:
 
-- **Universe polymorphism** over the predicative hierarchy, so library code (`cong`, `subst`, stdlib lemmas) can be written once.
-- An additional **strict-propositions sort `SProp`**.
-- **Records** as kernel primitives with definitional η.
-- **Modules and imports** so a non-trivial stdlib organises cleanly.
-- **Tactics**: a minimal engine plus a small library (`intro`, `exact`, `apply`, `rewrite`, `induction`, `refl`, `trivial`). The meta-context is already an observable, snapshot-able protocol so a tactic engine can consume it.
-- **Typeclass / instance search** on top of the metavariable unifier.
-- A **written tutorial** aimed at an ML-family programmer with no prior proof-assistant experience.
+- **Universe polymorphism** (Lean 4-style per-declaration level variables,
+  `LLevel`/`LVar`/`LMax`/`LSucc`/`LImax`). Library code is written once
+  over any universe level.
+- An additional **strict-propositions sort `SProp`** (Gilbert et al. 2019).
+- **Records** as kernel primitives with definitional η (Lean 4 / Coq model).
+- **Modules and imports** for multi-file programs.
+- **Tactics**: a minimal engine (`intro`, `exact`, `apply`, `rewrite`,
+  `induction`, `refl`, `trivial`) following the Agda reflection model.
+- **Typeclass / instance search** on top of the metavariable unifier
+  (Idris 2-style elaboration with Agda-style resolution).
+- A **written tutorial** (`docs/tutorial.md`) aimed at an ML-family
+  programmer with no prior proof-assistant experience.
+
+### 1.1b Future directions
+
+The kernel's architecture is shaped to admit these without a rewrite. They are
+recorded as possible directions, not as commitments or a timeline.
+
+- **Well-founded recursion** (termination metrics beyond structural
+  recursion). Tactics can synthesize `Acc.rec` proof terms; a
+  `termination_by` annotation and desugaring pass would make Euclid's
+  algorithm and Ackermann writeable. No kernel changes needed.
+- **Namespace-qualified modules** (`Nat.plus`, `Int.plus`). Currently
+  imports use a flat namespace; qualification would remove collision risk
+  as the stdlib expands.
 
 ### 1.2 Standard
 
@@ -490,7 +504,10 @@ Rumil's Pratt precedence combinator handles `app ::= atom atom*` (juxtaposition 
 
 ## 8. CIC kernel semantics
 
-This section specifies the kernel semantics. Where a feature is built (§1.1), the semantics here are the ones the implementation realizes; where a feature is a possible future direction (§1.1a, e.g. universe polymorphism or SProp), the semantics here are the intended target if it is built. Where design choices have standard reference implementations (Coq, Lean 4, Agda), §9 cites them and the sub-sections here explicitly note which source each decision follows.
+This section specifies the kernel semantics. The semantics here are the ones
+the implementation realizes. Where design choices have standard reference
+implementations (Coq, Lean 4, Agda), §9 cites them and the sub-sections here
+explicitly note which source each decision follows.
 
 ### 8.1 Design constraints
 
@@ -521,7 +538,7 @@ Why Prop is in the kernel despite adding complexity:
 
 - Definitional equality stays strict (`n = m`).
 - Subtyping is used at the Conv rule and at application argument-against-domain checks.
-- Universe levels are first-class values in the implementation (not hard-coded integers scattered through the checker), so universe polymorphism can generalize the relation without refactoring.
+- Universe levels are first-class values in the implementation (Level ADT with `LLevel`, `LVar`, `LSucc`, `LMax`, `LImax`), so the universe hierarchy is polymorphic. Library code is written once over any level.
 
 Cumulativity is what makes the universe tower usable: without it, any Church-encoded program that wants to use its own type as a value forces the user to track explicit level annotations (see the `plus` note in `test/programs/positive/church_nat.doxa`).
 
@@ -627,7 +644,7 @@ val sanity : Nat = id three   // A inferred to Nat
 
 **Unification is pattern unification only**: a decidable fragment of higher-order unification that handles the cases that arise in practice. Full higher-order unification is undecidable; Doxa does not attempt it. When pattern unification cannot solve, Doxa emits an error (`AmbiguousMetavariable` or similar) asking the user for an explicit argument. Doxa never silently guesses.
 
-**Meta-variables** are a first-class kernel concept: a term can contain unsolved metas, checking proceeds by accumulating constraints, and elaboration ends with all metas solved or a diagnostic. This infrastructure is also what a future tactic engine would consume, so it is not ergonomics alone: it's verification-tooling scaffolding.
+**Meta-variables** are a first-class kernel concept: a term can contain unsolved metas, checking proceeds by accumulating constraints, and elaboration ends with all metas solved or a diagnostic. This infrastructure also powers the tactic engine (Phase 20).
 
 ### 8.9 Propositional equality
 
@@ -649,7 +666,7 @@ The kernel knows nothing specific about `Eq`. Its recursor `Eq.rec` is mechanica
 
 **Eq at Prop sort.** Because `Eq`'s target sort is `Prop`, two proofs of the same equality (`p q : Eq[A] x y`) convert by the §8.2 Prop-irrelevance rule. `refl` synthesis is therefore automatic whenever the two sides are definitionally equal at A. This is load-bearing for the stdlib proofs over propositional predicates.
 
-**Limitation: Eq requires Type-sorted arguments.** The prelude declaration `data Eq[A: Type] (x: A) : A -> Prop` constrains `A` to `Type`. Values at `Prop` sort (propositions) cannot be compared via `Eq`: `Eq[SomeProp] p q` fails at typecheck because `SomeProp : Prop`, not `Type`. This falls out of having concrete sort signatures rather than sort polymorphism. Universe polymorphism would lift `Eq` to work over any sort. A concrete consequence: **UIP is not statable** (not just non-derivable) because `Eq[Eq[A] x y]` tries to put a Prop into a Type-sort slot. This is strictly stronger than Lean/Agda's K-free guarantee (there UIP is statable but not derivable). Both mechanisms preserve K-freeness; Doxa just enforces it at a coarser level.
+**Eq is universe-polymorphic.** The prelude declaration `data Eq[A: Type] (x: A) : A -> Prop` takes `A` at any universe level (the bare `Type` resolves to a fresh level variable). This means `Eq[SomeProp] p q` type-checks when `SomeProp : Prop`. UIP is **statable but not derivable** (matching Lean/Agda's K-free guarantee).
 
 **`Eq.rec` and the J rule.** The synthesized recursor has shape:
 
@@ -699,7 +716,7 @@ See §1.3 for the project-level list. The items below are repeated here for conv
 
 ### 8.13 Documentation
 
-A runnable, self-contained introduction lives in [`example/proofs.doxa`](example/proofs.doxa) (with `example/README.md`): declarations, inductive types, pattern matching, the ambient `Eq`, and proofs by computation and by induction. A longer prose tutorial aimed at an ML-family programmer with no prior proof-assistant experience (extending to tactics for larger proofs once the tactic engine lands) is planned; every code block in it will be a runnable file type-checked by the test suite.
+A runnable, self-contained introduction lives in [`example/proofs.doxa`](example/proofs.doxa) (with `example/README.md`): declarations, inductive types, pattern matching, the ambient `Eq`, and proofs by computation and by induction. A longer prose tutorial (`docs/tutorial.md`) aimed at an ML-family programmer with no prior proof-assistant experience covers the full language, including tactics and typeclasses; every code block is verified against the checker.
 
 ---
 

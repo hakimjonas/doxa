@@ -59,18 +59,18 @@ final class TacticState {
     Ctx? ctx,
     int? currentMeta,
     List<String>? binderNames,
-  }) =>
-      TacticState(
-        metas ?? this.metas,
-        ctx ?? this.ctx,
-        currentMeta ?? this.currentMeta,
-        binderNames ?? this.binderNames,
-      );
+  }) => TacticState(
+    metas ?? this.metas,
+    ctx ?? this.ctx,
+    currentMeta ?? this.currentMeta,
+    binderNames ?? this.binderNames,
+  );
 
   /// The type of the current goal.
-  Value get goalType => metas.lookup(currentMeta).isSolved
-      ? (metas.lookup(currentMeta) as TermMetaSolved).typeExpected
-      : (metas.lookup(currentMeta) as TermMetaUnsolved).typeExpected;
+  Value get goalType =>
+      metas.lookup(currentMeta).isSolved
+          ? (metas.lookup(currentMeta) as TermMetaSolved).typeExpected
+          : (metas.lookup(currentMeta) as TermMetaUnsolved).typeExpected;
 }
 
 /// The result of running a tactic.
@@ -116,20 +116,21 @@ typedef TacticFn = TacticResult Function(TacticState state);
 /// If [t1] returns a term but leaves a subgoal ([subMeta] is non-null),
 /// the subgoal becomes the new [currentMeta] for [t2].
 TacticFn seq(TacticFn t1, TacticFn t2) => (s) {
-      final r1 = t1(s);
-      return switch (r1) {
-        TacticOk(:final term, :final metas, :final subMeta) =>
-          t2(TacticState(metas, s.ctx, subMeta ?? s.currentMeta)),
-        TacticFail _ => r1,
-      };
-    };
+  final r1 = t1(s);
+  return switch (r1) {
+    TacticOk(:final term, :final metas, :final subMeta) => t2(
+      TacticState(metas, s.ctx, subMeta ?? s.currentMeta),
+    ),
+    TacticFail _ => r1,
+  };
+};
 
 /// Alternative combinator: try [t1], if it fails, try [t2].
 TacticFn alt(TacticFn t1, TacticFn t2) => (s) {
-      final r1 = t1(s);
-      if (r1 is TacticOk) return r1;
-      return t2(s);
-    };
+  final r1 = t1(s);
+  if (r1 is TacticOk) return r1;
+  return t2(s);
+};
 
 // ---------------------------------------------------------------------------
 // Primitive tactics
@@ -157,22 +158,27 @@ TacticResult intro(TacticState s) {
   final subMetaId = s.metas.freshTermMeta(codVal, newCtx);
   // Return TLam wrapping the subgoal meta.
   final bodyTerm = TMeta(subMetaId);
-  final lamTerm = TLam(quote(s.ctx.level, pi.domain), bodyTerm, name: freshName);
+  final lamTerm = TLam(
+    quote(s.ctx.level, pi.domain),
+    bodyTerm,
+    name: freshName,
+  );
   return TacticOk(lamTerm, s.metas, subMeta: subMetaId);
 }
 
 /// `exact t`: provides an explicit proof term that must have the goal type.
-TacticFn Function(Term) exact = (term) => (s) {
-  final goalType = s.goalType;
-  try {
-    final inferredType = infer(s.ctx, term);
-    if (conv(s.ctx.level, inferredType, goalType) is ConvOk) {
-      s.metas.solve(s.currentMeta, term);
-      return TacticOk(term, s.metas);
-    }
-  } catch (_) {}
-  return TacticFail('exact: type mismatch');
-};
+TacticFn Function(Term) exact =
+    (term) => (s) {
+      final goalType = s.goalType;
+      try {
+        final inferredType = infer(s.ctx, term);
+        if (conv(s.ctx.level, inferredType, goalType) is ConvOk) {
+          s.metas.solve(s.currentMeta, term);
+          return TacticOk(term, s.metas);
+        }
+      } catch (_) {}
+      return TacticFail('exact: type mismatch');
+    };
 
 /// `refl`: closes `Eq[A] x x` goals using the `refl` constructor.
 ///
@@ -216,51 +222,54 @@ TacticResult refl(TacticState s) {
 ///
 /// Expects `f` to have a Pi type `(x1: A1) -> ... -> (xn: An) -> R`.
 /// Creates fresh metas for each argument and returns `f ?1 ... ?n`.
-TacticFn Function(Term) tacticApply = (f) => (s) {
-  final fType = infer(s.ctx, f);
-  final args = <Term>[];
-  var currentType = fType;
-  var currentCtx = s.ctx;
-  while (currentType is VPi) {
-    final pi = currentType;
-    final subMeta = s.metas.freshTermMeta(pi.domain, currentCtx);
-    args.add(TMeta(subMeta));
-    currentCtx = currentCtx.extend(pi.domain);
-    final codArg = VNeutral(NVar(currentCtx.level - 1));
-    currentType = eval(pi.codomain.body, pi.codomain.env.extend(codArg));
-  }
-  var result = f;
-  for (final arg in args) {
-    result = TApp(result, arg);
-  }
-  final goalType = s.goalType;
-  final resultType = infer(s.ctx, result);
-  if (conv(s.ctx.level, resultType, goalType) is ConvOk) {
-    s.metas.solve(s.currentMeta, result);
-    return TacticOk(result, s.metas);
-  }
-  return TacticFail('apply: type mismatch');
-};
+TacticFn Function(Term) tacticApply =
+    (f) => (s) {
+      final fType = infer(s.ctx, f);
+      final args = <Term>[];
+      var currentType = fType;
+      var currentCtx = s.ctx;
+      while (currentType is VPi) {
+        final pi = currentType;
+        final subMeta = s.metas.freshTermMeta(pi.domain, currentCtx);
+        args.add(TMeta(subMeta));
+        currentCtx = currentCtx.extend(pi.domain);
+        final codArg = VNeutral(NVar(currentCtx.level - 1));
+        currentType = eval(pi.codomain.body, pi.codomain.env.extend(codArg));
+      }
+      var result = f;
+      for (final arg in args) {
+        result = TApp(result, arg);
+      }
+      final goalType = s.goalType;
+      final resultType = infer(s.ctx, result);
+      if (conv(s.ctx.level, resultType, goalType) is ConvOk) {
+        s.metas.solve(s.currentMeta, result);
+        return TacticOk(result, s.metas);
+      }
+      return TacticFail('apply: type mismatch');
+    };
 
 /// `rewrite p`: rewrites the goal using equality proof `p`.
 ///
 /// Expects `p : Eq[A] x y`. Replaces `x` with `y` in the goal type.
-TacticFn Function(Term) rewrite = (p) => (s) {
-  final pType = infer(s.ctx, p);
-  if (pType is! VData || pType.name != 'Eq') {
-    return TacticFail('rewrite: proof is not an equality');
-  }
-  final eqArgs = pType.args;
-  if (eqArgs.length != 3) {
-    return TacticFail('rewrite: Eq has wrong arity');
-  }
-  return TacticFail('rewrite: not yet implemented in this version');
-};
+TacticFn Function(Term) rewrite =
+    (p) => (s) {
+      final pType = infer(s.ctx, p);
+      if (pType is! VData || pType.name != 'Eq') {
+        return TacticFail('rewrite: proof is not an equality');
+      }
+      final eqArgs = pType.args;
+      if (eqArgs.length != 3) {
+        return TacticFail('rewrite: Eq has wrong arity');
+      }
+      return TacticFail('rewrite: not yet implemented in this version');
+    };
 
 /// `induction x`: produces subgoals per constructor of `x`'s type.
-TacticFn Function(String) induction = (varName) => (s) {
-  return TacticFail('induction: not yet implemented in this version');
-};
+TacticFn Function(String) induction =
+    (varName) => (s) {
+      return TacticFail('induction: not yet implemented in this version');
+    };
 
 /// `trivial`: tries `refl` followed by simple context lookups.
 TacticResult trivial(TacticState s) {

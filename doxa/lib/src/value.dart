@@ -11,7 +11,7 @@
 /// extending its environment with the argument value and evaluating the
 /// body.
 ///
-/// A [VNeutral] represents a computation stuck on a free variable. Stuck
+/// A [VNeutral] is a computation stuck on a free variable. Stuck
 /// applications layer up as `NApp` nodes so that the type checker can still
 /// see the shape (e.g., `f(x)(y)`) without being able to β-reduce.
 library;
@@ -273,7 +273,7 @@ final class VMatchCase {
 
 /// A pattern-match value, stuck on a non-canonical scrutinee.
 ///
-/// `VMatch(scrutinee, motive, cases, env)` represents a pattern match
+/// `VMatch(scrutinee, motive, cases, env)` is a pattern-match value
 /// that could not reduce because the scrutinee did not evaluate to a
 /// canonical [VConstr]. Mirrors [VRec]'s discipline: a first-class
 /// [Value] (not a [Neutral]) so that a stuck match can sit anywhere
@@ -492,7 +492,7 @@ final class NTop extends Neutral {
 /// A stuck primitive projection: `neutral.fieldName`.
 ///
 /// Produced when evaluating `TProj(e, fieldName)` and `e` evaluates to a
-/// non-[VConstr] value (typically a [VNeutral]). The projection stays
+/// non-[VConstr] value (a [VNeutral] in practice). The projection stays
 /// stuck until the record expression becomes a [VConstr].
 final class NProj extends Neutral {
   /// The stuck record expression being projected from.

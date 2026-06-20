@@ -1396,7 +1396,7 @@ Value infer(Ctx ctx, Term term) =>
         as Value;
 
 /// Check that [term] has type [expected] in [ctx]. Returns [expected] on
-/// success (a sentinel, callers typically discard it). Throws
+/// success (a sentinel; callers that don't need the result discard it). Throws
 /// [DoxaCheckError] on mismatch.
 Value check(Ctx ctx, Term term, Value expected) =>
     _drive(
@@ -1891,7 +1891,7 @@ Object _drive(
                 // `_drive` loop can't observe pointwise failure
                 // and then retry; instead we use a cheap
                 // divergence check, if all spine args are
-                // pointer-identical, pointwise is trivially OK
+                // pointer-identical, pointwise comparison is a no-op:
                 // (emit `_ok`); otherwise the spines diverge and
                 // we attempt const-approx before scheduling
                 // pointwise. On const-approx success the solve
@@ -5302,7 +5302,7 @@ ConvResult? _tryFlexFlexIntersect(
   final spineA = args1.reversed.toList();
   final spineB = args2.reversed.toList();
 
-  // Pattern-fragment check on both spines: every arg must be a
+  // Pattern-fragment check: each arg in both spines must be a
   // distinct NVar. Collect levels as ints.
   final (varsA, okA) = _patternVars(spineA);
   if (!okA) return null;
@@ -5501,7 +5501,7 @@ ConvResult? _tryConstApproxAtSameMeta(
   }
   // Scope check: the solution is closed under the λ-chain
   // (body is a bare TMeta(auxId) with no free TBounds) and is
-  // trivially well-scoped under entry.localCtx. We still run
+  // well-scoped under entry.localCtx by construction. We still run
   // the check for defense-in-depth and parity with the other
   // solve sites.
   if (!_solutionWellScopedUnderCtx(solution, entry.localCtx)) return null;

@@ -162,23 +162,27 @@ Rough sizing for planning purposes. "Session" = a focused work block
 (2-4 hours). Multiply by 2-3 for part-time / interrupted work.
 
 | Phase | Sessions | Rationale |
-|---|---|---|
-| Benchmarking (no kernel changes) | 2-3 | Running measurements, writing BENCHMARKS.md |
-| 14.5 (quotients) | 8-12 | Design note + 200 lines + tests + negative regression for Lean 3 bug |
-| 14.6 (injectivity) | 1-2 | 30 lines + update indexed-match tests |
-| 14.7 (reducibility) | 1-2 | 10 lines + verify `plus_zero` fix + add `opaque` surface syntax |
-| 15 (universe polymorphism) | 15-25 | Design fork (algebraic vs per-decl) + kernel reshape + migrator |
-| 16 (SProp) | 4-6 | New sort + conversion arm + SProp inductive tests |
-| 17 (records + η) | 6-10 | New term/value forms + η conversion + stdlib migration |
-| 18 (modules) | 10-15 | Import resolution + multi-file checker + stdlib reorganisation |
-| 19 (ergonomic edges) | 5-8 | Several small items, each 1-3 sessions |
-| 20 (tactics) | 20-30 | Meta-context protocol + 7 tactics + surface syntax + tests |
-| 21 (typeclasses) | 10-15 | Instance table + resolution + stdlib instances |
-| 22 (polish + release) | 10-15 | Audit + diagnostics + tutorial + demo + release notes |
+| 14.5 (quotients) | 8-12 | ✓ Complete |
+| 14.6 (injectivity) | 1-2 | ✓ Complete (tests only — kernel code already existed) |
+| 14.7 (reducibility) | 1-2 | ✓ Complete |
+| 15 (universe polymorphism) | 15-25 | ✓ Complete |
+| 16 (SProp) | 4-6 | ✓ Complete |
+| 17 (records + η) | 6-10 | ✓ Complete |
+| 18 (modules + imports) | 10-15 | ✓ Complete |
+| 19 (ergonomic edges) | 5-8 | ✓ Complete |
+| 20 (tactics) | 8-12 | ✓ Complete |
+| 21 (typeclasses) | 8-12 | ✓ Complete |
+| 22 (polish + release) | 10-15 | In progress |
 
-**Total (14.5-22):** roughly 95-140 sessions. At 3 sessions/week, ~8-12 months.
-At full-time pace, ~2-3 months. These are conservative — someone who knows the
-kernel intimately (the author) will be faster on the kernel-heavy phases.
+**Pre-v1.0 total:** ~100-140 sessions estimated, ~70-90 actual.
+
+### Post-v1.0|
+
+| Phase | Sessions | Rationale |
+| 23 (namespace modules) | 6-8 | Gate for safe stdlib expansion |
+| 24 (well-founded recursion) | 4-6 | Trigger fired (tactics exist); desugar to Acc.rec |
+| 25 (stdlib expansion) | ongoing | Grows as features are used |
+| **Post-v1.0 total:** | 16-22 | For structured phases 23-24 |
 
 ---
 
@@ -444,12 +448,24 @@ scope. Revisit if a concrete application emerges.
         │                       └─ 21 (typeclasses)
         │                           └─ 22 (audit + polish + release)
         │
-        └─ Deferred decisions (well-founded rec, native numerics,
-            coinduction) — answered by benchmarking or later phases
+        └─ Deferred decisions → promoted to post-v1.0 (below)
+
+Post-v1.0
+        │
+        ├─ 23 (namespace modules)
+        │   └─ 25 (stdlib expansion)
+        │
+        └─ 24 (well-founded recursion) — independent of 23
+            └─ 25 (stdlib expansion)
+
+Deferred (still pending):
+        └─ Native numerics (bottleneck not yet observed)
+        └─ Coinductive types (no use case)
 ```
 
-Phases 14.5–14.7 are independent of each other. Phases 15–22 are linear
-(the original plan's dependency chain is correct). Benchmarking runs
+Phases 14.5–14.7 are independent of each other. Phases 15–22 are linear.
+Post-v1.0: Phase 23 gates safe stdlib expansion; Phase 24 is independent
+but benefits from namespace qualification.
 alongside 14.5–14.7 — the existing kernel code paths are unchanged by
 the new features. A re-benchmark after 14.7 measures the delta.
 Each subsequent phase re-runs relevant benchmarks as part of its exit
@@ -469,6 +485,116 @@ criteria.
   stays axiom-free so constructivity is preserved.
 - **Extraction to other languages.** If extraction is ever wanted, it
   lives in a separate project.
+
+---
+
+## Post-v1.0 Roadmap
+
+After Phase 22 (Polish + Release), Doxa ships v1.0.0 with all 22 pre-release
+phases complete. The post-v1.0 roadmap addresses capability gaps that emerged
+now that the full feature set is in place, and ergonomic gaps that became
+visible as the stdlib grew.
+
+### Phase 23 — Namespace-Qualified Modules
+
+**Goal.** `Nat.plus` resolves to `plus` in module `Nat` without polluting
+the flat namespace. Selective imports keep the current ergonomics;
+qualified names remove collision risk.
+
+**Why first.** Phase 18 (imports) uses a flat namespace: every imported
+name is visible unqualified. As the stdlib expands, name collisions become
+inevitable (`plus` in `Nat` and `Int`). Namespace qualification is the gate
+for safe stdlib expansion.
+
+**Deliverables.**
+1. `TTop` gains an optional namespace prefix.
+2. `import "nat.doxa"` makes names available unqualified (current behaviour)
+   AND qualified as `Nat.<name>`.
+3. `import "nat.doxa" as N` creates the alias `N.<name>`.
+4. Duplicate unqualified names error; qualified names never collide.
+5. Kernel resolution in `_Eval(TTop)`/`_Infer(TTop)` checks both qualified
+   and unqualified name registries.
+
+**Size.** ~60 lines across 4 files. No new kernel term forms — the namespace
+prefix is a resolution key, not a structure.
+
+**Session estimate.** 6-8.
+
+### Phase 24 — Well-Founded Recursion
+
+**Goal.** Write functions that terminate by a well-founded measure
+(Euclid's algorithm, Ackermann) with a `termination_by` annotation.
+Desugars to `Acc.rec` — no kernel changes.
+
+**Why now.** The plan deferred this to "after Phase 20 (tactics)." Tactics
+(Phase 20) can synthesize `Acc.rec` proof terms. The elaborator just needs
+a desugaring pass. Structural recursion (Phase 11) already provides the
+termination checker infrastructure.
+
+**Deliverables.**
+1. `termination_by (m, n)` annotation on `fun` declarations.
+2. Elaborator desugars to `Acc.rec` with accessibility proofs.
+3. Minimal `Acc` inductive in the prelude.
+
+**Size.** ~40 lines across 3 files.
+
+**Session estimate.** 4-6.
+
+### Phase 25 — Stdlib Expansion (ongoing)
+
+**Goal.** Build a proof library that demonstrates Doxa's full feature set.
+
+**Modules to add:**
+
+| Module | Contents |
+|--------|----------|
+| `Int` | `data Int = Pos Nat \| Neg Nat` with arithmetic |
+| `Rat` | `data Rat = MkRat Int (pos: Nat)` with field operations |
+| `Sigma` | Dependent pair with primitive projections |
+| `Semigroup`/`Monoid`/`Group` | Algebraic hierarchy via typeclasses |
+| `DecEq` | Decidable equality typeclass + instances |
+
+**Plus:** more lemmas (`mult_comm`, `mult_assoc`, `plus_assoc`, `distrib`,
+`gcd_spec`), more induction examples, and decidability proofs.
+
+**Not included.** Real numbers, topology, category theory — these are for
+the community to build on top of the kernel.
+
+### Dependency
+
+```
+Phase 23 (namespaces)
+  │
+  ├─ Phase 24 (well-founded recursion) — independent, benefits from namespaces
+  │
+  └─ Phase 25 (stdlib) — needs namespaces for safe expansion
+```
+
+**Total post-v1.0 estimate:** 16-22 sessions for the structured phases (23-24),
+plus ongoing stdlib development.
+
+---
+
+## Deferred Decisions (re-evaluated post-Phase 21)
+
+The original deferred decisions were made when Doxa was at Phase 14. With the
+full feature set now in place (Phases 15-21 complete), several have been
+re-evaluated:
+
+- **Well-founded recursion**: Decision trigger fired (tactics now exist).
+  Promoted to Phase 24 on the post-v1.0 roadmap.
+
+- **Native numerics**: Inductive `Nat` remains adequate for the current
+  stdlib. Benchmarking data (Phase 17) shows Church depth 5000 at 1.5s AOT
+  — not a bottleneck. Stays deferred; resurfaces if expanded stdlib does
+  primality or large-array proofs.
+
+- **Stdlib expansion**: No longer deferred — all enabling features have
+  landed (typeclasses Phase 21, quotients 14.5, SProp 16, projections 17,
+  opacity 14.7). Promoted to Phase 25 on the post-v1.0 roadmap.
+
+- **Coinductive types**: Still no use case. Lean 4 does not have them
+  either. Stays deferred.
 
 ## References
 

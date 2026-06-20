@@ -202,7 +202,7 @@ val n : Nat = length xs
 
 - **No `=>` for function types.** `=>` is reserved for term-level "produces a value" (lambda bodies, match arms). Function types use `->` throughout, consistent with the CIC tradition and with the developer-family `->` convention (Rust, Kotlin, Swift).
 - **No `f(a, b)` call syntax.** Juxtaposition only. Parentheses are grouping, not application. See the aesthetic-target note above.
-- **No typeclasses yet.** Behavior abstraction is deferred; see SPEC §1.2 and §8.12.
-- **No record literals** beyond what ADTs provide. A one-constructor `data` is the record form.
+- **Typeclasses** (experimental): `typeclass Eq[A] { fun equals(x: A, y: A): Type; }`, `impl Eq[Nat] { ... }`. Instance search is wired into implicit-argument resolution.
+- **Records** are single-constructor inductives with named field projection. A `record` keyword desugars to `data`; field access uses dot notation (`p.fst`). Records have definitional η.
 - **No subtyping beyond cumulativity.** `Type n ≤ Type m` when `n ≤ m`; no other implicit coercions.
 - **No tuples, arrays, or numeric literals in the core.** The stdlib adds inductive `Option`, `Pair`, `Nat` with numeric-literal elaboration.

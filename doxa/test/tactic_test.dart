@@ -66,15 +66,14 @@ void main() {
 val id : (A: Type) -> A -> A = by { intro A; intro x; exact x }
 ''');
       final env = elabProgram(prog);
-      expect(() => env.bindings.firstWhere((b) => b.name == 'id'),
-          returnsNormally);
+      expect(
+        () => env.bindings.firstWhere((b) => b.name == 'id'),
+        returnsNormally,
+      );
     });
 
     test('by block in infer mode fails', () {
-      expect(
-        () => _elab('val x = by { refl }'),
-        throwsA(isA<TacticFailed>()),
-      );
+      expect(() => _elab('val x = by { refl }'), throwsA(isA<TacticFailed>()));
     });
   });
 }

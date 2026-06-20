@@ -1,7 +1,7 @@
 # Doxa Tooling Plan
 
 A phased plan for building modern language tooling on the Doxa kernel,
-dogfooding the rumil-dart ecosystem. The architecture anticipates future
+dogfooding the rumil-dart tooling. The architecture anticipates future
 expansion (modules, imports, tactics, multi-file projects) without
 over-building for them today.
 
@@ -134,7 +134,7 @@ tokenization.
    (`tok-keyword`, `tok-type`, `tok-comment`, etc.) across all
    rendering contexts.
 
-### What this unlocks
+### What this provides
 
 - Single source of truth for highlighting everywhere
 - Adding a new keyword in one place propagates to all renderers
@@ -203,7 +203,7 @@ produces only `SExpr`/`SDecl`.
    already implemented in rumil; it needs the Doxa grammar in
    GreenNode form.
 
-### What this unlocks
+### What this provides
 
 - Precise source spans for every syntactic construct (not just
   byte-offset ranges on `SExpr` wrappers)
@@ -289,7 +289,7 @@ spans, errors). It just discards it after formatting it into a string.
    indicator (e.g. a checkmark or "definitional"). On error, use
    structured fields instead of regex-parsing the message string.
 
-### What this unlocks
+### What this provides
 
 - Inspectable proof results: "you proved `Eq[Nat] (plus n zero) n`
   and the proof normalizes to `refl n`"
@@ -360,7 +360,7 @@ currently discarded after elaboration.
    from Phase 2 with a `semInfo` field: per-position metadata for
    the whole file.
 
-### What this unlocks
+### What this provides
 
 - Per-position type queries (foundation for hover)
 - Name → declaration-site resolution (foundation for go-to-definition)
@@ -436,7 +436,7 @@ three : Nat
    evaluation output (no prompts, no banner). Diagnostics go to stderr.
    Useful for scripting and CI.
 
-### What this unlocks
+### What this provides
 
 - Interactive exploration of the language
 - Learning tool: type an expression, see what happens
@@ -517,7 +517,7 @@ records/classes with `fromJson`/`toJson`.
    `doxa lsp` as a language server for `.doxa` files. This is tracked
    outside this plan but is a thin package.json + TypeScript shim.
 
-### What this unlocks
+### What this provides
 
 - Real IDE editing for Doxa files (VS Code, Neovim, Emacs)
 - Hover to see types, Ctrl+click to jump to definition

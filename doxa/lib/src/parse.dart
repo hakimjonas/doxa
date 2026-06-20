@@ -458,7 +458,7 @@ final Parser<ParseError, SMatchCaseArm> _caseArm = position<ParseError>()
 /// `match expr ('returning' expr)? '{' case* '}'`.
 ///
 /// Match arms take no separator (SYNTAX.md): `case` is reserved and
-/// serves as its own terminator; `}` closes the block. See the
+/// is its own terminator; `}` closes the block. See the
 /// `data` ctor list for the contrast, ctor signatures are type
 /// expressions that would otherwise run into each other, so `;` is
 /// grammatically required there.
@@ -750,9 +750,9 @@ final Parser<ParseError, SExpr> _atomImpl = () {
   );
   // Tactic by-block: `by { ... }`.
   final byAtom = position<ParseError>().flatMap(
-    (start) => _tacticBlock.zip(position<ParseError>()).map(
-      (pair) => SExpr(SByKind(pair.$1), DoxaSpan(start, pair.$2)),
-    ),
+    (start) => _tacticBlock
+        .zip(position<ParseError>())
+        .map((pair) => SExpr(SByKind(pair.$1), DoxaSpan(start, pair.$2))),
   );
 
   return typeAtom |
@@ -829,7 +829,7 @@ final Parser<ParseError, List<(String, SExpr?)>> _typeParams = _sym('[')
 /// entries share the group's icity.
 ///
 /// Constraint syntax `[A: Eq & Ord]` is supported in explicit `[...]`
-/// groups only. Implicit `{...}` groups always treat the annotation
+/// groups only. In implicit `{...}` groups, the annotation
 /// as a kind annotation (e.g. `{x: A}` means x has type A, not that
 /// A is a constraint on x).
 Parser<ParseError, List<SFunTypeParam>> _funTypeParamGroup(
@@ -840,27 +840,26 @@ Parser<ParseError, List<SFunTypeParam>> _funTypeParamGroup(
     .skipThen(
       _ident
           .flatMap<SFunTypeParam>(
-            (name) => _sym(':')
-                .skipThen(_funParamAnnotation(isImplicit))
-                .optional
-                .map((result) {
-                  SExpr? kind;
-                  List<SExpr> constraints;
-                  if (result == null) {
-                    kind = null;
-                    constraints = const [];
-                  } else {
-                    final (k, cs) = result;
-                    kind = k;
-                    constraints = cs;
-                  }
-                  return SFunTypeParam(
-                    name,
-                    kind,
-                    isImplicit: isImplicit,
-                    constraints: constraints,
-                  );
-                }),
+            (name) => _sym(
+              ':',
+            ).skipThen(_funParamAnnotation(isImplicit)).optional.map((result) {
+              SExpr? kind;
+              List<SExpr> constraints;
+              if (result == null) {
+                kind = null;
+                constraints = const [];
+              } else {
+                final (k, cs) = result;
+                kind = k;
+                constraints = cs;
+              }
+              return SFunTypeParam(
+                name,
+                kind,
+                isImplicit: isImplicit,
+                constraints: constraints,
+              );
+            }),
           )
           .sepBy(_sym(',')),
     )
@@ -873,10 +872,10 @@ Parser<ParseError, List<SFunTypeParam>> _funTypeParamGroup(
 ///   - `Eq` → treated as constraint, kind defaults to null
 ///   - `Eq & Ord` → multiple constraints
 ///
-/// For implicit `{...}` groups, always a plain kind annotation.
+/// For implicit `{...}` groups, the annotation is a plain kind.
 Parser<ParseError, (SExpr?, List<SExpr>)> _funParamAnnotation(bool isImplicit) {
   if (isImplicit) {
-    // Implicit groups: always a plain kind annotation.
+    // Implicit groups: plain kind annotation (no type expression).
     return _expr.map((e) => (e, const <SExpr>[]));
   }
   // Explicit groups: may be kind annotation or constraint(s).
@@ -884,7 +883,9 @@ Parser<ParseError, (SExpr?, List<SExpr>)> _funParamAnnotation(bool isImplicit) {
     final first = exprs.first;
     // Single sort keyword → kind annotation.
     if (exprs.length == 1 &&
-        (first.kind is STypeKind || first.kind is SPropKind || first.kind is SSPropKind)) {
+        (first.kind is STypeKind ||
+            first.kind is SPropKind ||
+            first.kind is SSPropKind)) {
       return (first, const <SExpr>[]);
     }
     // Constraint(s).
@@ -931,18 +932,17 @@ Parser<ParseError, SFunKind> _mkFunBody(bool isOpaque) => _ident.flatMap(
           .skipThen(_expr)
           .flatMap(
             (ret) => _structAnn.flatMap(
-              (structAnn) => (_sym('=').skipThen(_expr) | _blockExpr)
-                  .map(
-                    (body) => SFunKind(
-                      name,
-                      tps,
-                      ps,
-                      ret,
-                      body,
-                      isOpaque: isOpaque,
-                      structAnn: structAnn,
-                    ),
-                  ),
+              (structAnn) => (_sym('=').skipThen(_expr) | _blockExpr).map(
+                (body) => SFunKind(
+                  name,
+                  tps,
+                  ps,
+                  ret,
+                  body,
+                  isOpaque: isOpaque,
+                  structAnn: structAnn,
+                ),
+              ),
             ),
           ),
     ),
@@ -1034,9 +1034,8 @@ bool _isDataRef(SExpr expr, String dataName) {
 /// the data type name. A sum form has at least one entry whose
 /// result type references the data type name.
 bool _isProductForm(List<SCtorDecl> ctors, String dataName) =>
-    ctors.isNotEmpty && ctors.every(
-      (c) => !_isDataRef(_resultType(c.type), dataName),
-    );
+    ctors.isNotEmpty &&
+    ctors.every((c) => !_isDataRef(_resultType(c.type), dataName));
 
 /// Desugar product-form fields into a single `mk` constructor.
 ///
@@ -1078,20 +1077,18 @@ final Parser<ParseError, SDataKind> _dataBody = _ident.flatMap(
     (tps) => _sym(':')
         .skipThen(_expr)
         .flatMap(
-          (signature) => _ctorList.map(
-            (ctors) {
-              final resolvedTps = tps ?? const <(String, SExpr?)>[];
-              if (_isProductForm(ctors, name)) {
-                return SDataKind(
-                  name,
-                  resolvedTps,
-                  signature,
-                  _desugarProduct(ctors, name, resolvedTps),
-                );
-              }
-              return SDataKind(name, resolvedTps, signature, ctors);
-            },
-          ),
+          (signature) => _ctorList.map((ctors) {
+            final resolvedTps = tps ?? const <(String, SExpr?)>[];
+            if (_isProductForm(ctors, name)) {
+              return SDataKind(
+                name,
+                resolvedTps,
+                signature,
+                _desugarProduct(ctors, name, resolvedTps),
+              );
+            }
+            return SDataKind(name, resolvedTps, signature, ctors);
+          }),
         ),
   ),
 );
@@ -1144,37 +1141,36 @@ final Parser<ParseError, SDecl> _dataDecl = position<ParseError>().flatMap(
 
 /// A single tactic step inside a `by { ... }` block.
 final Parser<ParseError, STacticStep> _tacticStep =
-    _keyword('intro')
-        .skipThen(_ident.optional)
-        .map<STacticStep>((name) => STacticIntro(name)) |
-    _keyword('exact')
-        .skipThen(defer(() => _expr))
-        .map<STacticStep>((e) => STacticExact(e)) |
-    _keyword('apply')
-        .skipThen(defer(() => _expr))
-        .map<STacticStep>((e) => STacticApply(e)) |
+    _keyword(
+      'intro',
+    ).skipThen(_ident.optional).map<STacticStep>((name) => STacticIntro(name)) |
+    _keyword(
+      'exact',
+    ).skipThen(defer(() => _expr)).map<STacticStep>((e) => STacticExact(e)) |
+    _keyword(
+      'apply',
+    ).skipThen(defer(() => _expr)).map<STacticStep>((e) => STacticApply(e)) |
     _keyword('refl').map<STacticStep>((_) => const STacticRefl()) |
-    _keyword('rewrite')
-        .skipThen(defer(() => _expr))
-        .map<STacticStep>((e) => STacticRewrite(e)) |
-    _keyword('induction')
-        .skipThen(_ident)
-        .map<STacticStep>((name) => STacticInduction(name)) |
+    _keyword(
+      'rewrite',
+    ).skipThen(defer(() => _expr)).map<STacticStep>((e) => STacticRewrite(e)) |
+    _keyword(
+      'induction',
+    ).skipThen(_ident).map<STacticStep>((name) => STacticInduction(name)) |
     _keyword('trivial').map<STacticStep>((_) => const STacticTrivial());
 
 /// A sequence of tactic steps separated by `;`: `step; step; ...`.
-final Parser<ParseError, List<STacticStep>> _tacticAlternative =
-    _tacticStep.sepBy1(_sym(';'));
+final Parser<ParseError, List<STacticStep>> _tacticAlternative = _tacticStep
+    .sepBy1(_sym(';'));
 
 /// A `by { ... }` block: `by { alt1 | alt2 | ... }`.
 ///
 /// Returns the list of alternatives, each alternative being a list of
 /// sequentially-composed steps.
-final Parser<ParseError, List<List<STacticStep>>> _tacticBlock =
-    _keyword('by')
-        .skipThen(_sym('{'))
-        .skipThen(_tacticAlternative.sepBy1(_sym('|')))
-        .thenSkip(_sym('}'));
+final Parser<ParseError, List<List<STacticStep>>> _tacticBlock = _keyword('by')
+    .skipThen(_sym('{'))
+    .skipThen(_tacticAlternative.sepBy1(_sym('|')))
+    .thenSkip(_sym('}'));
 
 /// A `theorem` declaration: `theorem name : type := expr`.
 ///
@@ -1200,21 +1196,28 @@ final Parser<ParseError, SDecl> _theoremDecl = position<ParseError>().flatMap(
 );
 
 /// A method inside a `typeclass`: `fun name params ':' retType ('=' expr)?`.
-final Parser<ParseError, SClassMethod> _classMethod = position<ParseError>().flatMap(
-  (start) => _keyword('fun')
-      .skipThen(_ident)
-      .flatMap(
-        (name) => _valueParams.flatMap(
-          (params) => _sym(':')
-              .skipThen(_expr)
-              .flatMap(
-                (retType) => (_sym('=').skipThen(_expr)).optional.flatMap(
-                  (defaultBody) => _buildMethodBody(name, params, retType, defaultBody, start),
-                ),
-              ),
-        ),
-      ),
-);
+final Parser<ParseError, SClassMethod> _classMethod = position<ParseError>()
+    .flatMap(
+      (start) => _keyword('fun')
+          .skipThen(_ident)
+          .flatMap(
+            (name) => _valueParams.flatMap(
+              (params) => _sym(':')
+                  .skipThen(_expr)
+                  .flatMap(
+                    (retType) => (_sym('=').skipThen(_expr)).optional.flatMap(
+                      (defaultBody) => _buildMethodBody(
+                        name,
+                        params,
+                        retType,
+                        defaultBody,
+                        start,
+                      ),
+                    ),
+                  ),
+            ),
+          ),
+    );
 
 SExpr _buildMethodPi(String name, List<(String, SExpr)> params, SExpr retType) {
   var ty = retType;
@@ -1234,7 +1237,11 @@ Parser<ParseError, SClassMethod> _buildMethodBody(
 ) {
   final body = defaultBody;
   return succeed<ParseError, SClassMethod>(
-    SClassMethod(name, _buildMethodPi(name, params, retType), defaultBody: body),
+    SClassMethod(
+      name,
+      _buildMethodPi(name, params, retType),
+      defaultBody: body,
+    ),
   );
 }
 
@@ -1289,12 +1296,20 @@ final Parser<ParseError, SDecl> _implDecl = position<ParseError>().flatMap(
 );
 
 /// A single `fun` inside an `impl` block, consuming `fun` keyword.
-final Parser<ParseError, SFunKind> _implFunMember =
-    _keyword('fun').skipThen(_mkFunBody(false));
+final Parser<ParseError, SFunKind> _implFunMember = _keyword(
+  'fun',
+).skipThen(_mkFunBody(false));
 
 /// Any declaration.
 final Parser<ParseError, SDecl> _decl =
-    _typeclassDecl | _implDecl | _importDecl | _theoremDecl | _valDecl | _typeDecl | _funDecl | _dataDecl;
+    _typeclassDecl |
+    _implDecl |
+    _importDecl |
+    _theoremDecl |
+    _valDecl |
+    _typeDecl |
+    _funDecl |
+    _dataDecl;
 
 /// A program: leading whitespace, declarations, trailing whitespace, eof.
 final Parser<ParseError, SProgram> _program = _ws

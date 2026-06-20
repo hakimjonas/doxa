@@ -23,9 +23,7 @@ SExpr pe(String input) {
 void main() {
   group('Typeclass parsing', () {
     test('typeclass Eq[A] parses to STypeclassKind', () {
-      final prog = pp(
-        'typeclass Eq[A] { fun equals(x: A, y: A): Bool }',
-      );
+      final prog = pp('typeclass Eq[A] { fun equals(x: A, y: A): Bool }');
       expect(prog.decls.length, 1);
       final kind = prog.decls.first.kind;
       expect(kind, isA<STypeclassKind>());
@@ -86,12 +84,7 @@ void main() {
 
     test('STypeclassKind with superclass', () {
       final superRef = SExpr(SIdentKind('Eq'), DoxaSpan.synthetic);
-      const tc = STypeclassKind(
-        'Ord',
-        [('A', null)],
-        [],
-        superclass: null,
-      );
+      const tc = STypeclassKind('Ord', [('A', null)], [], superclass: null);
       // superclass is tested via the parser test above.
       expect(tc.name, 'Ord');
     });
@@ -107,9 +100,7 @@ void main() {
     });
 
     test('Simple fun constraint works', () {
-      final prog = pp(
-        'fun id[A: Type](x: A): A = x',
-      );
+      final prog = pp('fun id[A: Type](x: A): A = x');
       expect(prog.decls.length, 1);
     });
   });

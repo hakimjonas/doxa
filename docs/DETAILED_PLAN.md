@@ -261,7 +261,7 @@ The kernel features specified in SPEC §8 are built incrementally in the phases 
 *Resolved in Phase 10:*
 
 - **Per-member source spans (step 8 follow-up; commit c0f3de4).** Each block member now has its own `SDataBlockMember(data, span)` wrapper so positivity / duplicate diagnostics cite the specific `data ... { ... }` region, not the whole block. Mirrors the pre-existing `SCtorDecl` wrapper pattern; the "kind has no span, wrapper does" invariant in `surface.dart` is preserved.
-- **Nested positivity via per-parameter covariance (step 8 follow-up; this commit).** `DataDecl.paramsCovariant: List<bool>` records which of an inductive's parameters are strictly-positive in every ctor-arg type. The positivity check admits a ctor arg of shape `S[X]` when `S` is covariant in the relevant slot and `X` itself is strictly positive. Concrete unlocks: `data Tree { node : List[Tree] -> Tree }` and `data RoseTree[A] { node : A -> List[RoseTree[A]] -> RoseTree[A] }`. Non-covariant slots (`NonCov[T]` with `NonCov` taking its param negatively) are still rejected. Two previously-pinned "conservative rejection" tests flipped to acceptance; regression tests added for the non-covariant guard.
+- **Nested positivity via per-parameter covariance (step 8 follow-up; this commit).** `DataDecl.paramsCovariant: List<bool>` records which of an inductive's parameters are strictly-positive in every ctor-arg type. The positivity check admits a ctor arg of shape `S[X]` when `S` is covariant in the relevant slot and `X` itself is strictly positive. Concrete examples admitted: `data Tree { node : List[Tree] -> Tree }` and `data RoseTree[A] { node : A -> List[RoseTree[A]] -> RoseTree[A] }`. Non-covariant slots (`NonCov[T]` with `NonCov` taking its param negatively) are still rejected. Two previously-pinned "conservative rejection" tests flipped to acceptance; regression tests added for the non-covariant guard.
 
 *Carried forward (documented in SPEC §8.4 under "Known v2.1 limitations"):*
 
@@ -437,8 +437,8 @@ SPEC §8.2 commits Doxa to definitional proof irrelevance in `Prop` (matching Le
    - `VPi(dom, cod) → _piSort(_inferValueType(dom, level, dataDecls), _inferValueType(apply(VLam(dom, cod), VNeutral(NVar(level))), level+1, dataDecls))` — reuse the existing PTS-rule helper. Recursive call on `dom` and opened-`cod`; terminates because they're structurally smaller. Returns `null` if either sub-infer declines.
    - `VLam → null`. The type of `λx. body` is a `VPi` whose codomain is `body`'s type — requires walking into `body` under a binder, which requires ctx. For irrelevance this is fine: raw lambdas don't appear as proof terms at conv sites in well-typed programs. A λ at a conv site is either an eta-opened comparison (handled structurally by `VLam × VLam` / `VLam × VNeutral`) or inside a larger spine.
    - `VData → VProp` or `VType(n)` — look up `dataDecl.sort` (which is a `Term`, either `TProp` or `TType(n)`) and return the corresponding Value. We do NOT need to compute the data's own param/index values for irrelevance; we only need its SORT.
-   - `VConstr(dataName, _, _) → VData(dataName, _)` BUT: we only care about its sort, so we short-circuit to `dataDecl.sort`-as-Value directly. No need to reconstruct the param/index instantiation. This is a significant simplification over the original draft.
-   - `VRec(dataDecl, _) → Eval(synthRecursorType(dataDecl), ENil)` — leverages the existing synthesizer. The synth type is closed under the decl's params+indices; evaluating under an empty env reifies the Pi-chain.
+   - `VConstr(dataName, _, _) → VData(dataName, _)` BUT: we only care about its sort, so we short-circuit to `dataDecl.sort`-as-Value directly. No need to reconstruct the param/index instantiation. This is a simpler approach than the original draft.
+    - `VRec(dataDecl, _) → Eval(synthRecursorType(dataDecl), ENil)` — reuses the existing synthesizer. The synth type is closed under the decl's params+indices; evaluating under an empty env reifies the Pi-chain.
    - `VMatch → null`. Stuck matches at conv sites are reasoned about structurally by the `VMatch × VMatch` arm; irrelevance declining is fine.
    - `VNeutral(NVar | NTop | NStuck) → null`. Free variables and top-level stubs need ctx or topBindings; decline.
 
@@ -817,7 +817,7 @@ equal when the quotient was constructed from the same equivalence class.
 **Why this phase exists.** The original plan (Phases 15-22) assumed Doxa would stay
 intensional and quotient-free. The kernel is now verified through Phase 14 and the
 tooling stack is complete. Quotients are the single biggest capability gap between
-Doxa and Lean/Coq/Agda — they unlock real numbers, finite sets, modular arithmetic,
+Doxa and Lean/Coq/Agda — they make possible real numbers, finite sets, modular arithmetic,
 and any construction that needs equivalence classes. Adding them after Phase 15's
 universe polymorphism would require retrofitting the Level datatype through quotient
 code; adding them before Phase 15 lets quotient terms benefit from the Level upgrade

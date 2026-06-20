@@ -85,12 +85,15 @@ Implemented and exercised by the test suite:
 - Metavariables, Miller pattern unification, and implicit arguments,
   via a bidirectional elaborator.
 
-This is the kernel: the trusted core that checks proofs. The design
-anticipates a fuller assistant built on top (universe polymorphism,
-`SProp`, records with definitional η, a module system, tactics,
-typeclasses), and the architecture is shaped to admit those without a
-rewrite, but none of them is built and none is promised here. See
-[`SPEC.md`](SPEC.md) §1.1 for what is built versus designed-for.
+The kernel has grown beyond the bare calculus. Built and exercised by
+the test suite: `SProp` for strict proof irrelevance, records with
+definitional η, a module system with cyclic-import detection, a tactic
+engine (`intro`, `exact`, `apply`, `rewrite`, `induction`, `refl`,
+`trivial`), typeclasses with instance search, quotient types
+(`Quot(A,R)`, `mk`, `lift`), and a WASM browser demo. Universe
+polymorphism (level variables, `LMax`, `LSucc`) has kernel-level
+infrastructure; surface syntax remains future work. See
+[`SPEC.md`](SPEC.md) §1.1a/§1.1b for the built-vs-future split.
 
 ## Performance invariants
 
