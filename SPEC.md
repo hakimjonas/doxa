@@ -666,7 +666,7 @@ The kernel knows nothing specific about `Eq`. Its recursor `Eq.rec` is mechanica
 
 **Eq at Prop sort.** Because `Eq`'s target sort is `Prop`, two proofs of the same equality (`p q : Eq[A] x y`) convert by the §8.2 Prop-irrelevance rule. `refl` synthesis is therefore automatic whenever the two sides are definitionally equal at A. This is load-bearing for the stdlib proofs over propositional predicates.
 
-**Eq is universe-polymorphic.** The prelude declaration `data Eq[A: Type] (x: A) : A -> Prop` takes `A` at any universe level (the bare `Type` resolves to a fresh level variable). This means `Eq[SomeProp] p q` type-checks when `SomeProp : Prop`. UIP is **statable but not derivable** (matching Lean/Agda's K-free guarantee).
+**Limitation: Eq requires Type-sorted arguments.** The prelude declaration `data Eq[A: Type] (x: A) : A -> Prop` constrains `A` to `Type`. Values at `Prop` sort (propositions) cannot be compared via `Eq`: `Eq[SomeProp] p q` fails at typecheck because `SomeProp : Prop`, not `Type`. This falls out of having concrete sort signatures rather than sort polymorphism. Universe polymorphism would lift `Eq` to work over any sort. A concrete consequence: **UIP is not statable** (not just non-derivable) because `Eq[Eq[A] x y]` tries to put a Prop into a Type-sort slot. This is strictly stronger than Lean/Agda's K-free guarantee (there UIP is statable but not derivable). Both mechanisms preserve K-freeness; Doxa just enforces it at a coarser level.
 
 **`Eq.rec` and the J rule.** The synthesized recursor has shape:
 
