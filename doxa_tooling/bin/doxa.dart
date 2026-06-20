@@ -125,6 +125,7 @@ void _runRepl() {
   var session = ReplSession(
     bindings: prelude.bindings,
     dataDecls: prelude.dataDecls,
+    namespaceBindings: prelude.namespaceBindings,
   );
   final isInteractive = stdin.hasTerminal;
 
@@ -178,9 +179,19 @@ data Eq[A: Type] : A -> A -> Prop {
 
 /// Elaborated prelude, cached after the first call. The prelude is a
 /// fixed program; there's no reason to re-elaborate it per user file.
-({List<TopBinding> bindings, List<DataDecl> dataDecls})? _preludeCache;
+({
+  List<TopBinding> bindings,
+  List<DataDecl> dataDecls,
+  Map<String, Set<String>> namespaceBindings,
+})?
+_preludeCache;
 
-({List<TopBinding> bindings, List<DataDecl> dataDecls}) _loadPrelude() {
+({
+  List<TopBinding> bindings,
+  List<DataDecl> dataDecls,
+  Map<String, Set<String>> namespaceBindings,
+})
+_loadPrelude() {
   final cached = _preludeCache;
   if (cached != null) return cached;
   final r = parseProgram(_preludeSource);
@@ -199,17 +210,42 @@ data Eq[A: Type] : A -> A -> Prop {
   // source, so any failure is our bug, not the user's.
   var bindings = const <TopBinding>[];
   var dataDecls = const <DataDecl>[];
+  var namespaceBindings = <String, Set<String>>{};
   for (final decl in prog.decls) {
-    final env = TopEnv(bindings, dataDecls);
+    final env = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
     final produced = elabDecl(env, decl);
     final runningData = [...dataDecls, ...produced.dataDecls];
-    final runningEnv = TopEnv(bindings, runningData);
+    final runningEnv = TopEnv(
+      bindings,
+      runningData,
+      const {},
+      namespaceBindings,
+    );
     final finalized = checkDeclResult(runningEnv, produced);
     bindings = [...bindings, ...finalized];
     dataDecls = runningData;
+    namespaceBindings = _mergeNamespace(
+      namespaceBindings,
+      produced.namespaceBindings,
+    );
   }
-  final result = (bindings: bindings, dataDecls: dataDecls);
+  final result = (
+    bindings: bindings,
+    dataDecls: dataDecls,
+    namespaceBindings: namespaceBindings,
+  );
   _preludeCache = result;
+  return result;
+}
+
+Map<String, Set<String>> _mergeNamespace(
+  Map<String, Set<String>> a,
+  Map<String, Set<String>> b,
+) {
+  final result = Map<String, Set<String>>.from(a);
+  for (final entry in b.entries) {
+    result[entry.key] = {...?result[entry.key], ...entry.value};
+  }
   return result;
 }
 
@@ -244,13 +280,14 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   final preludeDeclCount = prelude.bindings.length + prelude.dataDecls.length;
   var bindings = prelude.bindings;
   var dataDecls = prelude.dataDecls;
+  var namespaceBindings = prelude.namespaceBindings;
 
   // Set the current file path so imports can resolve relative paths.
   currentImportPath = source.filename;
   importedPaths.clear();
 
   for (final decl in program.decls) {
-    final env = TopEnv(bindings, dataDecls);
+    final env = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
     try {
       final produced = elabDecl(env, decl);
       // For recursive/mutual `fun` paths, `checkDeclResult` pre-scopes
@@ -265,10 +302,19 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
           decl.kind is SImportKind
               ? [...bindings, ...produced.bindings]
               : bindings;
-      final runningEnv = TopEnv(checkBindings, runningData);
+      final runningEnv = TopEnv(
+        checkBindings,
+        runningData,
+        const {},
+        namespaceBindings,
+      );
       final finalized = checkDeclResult(runningEnv, produced);
       bindings = [...bindings, ...finalized];
       dataDecls = runningData;
+      namespaceBindings = _mergeNamespace(
+        namespaceBindings,
+        produced.namespaceBindings,
+      );
     } on DoxaCheckError catch (e) {
       // Prefer a more precise span if the error carries one: a type
       // mismatch caught during elaboration carries the offending

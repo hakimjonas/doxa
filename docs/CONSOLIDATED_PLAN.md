@@ -542,13 +542,14 @@ termination checker infrastructure.
 
 ### Phase 25 — Stdlib Expansion (ongoing)
 
-**Goal.** Build a proof library that demonstrates Doxa's full feature set.
+**Goal.** Build a proof library that demonstrates Doxa's full feature set
+and proves at least one non-trivial theorem a mathematician would recognize.
 
 **Modules to add:**
 
 | Module | Contents |
 |--------|----------|
-| `Int` | `data Int = Pos Nat \| Neg Nat` with arithmetic |
+| `Int` | `data Int = Pos Nat \| Neg Nat` with `plus`, `mult`, `neg`, `abs` |
 | `Rat` | `data Rat = MkRat Int (pos: Nat)` with field operations |
 | `Sigma` | Dependent pair with primitive projections |
 | `Semigroup`/`Monoid`/`Group` | Algebraic hierarchy via typeclasses |
@@ -557,21 +558,38 @@ termination checker infrastructure.
 **Plus:** more lemmas (`mult_comm`, `mult_assoc`, `plus_assoc`, `distrib`,
 `gcd_spec`), more induction examples, and decidability proofs.
 
+**Exit criteria.** Two concrete deliverables gate Phase 25 completion:
+
+1. **Int module with arithmetic proofs.** At minimum: `plus_comm`, `plus_assoc`,
+   `mult_comm`, `mult_assoc`, `distrib`. All verified by the test suite.
+
+2. **One case-study proof.** A non-trivial theorem that demonstrates Doxa
+   can do real mathematics. Candidates:
+   - `there are infinitely many primes` (requires Int, division lemma,
+     and strong induction)
+   - `sqrt 2 is irrational` (requires Rat, contradiction, and parity
+     reasoning)
+
 **Not included.** Real numbers, topology, category theory — these are for
 the community to build on top of the kernel.
 
-### Dependency
+### Post-v1.0 trajectory
 
-```
-Phase 23 (namespaces)
-  │
-  ├─ Phase 24 (well-founded recursion) — independent, benefits from namespaces
-  │
-  └─ Phase 25 (stdlib) — needs namespaces for safe expansion
-```
+Phases 23–25 total roughly 22–30 sessions. At the current velocity, the
+post-v1.0 work is completable in months.
 
-**Total post-v1.0 estimate:** 16-22 sessions for the structured phases (23-24),
-plus ongoing stdlib development.
+With namespaces, well-founded recursion, an Int module with arithmetic
+proofs, and a case-study theorem, Doxa would sit credibly alongside
+systems like Idris 2 and Agda in capability comparisons. It is
+distinguished by a kernel an order of magnitude smaller than any
+comparable system, a single defunctionalized driver that guarantees stack
+safety and linear-time operations architecturally, and a Fungal-aligned
+surface syntax with WASM compilation for the browser.
+
+After Phases 23–25, the next quantum leap is self-hosting — porting the
+kernel from Dart to Fungal once Fungal reaches self-hosting maturity.
+Doxa compiled to WASM already runs in the browser at 9.7 ms for the full
+stdlib; self-hosting would make it a language project that builds itself.
 
 ---
 

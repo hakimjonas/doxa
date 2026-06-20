@@ -150,7 +150,9 @@ final Parser<ParseError, String> _strLit = _sym('"')
     .thenSkip(_sym('"'));
 
 /// An `import` declaration: `import "path/to/file.doxa"` or
-/// `import "path/to/file.doxa" { name1, name2 }`.
+/// `import "path/to/file.doxa" { name1, name2 }` or
+/// `import "path/to/file.doxa" as Alias` or
+/// `import "path/to/file.doxa" { a, b } as Alias`.
 final Parser<ParseError, SDecl> _importDecl = position<ParseError>().flatMap(
   (start) => _keyword('import')
       .skipThen(_strLit)
@@ -159,12 +161,21 @@ final Parser<ParseError, SDecl> _importDecl = position<ParseError>().flatMap(
             .skipThen(_ident.sepBy(_sym(',')))
             .thenSkip(_sym('}'))
             .optional
-            .zip(position<ParseError>())
-            .map(
-              (pair) => SDecl(
-                SImportKind(path, importedNames: pair.$1 ?? const []),
-                DoxaSpan(start, pair.$2),
-              ),
+            .flatMap(
+              (importedNames) => _keyword('as')
+                  .skipThen(_ident)
+                  .optional
+                  .zip(position<ParseError>())
+                  .map(
+                    (pair) => SDecl(
+                      SImportKind(
+                        path,
+                        importedNames: importedNames ?? const [],
+                        alias: pair.$1,
+                      ),
+                      DoxaSpan(start, pair.$2),
+                    ),
+                  ),
             ),
       ),
 );

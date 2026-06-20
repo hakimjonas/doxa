@@ -41,9 +41,19 @@ data Eq[A: Type] : A -> A -> Prop {
 
 /// Elaborated prelude, cached after the first call. The prelude is a
 /// fixed program; there's no reason to re-elaborate it per call.
-({List<TopBinding> bindings, List<DataDecl> dataDecls})? _preludeCache;
+({
+  List<TopBinding> bindings,
+  List<DataDecl> dataDecls,
+  Map<String, Set<String>> namespaceBindings,
+})?
+_preludeCache;
 
-({List<TopBinding> bindings, List<DataDecl> dataDecls}) _loadPrelude() {
+({
+  List<TopBinding> bindings,
+  List<DataDecl> dataDecls,
+  Map<String, Set<String>> namespaceBindings,
+})
+_loadPrelude() {
   final cached = _preludeCache;
   if (cached != null) return cached;
   final r = parseProgram(_preludeSource);
@@ -58,15 +68,41 @@ data Eq[A: Type] : A -> A -> Prop {
   };
   var bindings = const <TopBinding>[];
   var dataDecls = const <DataDecl>[];
+  var namespaceBindings = <String, Set<String>>{};
   for (final decl in prog.decls) {
-    final produced = elabDecl(TopEnv(bindings, dataDecls), decl);
+    final produced = elabDecl(
+      TopEnv(bindings, dataDecls, const {}, namespaceBindings),
+      decl,
+    );
     final runningData = [...dataDecls, ...produced.dataDecls];
-    final finalized = checkDeclResult(TopEnv(bindings, runningData), produced);
+    final finalized = checkDeclResult(
+      TopEnv(bindings, runningData, const {}, namespaceBindings),
+      produced,
+    );
     bindings = [...bindings, ...finalized];
     dataDecls = runningData;
+    namespaceBindings = _mergeNamespace(
+      namespaceBindings,
+      produced.namespaceBindings,
+    );
   }
-  final result = (bindings: bindings, dataDecls: dataDecls);
+  final result = (
+    bindings: bindings,
+    dataDecls: dataDecls,
+    namespaceBindings: namespaceBindings,
+  );
   _preludeCache = result;
+  return result;
+}
+
+Map<String, Set<String>> _mergeNamespace(
+  Map<String, Set<String>> a,
+  Map<String, Set<String>> b,
+) {
+  final result = Map<String, Set<String>>.from(a);
+  for (final entry in b.entries) {
+    result[entry.key] = {...?result[entry.key], ...entry.value};
+  }
   return result;
 }
 
@@ -99,6 +135,7 @@ CheckOutput checkSourceOutput(
   final preludeDeclCount = prelude.bindings.length + prelude.dataDecls.length;
   var bindings = prelude.bindings;
   var dataDecls = prelude.dataDecls;
+  var namespaceBindings = prelude.namespaceBindings;
   final declarations = <DeclInfo>[];
   final allSemInfos = <SemInfo>[];
   currentImportPath = filename;
@@ -121,7 +158,10 @@ CheckOutput checkSourceOutput(
     final prevDataDeclsLen = dataDecls.length;
 
     try {
-      final produced = elabDecl(TopEnv(bindings, dataDecls), decl);
+      final produced = elabDecl(
+        TopEnv(bindings, dataDecls, const {}, namespaceBindings),
+        decl,
+      );
       final runningData = [...dataDecls, ...produced.dataDecls];
       // For import decls, expand the env to include the import's own
       // bindings so checkDeclResult can verify cross-references within
@@ -131,11 +171,15 @@ CheckOutput checkSourceOutput(
               ? [...bindings, ...produced.bindings]
               : bindings;
       final finalized = checkDeclResult(
-        TopEnv(checkBindings, runningData),
+        TopEnv(checkBindings, runningData, const {}, namespaceBindings),
         produced,
       );
       bindings = [...bindings, ...finalized];
       dataDecls = runningData;
+      namespaceBindings = _mergeNamespace(
+        namespaceBindings,
+        produced.namespaceBindings,
+      );
 
       // Collect semantic metadata from this declaration's elaboration.
       final declSemInfos = produced.metas?.semInfos;

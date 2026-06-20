@@ -531,27 +531,34 @@ final class SImportKind extends SDeclKind {
   /// from the module are imported.
   final List<String> importedNames;
 
+  /// Optional alias for namespace-qualified access, e.g.
+  /// `import "nat.doxa" as N` yields alias `"N"`.
+  final String? alias;
+
   @override
   String get name => path;
 
   /// Creates an import declaration.
-  const SImportKind(this.path, {this.importedNames = const []});
+  const SImportKind(this.path, {this.importedNames = const [], this.alias});
 
   @override
   bool operator ==(Object other) =>
       other is SImportKind &&
       other.path == path &&
-      _listEq(other.importedNames, importedNames);
+      _listEq(other.importedNames, importedNames) &&
+      other.alias == alias;
 
   @override
   int get hashCode =>
-      Object.hash('SImportKind', path, Object.hashAll(importedNames));
+      Object.hash('SImportKind', path, Object.hashAll(importedNames), alias);
 
   @override
-  String toString() =>
-      importedNames.isEmpty
-          ? 'SImportKind($path)'
-          : 'SImportKind($path, importedNames: $importedNames)';
+  String toString() {
+    final parts = <String>[path];
+    if (importedNames.isNotEmpty) parts.add('importedNames: $importedNames');
+    if (alias != null) parts.add('alias: $alias');
+    return 'SImportKind(${parts.join(', ')})';
+  }
 }
 
 /// A value binding: `val x: T = e` or `val x = e`.

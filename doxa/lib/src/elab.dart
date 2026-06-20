@@ -658,6 +658,18 @@ String _resolveImportPath(String importPath, String currentFile) {
   return resolved.toFilePath();
 }
 
+/// Derive module prefix from file path: "nat.doxa" → "Nat",
+/// "foo/bar.doxa" → "Bar".
+String _modulePrefix(String path) {
+  final filename = path.split('/').last.split('\\').last;
+  final stem =
+      filename.endsWith('.doxa')
+          ? filename.substring(0, filename.length - '.doxa'.length)
+          : filename;
+  if (stem.isEmpty) return stem;
+  return stem[0].toUpperCase() + stem.substring(1);
+}
+
 // ---------------------------------------------------------------------------
 // Local scope
 // ---------------------------------------------------------------------------
@@ -911,16 +923,32 @@ final class TopEnv {
   /// resolution during implicit argument insertion.
   final Map<String, ClassInfo> classRegistry;
 
+  /// Namespace-qualified name index: prefix → set of unqualified names
+  /// available under that prefix.
+  ///
+  /// Built during import processing and data-decl elaboration.
+  /// Consulted by dotted-name resolution to resolve `Nat.plus` as
+  /// `plus` in the `Nat` namespace.
+  final Map<String, Set<String>> namespaceBindings;
+
   /// Creates a top environment wrapping [bindings] and optional
-  /// inductive [dataDecls] and [classRegistry].
+  /// inductive [dataDecls], [classRegistry], and [namespaceBindings].
   const TopEnv(
     this.bindings, [
     this.dataDecls = const <DataDecl>[],
     this.classRegistry = const {},
+    this.namespaceBindings = const {},
   ]);
 
   /// The empty top environment.
   static const TopEnv empty = TopEnv(<TopBinding>[]);
+
+  /// Look up a name qualified by namespace prefix.
+  /// Returns true if [name] is registered under [namespace].
+  bool lookupQualified(String namespace, String name) {
+    final ns = namespaceBindings[namespace];
+    return ns != null && ns.contains(name);
+  }
 
   /// Look up a name's 1-based index from the end of the list.
   ///
@@ -1189,8 +1217,20 @@ TopEnv elabProgram(SProgram program) =>
         [...env.bindings, ...produced.bindings],
         [...env.dataDecls, ...produced.dataDecls],
         {...env.classRegistry, ...produced.classRegistry},
+        _mergeNamespace(env.namespaceBindings, produced.namespaceBindings),
       );
     });
+
+Map<String, Set<String>> _mergeNamespace(
+  Map<String, Set<String>> a,
+  Map<String, Set<String>> b,
+) {
+  final result = Map<String, Set<String>>.from(a);
+  for (final entry in b.entries) {
+    result[entry.key] = {...?result[entry.key], ...entry.value};
+  }
+  return result;
+}
 
 /// The output of elaborating a single declaration.
 ///
@@ -1225,6 +1265,11 @@ typedef DeclResult =
       // Populated by `typeclass` declarations and updated by `impl`
       // declarations. Merged into `TopEnv.classRegistry` by callers.
       Map<String, ClassInfo> classRegistry,
+      // Namespace-qualified name index updates: prefix → set of
+      // unqualified names. Built during import processing and data
+      // declaration elaboration. Merged into
+      // `TopEnv.namespaceBindings` by callers.
+      Map<String, Set<String>> namespaceBindings,
     });
 
 /// Elaborate a single declaration in the context of [topEnv].
@@ -1520,6 +1565,61 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       } catch (_) {
         // Fall through to name qualification.
       }
+
+      // Try namespace-qualified lookup: Nat.plus → look up `plus`
+      // in namespace `Nat`.
+      if (qualifier.kind is SIdentKind) {
+        final qualName = (qualifier.kind as SIdentKind).name;
+        if (state.topEnv.lookupQualified(qualName, name)) {
+          // Resolve `name` against the full registry: constructors,
+          // data types, and top bindings, in that order (mirroring
+          // SIdentKind resolution).
+          for (final d in state.topEnv.dataDecls) {
+            for (final c in d.ctors) {
+              if (c.name == name) {
+                final sigTerm = _ctorSignatureTerm(d, c);
+                final sigValue = eval(sigTerm, state.ctx.env);
+                _recordSemInfo(
+                  state,
+                  expr.span,
+                  '$qualName.$name',
+                  SemInfoKind.constructor,
+                  sigValue,
+                  c.span,
+                );
+                return (TConstr(d.name, name, const <Term>[]), sigValue);
+              }
+            }
+          }
+          final dataDecl = state.topEnv.lookupData(name);
+          if (dataDecl != null) {
+            final sigTerm = _dataSignatureTerm(dataDecl);
+            final sigValue = eval(sigTerm, state.ctx.env);
+            _recordSemInfo(
+              state,
+              expr.span,
+              '$qualName.$name',
+              SemInfoKind.dataType,
+              sigValue,
+              dataDecl.span,
+            );
+            return (TData(name, const <Term>[]), sigValue);
+          }
+          final topEntry = state.ctx.env.lookupTop(name);
+          if (topEntry != null) {
+            _recordSemInfo(
+              state,
+              expr.span,
+              '$qualName.$name',
+              SemInfoKind.topBinding,
+              topEntry.type,
+              state.topEnv.spanOf(name),
+            );
+            return (TTop(name), topEntry.type);
+          }
+        }
+      }
+
       final flat = _flattenDottedIdent(expr);
       if (flat == null) {
         throw UnresolvedName(
@@ -2868,6 +2968,7 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
         corecursiveGroup: null,
         metas: metas,
         classRegistry: const {},
+        namespaceBindings: const {},
       );
 
     case STypeAliasKind(:final name, :final body):
@@ -2887,6 +2988,7 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
         corecursiveGroup: null,
         metas: metas,
         classRegistry: const {},
+        namespaceBindings: const {},
       );
 
     case SFunKind():
@@ -2909,6 +3011,7 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
             blockResult.group.members.isEmpty ? null : blockResult.group,
         metas: metas,
         classRegistry: const {},
+        namespaceBindings: const {},
       );
 
     case SDataKind():
@@ -2917,12 +3020,15 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
       // sorted singletons) so user code can reference the recursors
       // by name.
       final dataDecl = _elabData(topEnv, decl.span, kind);
+      final recBindings = _makeRecBindings(topEnv, dataDecl, decl.span);
+      final nsNames = {for (final b in recBindings) b.name};
       return (
-        bindings: _makeRecBindings(topEnv, dataDecl, decl.span),
+        bindings: recBindings,
         dataDecls: [dataDecl],
         corecursiveGroup: null,
         metas: metas,
         classRegistry: const {},
+        namespaceBindings: {kind.name: nsNames},
       );
 
     case SDataBlockKind(:final members):
@@ -2931,25 +3037,33 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
       // binding (plus `T.rect` if applicable) spanned to the member
       // (not the whole block).
       final dataDecls = _elabDataBlock(topEnv, decl.span, members);
+      final recBindings = [
+        // Each recursor binding gets its parent data decl's span
+        // (which is the member's span, not the block's) so
+        // diagnostics on a recursor cite its own data.
+        for (final d in dataDecls) ..._makeRecBindings(topEnv, d, d.span),
+      ];
       return (
-        bindings: [
-          // Each recursor binding gets its parent data decl's span
-          // (which is the member's span, not the block's) so
-          // diagnostics on a recursor cite its own data.
-          for (final d in dataDecls) ..._makeRecBindings(topEnv, d, d.span),
-        ],
+        bindings: recBindings,
         dataDecls: dataDecls,
         corecursiveGroup: null,
         metas: metas,
         classRegistry: const {},
+        namespaceBindings: {
+          for (final d in dataDecls)
+            d.name: {
+              for (final b in _makeRecBindings(topEnv, d, d.span)) b.name,
+            },
+        },
       );
 
-    case SImportKind(:final path, :final importedNames):
+    case SImportKind(:final path, :final importedNames, :final alias):
       return _processImport(
         topEnv,
         path,
         decl.span,
         importedNames: importedNames,
+        alias: alias,
       );
 
     case SFunBlockKind(:final members):
@@ -2973,6 +3087,7 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
             blockResult.group.members.isEmpty ? null : blockResult.group,
         metas: metas,
         classRegistry: const {},
+        namespaceBindings: const {},
       );
 
     case STypeclassKind(
@@ -3112,6 +3227,7 @@ DeclResult _elabTypeclass(
                 : null,
       ),
     },
+    namespaceBindings: const {},
   );
 }
 
@@ -3227,6 +3343,7 @@ DeclResult _elabImpl(
     classRegistry: {
       className: classInfo.withInstance(InstanceInfo(targetType, instanceName)),
     },
+    namespaceBindings: const {},
   );
 }
 
@@ -3242,6 +3359,7 @@ DeclResult _processImport(
   String path,
   DoxaSpan span, {
   List<String> importedNames = const [],
+  String? alias,
 }) {
   if (currentImportPath == null) {
     throw StateError(
@@ -3259,6 +3377,7 @@ DeclResult _processImport(
       corecursiveGroup: null,
       metas: MetaContext()..semInfos = <SemInfo>[],
       classRegistry: const {},
+      namespaceBindings: const {},
     );
   }
 
@@ -3286,11 +3405,14 @@ DeclResult _processImport(
   try {
     var localBindings = const <TopBinding>[];
     var localDataDecls = const <DataDecl>[];
+    var localNamespace = <String, Set<String>>{};
 
     for (final decl in prog.decls) {
       final runningEnv = TopEnv(
         [...topEnv.bindings, ...localBindings],
         [...topEnv.dataDecls, ...localDataDecls],
+        const {},
+        _mergeNamespace(topEnv.namespaceBindings, localNamespace),
       );
       final produced = _elabDecl(runningEnv, decl);
       final runningData = [...localDataDecls, ...produced.dataDecls];
@@ -3300,13 +3422,19 @@ DeclResult _processImport(
           decl.kind is SImportKind
               ? [...topEnv.bindings, ...localBindings, ...produced.bindings]
               : [...topEnv.bindings, ...localBindings];
-      final checkEnv = TopEnv(checkBindings, [
-        ...topEnv.dataDecls,
-        ...runningData,
-      ]);
+      final checkEnv = TopEnv(
+        checkBindings,
+        [...topEnv.dataDecls, ...runningData],
+        const {},
+        _mergeNamespace(topEnv.namespaceBindings, localNamespace),
+      );
       final finalized = checkDeclResult(checkEnv, produced);
       localBindings = [...localBindings, ...finalized];
       localDataDecls = runningData;
+      localNamespace = _mergeNamespace(
+        localNamespace,
+        produced.namespaceBindings,
+      );
     }
 
     // Selective import: filter to only the named bindings.
@@ -3340,12 +3468,28 @@ DeclResult _processImport(
 
     importedPaths.add(resolvedPath);
 
+    // Build namespace-qualified entries.
+    final modPrefix = alias ?? _modulePrefix(path);
+    final nsMap = <String, Set<String>>{};
+    if (modPrefix.isNotEmpty) {
+      final names = <String>{
+        for (final b in localBindings) b.name,
+        for (final d in localDataDecls) d.name,
+        for (final d in localDataDecls)
+          for (final c in d.ctors) c.name,
+      };
+      if (names.isNotEmpty) {
+        nsMap[modPrefix] = names;
+      }
+    }
+
     return (
       bindings: localBindings,
       dataDecls: localDataDecls,
       corecursiveGroup: null,
       metas: MetaContext()..semInfos = <SemInfo>[],
       classRegistry: const {},
+      namespaceBindings: nsMap,
     );
   } finally {
     currentImportPath = prevFilePath;

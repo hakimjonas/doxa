@@ -31,6 +31,17 @@ sealed class ReplResult {
   const ReplResult();
 }
 
+Map<String, Set<String>> _mergeNamespace(
+  Map<String, Set<String>> a,
+  Map<String, Set<String>> b,
+) {
+  final result = Map<String, Set<String>>.from(a);
+  for (final entry in b.entries) {
+    result[entry.key] = {...?result[entry.key], ...entry.value};
+  }
+  return result;
+}
+
 /// An expression was successfully elaborated and its type inferred.
 final class ReplExprResult extends ReplResult {
   /// Pretty-printed inferred type.
@@ -82,11 +93,15 @@ final class ReplSession {
   /// Accumulated inductive-type declarations.
   final List<DataDecl> dataDecls;
 
+  /// Accumulated namespace-qualified name index.
+  final Map<String, Set<String>> namespaceBindings;
+
   /// Creates a REPL session, optionally seeded with [seedBindings]
   /// and [seedDataDecls] (e.g. the ambient prelude).
   const ReplSession({
     this.bindings = const <TopBinding>[],
     this.dataDecls = const <DataDecl>[],
+    this.namespaceBindings = const {},
   });
 
   /// Process a single line of REPL input.
@@ -144,7 +159,7 @@ final class ReplSession {
 
   /// Process [expr] as an expression: elaborate, infer, normalize.
   ReplResult _processExpr(SExpr expr, String input) {
-    final topEnv = TopEnv(bindings, dataDecls);
+    final topEnv = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
     try {
       final term = elabExpr(topEnv, expr);
       final ctx = topEnv.toCtx();
@@ -170,18 +185,28 @@ final class ReplSession {
   /// Process [decl] as a declaration: elaborate, check, return a new
   /// session with the declaration accumulated.
   ReplStep _processDecl(SDecl decl, String input) {
-    final topEnv = TopEnv(bindings, dataDecls);
+    final topEnv = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
     try {
       final produced = elabDecl(topEnv, decl);
       final runningData = [...dataDecls, ...produced.dataDecls];
-      final runningEnv = TopEnv(bindings, runningData);
+      final runningEnv = TopEnv(
+        bindings,
+        runningData,
+        const {},
+        namespaceBindings,
+      );
       final finalized = checkDeclResult(runningEnv, produced);
 
       final newBindings = [...bindings, ...finalized];
       final newDataDecls = runningData;
+      final newNs = _mergeNamespace(
+        namespaceBindings,
+        produced.namespaceBindings,
+      );
       final newSession = ReplSession(
         bindings: newBindings,
         dataDecls: newDataDecls,
+        namespaceBindings: newNs,
       );
 
       // Return the primary result: the first new binding, or the first
