@@ -139,13 +139,13 @@ TacticFn alt(TacticFn t1, TacticFn t2) => (s) {
 ///
 /// Expects the goal to be a Pi type `(x: A) -> B`. Extends the context
 /// with a fresh binder of type `A` and creates a subgoal for `B`.
-TacticResult intro(TacticState s) {
+TacticResult intro(TacticState s, {String? name}) {
   final goalType = s.goalType;
   if (goalType is! VPi) {
     return TacticFail('intro: goal is not a function type');
   }
   final pi = goalType;
-  final freshName = pi.name ?? 'h';
+  final freshName = name ?? pi.name ?? 'h';
   // Extend context with the binder of type dom.
   final newCtx = s.ctx.extend(pi.domain);
   // Track the binder name for later resolution in exact/apply.

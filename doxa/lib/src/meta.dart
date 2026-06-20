@@ -203,6 +203,54 @@ final class MetaContext {
     }
     return 'MetaContext(${parts.join(', ')})';
   }
+
+  /// Create a point-in-time snapshot of this context's state.
+  MetaSnapshot snapshot() {
+    final solved = <int, Term>{};
+    for (var i = 0; i < _entries.length; i++) {
+      if (_entries[i] is TermMetaSolved) {
+        solved[i] = (_entries[i] as TermMetaSolved).solution;
+      }
+    }
+    return MetaSnapshot(_entries.length, solved);
+  }
+
+  /// Restore this context to a previous snapshot state.
+  void restore(MetaSnapshot snap) {
+    while (_entries.length > snap.entriesLength) {
+      _entries.removeLast();
+    }
+    for (var i = 0; i < _entries.length; i++) {
+      final wasSolved = snap.solved.containsKey(i);
+      final entry = _entries[i];
+      if (wasSolved && entry is! TermMetaSolved) {
+        final unsolved = entry as TermMetaUnsolved;
+        _entries[i] = TermMetaSolved(
+          snap.solved[i]!,
+          unsolved.typeExpected,
+          unsolved.localCtx,
+        );
+      } else if (!wasSolved && entry is TermMetaSolved) {
+        _entries[i] = TermMetaUnsolved(entry.typeExpected, entry.localCtx);
+      }
+    }
+  }
+}
+
+/// A point-in-time capture of [MetaContext] state.
+///
+/// Records the entries-list length and, for each meta that was solved,
+/// the solution term. On restore, entries are truncated to the recorded
+/// length and each entry's solve state is matched to the snapshot.
+final class MetaSnapshot {
+  /// The length of the entries list at snapshot time.
+  final int entriesLength;
+
+  /// Meta id → solution term for each solved meta at snapshot time.
+  final Map<int, Term> solved;
+
+  /// Creates a snapshot.
+  const MetaSnapshot(this.entriesLength, this.solved);
 }
 
 /// VMatch tier-1 variant of [inlineSolvedMetas]

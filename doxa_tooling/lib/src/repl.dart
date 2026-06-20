@@ -12,15 +12,20 @@ library;
 import 'package:rumil/rumil.dart';
 
 import 'package:doxa/src/check.dart';
+import 'package:doxa/src/ctx.dart';
 import 'package:doxa/src/elab.dart';
 import 'package:doxa/src/env.dart';
 import 'package:doxa/src/eval.dart';
+import 'package:doxa/src/meta.dart';
 import 'package:doxa/src/parse.dart';
 import 'package:doxa/src/pretty.dart';
 import 'package:doxa/src/report.dart';
 import 'package:doxa/src/source.dart';
 import 'package:doxa/src/surface.dart';
+import 'package:doxa/src/tactic.dart'
+    show TacticState, TacticOk, TacticFail, intro, exact, refl, tacticApply, trivial;
 import 'package:doxa/src/term.dart' show TPi, TBound, TData, Term, Icit;
+import 'package:doxa/src/value.dart';
 
 /// Meta-command mode: which part of the expression to display.
 enum _MetaMode { type, norm }
@@ -76,6 +81,54 @@ final class ReplMeta extends ReplResult {
   const ReplMeta(this.text);
 }
 
+// ---------------------------------------------------------------------------
+// Interactive proof state
+// ---------------------------------------------------------------------------
+
+/// A snapshot of proof state for undo.
+final class _ProofSnapshot {
+  final MetaSnapshot metaSnapshot;
+  final int currentGoalMeta;
+  final Ctx ctx;
+  final List<String> binderNames;
+
+  const _ProofSnapshot(
+    this.metaSnapshot,
+    this.currentGoalMeta,
+    this.ctx,
+    this.binderNames,
+  );
+}
+
+/// Mutable proof session state, active between `:goal` and `:qed`/`:abort`.
+final class _ProofSession {
+  final MetaContext metas;
+  final List<_ProofSnapshot> undoStack;
+  final int rootGoalMetaId;
+  int currentGoalMeta;
+  Ctx ctx;
+  List<String> binderNames;
+  final TopEnv topEnv;
+  final String theoremName;
+  final Term theoremType;
+
+  _ProofSession({
+    required this.metas,
+    required this.rootGoalMetaId,
+    required this.currentGoalMeta,
+    required this.ctx,
+    required this.binderNames,
+    required this.topEnv,
+    required this.theoremName,
+    required this.theoremType,
+  }) : undoStack = [];
+
+  Value get goalType =>
+      metas.lookup(currentGoalMeta).isSolved
+          ? (metas.lookup(currentGoalMeta) as TermMetaSolved).typeExpected
+          : (metas.lookup(currentGoalMeta) as TermMetaUnsolved).typeExpected;
+}
+
 /// Immutable REPL session holding accumulated top-level state.
 ///
 /// Each [processInput] call is independent — the session does NOT
@@ -97,13 +150,17 @@ final class ReplSession {
   /// Accumulated namespace-qualified name index.
   final Map<String, Set<String>> namespaceBindings;
 
+  /// Active proof session, or null when not in proof mode.
+  final _ProofSession? proofState;
+
   /// Creates a REPL session, optionally seeded with [seedBindings]
   /// and [seedDataDecls] (e.g. the ambient prelude).
   const ReplSession({
     this.bindings = const <TopBinding>[],
     this.dataDecls = const <DataDecl>[],
     this.namespaceBindings = const {},
-  });
+    _ProofSession? proofState,
+  }) : this.proofState = proofState;
 
   /// Process a single line of REPL input.
   ///
@@ -119,6 +176,11 @@ final class ReplSession {
     // Meta-commands prefixed with ':'.
     if (trimmed.startsWith(':')) {
       return _processMeta(trimmed);
+    }
+
+    // In proof mode, only meta-commands are accepted.
+    if (proofState != null) {
+      return (const ReplError('Cannot add declarations during a proof.'), this);
     }
 
     // Try expression first.
@@ -199,12 +261,18 @@ final class ReplSession {
         return (
           const ReplMeta(
             'Meta-commands:\n'
-            '  :type <expr>   Elaborate and show the type\n'
-            '  :norm <expr>   Elaborate and show the normal form\n'
-            '  :browse        List all names in scope with their types\n'
-            '  :search <str>  Filter :browse to names containing <str>\n'
-            '  :help          Show this help\n'
-            '  :quit          Exit the REPL\n'
+            '  :type <expr>     Elaborate and show the type\n'
+            '  :norm <expr>     Elaborate and show the normal form\n'
+            '  :browse          List all names in scope with their types\n'
+            '  :search <str>    Filter :browse to names containing <str>\n'
+            '  :goal <theorem>  Start an interactive proof\n'
+            '  :step <tactic>   Execute a tactic step\n'
+            '  :undo            Undo the last tactic step\n'
+            '  :print           Show the current proof term\n'
+            '  :qed             Finish the proof\n'
+            '  :abort           Abort the current proof\n'
+            '  :help            Show this help\n'
+            '  :quit            Exit the REPL\n'
             '\n'
             'Otherwise, enter a Doxa expression or declaration.',
           ),
@@ -227,6 +295,18 @@ final class ReplSession {
           return (const ReplError(':search requires a substring'), this);
         }
         return (ReplMeta(_browse(filter: rest)), this);
+      case ':goal':
+        return _handleGoal(rest);
+      case ':step':
+        return _handleStep(rest);
+      case ':undo':
+        return _handleUndo();
+      case ':print':
+        return _handlePrint();
+      case ':qed':
+        return _handleQed();
+      case ':abort':
+        return _handleAbort();
       default:
         return (ReplError('unknown command: $cmd'), this);
     }
@@ -323,6 +403,531 @@ final class ReplSession {
       return (ReplError(_formatElabError(input, e)), this);
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Proof-mode handlers
+  // ---------------------------------------------------------------------------
+
+  /// Handle `:goal` (show current goal) or `:goal theorem NAME : TYPE` (start proof).
+  ReplStep _handleGoal(String arg) {
+    final text = arg.trim();
+    // `:goal` with no args during proof shows the current goal.
+    if (text.isEmpty) {
+      final ps = proofState;
+      if (ps == null) {
+        return (const ReplError(':goal requires a theorem declaration.'), this);
+      }
+      return (ReplMeta(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType)), this);
+    }
+    if (proofState != null) {
+      return (const ReplMeta('Already in proof mode. Use :qed, :abort, or :undo.'), this);
+    }
+
+    // Strip 'theorem ' prefix and ' := ' suffix.
+    var rest = text;
+    if (rest.startsWith('theorem ')) {
+      rest = rest.substring('theorem '.length);
+    } else {
+      return (const ReplError(':goal expects "theorem name : type".'), this);
+    }
+
+    // Extract name (up to " : ").
+    final nameEnd = rest.indexOf(' : ');
+    if (nameEnd < 0) {
+      return (const ReplError(':goal expects "theorem name : type".'), this);
+    }
+    final theoremName = rest.substring(0, nameEnd);
+    var typeText = rest.substring(nameEnd + 3);
+
+    // Strip optional trailing `:=`.
+    if (typeText.endsWith(' :=')) {
+      typeText = typeText.substring(0, typeText.length - 3).trim();
+    } else if (typeText.endsWith(':=')) {
+      typeText = typeText.substring(0, typeText.length - 2).trim();
+    }
+
+    if (typeText.isEmpty) {
+      return (const ReplError(':goal theorem requires a type.'), this);
+    }
+
+    // Parse and elaborate the type.
+    final typeResult = parseExpr(typeText);
+    SExpr typeExpr;
+    if (typeResult is Success<ParseError, SExpr>) {
+      typeExpr = typeResult.value;
+    } else if (typeResult is Partial<ParseError, SExpr>) {
+      typeExpr = typeResult.value;
+    } else {
+      return (
+        ReplError(
+          _formatParseFailure(typeResult as Failure<ParseError, dynamic>),
+        ),
+        this,
+      );
+    }
+
+    final topEnv = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
+    Term typeTerm;
+    try {
+      typeTerm = elabExpr(topEnv, typeExpr);
+    } on DoxaCheckError catch (e) {
+      return (ReplError(_formatCheckError(typeText, typeExpr.span, e)), this);
+    } on ElabError catch (e) {
+      return (ReplError(_formatElabError(typeText, e)), this);
+    }
+
+    // Evaluate the type to create the goal meta.
+    final ctx = topEnv.toCtx();
+    final metas = MetaContext();
+    final ctxWithMetas = CNil.withRegistries(
+      dataDecls: dataDecls,
+      topBindings: ctx.env.topBindings,
+      metas: metas,
+    );
+    final typeValue = eval(typeTerm, ctxWithMetas.env);
+    final goalMetaId = metas.freshTermMeta(typeValue, ctxWithMetas);
+
+    // Display the goal.
+    final goalTypeStr = prettyTerm(
+      quote(ctxWithMetas.level, typeValue),
+      outerDepth: ctxWithMetas.level,
+    );
+    final output = StringBuffer();
+    output.writeln('Goal:');
+    output.writeln('  $goalTypeStr');
+
+    final proofSession = _ProofSession(
+      metas: metas,
+      rootGoalMetaId: goalMetaId,
+      currentGoalMeta: goalMetaId,
+      ctx: ctxWithMetas,
+      binderNames: const [],
+      topEnv: topEnv,
+      theoremName: theoremName,
+      theoremType: typeTerm,
+    );
+
+    return (
+      ReplMeta(output.toString().trimRight()),
+      ReplSession(
+        bindings: bindings,
+        dataDecls: dataDecls,
+        namespaceBindings: namespaceBindings,
+        proofState: proofSession,
+      ),
+    );
+  }
+
+  /// Format context lines for display (innermost-first).
+  String _formatContext(Ctx ctx, List<String> binderNames) {
+    if (binderNames.isEmpty) return '';
+    final lines = <String>[];
+    var c = ctx;
+    var i = 0;
+    while (c is CCons && i < binderNames.length) {
+      final name = binderNames[i];
+      final typeTerm = quote(c.level, c.type);
+      final typeStr = prettyTerm(typeTerm, outerDepth: c.level);
+      lines.add('  $name : $typeStr');
+      c = c.rest;
+      i++;
+    }
+    return lines.join('\n');
+  }
+
+  /// Format goal + context display.
+  String _formatGoalAndCtx(Ctx ctx, List<String> binderNames, Value goalType) {
+    final goalTerm = quote(ctx.level, goalType);
+    final goalStr = prettyTerm(goalTerm, outerDepth: ctx.level);
+    final sb = StringBuffer();
+    sb.writeln('Goal:');
+    sb.writeln('  $goalStr');
+    if (binderNames.isNotEmpty) {
+      sb.writeln('Context:');
+      sb.write(_formatContext(ctx, binderNames));
+    }
+    return sb.toString().trimRight();
+  }
+
+  /// Handle `:step <tactic>`.
+  ReplStep _handleStep(String arg) {
+    final ps = proofState;
+    if (ps == null) {
+      return (const ReplMeta('No proof in progress. Use :goal to start.'), this);
+    }
+    final text = arg.trim();
+    if (text.isEmpty) {
+      return (const ReplError(':step requires a tactic.'), this);
+    }
+
+    // Parse the tactic: `intro [name]`, `exact e`, `apply f`, `refl`, `trivial`.
+    final spaceIdx = text.indexOf(' ');
+    final tacticName = spaceIdx < 0 ? text : text.substring(0, spaceIdx);
+    final tacticArg = spaceIdx < 0 ? '' : text.substring(spaceIdx + 1).trim();
+
+    switch (tacticName) {
+      case 'intro':
+        return _stepIntro(ps, tacticArg);
+      case 'exact':
+        return _stepExact(ps, tacticArg);
+      case 'apply':
+        return _stepApply(ps, tacticArg);
+      case 'refl':
+        return _stepRefl(ps);
+      case 'trivial':
+        return _stepTrivial(ps);
+      case 'rewrite':
+        return (
+          ReplMeta('rewrite: not yet implemented in this version'),
+          this,
+        );
+      case 'induction':
+        return (
+          ReplMeta('induction: not yet implemented in this version'),
+          this,
+        );
+      default:
+        return (ReplError('unknown tactic: $tacticName'), this);
+    }
+  }
+
+  ReplStep _stepIntro(_ProofSession ps, String nameArg) {
+    final goalType = ps.goalType;
+    if (goalType is! VPi) {
+      return (const ReplMeta('intro: goal is not a function type'), this);
+    }
+    final pi = goalType;
+    final name = nameArg.isNotEmpty ? nameArg : null;
+    final freshName = name ?? pi.name ?? 'h';
+
+    final snap = _ProofSnapshot(
+      ps.metas.snapshot(),
+      ps.currentGoalMeta,
+      ps.ctx,
+      List.unmodifiable(ps.binderNames),
+    );
+
+    final tstate = TacticState(ps.metas, ps.ctx, ps.currentGoalMeta, ps.binderNames);
+    final result = intro(tstate, name: name);
+    return switch (result) {
+      TacticOk(:final term, :final subMeta) => () {
+        ps.metas.solve(ps.currentGoalMeta, term);
+        ps.undoStack.add(snap);
+        if (subMeta != null) {
+          ps.currentGoalMeta = subMeta;
+        }
+        ps.ctx = ps.ctx.extend(pi.domain);
+        ps.binderNames = [freshName, ...ps.binderNames];
+        final output = StringBuffer();
+        output.writeln('Introduced $freshName.');
+        output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
+        if (subMeta == null) {
+          output.writeln();
+          output.write('Goal solved. Use :qed to commit.');
+        }
+        return (ReplMeta(output.toString().trimRight()), this);
+      }(),
+      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+    };
+  }
+
+  ReplStep _stepExact(_ProofSession ps, String arg) {
+    if (arg.isEmpty) {
+      return (const ReplError(':step exact requires an expression.'), this);
+    }
+
+    // Parse and elaborate the expression.
+    final exprResult = parseExpr(arg);
+    SExpr expr;
+    if (exprResult is Success<ParseError, SExpr>) {
+      expr = exprResult.value;
+    } else if (exprResult is Partial<ParseError, SExpr>) {
+      expr = exprResult.value;
+    } else {
+      return (
+        ReplError(_formatParseFailure(exprResult as Failure<ParseError, dynamic>)),
+        this,
+      );
+    }
+
+    Term term;
+    try {
+      term = elabExprInScope(ps.topEnv, ps.binderNames, expr, metas: ps.metas);
+    } catch (_) {
+      // Fallback: simple identifier → TBound.
+      if (expr.kind case SIdentKind(:final name)) {
+        final idx = ps.binderNames.indexOf(name);
+        if (idx >= 0) {
+          term = TBound(idx);
+        } else {
+          return (ReplMeta('exact: unresolved name "$name"'), this);
+        }
+      } else {
+        return (ReplMeta('exact: could not elaborate expression'), this);
+      }
+    }
+
+    // Take snapshot.
+    final snap = _ProofSnapshot(
+      ps.metas.snapshot(),
+      ps.currentGoalMeta,
+      ps.ctx,
+      List.unmodifiable(ps.binderNames),
+    );
+
+    final tstate = TacticState(ps.metas, ps.ctx, ps.currentGoalMeta, ps.binderNames);
+    final result = exact(term)(tstate);
+    return switch (result) {
+      TacticOk() => () {
+        ps.undoStack.add(snap);
+        final output = StringBuffer();
+        final allSolved = () {
+          for (var i = 0; i < ps.metas.length; i++) {
+            if (!ps.metas.isSolved(i)) return false;
+          }
+          return true;
+        }();
+        if (allSolved) {
+          output.writeln('Goal solved. Use :qed to commit.');
+        } else {
+          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
+        }
+        return (ReplMeta(output.toString().trimRight()), this);
+      }(),
+      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+    };
+  }
+
+  ReplStep _stepApply(_ProofSession ps, String arg) {
+    if (arg.isEmpty) {
+      return (const ReplError(':step apply requires an expression.'), this);
+    }
+
+    final exprResult = parseExpr(arg);
+    SExpr expr;
+    if (exprResult is Success<ParseError, SExpr>) {
+      expr = exprResult.value;
+    } else if (exprResult is Partial<ParseError, SExpr>) {
+      expr = exprResult.value;
+    } else {
+      return (
+        ReplError(_formatParseFailure(exprResult as Failure<ParseError, dynamic>)),
+        this,
+      );
+    }
+
+    Term term;
+    try {
+      term = elabExprInScope(ps.topEnv, ps.binderNames, expr, metas: ps.metas);
+    } catch (_) {
+      if (expr.kind case SIdentKind(:final name)) {
+        final idx = ps.binderNames.indexOf(name);
+        if (idx >= 0) {
+          term = TBound(idx);
+        } else {
+          return (ReplMeta('apply: unresolved name "$name"'), this);
+        }
+      } else {
+        return (ReplMeta('apply: could not elaborate expression'), this);
+      }
+    }
+
+    final snap = _ProofSnapshot(
+      ps.metas.snapshot(),
+      ps.currentGoalMeta,
+      ps.ctx,
+      List.unmodifiable(ps.binderNames),
+    );
+
+    final tstate = TacticState(ps.metas, ps.ctx, ps.currentGoalMeta, ps.binderNames);
+    final result = tacticApply(term)(tstate);
+    return switch (result) {
+      TacticOk() => () {
+        ps.undoStack.add(snap);
+        final output = StringBuffer();
+        output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
+        return (ReplMeta(output.toString().trimRight()), this);
+      }(),
+      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+    };
+  }
+
+  ReplStep _stepRefl(_ProofSession ps) {
+    final snap = _ProofSnapshot(
+      ps.metas.snapshot(),
+      ps.currentGoalMeta,
+      ps.ctx,
+      List.unmodifiable(ps.binderNames),
+    );
+    final tstate = TacticState(ps.metas, ps.ctx, ps.currentGoalMeta, ps.binderNames);
+    final result = refl(tstate);
+    return switch (result) {
+      TacticOk() => () {
+        ps.undoStack.add(snap);
+        final output = StringBuffer();
+        final allSolved = () {
+          for (var i = 0; i < ps.metas.length; i++) {
+            if (!ps.metas.isSolved(i)) return false;
+          }
+          return true;
+        }();
+        if (allSolved) {
+          output.writeln('Goal solved. Use :qed to commit.');
+        } else {
+          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
+        }
+        return (ReplMeta(output.toString().trimRight()), this);
+      }(),
+      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+    };
+  }
+
+  ReplStep _stepTrivial(_ProofSession ps) {
+    final snap = _ProofSnapshot(
+      ps.metas.snapshot(),
+      ps.currentGoalMeta,
+      ps.ctx,
+      List.unmodifiable(ps.binderNames),
+    );
+    final tstate = TacticState(ps.metas, ps.ctx, ps.currentGoalMeta, ps.binderNames);
+    final result = trivial(tstate);
+    return switch (result) {
+      TacticOk() => () {
+        ps.undoStack.add(snap);
+        final output = StringBuffer();
+        final allSolved = () {
+          for (var i = 0; i < ps.metas.length; i++) {
+            if (!ps.metas.isSolved(i)) return false;
+          }
+          return true;
+        }();
+        if (allSolved) {
+          output.writeln('Goal solved. Use :qed to commit.');
+        } else {
+          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
+        }
+        return (ReplMeta(output.toString().trimRight()), this);
+      }(),
+      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+    };
+  }
+
+  /// Handle `:undo`.
+  ReplStep _handleUndo() {
+    final ps = proofState;
+    if (ps == null) {
+      return (const ReplMeta('No proof in progress.'), this);
+    }
+    if (ps.undoStack.isEmpty) {
+      return (const ReplMeta('Nothing to undo.'), this);
+    }
+
+    final snap = ps.undoStack.removeLast();
+    ps.metas.restore(snap.metaSnapshot);
+    ps.currentGoalMeta = snap.currentGoalMeta;
+    ps.ctx = snap.ctx;
+    ps.binderNames = snap.binderNames;
+
+    final output = StringBuffer();
+    output.writeln('Undone.');
+    output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
+
+    return (ReplMeta(output.toString().trimRight()), this);
+  }
+
+  /// Handle `:print` — show the proof term built so far.
+  ReplStep _handlePrint() {
+    final ps = proofState;
+    if (ps == null) {
+      return (const ReplMeta('No proof in progress.'), this);
+    }
+    if (!ps.metas.isSolved(ps.rootGoalMetaId)) {
+      return (ReplMeta('No steps taken yet.'), this);
+    }
+
+    final rootTerm = ps.metas.solutionOf(ps.rootGoalMetaId);
+    final inlined = inlineSolvedMetas(rootTerm, ps.metas);
+    final termStr = prettyTerm(inlined, outerDepth: 0);
+    return (ReplMeta(termStr), this);
+  }
+
+  /// Handle `:qed` — finish the proof and add the theorem binding.
+  ReplStep _handleQed() {
+    final ps = proofState;
+    if (ps == null) {
+      return (const ReplMeta('No proof in progress. Use :goal to start.'), this);
+    }
+
+    // Check for unsolved metas.
+    final unsolved = <int>[];
+    for (var i = 0; i < ps.metas.length; i++) {
+      if (!ps.metas.isSolved(i)) {
+        unsolved.add(i);
+      }
+    }
+    if (unsolved.isNotEmpty) {
+      return (
+        ReplMeta('Proof incomplete: ${unsolved.length} subgoal(s) remain.'),
+        this,
+      );
+    }
+
+    // Get the final proof term.
+    final rootTerm = ps.metas.solutionOf(ps.rootGoalMetaId);
+    final finalTerm = inlineSolvedMetas(rootTerm, ps.metas);
+
+    // Type-check the final term.
+    final checkCtx = ps.topEnv.toCtx();
+    try {
+      final inferred = infer(checkCtx, finalTerm);
+      final typeValue = eval(ps.theoremType, checkCtx.env);
+      // Use lightweight conversion check.
+      final quotedInferred = quote(checkCtx.level, inferred);
+      final quotedExpected = quote(checkCtx.level, typeValue);
+      if (quotedInferred != quotedExpected) {
+        return (ReplMeta('QED failed: type mismatch'), this);
+      }
+    } on Object {
+      return (ReplMeta('QED failed: type-checking error'), this);
+    }
+
+    // Create the TopBinding.
+    final binding = TopBinding(
+      name: ps.theoremName,
+      type: ps.theoremType,
+      term: finalTerm,
+      span: DoxaSpan.synthetic,
+    );
+
+    final newBindings = [...bindings, binding];
+    return (
+      ReplMeta('${ps.theoremName} : ${prettyTerm(ps.theoremType, outerDepth: 0)}'),
+      ReplSession(
+        bindings: newBindings,
+        dataDecls: dataDecls,
+        namespaceBindings: namespaceBindings,
+      ),
+    );
+  }
+
+  /// Handle `:abort` — cancel the current proof.
+  ReplStep _handleAbort() {
+    if (proofState == null) {
+      return (const ReplMeta('No proof in progress.'), this);
+    }
+    return (
+      const ReplMeta('Proof aborted.'),
+      ReplSession(
+        bindings: bindings,
+        dataDecls: dataDecls,
+        namespaceBindings: namespaceBindings,
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
 
   /// Build an [Env] with all accumulated bindings and data decls
   /// registered, so `TTop(name)` references resolve.

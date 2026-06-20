@@ -1074,6 +1074,28 @@ final class TopEnv {
 Term elabExpr(TopEnv topEnv, SExpr expr) =>
     _elabExpr(topEnv, const _LocalNil(), expr);
 
+/// Elaborate [expr] against [topEnv] with local binder [names] (innermost first).
+///
+/// Constructs a [_LocalScope] from [names] and delegates to [_elabExpr].
+/// Each local name becomes a de Bruijn binder with a placeholder type;
+/// the resulting term has correct de Bruijn indices for the given local
+/// names. The calling tactic's own [infer] pass uses the real
+/// [TacticState.ctx] for type checking.
+Term elabExprInScope(
+  TopEnv topEnv,
+  List<String> names,
+  SExpr expr, {
+  MetaContext? metas,
+}) {
+  // names is innermost-first. _LocalScope.push adds to the head,
+  // so push outermost-first to get the correct index order.
+  var scope = const _LocalNil() as _LocalScope;
+  for (var i = names.length - 1; i >= 0; i--) {
+    scope = scope.push(names[i]);
+  }
+  return _elabExpr(topEnv, scope, expr, metas: metas);
+}
+
 /// Type-check every binding in [result] and return the bindings
 /// with solved metavariables inlined (see [inlineSolvedMetas]).
 ///

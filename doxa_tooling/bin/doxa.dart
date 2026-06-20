@@ -271,7 +271,7 @@ void _runRepl() {
   final isInteractive = stdin.hasTerminal;
 
   if (isInteractive) {
-    stderr.writeln('Doxa REPL');
+    stderr.writeln('Doxa REPL — interactive proof mode available (:goal)');
     stderr.writeln('Type :help  for help, :quit to exit.');
     stderr.writeln('');
   }
