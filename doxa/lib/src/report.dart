@@ -415,6 +415,18 @@ String reportElabError(SourceFile source, ElabError error) {
         '  The `{struct name}` annotation must name a value parameter',
       );
       sb.writeln('  of the annotated function.');
+    case TerminationByParamNotFound(
+      :final funName,
+      :final paramName,
+      :final span,
+    ):
+      sb.writeln('error: termination_by parameter not found');
+      sb.writeln('  at ${source.formatStart(span)}');
+      sb.writeln('  "$funName" has no value parameter named "$paramName".');
+      sb.writeln(
+        '  The `termination_by` annotation must name value parameters',
+      );
+      sb.writeln('  of the annotated function.');
     case TacticFailed(:final message, :final span):
       sb.writeln('error: tactic failed');
       sb.writeln('  at ${source.formatStart(span)}');

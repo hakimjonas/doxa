@@ -140,6 +140,31 @@ final class StructAnnotationNotFound extends ElabError {
       'named $paramName';
 }
 
+final class TerminationByParamNotFound extends ElabError {
+  /// The function name.
+  final String funName;
+
+  /// The annotated parameter name.
+  final String paramName;
+
+  /// The source span of the annotation.
+  @override
+  final DoxaSpan span;
+
+  /// Creates a termination-by-param-not-found error.
+  const TerminationByParamNotFound(this.funName, this.paramName, this.span);
+
+  @override
+  String get message =>
+      'termination_by parameter "$paramName" not found '
+      'in value parameters of fun "$funName"';
+
+  @override
+  String toString() =>
+      'TerminationByParamNotFound: fun $funName has no value parameter '
+      'named $paramName';
+}
+
 /// A `match` expression has no ctor case AND no explicit `returning`
 /// clause, so the elaborator cannot determine the scrutinee's inductive
 /// type. Elaboration requires *either* at least one constructor
@@ -1567,56 +1592,61 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       }
 
       // Try namespace-qualified lookup: Nat.plus → look up `plus`
-      // in namespace `Nat`.
+      // in namespace `Nat`. Also handles type-applied qualifiers
+      // like `Acc[Nat].rec` where the qualifier is `App(Ident("Acc"), ...)`.
+      String? qualName;
       if (qualifier.kind is SIdentKind) {
-        final qualName = (qualifier.kind as SIdentKind).name;
-        if (state.topEnv.lookupQualified(qualName, name)) {
-          // Resolve `name` against the full registry: constructors,
-          // data types, and top bindings, in that order (mirroring
-          // SIdentKind resolution).
-          for (final d in state.topEnv.dataDecls) {
-            for (final c in d.ctors) {
-              if (c.name == name) {
-                final sigTerm = _ctorSignatureTerm(d, c);
-                final sigValue = eval(sigTerm, state.ctx.env);
-                _recordSemInfo(
-                  state,
-                  expr.span,
-                  '$qualName.$name',
-                  SemInfoKind.constructor,
-                  sigValue,
-                  c.span,
-                );
-                return (TConstr(d.name, name, const <Term>[]), sigValue);
-              }
+        qualName = (qualifier.kind as SIdentKind).name;
+      } else if (qualifier.kind is SAppKind) {
+        final fn = (qualifier.kind as SAppKind).fn.kind;
+        if (fn is SIdentKind) qualName = fn.name;
+      }
+      if (qualName != null && state.topEnv.lookupQualified(qualName, name)) {
+        // Resolve `name` against the full registry: constructors,
+        // data types, and top bindings, in that order (mirroring
+        // SIdentKind resolution).
+        for (final d in state.topEnv.dataDecls) {
+          for (final c in d.ctors) {
+            if (c.name == name) {
+              final sigTerm = _ctorSignatureTerm(d, c);
+              final sigValue = eval(sigTerm, state.ctx.env);
+              _recordSemInfo(
+                state,
+                expr.span,
+                '$qualName.$name',
+                SemInfoKind.constructor,
+                sigValue,
+                c.span,
+              );
+              return (TConstr(d.name, name, const <Term>[]), sigValue);
             }
           }
-          final dataDecl = state.topEnv.lookupData(name);
-          if (dataDecl != null) {
-            final sigTerm = _dataSignatureTerm(dataDecl);
-            final sigValue = eval(sigTerm, state.ctx.env);
-            _recordSemInfo(
-              state,
-              expr.span,
-              '$qualName.$name',
-              SemInfoKind.dataType,
-              sigValue,
-              dataDecl.span,
-            );
-            return (TData(name, const <Term>[]), sigValue);
-          }
-          final topEntry = state.ctx.env.lookupTop(name);
-          if (topEntry != null) {
-            _recordSemInfo(
-              state,
-              expr.span,
-              '$qualName.$name',
-              SemInfoKind.topBinding,
-              topEntry.type,
-              state.topEnv.spanOf(name),
-            );
-            return (TTop(name), topEntry.type);
-          }
+        }
+        final dataDecl = state.topEnv.lookupData(name);
+        if (dataDecl != null) {
+          final sigTerm = _dataSignatureTerm(dataDecl);
+          final sigValue = eval(sigTerm, state.ctx.env);
+          _recordSemInfo(
+            state,
+            expr.span,
+            '$qualName.$name',
+            SemInfoKind.dataType,
+            sigValue,
+            dataDecl.span,
+          );
+          return (TData(name, const <Term>[]), sigValue);
+        }
+        final topEntry = state.ctx.env.lookupTop(name);
+        if (topEntry != null) {
+          _recordSemInfo(
+            state,
+            expr.span,
+            '$qualName.$name',
+            SemInfoKind.topBinding,
+            topEntry.type,
+            state.topEnv.spanOf(name),
+          );
+          return (TTop(name), topEntry.type);
         }
       }
 
@@ -2901,6 +2931,10 @@ String? _flattenDottedIdent(SExpr expr) {
       final q = _flattenDottedIdent(qualifier);
       if (q == null) return null;
       return '$q.$name';
+    case SAppKind(:final fn):
+      // Type-applied qualifiers like `Acc[Nat].rec`: strip type args
+      // and flatten to `Acc.rec` so the flat topBindings lookup works.
+      return _flattenDottedIdent(fn);
     default:
       return null;
   }
@@ -3021,7 +3055,10 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
       // by name.
       final dataDecl = _elabData(topEnv, decl.span, kind);
       final recBindings = _makeRecBindings(topEnv, dataDecl, decl.span);
-      final nsNames = {for (final b in recBindings) b.name};
+      final nsNames = {
+        for (final b in recBindings) b.name,
+        for (final c in dataDecl.ctors) c.name,
+      };
       return (
         bindings: recBindings,
         dataDecls: [dataDecl],
@@ -3053,6 +3090,7 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
           for (final d in dataDecls)
             d.name: {
               for (final b in _makeRecBindings(topEnv, d, d.span)) b.name,
+              for (final c in d.ctors) c.name,
             },
         },
       );
@@ -3601,16 +3639,42 @@ TopBinding _elabFun(
     seen[f.name] = m.span;
   }
 
+  // Extract termination_by from return-type expressions.
+  // The parser cannot distinguish `fun f(...): T termination_by (x) = body`
+  // from `fun f(...): T termination_by (x) = body` because `_expr`
+  // greedily consumes `termination_by (args)` as application arguments.
+  // We walk the return-type AST and extract the suffix before elaboration.
+  var extractedTby = <SFunBlockMember, ({List<String> tby, SExpr realRet})>{};
+  for (final m in members) {
+    final extracted = _extractTerminationBy(m.fun.returnType);
+    if (extracted.tby != null) {
+      extractedTby[m] = (tby: extracted.tby!, realRet: extracted.realRet);
+    }
+  }
+
   // Structural-recursion check. Runs on every member BEFORE we
   // elaborate any body, so a non-structural program fails early
   // with a clean surface-level error and no half-elaborated state.
+  // Members with `termination_by` skip this check (well-founded
+  // recursion doesn't need the structural sub-term check).
   final memberNames = {for (final m in members) m.fun.name};
   for (final m in members) {
-    _checkStructuralRecursion(m.fun, memberNames);
+    if (m.fun.terminationBy == null && extractedTby[m] == null) {
+      _checkStructuralRecursion(m.fun, memberNames);
+    }
     // Validate {struct name} annotation even for non-recursive members.
     if (m.fun.structAnn != null &&
         _findParamIndex(m.fun, m.fun.structAnn!) < 0) {
       throw StructAnnotationNotFound(m.fun.name, m.fun.structAnn!, m.span);
+    }
+    // Validate termination_by parameter names.
+    final tby = extractedTby[m]?.tby ?? m.fun.terminationBy;
+    if (tby != null) {
+      for (final p in tby) {
+        if (_findParamIndex(m.fun, p) < 0) {
+          throw TerminationByParamNotFound(m.fun.name, p, m.span);
+        }
+      }
     }
   }
 
@@ -3620,6 +3684,7 @@ TopBinding _elabFun(
   // (lifting it would require metavariables).
   final preBindings = <TopBinding>[];
   for (final m in members) {
+    final retType = extractedTby[m]?.realRet ?? m.fun.returnType;
     final typeTerm = _buildFunType(
       topEnv,
       [
@@ -3633,7 +3698,7 @@ TopBinding _elabFun(
         ],
         for (final p in m.fun.params) _FunBinder(p.$1, p.$2, Icit.explicit),
       ],
-      m.fun.returnType,
+      retType,
       metas: metas,
     );
     preBindings.add(
@@ -3662,7 +3727,20 @@ TopBinding _elabFun(
   ], topEnv.dataDecls);
   final elaborated = <TopBinding>[];
   for (final m in members) {
-    elaborated.add(_elabFun(scratchEnv, m.span, m.fun, metas: metas));
+    final fun =
+        extractedTby[m] != null
+            ? SFunKind(
+              m.fun.name,
+              m.fun.typeParams,
+              m.fun.params,
+              extractedTby[m]!.realRet,
+              m.fun.body,
+              isOpaque: m.fun.isOpaque,
+              structAnn: m.fun.structAnn,
+              terminationBy: extractedTby[m]!.tby,
+            )
+            : m.fun;
+    elaborated.add(_elabFun(scratchEnv, m.span, fun, metas: metas));
   }
 
   // Decide whether the block contains any actual recursion. If
@@ -3672,10 +3750,16 @@ TopBinding _elabFun(
   // members that need self/sibling stubs during their own check
   // (i.e. for bodies that would otherwise evaluate a yet-unknown
   // value during type-checking).
+  //
+  // Members with `termination_by` are excluded from this check:
+  // they use well-founded recursion via `Acc.rec` and must
+  // NOT receive a VFun guard or CorecursiveGroup stub.
   final isRecursive = members.any(
     (m) =>
-        _hasRecursiveReference(m.fun.body, memberNames) ||
-        _hasRecursiveReference(m.fun.returnType, memberNames),
+        m.fun.terminationBy == null &&
+        extractedTby[m] == null &&
+        (_hasRecursiveReference(m.fun.body, memberNames) ||
+            _hasRecursiveReference(m.fun.returnType, memberNames)),
   );
 
   if (!isRecursive) {
@@ -3872,6 +3956,50 @@ void checkStructuralRecursion(SFunKind kind, Set<String> blockMembers) =>
 /// Find the de-Bruijn position of a value parameter [name] in [fun].
 /// Returns the position counting type params first, so the first value
 /// param has position [fun.typeParams.length]. Returns -1 if not found.
+/// Extract `termination_by` parameter names from the return-type
+/// expression of [fun]. The parser cannot distinguish
+/// `fun f(...): T termination_by (x) = body` from a regular application
+/// `T termination_by (x)`, so we walk the return-type AST to detect
+/// a `termination_by(args...)` suffix.
+///
+/// Returns a record `(tbyNames, realReturnType)` where [tbyNames] are
+/// the extracted parameter names (null if not found) and [realReturnType]
+/// is the corrected return type (original if not found).
+({List<String>? tby, SExpr realRet}) _extractTerminationBy(SExpr returnType) {
+  // Walk SAppKind chain: App(App(...App(realRet, term_by), arg0), arg1)
+  // Collect args from outermost to term_by.
+  final chain = <SAppKind>[];
+  SExpr? cur = returnType;
+  while (cur != null && cur.kind is SAppKind) {
+    chain.add(cur.kind as SAppKind);
+    cur = (cur.kind as SAppKind).fn;
+  }
+  // Find the innermost app whose arg is `termination_by`.
+  var termByIdx = -1;
+  for (var i = chain.length - 1; i >= 0; i--) {
+    final arg = chain[i].arg.kind;
+    if (arg is SIdentKind && arg.name == 'termination_by') {
+      termByIdx = i;
+      break;
+    }
+  }
+  if (termByIdx < 0) return (tby: null, realRet: returnType);
+  // Collect args ABOVE termByIdx (outer apps: termByIdx-1 down to 0).
+  final names = <String>[];
+  for (var i = termByIdx - 1; i >= 0; i--) {
+    final arg = chain[i].arg.kind;
+    if (arg is SIdentKind) {
+      names.add(arg.name);
+    } else {
+      // Non-ident arg — this is a real application, not termination_by.
+      return (tby: null, realRet: returnType);
+    }
+  }
+  // The real return type is the fn of the app at termByIdx.
+  final realRet = chain[termByIdx].fn;
+  return (tby: names, realRet: realRet);
+}
+
 int _findParamIndex(SFunKind fun, String name) {
   for (var i = 0; i < fun.params.length; i++) {
     if (fun.params[i].$1 == name) return fun.typeParams.length + i;

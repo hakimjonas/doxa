@@ -37,6 +37,10 @@ const String _preludeSource = '''
 data Eq[A: Type] : A -> A -> Prop {
   refl : (x: A) -> Eq[A] x x;
 }
+
+data Acc[A: Type] : (A -> A -> Prop) -> A -> Prop {
+  acc_intro : (R: A -> A -> Prop) -> (x: A) -> ((y: A) -> R y x -> Acc A R y) -> Acc A R x;
+}
 ''';
 
 /// Elaborated prelude, cached after the first call. The prelude is a
@@ -365,6 +369,7 @@ String _elabErrorKind(ElabError e) => switch (e) {
   CyclicImport _ => 'cyclic_import',
   ImportFileNotFound _ => 'import_file_not_found',
   StructAnnotationNotFound _ => 'struct_annotation_not_found',
+  TerminationByParamNotFound _ => 'termination_by_param_not_found',
   TacticFailed _ => 'tactic_failed',
   TacticIncomplete _ => 'tactic_incomplete',
   NoInstanceFound _ => 'no_instance_found',

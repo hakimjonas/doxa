@@ -601,6 +601,9 @@ const int _appBp = 100;
 /// (`f ({ … })`), exactly as `match`/binder forms must be. In
 /// non-argument positions (after `=`, a function body, inside parens) a
 /// bare block parses fine via `_atomImpl`.
+/// Zero-width lookahead that commits to application iff the next token
+/// starts an atom: `(`, `Type`, `Prop`, or an identifier (excluding
+/// keywords that belong to the enclosing declaration grammar).
 final Parser<ParseError, void> _atomStart =
     (char('(').as<void>(null) |
             _rawKeyword('Type').as<void>(null) |
@@ -935,7 +938,20 @@ final Parser<ParseError, String?> _structAnn =
         .thenSkip(_sym('}'))
         .optional;
 
+/// Optional `termination_by (name, name, ...)` annotation on a `fun`
+/// declaration. Returns the list of parameter names, or null when the
+/// annotation is absent.
+final Parser<ParseError, List<String>?> _terminationBy =
+    _keyword('termination_by')
+        .skipThen(_sym('('))
+        .skipThen(_ident.sepBy(_sym(',')))
+        .thenSkip(_sym(')'))
+        .optional;
+
 /// Build a `fun` body parser with the given [isOpaque] flag.
+///
+/// The parser chain is: name typeParams? valueParams ':' expr structAnn?
+/// terminationBy? '=' (expr | blockExpr).
 Parser<ParseError, SFunKind> _mkFunBody(bool isOpaque) => _ident.flatMap(
   (name) => _funTypeParams.flatMap(
     (tps) => _valueParams.flatMap(
@@ -943,15 +959,18 @@ Parser<ParseError, SFunKind> _mkFunBody(bool isOpaque) => _ident.flatMap(
           .skipThen(_expr)
           .flatMap(
             (ret) => _structAnn.flatMap(
-              (structAnn) => (_sym('=').skipThen(_expr) | _blockExpr).map(
-                (body) => SFunKind(
-                  name,
-                  tps,
-                  ps,
-                  ret,
-                  body,
-                  isOpaque: isOpaque,
-                  structAnn: structAnn,
+              (structAnn) => _terminationBy.flatMap(
+                (tby) => (_sym('=').skipThen(_expr) | _blockExpr).map(
+                  (body) => SFunKind(
+                    name,
+                    tps,
+                    ps,
+                    ret,
+                    body,
+                    isOpaque: isOpaque,
+                    structAnn: structAnn,
+                    terminationBy: tby,
+                  ),
                 ),
               ),
             ),

@@ -744,6 +744,13 @@ final class SFunKind extends SDeclKind {
   /// explicit value parameter is used (SPEC §8.6).
   final String? structAnn;
 
+  /// Well-founded termination measure: the value-parameter names
+  /// whose lexicographic tuple decreases at every recursive call.
+  /// When non-null, structural-recursion checking is skipped and
+  /// the binding is emitted non-recursive (the user writes recursion
+  /// via `Acc.rec`). All names must be value parameters of the fun.
+  final List<String>? terminationBy;
+
   /// Creates a fun declaration.
   const SFunKind(
     this.name,
@@ -753,6 +760,7 @@ final class SFunKind extends SDeclKind {
     this.body, {
     this.isOpaque = false,
     this.structAnn,
+    this.terminationBy,
   });
 
   @override
@@ -764,7 +772,8 @@ final class SFunKind extends SDeclKind {
       other.returnType == returnType &&
       other.body == body &&
       other.isOpaque == isOpaque &&
-      other.structAnn == structAnn;
+      other.structAnn == structAnn &&
+      _listEq(other.terminationBy ?? const [], terminationBy ?? const []);
 
   @override
   int get hashCode => Object.hash(
@@ -776,13 +785,15 @@ final class SFunKind extends SDeclKind {
     body,
     isOpaque,
     structAnn,
+    Object.hashAll(terminationBy ?? const []),
   );
 
   @override
   String toString() =>
       'SFunKind($name, typeParams: $typeParams, params: $params, '
       'returnType: $returnType, body: $body, isOpaque: $isOpaque'
-      '${structAnn != null ? ", structAnn: $structAnn" : ""})';
+      '${structAnn != null ? ", structAnn: $structAnn" : ""}'
+      '${terminationBy != null ? ", terminationBy: $terminationBy" : ""})';
 }
 
 /// A single type-parameter entry on a `fun` declaration.
