@@ -3274,7 +3274,7 @@ DeclResult _elabTypeclass(
     );
   }
 
-  final ctorDecl = SCtorDecl('mk', ctorType, DoxaSpan.synthetic);
+  final ctorDecl = SCtorDecl('mk_$name', ctorType, DoxaSpan.synthetic);
   final signature = SExpr(STypeKind(null), DoxaSpan.synthetic);
   final sDataKind = SDataKind(name, typeParams, signature, [ctorDecl]);
 
@@ -3360,25 +3360,19 @@ DeclResult _elabImpl(
       // Unknown method - this will be caught by type checking.
       break;
     }
-    // Elaborate the method body as a function.
-    final bodyTerm = _elabExpr(
+    final allBinders = <_FunBinder>[
+      for (final tp in member.typeParams)
+        _FunBinder(
+          tp.name,
+          tp.kind ?? const SExpr(STypeKind(null), DoxaSpan.synthetic),
+          tp.isImplicit ? Icit.implicit : Icit.explicit,
+        ),
+      for (final p in member.params) _FunBinder(p.$1, p.$2, Icit.explicit),
+    ];
+    final bodyTerm = _buildFunBody(
       topEnv,
-      const _LocalNil(),
+      allBinders,
       member.body,
-      metas: metas,
-    );
-    // ignore: unused_local_variable
-    final typeTerm = _buildFunType(
-      topEnv,
-      [
-        for (final tp in member.typeParams)
-          _FunBinder(
-            tp.name,
-            tp.kind ?? const SExpr(STypeKind(null), DoxaSpan.synthetic),
-            tp.isImplicit ? Icit.implicit : Icit.explicit,
-          ),
-        for (final p in member.params) _FunBinder(p.$1, p.$2, Icit.explicit),
-      ],
       member.returnType,
       metas: metas,
     );
@@ -3392,13 +3386,19 @@ DeclResult _elabImpl(
     );
   }
 
-  // Build `mk` constructor reference.
-  final mkTerm = TConstr(className, 'mk', const []);
-  // Apply methods to mk.
-  Term implTerm = mkTerm;
-  for (final mt in methodTerms) {
-    implTerm = TApp(implTerm, mt);
+  // Build `mk` constructor term with all arguments (type args + methods).
+  // TConstr takes the full spine: data type params followed by ctor args.
+  final typeArgTerms = <Term>[];
+  switch (typeclassRef.kind) {
+    case SAppKind(:final fn, :final arg):
+      typeArgTerms.add(_elabExpr(topEnv, const _LocalNil(), arg, metas: metas));
+    case _:
+      break;
   }
+  Term implTerm = TConstr(className, 'mk_$className', [
+    ...typeArgTerms,
+    ...methodTerms,
+  ]);
 
   // Generate synthetic name for the instance.
   final instanceName = '_impl_$className';

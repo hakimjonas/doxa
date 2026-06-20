@@ -954,7 +954,7 @@ final Parser<ParseError, List<String>?> _terminationBy =
 /// terminationBy? '=' (expr | blockExpr).
 Parser<ParseError, SFunKind> _mkFunBody(bool isOpaque) => _ident.flatMap(
   (name) => _funTypeParams.flatMap(
-    (tps) => _valueParams.flatMap(
+    (tps) => _valueParams.optional.flatMap(
       (ps) => _sym(':')
           .skipThen(_expr)
           .flatMap(
@@ -964,7 +964,7 @@ Parser<ParseError, SFunKind> _mkFunBody(bool isOpaque) => _ident.flatMap(
                   (body) => SFunKind(
                     name,
                     tps,
-                    ps,
+                    ps ?? const [],
                     ret,
                     body,
                     isOpaque: isOpaque,
@@ -1231,14 +1231,14 @@ final Parser<ParseError, SClassMethod> _classMethod = position<ParseError>()
       (start) => _keyword('fun')
           .skipThen(_ident)
           .flatMap(
-            (name) => _valueParams.flatMap(
+            (name) => _valueParams.optional.flatMap(
               (params) => _sym(':')
                   .skipThen(_expr)
                   .flatMap(
                     (retType) => (_sym('=').skipThen(_expr)).optional.flatMap(
                       (defaultBody) => _buildMethodBody(
                         name,
-                        params,
+                        params ?? const [],
                         retType,
                         defaultBody,
                         start,
@@ -1286,7 +1286,7 @@ final Parser<ParseError, SDecl> _typeclassDecl = position<ParseError>().flatMap(
               .optional
               .flatMap(
                 (superclass) => _sym('{')
-                    .skipThen(_classMethod.sepBy(_sym(';')))
+                    .skipThen(_classMethod.thenSkip(_sym(';').optional).many)
                     .thenSkip(_sym('}'))
                     .zip(position<ParseError>())
                     .map(
@@ -1313,7 +1313,7 @@ final Parser<ParseError, SDecl> _implDecl = position<ParseError>().flatMap(
       .skipThen(_expr)
       .flatMap(
         (typeclassRef) => _sym('{')
-            .skipThen(_implFunMember.sepBy(_sym(';')))
+            .skipThen(_implFunMember.thenSkip(_sym(';').optional).many)
             .thenSkip(_sym('}'))
             .zip(position<ParseError>())
             .map(

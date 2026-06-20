@@ -1,0 +1,77 @@
+// Algebraic typeclasses: Semigroup, Monoid, DecEq.
+import "nat.doxa"
+import "bool.doxa"
+import "int_base.doxa"
+
+typeclass Semigroup[A: Type] {
+  fun combine(x: A, y: A): A
+}
+
+impl Semigroup[Nat] {
+  fun combine(x: Nat, y: Nat): Nat = plus x y
+}
+
+typeclass Monoid[A: Type] {
+  fun combine(x: A, y: A): A;
+  fun empty: A
+}
+
+impl Monoid[Nat] {
+  fun combine(x: Nat, y: Nat): Nat = plus x y;
+  fun empty: Nat = zero
+}
+
+typeclass DecEq[A: Type] {
+  fun decEq(x: A, y: A): Bool
+}
+
+fun natDecEq(x: Nat, y: Nat): Bool = match x {
+  case zero => match y {
+    case zero => true_
+    case succ _ => false_
+  }
+  case succ x_ => match y {
+    case zero => false_
+    case succ y_ => natDecEq x_ y_
+  }
+}
+
+impl DecEq[Nat] {
+  fun decEq(x: Nat, y: Nat): Bool = natDecEq x y
+}
+
+typeclass Group[A: Type] {
+  fun combine(x: A, y: A): A;
+  fun empty: A;
+  fun inv(x: A): A
+}
+
+impl Group[Int] {
+  fun combine(x: Int, y: Int): Int = intPlus x y;
+  fun empty: Int = pos zero;
+  fun inv(x: Int): Int = intNeg x
+}
+
+impl Semigroup[Int] {
+  fun combine(x: Int, y: Int): Int = intPlus x y
+}
+
+impl Monoid[Int] {
+  fun combine(x: Int, y: Int): Int = intPlus x y;
+  fun empty: Int = pos zero
+}
+
+fun intDecEq(x: Int, y: Int): Bool = match x {
+  case pos n => match y {
+    case pos m => natDecEq n m
+    case neg _ => false_
+  }
+  case neg n => match y {
+    case pos _ => false_
+    case neg m => natDecEq n m
+  }
+}
+
+impl DecEq[Int] {
+  fun decEq(x: Int, y: Int): Bool = intDecEq x y
+}

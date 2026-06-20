@@ -1,0 +1,95 @@
+// Integers: Int = Pos Nat | Neg Nat where Pos n = n, Neg n = -(n+1).
+// Zero is Pos zero, avoiding double representation of zero.
+import "bool.doxa"
+
+import "eq.doxa"
+
+import "nat.doxa"
+
+import "proofs.doxa"
+
+data Int : Type {
+  pos : Nat -> Int;
+  neg : Nat -> Int;
+}
+// Helper for intPlus with mixed signs: pos n + neg m = n - (m+1)
+
+fun intPlusHelp(n: Nat, m: Nat) : Int = match n {
+  case zero => neg m
+  case succ n_ => match m {
+    case zero => pos n_
+    case succ m_ => intPlusHelp n_ m_
+  }
+}
+
+fun intPlus(a: Int, b: Int) : Int = match a {
+  case pos n => match b {
+    case pos m => pos (plus n m)
+    case neg m => intPlusHelp n m
+  }
+  case neg n => match b {
+    case pos m => intPlusHelp m n
+    case neg m => neg (succ (plus n m))
+  }
+}
+
+fun intNeg(a: Int) : Int = match a {
+  case pos n => match n {
+    case zero => pos zero
+    case succ n_ => neg n_
+  }
+  case neg n => pos (succ n)
+}
+
+fun intSub(a: Int, b: Int) : Int = intPlus a (intNeg b)
+
+fun intMult(a: Int, b: Int) : Int = match a {
+  case pos n => match b {
+    case pos m => pos (mult n m)
+    case neg m => intNeg (pos (mult n (succ m)))
+  }
+  case neg n => match b {
+    case pos m => intNeg (pos (mult (succ n) m))
+    case neg m => pos (succ (plus (plus (mult n m) n) m))
+  }
+}
+
+fun intLeq(a: Int, b: Int) : Bool = match a {
+  case pos n => match b {
+    case pos m => leq n m
+    case neg _ => false_
+  }
+  case neg n => match b {
+    case pos _ => true_
+    case neg m => leq m n
+  }
+}
+
+fun intAbs(a: Int) : Nat = match a {
+  case pos n => n
+  case neg n => succ n
+}
+
+fun intSign(a: Int) : Bool = match a {
+  case pos _ => true_
+  case neg _ => false_
+}
+// --- Lemmas ---
+// intPlus_comm: a + b = b + a
+
+val intPlus_comm : (a: Int) -> (b: Int) -> Eq Int (intPlus a b) (intPlus b a) = Int.ind ((x: Int) => (y: Int) -> Eq Int (intPlus x y) (intPlus y x)) ((n: Nat) => (y: Int) => Int.ind ((z: Int) => Eq Int (intPlus (pos n) z) (intPlus z (pos n))) ((m: Nat) => cong_e Nat Int ((k: Nat) => pos k) (plus n m) (plus m n) (plus_comm n m)) ((m: Nat) => refl (intPlusHelp n m)) y) ((n: Nat) => (y: Int) => Int.ind ((z: Int) => Eq Int (intPlus (neg n) z) (intPlus z (neg n))) ((m: Nat) => refl (intPlusHelp m n)) ((m: Nat) => cong_e Nat Int ((k: Nat) => neg (succ k)) (plus n m) (plus m n) (plus_comm n m)) y)
+// intNeg_neg: neg (neg a) = a
+
+val intNeg_neg : (a: Int) -> Eq Int (intNeg (intNeg a)) a = Int.ind ((x: Int) => Eq Int (intNeg (intNeg x)) x) ((n: Nat) => Nat.ind ((k: Nat) => Eq Int (intNeg (intNeg (pos k))) (pos k)) (refl (pos zero)) ((k: Nat) => (_: Eq Int (intNeg (intNeg (pos k))) (pos k)) => refl (pos (succ k))) n) ((n: Nat) => refl (neg n))
+// intSign_pos: sign of positive is true
+
+fun intSign_pos(n: Nat) : Eq Bool (intSign (pos n)) true_ = refl true_
+// intSign_neg: sign of negative is false
+
+fun intSign_neg(n: Nat) : Eq Bool (intSign (neg n)) false_ = refl false_
+// intAbs_pos: abs of positive is n
+
+fun intAbs_pos(n: Nat) : Eq Nat (intAbs (pos n)) n = refl n
+// intAbs_neg: abs of negative is succ n
+
+fun intAbs_neg(n: Nat) : Eq Nat (intAbs (neg n)) (succ n) = refl (succ n)

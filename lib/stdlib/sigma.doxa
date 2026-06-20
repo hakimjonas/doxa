@@ -1,0 +1,6 @@
+// Dependent pairs (sigma types).
+import "nat.doxa"
+
+data Sigma[A: Type] : (A -> Type) -> Type {
+  pair : (B: A -> Type) -> (x: A) -> B x -> Sigma A B;
+}

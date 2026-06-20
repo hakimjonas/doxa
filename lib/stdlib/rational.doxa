@@ -1,0 +1,7 @@
+// Rational numbers: Rat = numerator (Int) / denominator (Nat, non-zero).
+// This is a first cut using normalized pairs (no quotient types).
+import "int_base.doxa"
+
+data Rat : Type {
+  mk : Int -> Nat -> Rat
+}

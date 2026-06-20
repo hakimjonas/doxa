@@ -1,0 +1,52 @@
+// Case study: foundations for proving sqrt(2) is irrational.
+// Defines evenness, square, and basic parity lemmas.
+// The full proof requires induction and rewriting tactics
+// that will be added in a future phase.
+import "bool.doxa"
+
+import "nat.doxa"
+// even(n) = true_ iff n is even
+
+fun even(n: Nat) : Bool = match n {
+  case zero => true_
+  case succ n_ => match even n_ {
+    case true_ => false_
+    case false_ => true_
+  }
+}
+// Small concrete parity facts
+
+val even_0 : Eq Bool (even zero) true_ = refl true_
+
+val even_1 : Eq Bool (even (succ zero)) false_ = refl false_
+
+val even_2 : Eq Bool (even (succ (succ zero))) true_ = refl true_
+
+val even_3 : Eq Bool (even (succ (succ (succ zero)))) false_ = refl false_
+// twice n = n + n
+
+fun twice(n: Nat) : Nat = plus n n
+// square n = n * n
+
+fun square(n: Nat) : Nat = mult n n
+// evenness of squares for small n
+
+val even_sq_0 : Eq Bool (even (square zero)) true_ = refl true_
+
+val even_sq_1 : Eq Bool (even (square (succ zero))) false_ = refl false_
+
+val even_sq_2 : Eq Bool (even (square (succ (succ zero)))) true_ = refl true_
+
+val even_sq_3 : Eq Bool (even (square (succ (succ (succ zero))))) false_ = refl false_
+// A number is divisible by 2 if it is even
+
+fun divisibleBy2(n: Nat) : Prop = Eq Bool (even n) true_
+// The key property: if n is not even, then n^2 is not even
+// This can be proved by induction on n (using the even function's
+// alternating behavior). For now we verify the base cases.
+// Euclid's theorem structure for sqrt2 irrationality:
+// 1. Suppose sqrt(2) = a/b with a,b coprime
+// 2. Then a^2 = 2*b^2, so even(a^2) is true
+// 3. If a is odd, then a^2 is odd (contradiction), so a is even
+// 4. Write a = 2k, then 4k^2 = 2b^2 => b^2 = 2k^2, so b is even
+// 5. Both a,b even => not coprime => contradiction

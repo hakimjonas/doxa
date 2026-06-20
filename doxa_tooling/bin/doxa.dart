@@ -25,6 +25,7 @@ import 'package:doxa/src/elab.dart'
     show
         currentImportPath,
         importedPaths,
+        ClassInfo,
         elabDecl,
         checkDeclResult,
         declNames,
@@ -345,6 +346,7 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   var bindings = prelude.bindings;
   var dataDecls = prelude.dataDecls;
   var namespaceBindings = prelude.namespaceBindings;
+  var classRegistry = <String, ClassInfo>{};
 
   // Set the current file path so imports can resolve relative paths.
   currentImportPath = source.filename;
@@ -357,7 +359,7 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   final poisonedNames = <String>{};
 
   for (final decl in program.decls) {
-    final env = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
+    final env = TopEnv(bindings, dataDecls, classRegistry, namespaceBindings);
     try {
       final produced = elabDecl(env, decl);
       // For recursive/mutual `fun` paths, `checkDeclResult` pre-scopes
@@ -375,12 +377,13 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
       final runningEnv = TopEnv(
         checkBindings,
         runningData,
-        const {},
+        classRegistry,
         namespaceBindings,
       );
       final finalized = checkDeclResult(runningEnv, produced);
       bindings = [...bindings, ...finalized];
       dataDecls = runningData;
+      classRegistry = {...classRegistry, ...produced.classRegistry};
       namespaceBindings = mergeNamespace(
         namespaceBindings,
         produced.namespaceBindings,

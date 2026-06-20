@@ -458,13 +458,15 @@ class _Formatter {
   void _visitClassMethod(SClassMethod m) {
     _write('fun ${m.name}');
     final (params, retType) = _decomposePi(m.type!);
-    for (final p in params) {
-      final n = p.$1;
-      final t = p.$2;
-      _write('($n: ');
+    _write('(');
+    for (var i = 0; i < params.length; i++) {
+      if (i > 0) _write(', ');
+      final n = params[i].$1;
+      final t = params[i].$2;
+      _write('$n: ');
       _visit(t);
-      _write(')');
     }
+    _write(')');
     _write(': ');
     _visit(retType);
     if (m.defaultBody != null) {
@@ -489,7 +491,17 @@ class _Formatter {
 
   void _visitImpl(SImplKind k) {
     _write('impl ');
-    _visit(k.typeclassRef);
+    // Format typeclass reference with brackets: impl ClassName[Arg]
+    final ref = k.typeclassRef;
+    if (ref.kind is SAppKind) {
+      final app = ref.kind as SAppKind;
+      _visit(app.fn);
+      _write('[');
+      _visit(app.arg);
+      _write(']');
+    } else {
+      _visit(ref);
+    }
     _space();
     _write('{');
     _indentBy(1);
