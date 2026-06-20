@@ -22,7 +22,8 @@ import 'package:doxa/src/report.dart';
 import 'package:doxa/src/source.dart';
 import 'package:doxa/src/surface.dart';
 
-/// The result of processing one REPL input, plus the (possibly updated)
+/// Meta-command mode: which part of the expression to display.
+enum _MetaMode { type, norm }
 /// session state.
 typedef ReplStep = (ReplResult, ReplSession);
 
@@ -64,6 +65,15 @@ final class ReplError extends ReplResult {
   const ReplError(this.message);
 }
 
+/// A meta-command was processed (e.g., `:type`, `:help`).
+final class ReplMeta extends ReplResult {
+  /// The output text to display.
+  final String text;
+
+  /// Creates a meta-command result.
+  const ReplMeta(this.text);
+}
+
 /// Immutable REPL session holding accumulated top-level state.
 ///
 /// Each [processInput] call is independent — the session does NOT
@@ -102,6 +112,11 @@ final class ReplSession {
     final trimmed = input.trim();
     if (trimmed.isEmpty) {
       return (const ReplError(''), this);
+    }
+
+    // Meta-commands prefixed with ':'.
+    if (trimmed.startsWith(':')) {
+      return _processMeta(trimmed);
     }
 
     // Try expression first.
@@ -168,6 +183,82 @@ final class ReplSession {
       return ReplError(_formatCheckError(input, expr.span, e));
     } on ElabError catch (e) {
       return ReplError(_formatElabError(input, e));
+    }
+  }
+
+  /// Process a meta-command (input starting with `:`).
+  ReplStep _processMeta(String input) {
+    final parts = input.split(' ');
+    final cmd = parts[0];
+    final rest = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+
+    switch (cmd) {
+      case ':help':
+        return (
+          const ReplMeta(
+            'Meta-commands:\n'
+            '  :type <expr>   Elaborate and show the type\n'
+            '  :norm <expr>   Elaborate and show the normal form\n'
+            '  :help          Show this help\n'
+            '  :quit          Exit the REPL\n'
+            '\n'
+            'Otherwise, enter a Doxa expression or declaration.',
+          ),
+          this,
+        );
+      case ':type':
+        if (rest.isEmpty) {
+          return (const ReplError(':type requires an expression'), this);
+        }
+        return _metaExpr(rest, mode: _MetaMode.type);
+      case ':norm':
+        if (rest.isEmpty) {
+          return (const ReplError(':norm requires an expression'), this);
+        }
+        return _metaExpr(rest, mode: _MetaMode.norm);
+      default:
+        return (ReplError('unknown command: $cmd'), this);
+    }
+  }
+
+  /// Process `:type` or `:norm` by elaborating [exprSrc] and showing
+  /// either the type or the normal form.
+  ReplStep _metaExpr(String exprSrc, {required _MetaMode mode}) {
+    final exprResult = parseExpr(exprSrc);
+    final SExpr expr;
+    if (exprResult is Success<ParseError, SExpr>) {
+      expr = exprResult.value;
+    } else if (exprResult is Partial<ParseError, SExpr>) {
+      expr = exprResult.value;
+    } else {
+      return (
+        ReplError(
+          _formatParseFailure(exprResult as Failure<ParseError, dynamic>),
+        ),
+        this,
+      );
+    }
+    final topEnv = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
+    try {
+      final term = elabExpr(topEnv, expr);
+      final ctx = topEnv.toCtx();
+      final inferred = infer(ctx, term);
+      final typeStr = prettyTerm(
+        quote(bindings.length, inferred),
+        outerDepth: 0,
+      );
+      final fullEnv = _buildFullEnv();
+      final nfTerm = quote(0, eval(term, fullEnv));
+      final nfStr = prettyTerm(nfTerm, outerDepth: 0);
+
+      return switch (mode) {
+        _MetaMode.type => (ReplMeta(typeStr), this),
+        _MetaMode.norm => (ReplMeta(nfStr), this),
+      };
+    } on DoxaCheckError catch (e) {
+      return (ReplError(_formatCheckError(exprSrc, expr.span, e)), this);
+    } on ElabError catch (e) {
+      return (ReplError(_formatElabError(exprSrc, e)), this);
     }
   }
 

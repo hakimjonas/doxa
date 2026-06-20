@@ -35,7 +35,8 @@ import 'package:doxa/src/source.dart';
 import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
 import 'package:doxa_tooling/src/lsp/handler.dart';
 import 'package:doxa_tooling/src/lsp/transport.dart';
-import 'package:doxa_tooling/src/repl.dart';
+import 'package:doxa_tooling/src/repl.dart'
+    show ReplSession, ReplResult, ReplDeclResult, ReplExprResult, ReplError, ReplMeta;
 import 'package:doxa_tooling/src/web_check.dart';
 import 'package:rumil/rumil.dart';
 
@@ -134,7 +135,7 @@ void _runRepl() {
 
   if (isInteractive) {
     stderr.writeln('Doxa REPL');
-    stderr.writeln('Type :quit to exit.');
+    stderr.writeln('Type :help  for help, :quit to exit.');
     stderr.writeln('');
   }
 
@@ -157,6 +158,8 @@ void _runRepl() {
       stdout.writeln('= ${result.normalForm}');
     } else if (result is ReplDeclResult) {
       stdout.writeln('${result.name} : ${result.type}');
+    } else if (result is ReplMeta) {
+      stdout.writeln(result.text);
     } else if (result is ReplError) {
       if (result.message.isNotEmpty) {
         stderr.writeln(result.message);
