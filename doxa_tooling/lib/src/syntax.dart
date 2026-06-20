@@ -99,6 +99,12 @@ enum DoxaToken {
   /// keyword `import`
   kwImport,
 
+  /// keyword `typeclass`
+  kwTypeclass,
+
+  /// keyword `impl`
+  kwImpl,
+
   /// universe sort `Type`
   sortType,
 
@@ -235,6 +241,12 @@ enum DoxaSyntax {
   /// the body (ctor list) of a `data` declaration
   dataBody,
 
+  /// `typeclass name[params] { methods }`
+  typeclassDecl,
+
+  /// `impl TypeClassRef { members }`
+  implDecl,
+
   /// a single member of a `data ... and data ...` block
   dataMember,
 
@@ -287,6 +299,8 @@ DoxaToken _keywordKind(String text) => switch (text) {
   'returning' => DoxaToken.kwReturning,
   'and' => DoxaToken.kwAnd,
   'import' => DoxaToken.kwImport,
+  'typeclass' => DoxaToken.kwTypeclass,
+  'impl' => DoxaToken.kwImpl,
   _ => DoxaToken.error,
 };
 
@@ -344,6 +358,8 @@ const Set<DoxaSyntax> reparsableKinds = {
   DoxaSyntax.typeDecl,
   DoxaSyntax.funDecl,
   DoxaSyntax.dataDecl,
+  DoxaSyntax.typeclassDecl,
+  DoxaSyntax.implDecl,
   DoxaSyntax.ctorDecl,
   DoxaSyntax.block,
   DoxaSyntax.binder,

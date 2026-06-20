@@ -113,6 +113,8 @@ CheckOutput checkSourceOutput(
       SDataKind _ => 'data',
       SDataBlockKind _ => 'data',
       SImportKind _ => 'import',
+      STypeclassKind _ => 'typeclass',
+      SImplKind _ => 'impl',
     };
 
     final prevBindingsLen = bindings.length;
@@ -321,6 +323,8 @@ String _elabErrorKind(ElabError e) => switch (e) {
   StructAnnotationNotFound _ => 'struct_annotation_not_found',
   TacticFailed _ => 'tactic_failed',
   TacticIncomplete _ => 'tactic_incomplete',
+  NoInstanceFound _ => 'no_instance_found',
+  OverlappingInstances _ => 'overlapping_instances',
 };
 
 /// Pretty-print a [Value] by quoting at [level] and rendering.

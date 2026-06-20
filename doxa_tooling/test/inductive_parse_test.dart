@@ -76,6 +76,7 @@ SExprKind _shape(SExpr e) {
       SExpr(_shape(proof), DoxaSpan.synthetic),
     ),
     SByKind() => k,
+    SIntersectionKind() => k,
   };
 }
 

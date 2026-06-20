@@ -426,6 +426,25 @@ String reportElabError(SourceFile source, ElabError error) {
         '  The tactic sequence finished but the goal remains unsolved.',
       );
       sb.writeln('  Add more steps or a different approach.');
+    case NoInstanceFound(:final className, :final targetType, :final span):
+      sb.writeln('error: no instance found');
+      sb.writeln('  at ${source.formatStart(span)}');
+      sb.writeln(
+        '  No instance of typeclass "$className" found for type "$targetType".',
+      );
+    case OverlappingInstances(
+      :final className,
+      :final targetType,
+      :final instanceNames,
+      :final span,
+    ):
+      sb.writeln('error: overlapping instances');
+      sb.writeln('  at ${source.formatStart(span)}');
+      sb.writeln(
+        '  Multiple instances of typeclass "$className" match type "$targetType": '
+        '${instanceNames.join(", ")}.',
+      );
+      sb.writeln('  Use a more specific instance or remove the overlap.');
   }
   return sb.toString();
 }

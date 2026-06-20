@@ -781,6 +781,8 @@ final class SFunKind extends SDeclKind {
 ///
 /// Carries the name, the optional kind annotation, and the icity
 /// flag (explicit for `[A: Type]` or implicit for `{A: Type}`).
+/// When [constraints] is non-empty, the parameter is constrained
+/// (e.g. `A: Eq & Ord`).
 final class SFunTypeParam {
   /// The parameter's source name.
   final String name;
@@ -792,17 +794,134 @@ final class SFunTypeParam {
   /// `true` iff the parameter was written with `{…}` syntax.
   final bool isImplicit;
 
+  /// Typeclass constraints on this parameter, e.g. `[A: Eq & Ord]`
+  /// produces `[SIdent("Eq"), SIdent("Ord")]`.
+  final List<SExpr> constraints;
+
   /// Creates a type-parameter entry.
-  const SFunTypeParam(this.name, this.kind, {required this.isImplicit});
+  const SFunTypeParam(
+    this.name,
+    this.kind, {
+    required this.isImplicit,
+    this.constraints = const [],
+  });
 
   @override
   String toString() {
+    final cPart =
+        constraints.isEmpty
+            ? ''
+            : ' : ${constraints.join(" & ")}';
     final brackets =
         isImplicit
-            ? '{$name${kind == null ? "" : ": $kind"}}'
-            : '[$name${kind == null ? "" : ": $kind"}]';
+            ? '{$name$cPart}'
+            : '[$name$cPart]';
     return brackets;
   }
+}
+
+/// A single method declaration inside a `typeclass` block.
+final class SClassMethod {
+  /// The method name.
+  final String name;
+
+  /// The method's type signature (return type after `:`), or null
+  /// for methods with only a default body.
+  final SExpr? type;
+
+  /// Optional default implementation.
+  final SExpr? defaultBody;
+
+  /// Creates a class method.
+  const SClassMethod(this.name, this.type, {this.defaultBody});
+
+  @override
+  bool operator ==(Object other) =>
+      other is SClassMethod &&
+      other.name == name &&
+      other.type == type &&
+      other.defaultBody == defaultBody;
+
+  @override
+  int get hashCode => Object.hash('SClassMethod', name, type, defaultBody);
+
+  @override
+  String toString() =>
+      'SClassMethod($name, $type${defaultBody != null ? ", default: $defaultBody" : ""})';
+}
+
+/// A typeclass declaration: `typeclass Eq[A] { fun equals(x: A, y: A): Bool }`.
+final class STypeclassKind extends SDeclKind {
+  @override
+  final String name;
+
+  /// Type parameters like `[A: Type]` etc.
+  final List<(String, SExpr?)> typeParams;
+
+  /// Optional superclass constraint, e.g. `SIdent("Eq")` in `typeclass Ord[A]: Eq[A]`.
+  final SExpr? superclass;
+
+  /// The class methods.
+  final List<SClassMethod> methods;
+
+  /// Creates a typeclass declaration.
+  const STypeclassKind(
+    this.name,
+    this.typeParams,
+    this.methods, {
+    this.superclass,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      other is STypeclassKind &&
+      other.name == name &&
+      other.typeParams == typeParams &&
+      other.superclass == superclass &&
+      other.methods == methods;
+
+  @override
+  int get hashCode => Object.hash(
+    'STypeclassKind',
+    name,
+    typeParams,
+    superclass,
+    methods,
+  );
+
+  @override
+  String toString() =>
+      'STypeclassKind($name, $typeParams, superclass: $superclass, methods: $methods)';
+}
+
+/// An instance declaration: `impl Eq[Int] { fun equals(x, y) { x == y } }`.
+final class SImplKind extends SDeclKind {
+  @override
+  final String name;
+
+  /// The typeclass reference with arguments, e.g. `App(SIdent("Eq"), SIdent("Int"))`.
+  final SExpr typeclassRef;
+
+  /// The method implementations.
+  final List<SFunKind> members;
+
+  /// Creates an instance declaration.
+  const SImplKind(this.typeclassRef, this.members, {this.name = ''});
+
+  @override
+  bool operator ==(Object other) =>
+      other is SImplKind &&
+      other.name == name &&
+      other.typeclassRef == typeclassRef &&
+      other.members == members;
+
+  @override
+  int get hashCode =>
+      Object.hash('SImplKind', name, typeclassRef, members);
+
+  @override
+  String toString() =>
+      'SImplKind($name, $typeclassRef, members: $members)';
 }
 
 /// An inductive type declaration: `data Name[params] : indices -> sort { ctors }`.
@@ -974,6 +1093,29 @@ final class STacticTrivial extends STacticStep {
   const STacticTrivial();
   @override
   String toString() => 'STacticTrivial';
+}
+
+/// An intersection of typeclass constraints: `Eq & Ord`.
+///
+/// Used in constrained type parameters like `[A: Eq & Ord]`.
+/// Produced by the parser when `&` separates constraint identifiers
+/// in a type parameter annotation.
+final class SIntersectionKind extends SExprKind {
+  /// The constraint expressions.
+  final List<SExpr> constraints;
+
+  /// Creates an intersection kind.
+  const SIntersectionKind(this.constraints);
+
+  @override
+  bool operator ==(Object other) =>
+      other is SIntersectionKind && _listEq(other.constraints, constraints);
+
+  @override
+  int get hashCode => Object.hash('SIntersectionKind', Object.hashAll(constraints));
+
+  @override
+  String toString() => 'SIntersectionKind(${constraints.join(" & ")})';
 }
 
 /// A tactic block: `by { step; step; ... }`.

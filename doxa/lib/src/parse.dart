@@ -113,6 +113,8 @@ const Set<String> _reserved = {
   'Prop',
   'SProp',
   'Quot',
+  'typeclass',
+  'impl',
 };
 
 /// A raw identifier, one letter or underscore, then alphanumeric/underscore.
@@ -825,6 +827,11 @@ final Parser<ParseError, List<(String, SExpr?)>> _typeParams = _sym('[')
 /// `{A, B: Type, ...}` (implicit). Groups may be freely mixed, e.g.
 /// `fun f[A]{B: Type}(x: A): B = ...`. Within a single group, all
 /// entries share the group's icity.
+///
+/// Constraint syntax `[A: Eq & Ord]` is supported in explicit `[...]`
+/// groups only. Implicit `{...}` groups always treat the annotation
+/// as a kind annotation (e.g. `{x: A}` means x has type A, not that
+/// A is a constraint on x).
 Parser<ParseError, List<SFunTypeParam>> _funTypeParamGroup(
   String open,
   String close,
@@ -834,15 +841,56 @@ Parser<ParseError, List<SFunTypeParam>> _funTypeParamGroup(
       _ident
           .flatMap<SFunTypeParam>(
             (name) => _sym(':')
-                .skipThen(_expr)
+                .skipThen(_funParamAnnotation(isImplicit))
                 .optional
-                .map(
-                  (kind) => SFunTypeParam(name, kind, isImplicit: isImplicit),
-                ),
+                .map((result) {
+                  SExpr? kind;
+                  List<SExpr> constraints;
+                  if (result == null) {
+                    kind = null;
+                    constraints = const [];
+                  } else {
+                    final (k, cs) = result;
+                    kind = k;
+                    constraints = cs;
+                  }
+                  return SFunTypeParam(
+                    name,
+                    kind,
+                    isImplicit: isImplicit,
+                    constraints: constraints,
+                  );
+                }),
           )
           .sepBy(_sym(',')),
     )
     .thenSkip(_sym(close));
+
+/// Parse the annotation after `:` in a type parameter.
+///
+/// For explicit `[...]` groups, supports constraint syntax:
+///   - `Type`, `Prop`, `SProp` → kind annotation, no constraints
+///   - `Eq` → treated as constraint, kind defaults to null
+///   - `Eq & Ord` → multiple constraints
+///
+/// For implicit `{...}` groups, always a plain kind annotation.
+Parser<ParseError, (SExpr?, List<SExpr>)> _funParamAnnotation(bool isImplicit) {
+  if (isImplicit) {
+    // Implicit groups: always a plain kind annotation.
+    return _expr.map((e) => (e, const <SExpr>[]));
+  }
+  // Explicit groups: may be kind annotation or constraint(s).
+  return _expr.sepBy1(_sym('&')).map((exprs) {
+    final first = exprs.first;
+    // Single sort keyword → kind annotation.
+    if (exprs.length == 1 &&
+        (first.kind is STypeKind || first.kind is SPropKind || first.kind is SSPropKind)) {
+      return (first, const <SExpr>[]);
+    }
+    // Constraint(s).
+    return (null, exprs);
+  });
+}
 
 final Parser<ParseError, List<SFunTypeParam>> _funTypeParams =
     _funTypeParamGroup('[', ']', false)
@@ -1151,9 +1199,102 @@ final Parser<ParseError, SDecl> _theoremDecl = position<ParseError>().flatMap(
       ),
 );
 
+/// A method inside a `typeclass`: `fun name params ':' retType ('=' expr)?`.
+final Parser<ParseError, SClassMethod> _classMethod = position<ParseError>().flatMap(
+  (start) => _keyword('fun')
+      .skipThen(_ident)
+      .flatMap(
+        (name) => _valueParams.flatMap(
+          (params) => _sym(':')
+              .skipThen(_expr)
+              .flatMap(
+                (retType) => (_sym('=').skipThen(_expr)).optional.flatMap(
+                  (defaultBody) => _buildMethodBody(name, params, retType, defaultBody, start),
+                ),
+              ),
+        ),
+      ),
+);
+
+SExpr _buildMethodPi(String name, List<(String, SExpr)> params, SExpr retType) {
+  var ty = retType;
+  final span = DoxaSpan.synthetic;
+  for (final p in params.reversed) {
+    ty = SExpr(SPiKind(p.$1, p.$2, ty), span);
+  }
+  return ty;
+}
+
+Parser<ParseError, SClassMethod> _buildMethodBody(
+  String name,
+  List<(String, SExpr)> params,
+  SExpr retType,
+  SExpr? defaultBody,
+  int start,
+) {
+  final body = defaultBody;
+  return succeed<ParseError, SClassMethod>(
+    SClassMethod(name, _buildMethodPi(name, params, retType), defaultBody: body),
+  );
+}
+
+/// A `typeclass` declaration: `typeclass Eq[A] { fun equals(x: A, y: A): Bool }`.
+final Parser<ParseError, SDecl> _typeclassDecl = position<ParseError>().flatMap(
+  (start) => _keyword('typeclass')
+      .skipThen(_ident)
+      .flatMap(
+        (name) => _typeParams.optional.flatMap(
+          (tps) => _sym(':')
+              .skipThen(_expr)
+              .optional
+              .flatMap(
+                (superclass) => _sym('{')
+                    .skipThen(_classMethod.sepBy(_sym(';')))
+                    .thenSkip(_sym('}'))
+                    .zip(position<ParseError>())
+                    .map(
+                      (pair) => SDecl(
+                        STypeclassKind(
+                          name,
+                          tps ?? const [],
+                          pair.$1,
+                          superclass: superclass,
+                        ),
+                        DoxaSpan(start, pair.$2),
+                      ),
+                    ),
+              ),
+        ),
+      ),
+);
+
+/// An `impl` declaration: `impl Eq[Int] { fun equals(x, y) { x == y } }`.
+///
+/// Each member is a full `fun` declaration (starting with `fun` keyword).
+final Parser<ParseError, SDecl> _implDecl = position<ParseError>().flatMap(
+  (start) => _keyword('impl')
+      .skipThen(_expr)
+      .flatMap(
+        (typeclassRef) => _sym('{')
+            .skipThen(_implFunMember.sepBy(_sym(';')))
+            .thenSkip(_sym('}'))
+            .zip(position<ParseError>())
+            .map(
+              (pair) => SDecl(
+                SImplKind(typeclassRef, pair.$1),
+                DoxaSpan(start, pair.$2),
+              ),
+            ),
+      ),
+);
+
+/// A single `fun` inside an `impl` block, consuming `fun` keyword.
+final Parser<ParseError, SFunKind> _implFunMember =
+    _keyword('fun').skipThen(_mkFunBody(false));
+
 /// Any declaration.
 final Parser<ParseError, SDecl> _decl =
-    _importDecl | _theoremDecl | _valDecl | _typeDecl | _funDecl | _dataDecl;
+    _typeclassDecl | _implDecl | _importDecl | _theoremDecl | _valDecl | _typeDecl | _funDecl | _dataDecl;
 
 /// A program: leading whitespace, declarations, trailing whitespace, eof.
 final Parser<ParseError, SProgram> _program = _ws

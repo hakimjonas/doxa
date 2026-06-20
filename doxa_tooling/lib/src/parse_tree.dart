@@ -151,6 +151,8 @@ int _emitLeading(
     SFunBlockKind _ => DoxaSyntax.funDecl,
     SDataKind _ => DoxaSyntax.dataDecl,
     SDataBlockKind _ => DoxaSyntax.dataDecl,
+    STypeclassKind _ => DoxaSyntax.dataDecl,
+    SImplKind _ => DoxaSyntax.valDecl,
   };
 
   final children = <DoxaGreen>[];
