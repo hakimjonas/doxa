@@ -1,21 +1,10 @@
-include: package:lints/recommended.yaml
-
+# Monorepo root — analysis is configured per-package.
+# Each sub-package (doxa/, doxa_tooling/) has its own
+# analysis_options.yaml with lints and strict mode settings.
+#
+# This file exists only to suppress Dart analyzer from walking
+# further up the filesystem tree for configuration.
 analyzer:
-  language:
-    strict-casts: true
-    strict-inference: true
-    strict-raw-types: true
-
-linter:
-  rules:
-    - prefer_final_locals
-    - prefer_final_in_for_each
-    - prefer_const_constructors
-    - prefer_const_declarations
-    - always_declare_return_types
-    - annotate_overrides
-    - avoid_dynamic_calls
-    - prefer_expression_function_bodies
-    - unnecessary_lambdas
-    - prefer_single_quotes
-    - public_member_api_docs
+  exclude:
+    - "**/*.doxa"
+    - "**/*.mjs"
