@@ -27,6 +27,12 @@ A successful run prints `OK: N declarations checked`. Errors print a source
 span, the inferred type, the expected type, and the innermost point where
 conversion failed.
 
+The REPL provides interactive exploration and step-by-step proof construction:
+
+```shell
+dart run doxa repl       # interactive proof mode
+```
+
 ---
 
 ## 2. Values and functions
@@ -251,6 +257,86 @@ successful alternative wins.
 
 ---
 
+## 9b. Interactive proof mode
+
+The REPL (`doxa repl`) supports step-by-step proof construction.
+Start a proof, apply tactics one at a time, inspect the goal, undo
+mistakes, and commit the result.
+
+### Starting a proof
+
+```
+> :goal theorem idProof : (A: Type) -> A -> A
+Goal:
+  (A: Type) -> A -> A
+```
+
+### Applying tactics
+
+```
+> :step intro A
+Introduced A.
+Goal:
+  A -> A
+Context:
+  A : Type
+
+> :step intro x
+Introduced x.
+Goal:
+  A
+Context:
+  x : A
+  A : Type
+
+> :step exact x
+Goal solved. Use :qed to commit.
+```
+
+### Inspecting and undoing
+
+```
+> :print
+(lambda) (A: Type) => (lambda) (x: A) => x
+
+> :undo
+Undone.
+Goal:
+  A
+Context:
+  x : A
+  A : Type
+```
+
+### Finishing
+
+```
+> :qed
+idProof : (A: Type) -> A -> A
+```
+
+### Commands
+
+| Command | Action |
+|---------|--------|
+| `:goal theorem n : T` | Start an interactive proof |
+| `:goal` (in proof)    | Show current goal and context |
+| `:step intro [name]`  | Introduce a Pi binder |
+| `:step exact e`       | Provide an explicit proof term |
+| `:step apply f`       | Apply a lemma (conclusion must match exactly) |
+| `:step refl`          | Close `Eq[A] x x` goals |
+| `:step trivial`       | Try refl, then context lookup |
+| `:undo`               | Revert the last step |
+| `:print`              | Show the proof term so far |
+| `:abort`              | Abandon the proof |
+| `:qed`                | Commit the proof and add it to scope |
+
+The file-based syntax `by { intro x; exact x }` is always available.
+For induction proofs and rewriting, use the file-based `Nat.ind` /
+`Eq.rec` style (see the [proof guide](proof-guide.md)).
+
+---
+
 ## 10. Records and field projection
 
 Records are a single-constructor inductive with named fields. The `mk`
@@ -409,3 +495,7 @@ of identity proofs is not derivable, and it is not even statable since
   theorem about indexed vectors.
 - The [SPEC coverage document](SPEC_COVERAGE.md) enumerates every clause of
   the specification and its corresponding test.
+- The [proof guide](proof-guide.md) walks through a complete proof that
+  sqrt(2) is irrational, using induction on natural numbers.
+- The [interactive proof mode](#9b-interactive-proof-mode) lets you
+  construct proofs step by step in the REPL.
