@@ -2850,16 +2850,68 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
         // `teleEnv`, and is reused below to drive per-arm index
         // refinement. Null when paramsV is unavailable (infer-mode entry
         // or an under-applied scrutinee type).
+        //
+        // For ARG TYPE COMPUTATION we build a parallel enriched teleEnv
+        // that replaces selected neutrals with actual scrutinee index
+        // values.  A ctor arg gets the enriched value only when its
+        // TBound reference appears as the function head of a TApp in a
+        // subsequent arg type term (e.g. `R` in `R y x` inside `f`'s
+        // type for `acc_intro`).  Named data-constructor arguments
+        // (`n` in `Lt n m`) keep their neutral so the pattern binder
+        // retains its own de-Bruijn identity.
+        //
+        // The standard armTeleEnv (all neutrals) is preserved for the
+        // index refinement in `refineMatchArmExpected`.
         Env? armTeleEnv;
         if (paramsV != null) {
+          // Determine which ctor args need actual index values.
+          final argToIndexValue = <int, Value>{};
+          if (scrutineeV is VData && scrutineeData != null) {
+            final paramCount = scrutineeData.params.length;
+            if (scrutineeV.args.length > paramCount) {
+              final indexValues = scrutineeV.args.sublist(paramCount);
+              final argCount = ctor.args.length;
+              for (var pos = 0;
+                  pos < ctor.resultIndices.length && pos < indexValues.length;
+                  pos++) {
+                final idxTerm = ctor.resultIndices[pos];
+                if (idxTerm is TBound) {
+                  final argIdx = argCount - 1 - idxTerm.index;
+                  if (argIdx >= 0 && argIdx < argCount) {
+                    argToIndexValue[argIdx] = indexValues[pos];
+                  }
+                }
+              }
+            }
+          }
+          // WILDCARD binders (`_`) get the enriched scrutinee index
+          // value (they have no pattern-identity to preserve, e.g.
+          // `acc_intro _ _ f`).  NAMED binders keep their neutral
+          // (e.g. `y_` in `lt_trans y_ ...`), since substituting the
+          // scrutinee's index value would alias the pattern binder
+          // with a different variable at a different de-Bruijn level.
+          final argNeedsEnrichment = <int>{};
+          for (var j = 0; j < ctor.args.length; j++) {
+            if (argToIndexValue.containsKey(j) && arm.binders[j] == '_') {
+              argNeedsEnrichment.add(j);
+            }
+          }
           var teleEnv = const ENil() as Env;
+          Env enrichedTeleEnv = teleEnv;
           for (var i = paramsV.length - 1; i >= 0; i--) {
             teleEnv = teleEnv.extend(paramsV[i]);
+            enrichedTeleEnv = enrichedTeleEnv.extend(paramsV[i]);
           }
           for (var j = 0; j < ctor.args.length; j++) {
-            final argTypeV = eval(ctor.args[j].type, teleEnv);
+            // Compute arg type using enriched env so that closure-bound
+            // index values β-reduce properly.
+            final argTypeV = eval(ctor.args[j].type, enrichedTeleEnv);
             armState = armState.push(arm.binders[j], argTypeV);
-            teleEnv = teleEnv.extend(VNeutral(NVar(armState.ctx.level - 1)));
+            final neutral = VNeutral(NVar(armState.ctx.level - 1));
+            teleEnv = teleEnv.extend(neutral);
+            enrichedTeleEnv = enrichedTeleEnv.extend(
+              argNeedsEnrichment.contains(j) ? argToIndexValue[j]! : neutral,
+            );
           }
           armTeleEnv = teleEnv;
         } else {
@@ -2892,7 +2944,27 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
         final Term bodyT;
         if (expected != null && scrutineeData != null) {
           if (scrutineeData.indices.isEmpty) {
-            bodyT = _checkExpr(armState, arm.body, expected);
+            // For non-indexed data, the expected type may still depend
+            // on the scrutinee variable (e.g. `Acc ... n` in nat_wf).
+            // Refine per arm by substituting the scrutinee NVar with
+            // the ctor result value.
+            final Value armExpected;
+            final scrutineeValue = eval(scrutineeT, state.ctx.env);
+            if (scrutineeValue is VNeutral &&
+                scrutineeValue.neutral is NVar) {
+              final scrutLevel =
+                  (scrutineeValue.neutral as NVar).level;
+              final ctorArgs = <Value>[
+                for (var k = 0; k < ctor.args.length; k++)
+                  VNeutral(NVar(armState.ctx.level - ctor.args.length + k)),
+              ];
+              final ctorResultV =
+                  VConstr(scrutineeData.name, ctor.name, ctorArgs);
+              armExpected = _substNVar(expected, scrutLevel, ctorResultV);
+            } else {
+              armExpected = expected;
+            }
+            bodyT = _checkExpr(armState, arm.body, armExpected);
           } else if (armTeleEnv != null && scrutineeV is VData) {
             final paramCount = scrutineeData.params.length;
             final scrutineeIndicesV = scrutineeV.args.sublist(paramCount);
@@ -3721,9 +3793,13 @@ TopBinding _elabFun(
   // Members with `termination_by` skip this check (well-founded
   // recursion doesn't need the structural sub-term check).
   final memberNames = {for (final m in members) m.fun.name};
+  final memberDeclIdxs = <String, int>{
+    for (final m in members)
+      m.fun.name: _designatedArgIndex(m.fun) ?? 0,
+  };
   for (final m in members) {
     if (m.fun.terminationBy == null && extractedTby[m] == null) {
-      _checkStructuralRecursion(m.fun, memberNames);
+      _checkStructuralRecursion(m.fun, memberNames, memberDeclIdxs);
     }
     // Validate {struct name} annotation even for non-recursive members.
     if (m.fun.structAnn != null &&
@@ -4013,8 +4089,11 @@ void _checkDuplicate(TopEnv topEnv, SDecl decl) {
 ///
 /// Exposed as a stand-alone, directly testable entry point; the
 /// elaboration pipeline invokes it from [_elabDecl]'s `fun` paths.
-void checkStructuralRecursion(SFunKind kind, Set<String> blockMembers) =>
-    _checkStructuralRecursion(kind, blockMembers);
+void checkStructuralRecursion(
+  SFunKind kind,
+  Set<String> blockMembers, [
+  Map<String, int> memberDeclIdxs = const <String, int>{},
+]) => _checkStructuralRecursion(kind, blockMembers, memberDeclIdxs);
 
 /// Find the de-Bruijn position of a value parameter [name] in [fun].
 /// Returns the position counting type params first, so the first value
@@ -4087,7 +4166,11 @@ int? _designatedArgIndex(SFunKind kind) {
   return 0; // first value param
 }
 
-void _checkStructuralRecursion(SFunKind kind, Set<String> blockMembers) {
+void _checkStructuralRecursion(
+  SFunKind kind,
+  Set<String> blockMembers, [
+  Map<String, int> memberDeclIdxs = const <String, int>{},
+]) {
   // Shadow set: type-params and all value-params start in scope
   // (they mask any block-member name that coincides with them).
   final shadowed = <String>{
@@ -4112,6 +4195,7 @@ void _checkStructuralRecursion(SFunKind kind, Set<String> blockMembers) {
     designatedIdx: designatedIdx,
     subTerms: const <String>{},
     shadowed: shadowed,
+    memberDeclIdxs: memberDeclIdxs,
   );
   _walkForRecursion(
     expr: kind.returnType,
@@ -4120,6 +4204,7 @@ void _checkStructuralRecursion(SFunKind kind, Set<String> blockMembers) {
     designatedIdx: designatedIdx,
     subTerms: const <String>{},
     shadowed: shadowed,
+    memberDeclIdxs: memberDeclIdxs,
   );
   for (final p in kind.params) {
     _walkForRecursion(
@@ -4129,6 +4214,7 @@ void _checkStructuralRecursion(SFunKind kind, Set<String> blockMembers) {
       designatedIdx: null,
       subTerms: const <String>{},
       shadowed: const <String>{},
+      memberDeclIdxs: memberDeclIdxs,
     );
   }
   for (final tp in kind.typeParams) {
@@ -4140,6 +4226,7 @@ void _checkStructuralRecursion(SFunKind kind, Set<String> blockMembers) {
         designatedIdx: null,
         subTerms: const <String>{},
         shadowed: const <String>{},
+        memberDeclIdxs: memberDeclIdxs,
       );
     }
   }
@@ -4155,6 +4242,7 @@ void _walkForRecursion({
   int? designatedIdx,
   required Set<String> subTerms,
   required Set<String> shadowed,
+  Map<String, int> memberDeclIdxs = const <String, int>{},
 }) {
   switch (expr.kind) {
     case SIdentKind(:final name):
@@ -4181,6 +4269,7 @@ void _walkForRecursion({
         designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
+        memberDeclIdxs: memberDeclIdxs,
       );
     case SAppKind():
       // Application chain. Flatten left-to-right so we can inspect
@@ -4200,7 +4289,28 @@ void _walkForRecursion({
         if (args.isEmpty) {
           throw NonStructuralRecursion(headKind.name, head.span);
         }
-        final daIdx = designatedIdx ?? 0;
+        // Try the CALLEE's designated arg index (from memberDeclIdxs)
+        // first.  If the argument at that position is a valid sub-term,
+        // use it.  Otherwise fall back to the caller's designatedIdx.
+        // This allows both directions of a mutual block to pass: e.g.
+        // nat_wf → nat_wf_help k y h uses the caller's index (k is a
+        // sub-term of n), while nat_wf_help → nat_wf y_ uses the
+        // callee's index (y_ is a sub-term of h).
+        int daIdx;
+        final calleeIdx = memberDeclIdxs[headKind.name];
+        if (calleeIdx != null && calleeIdx < args.length) {
+          final calleeArg = args[calleeIdx];
+          final calleeIdent = calleeArg.kind;
+          final calleeName =
+              calleeIdent is SIdentKind ? calleeIdent.name : null;
+          if (calleeName != null && subTerms.contains(calleeName)) {
+            daIdx = calleeIdx;
+          } else {
+            daIdx = designatedIdx ?? 0;
+          }
+        } else {
+          daIdx = designatedIdx ?? 0;
+        }
         if (daIdx >= args.length) {
           throw NonStructuralRecursion(headKind.name, expr.span);
         }
@@ -4220,6 +4330,7 @@ void _walkForRecursion({
             designatedIdx: designatedIdx,
             subTerms: subTerms,
             shadowed: shadowed,
+            memberDeclIdxs: memberDeclIdxs,
           );
         }
       } else {
@@ -4234,6 +4345,7 @@ void _walkForRecursion({
           designatedIdx: designatedIdx,
           subTerms: subTerms,
           shadowed: shadowed,
+          memberDeclIdxs: memberDeclIdxs,
         );
         _walkForRecursion(
           expr: app.arg,
@@ -4242,6 +4354,7 @@ void _walkForRecursion({
           designatedIdx: designatedIdx,
           subTerms: subTerms,
           shadowed: shadowed,
+          memberDeclIdxs: memberDeclIdxs,
         );
       }
     case SLamKind(:final param, :final domain, :final body):
@@ -4253,6 +4366,7 @@ void _walkForRecursion({
           designatedIdx: designatedIdx,
           subTerms: subTerms,
           shadowed: shadowed,
+          memberDeclIdxs: memberDeclIdxs,
         );
       }
       _walkForRecursion(
@@ -4271,6 +4385,7 @@ void _walkForRecursion({
         designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
+        memberDeclIdxs: memberDeclIdxs,
       );
       _walkForRecursion(
         expr: codomain,
@@ -4289,6 +4404,7 @@ void _walkForRecursion({
           designatedIdx: designatedIdx,
           subTerms: subTerms,
           shadowed: shadowed,
+          memberDeclIdxs: memberDeclIdxs,
         );
       }
       _walkForRecursion(
@@ -4298,6 +4414,7 @@ void _walkForRecursion({
         designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
+        memberDeclIdxs: memberDeclIdxs,
       );
       _walkForRecursion(
         expr: body,
@@ -4315,6 +4432,7 @@ void _walkForRecursion({
         designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
+        memberDeclIdxs: memberDeclIdxs,
       );
       if (motive != null) {
         _walkForRecursion(
@@ -4324,6 +4442,7 @@ void _walkForRecursion({
           designatedIdx: designatedIdx,
           subTerms: subTerms,
           shadowed: shadowed,
+          memberDeclIdxs: memberDeclIdxs,
         );
       }
       // Determine whether the scrutinee names a known sub-term, if
@@ -4350,6 +4469,7 @@ void _walkForRecursion({
               designatedIdx: designatedIdx,
               subTerms: extendedSubTerms,
               shadowed: extendedShadow,
+              memberDeclIdxs: memberDeclIdxs,
             );
           case SWildcardCase(:final body):
             _walkForRecursion(
@@ -4359,6 +4479,7 @@ void _walkForRecursion({
               designatedIdx: designatedIdx,
               subTerms: subTerms,
               shadowed: shadowed,
+              memberDeclIdxs: memberDeclIdxs,
             );
         }
       }
@@ -4370,6 +4491,7 @@ void _walkForRecursion({
         designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
+        memberDeclIdxs: memberDeclIdxs,
       );
       _walkForRecursion(
         expr: relation,
@@ -4378,6 +4500,7 @@ void _walkForRecursion({
         designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
+        memberDeclIdxs: memberDeclIdxs,
       );
     case SQuotMkKind(:final arg):
       _walkForRecursion(
@@ -4387,6 +4510,7 @@ void _walkForRecursion({
         designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
+        memberDeclIdxs: memberDeclIdxs,
       );
     case SQuotLiftKind(:final fn, :final proof):
       _walkForRecursion(
@@ -4396,6 +4520,7 @@ void _walkForRecursion({
         designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
+        memberDeclIdxs: memberDeclIdxs,
       );
       _walkForRecursion(
         expr: proof,
@@ -4404,6 +4529,7 @@ void _walkForRecursion({
         designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: shadowed,
+        memberDeclIdxs: memberDeclIdxs,
       );
     case SIntersectionKind():
     case SByKind():
@@ -5444,6 +5570,60 @@ bool _isRecord(String dataName, List<DataDecl> dataDecls) {
     }
   }
   return false;
+}
+
+/// True if [term] contains `TBound(ctorArgIdx)` in function-head position
+/// of a `TApp`, accounting for TPi/TLam binder shifts. Used by the enriched
+/// teleEnv to decide which ctor args need actual index values (closure
+/// applications like `R y x` need the real `R`; data-constructor arguments
+/// like `n` in `Lt n m` keep their neutral).
+/// True if [term] contains `TBound(ctorArgIdx)` in function-head position
+/// of a `TApp`, accounting for TPi/TLam binder shifts. Used by the enriched
+/// teleEnv to decide which ctor args need actual index values (closure
+/// applications like `R y x` need the real `R`; data-constructor arguments
+/// Note: the enriched teleEnv uses a wildcard-only filter
+/// (arm.binders[j] == '_'), which is sufficient for all current patterns.
+/// An earlier `_termHasTAppAtCtorIdx` function that scanned subsequent arg
+/// types for TApp function-head references was removed as dead code. If a
+/// future constructor needs enrichment for a named binder that appears in
+/// a closure application, revive that scan.
+
+/// Substitute [scrutLevel] NVar references in [value] with [replacement].
+/// Used by match-arm expected-type refinement for non-indexed data whose
+/// return type depends on the scrutinee variable.
+Value _substNVar(Value value, int scrutLevel, Value replacement) {
+  if (value is VNeutral && value.neutral is NVar) {
+    final nvar = value.neutral as NVar;
+    if (nvar.level == scrutLevel) return replacement;
+    return value;
+  }
+  if (value is VData) {
+    final newArgs = <Value>[];
+    var changed = false;
+    for (final a in value.args) {
+      final na = _substNVar(a, scrutLevel, replacement);
+      newArgs.add(na);
+      if (!identical(na, a)) changed = true;
+    }
+    return changed ? VData(value.name, newArgs) : value;
+  }
+  if (value is VConstr) {
+    final newArgs = <Value>[];
+    var changed = false;
+    for (final a in value.args) {
+      final na = _substNVar(a, scrutLevel, replacement);
+      newArgs.add(na);
+      if (!identical(na, a)) changed = true;
+    }
+    return changed ? VConstr(value.dataName, value.ctorName, newArgs) : value;
+  }
+  if (value is VPi) {
+    final nd = _substNVar(value.domain, scrutLevel, replacement);
+    return identical(nd, value.domain)
+        ? value
+        : VPi(nd, value.codomain, name: value.name, icit: value.icit);
+  }
+  return value;
 }
 
 /// Compute the type of [fieldName] in record type [dataV] (a VData with

@@ -44,7 +44,7 @@ fun plus(m: Nat, n: Nat): Nat = match m {
   case succ m_ => succ (plus m_ n)
 }
 ''');
-      checkStructuralRecursion(fun, {'plus'});
+      checkStructuralRecursion(fun, {'plus'}, <String, int>{});
     });
 
     test('pred on Nat: trivial structural recursion', () {
@@ -56,7 +56,7 @@ fun pred(n: Nat): Nat = match n {
   case succ m => m
 }
 ''');
-      checkStructuralRecursion(fun, {'pred'});
+      checkStructuralRecursion(fun, {'pred'}, <String, int>{});
     });
 
     test('mutual even / odd: cross-call on a strict sub-term', () {
@@ -74,7 +74,7 @@ and isOdd(n: Nat): Bool = match n {
   case succ m => isEven m
 }
 ''', memberName: 'isEven');
-      checkStructuralRecursion(fun, {'isEven', 'isOdd'});
+      checkStructuralRecursion(fun, {'isEven', 'isOdd'}, <String, int>{});
     });
 
     test('nested match: sub-match on a sub-term yields sub-sub-terms', () {
@@ -90,7 +90,7 @@ fun f(n: Nat): Nat = match n {
   }
 }
 ''');
-      checkStructuralRecursion(fun, {'f'});
+      checkStructuralRecursion(fun, {'f'}, <String, int>{});
     });
   });
 
@@ -103,7 +103,7 @@ data Nat : Type { zero : Nat; succ : Nat -> Nat; }
 fun loop(n: Nat): Nat = loop n
 ''');
       expect(
-        () => checkStructuralRecursion(fun, {'loop'}),
+        () => checkStructuralRecursion(fun, {'loop'}, <String, int>{}),
         throwsA(
           isA<NonStructuralRecursion>().having(
             (e) => e.calleeName,
@@ -123,7 +123,7 @@ fun f(n: Nat): Nat = g n
 and g(n: Nat): Nat = f n
 ''', memberName: 'f');
       expect(
-        () => checkStructuralRecursion(fun, {'f', 'g'}),
+        () => checkStructuralRecursion(fun, {'f', 'g'}, <String, int>{}),
         throwsA(
           isA<NonStructuralRecursion>().having(
             (e) => e.calleeName,
@@ -142,7 +142,7 @@ fun f(x: Type): Type = x
 and g(x: Type): Type = f
 ''', memberName: 'g');
       expect(
-        () => checkStructuralRecursion(fun, {'f', 'g'}),
+        () => checkStructuralRecursion(fun, {'f', 'g'}, <String, int>{}),
         throwsA(
           isA<NonStructuralRecursion>().having(
             (e) => e.calleeName,
@@ -161,7 +161,7 @@ fun f(A: Type): Type = A
 and g(A: Type): Type = A -> f A
 ''', memberName: 'g');
       expect(
-        () => checkStructuralRecursion(fun, {'f', 'g'}),
+        () => checkStructuralRecursion(fun, {'f', 'g'}, <String, int>{}),
         throwsA(
           isA<NonStructuralRecursion>().having(
             (e) => e.calleeName,
@@ -178,7 +178,7 @@ fun f(A: Type): Type = A
 and g(A: Type): Type = { val x: Type = A; f x }
 ''', memberName: 'g');
       expect(
-        () => checkStructuralRecursion(fun, {'f', 'g'}),
+        () => checkStructuralRecursion(fun, {'f', 'g'}, <String, int>{}),
         throwsA(
           isA<NonStructuralRecursion>().having(
             (e) => e.calleeName,
@@ -210,7 +210,7 @@ fun plus(m: Nat, n: Nat): Nat = match m {
   case succ m_ => succ (plus m_ n)
 }
 ''');
-      checkStructuralRecursion(fun, {'plus'});
+      checkStructuralRecursion(fun, {'plus'}, <String, int>{});
     });
   });
 
@@ -222,7 +222,7 @@ fun plus(m: Nat, n: Nat): Nat = match m {
 fun f(A: Type): Type = A
 and g(A: Type): Type = { val f: Type = A; f }
 ''', memberName: 'g');
-      checkStructuralRecursion(fun, {'f', 'g'});
+      checkStructuralRecursion(fun, {'f', 'g'}, <String, int>{});
     });
 
     test('param-level shadow of a block member is fine', () {
@@ -231,7 +231,7 @@ and g(A: Type): Type = { val f: Type = A; f }
 fun f(x: Type): Type = x
 and g(f: Type): Type = f
 ''', memberName: 'g');
-      checkStructuralRecursion(fun, {'f', 'g'});
+      checkStructuralRecursion(fun, {'f', 'g'}, <String, int>{});
     });
 
     test('lambda-bound shadow is fine', () {
@@ -241,7 +241,7 @@ and g(f: Type): Type = f
 fun f(x: Type): Type = x
 and g(A: Type): Type -> Type = (f: Type) => f
 ''', memberName: 'g');
-      checkStructuralRecursion(fun, {'f', 'g'});
+      checkStructuralRecursion(fun, {'f', 'g'}, <String, int>{});
     });
   });
 
@@ -250,7 +250,7 @@ and g(A: Type): Type -> Type = (f: Type) => f
       // No reference to any block member in the body, so the walker is a
       // no-op.
       final fun = _parseFun('fun f(x: Type): Type = x');
-      checkStructuralRecursion(fun, {'f'});
+      checkStructuralRecursion(fun, {'f'}, <String, int>{});
     });
 
     test('param-type references to block members are rejected', () {
@@ -267,7 +267,7 @@ and g(x: Type): Type = f
       // return type Type, so this produces a type-level error, not a
       // parse error. The walker only checks for structural recursion
       // and is a no-op here since `f` has no designated arg.
-      checkStructuralRecursion(fun, {'f', 'g'});
+      checkStructuralRecursion(fun, {'f', 'g'}, <String, int>{});
     });
   });
 
@@ -281,7 +281,7 @@ fun f(a: Nat, b: List): List {struct b} = match b {
   case cons x xs => cons x (f a xs)
 }
 ''');
-      checkStructuralRecursion(fun, {'f'});
+      checkStructuralRecursion(fun, {'f'}, <String, int>{});
     });
 
     test('{struct} on first param works (same as default)', () {
@@ -293,7 +293,7 @@ fun f(n: Nat): Nat {struct n} = match n {
   case succ m => f m
 }
 ''');
-      checkStructuralRecursion(fun, {'f'});
+      checkStructuralRecursion(fun, {'f'}, <String, int>{});
     });
 
     test('{struct} on non-existent param rejected at elaboration', () {

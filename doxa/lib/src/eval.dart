@@ -5052,7 +5052,18 @@ ConvResult? _tryUnify(Value a, Value b, int level, MetaContext metas) {
   if (entry is! TermMetaUnsolved) return null;
 
   // Check the pattern restriction: every spine value must be a
-  // distinct NVar neutral.
+  // distinct NVar neutral.  Before checking, force any solved NMeta
+  // entries in the spine so that a meta whose spine includes another
+  // solved meta (e.g. from _insertImplicits capturing an outer meta)
+  // still admits pattern unification.
+  for (var i = 0; i < spineM.length; i++) {
+    if (spineM[i] is VNeutral) {
+      final forced = _forceMetaHead(spineM[i], metas, null);
+      if (!identical(forced, spineM[i])) {
+        spineM[i] = forced;
+      }
+    }
+  }
   final vars = <int>[];
   final seen = <int>{};
   for (final s in spineM) {
@@ -5139,36 +5150,50 @@ ConvResult? _tryUnify(Value a, Value b, int level, MetaContext metas) {
   // decline cleanly here rather than attempt a heuristic
   // reconstruction; the caller falls back to the conv-level
   // TypeMismatch path.
+  // Check for canonical spine [0, 1, …, n-1] (outermost-first,
+  // matching the typeExpected Pi chain built by _closeValueOverCtx).
+  // Also accept the reversed canonical spine [n-1, …, 1, 0] produced
+  // by _insertImplicits which applies binders innermost-first.
   var isCanonicalSpine = true;
+  var isReversedSpine = true;
   for (var i = 0; i < vars.length; i++) {
-    if (vars[i] != i) {
-      isCanonicalSpine = false;
-      break;
-    }
+    if (vars[i] != i) isCanonicalSpine = false;
+    if (vars[i] != vars.length - 1 - i) isReversedSpine = false;
   }
-  if (!isCanonicalSpine) return null;
+  if (!isCanonicalSpine && !isReversedSpine) return null;
+
   final domainTerms = <Term>[];
   var typeCursor = entry.typeExpected;
-  for (var i = 0; i < vars.length; i++) {
-    if (typeCursor is! VPi) {
-      // typeExpected's Pi-chain is shorter than the spine. Indicates
-      // a meta emitted with a non-outer-ctx-matching type (not
-      // produced by the current elaborator); decline.
-      return null;
+
+  if (isCanonicalSpine) {
+    // Canonical: walk typeExpected outermost-first.
+    for (var i = 0; i < vars.length; i++) {
+      if (typeCursor is! VPi) return null;
+      domainTerms.add(quote(i, typeCursor.domain));
+      typeCursor = eval(
+        typeCursor.codomain.body,
+        typeCursor.codomain.env.extend(VNeutral(NVar(i))),
+      );
     }
-    // Quote the i-th domain at depth i: the i-th solution λ sits
-    // under i earlier λs (= the earlier binders), and the domain
-    // may reference them via TBound. This matches the depth-schedule
-    // `_closeValueOverCtx` used when building typeExpected.
-    domainTerms.add(quote(i, typeCursor.domain));
-    // Open the codomain with NVar(i) so the next Pi's domain sees
-    // the i-th binder as a free neutral, consistent with the
-    // neutral levels the solution's body references via
-    // `_renameForSolution`.
-    typeCursor = eval(
-      typeCursor.codomain.body,
-      typeCursor.codomain.env.extend(VNeutral(NVar(i))),
-    );
+  } else {
+    // Reversed spine vars = [n-1, …, 0] (innermost-first).
+    // The Pi chain is outermost-first, but the first application
+    // argument is the innermost value.  So the first λ in the
+    // solution must bind the INNERMOST domain type.
+    // Expand all Pi domains outermost-first, then reverse.
+    final allDomains = <Value>[];
+    var tc = entry.typeExpected;
+    for (var i = 0; i < vars.length; i++) {
+      if (tc is! VPi) return null;
+      allDomains.add(tc.domain);
+      tc = eval(
+        tc.codomain.body,
+        tc.codomain.env.extend(VNeutral(NVar(i))),
+      );
+    }
+    for (var i = 0; i < vars.length; i++) {
+      domainTerms.add(quote(i, allDomains[vars.length - 1 - i]));
+    }
   }
   // Wrap body with λ-chain outermost-first. Iterate backward so the
   // innermost λ wraps first and the outermost wraps last:
