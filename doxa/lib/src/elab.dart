@@ -2871,9 +2871,11 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
             if (scrutineeV.args.length > paramCount) {
               final indexValues = scrutineeV.args.sublist(paramCount);
               final argCount = ctor.args.length;
-              for (var pos = 0;
-                  pos < ctor.resultIndices.length && pos < indexValues.length;
-                  pos++) {
+              for (
+                var pos = 0;
+                pos < ctor.resultIndices.length && pos < indexValues.length;
+                pos++
+              ) {
                 final idxTerm = ctor.resultIndices[pos];
                 if (idxTerm is TBound) {
                   final argIdx = argCount - 1 - idxTerm.index;
@@ -2950,16 +2952,17 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
             // the ctor result value.
             final Value armExpected;
             final scrutineeValue = eval(scrutineeT, state.ctx.env);
-            if (scrutineeValue is VNeutral &&
-                scrutineeValue.neutral is NVar) {
-              final scrutLevel =
-                  (scrutineeValue.neutral as NVar).level;
+            if (scrutineeValue is VNeutral && scrutineeValue.neutral is NVar) {
+              final scrutLevel = (scrutineeValue.neutral as NVar).level;
               final ctorArgs = <Value>[
                 for (var k = 0; k < ctor.args.length; k++)
                   VNeutral(NVar(armState.ctx.level - ctor.args.length + k)),
               ];
-              final ctorResultV =
-                  VConstr(scrutineeData.name, ctor.name, ctorArgs);
+              final ctorResultV = VConstr(
+                scrutineeData.name,
+                ctor.name,
+                ctorArgs,
+              );
               armExpected = _substNVar(expected, scrutLevel, ctorResultV);
             } else {
               armExpected = expected;
@@ -3794,8 +3797,7 @@ TopBinding _elabFun(
   // recursion doesn't need the structural sub-term check).
   final memberNames = {for (final m in members) m.fun.name};
   final memberDeclIdxs = <String, int>{
-    for (final m in members)
-      m.fun.name: _designatedArgIndex(m.fun) ?? 0,
+    for (final m in members) m.fun.name: _designatedArgIndex(m.fun) ?? 0,
   };
   for (final m in members) {
     if (m.fun.terminationBy == null && extractedTby[m] == null) {

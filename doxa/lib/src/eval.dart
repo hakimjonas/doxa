@@ -5186,10 +5186,7 @@ ConvResult? _tryUnify(Value a, Value b, int level, MetaContext metas) {
     for (var i = 0; i < vars.length; i++) {
       if (tc is! VPi) return null;
       allDomains.add(tc.domain);
-      tc = eval(
-        tc.codomain.body,
-        tc.codomain.env.extend(VNeutral(NVar(i))),
-      );
+      tc = eval(tc.codomain.body, tc.codomain.env.extend(VNeutral(NVar(i))));
     }
     for (var i = 0; i < vars.length; i++) {
       domainTerms.add(quote(i, allDomains[vars.length - 1 - i]));
