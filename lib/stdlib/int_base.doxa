@@ -1,8 +1,9 @@
 // Integers: Int = Pos Nat | Neg Nat where Pos n = n, Neg n = -(n+1).
 // Zero is Pos zero, avoiding double representation of zero.
 // This file provides only the type and core operations (no lemmas).
-import "nat.doxa"
 import "bool.doxa"
+
+import "nat.doxa"
 
 data Int : Type {
   pos : Nat -> Int;

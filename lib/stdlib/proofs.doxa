@@ -121,6 +121,67 @@ val mult_2 : (n: Nat) -> Eq Nat (mult (succ (succ zero)) n) (plus n n) =
       (trans_e Nat (mult (succ zero) n) (mult n (succ zero)) n
         (mult_comm (succ zero) n) (mult_one n)))
 
+val mult_plus : (a: Nat) -> (b: Nat) -> (c: Nat) ->
+  Eq Nat (mult (plus a b) c) (plus (mult a c) (mult b c)) =
+  (a: Nat) => Nat.ind
+    ((k: Nat) => (b: Nat) -> (c: Nat) ->
+      Eq Nat (mult (plus k b) c) (plus (mult k c) (mult b c)))
+    ((b: Nat) => (c: Nat) => refl (mult b c))
+    ((k: Nat) => (ih: (b: Nat) -> (c: Nat) ->
+      Eq Nat (mult (plus k b) c) (plus (mult k c) (mult b c))) =>
+      (b: Nat) => (c: Nat) =>
+        trans_e Nat
+          (mult (plus (succ k) b) c)
+          (plus c (mult (plus k b) c))
+          (plus (mult (succ k) c) (mult b c))
+          (refl (plus c (mult (plus k b) c)))
+          (trans_e Nat
+            (plus c (mult (plus k b) c))
+            (plus c (plus (mult k c) (mult b c)))
+            (plus (mult (succ k) c) (mult b c))
+            (cong_e Nat Nat ((x: Nat) => plus c x)
+              (mult (plus k b) c) (plus (mult k c) (mult b c))
+              (ih b c))
+            (trans_e Nat
+              (plus c (plus (mult k c) (mult b c)))
+              (plus (plus c (mult k c)) (mult b c))
+              (plus (mult (succ k) c) (mult b c))
+              (sym_e Nat
+                (plus (plus c (mult k c)) (mult b c))
+                (plus c (plus (mult k c) (mult b c)))
+                (plus_assoc c (mult k c) (mult b c)))
+              (refl (plus (plus c (mult k c)) (mult b c))))))
+    a
+
+val mult_assoc : (m: Nat) -> (n: Nat) -> (p: Nat) ->
+  Eq Nat (mult (mult m n) p) (mult m (mult n p)) =
+  (m: Nat) => Nat.ind
+    ((k: Nat) => (n: Nat) -> (p: Nat) ->
+      Eq Nat (mult (mult k n) p) (mult k (mult n p)))
+    ((n: Nat) => (p: Nat) => refl zero)
+    ((k: Nat) => (ih: (n: Nat) -> (p: Nat) ->
+      Eq Nat (mult (mult k n) p) (mult k (mult n p))) =>
+      (n: Nat) => (p: Nat) =>
+        trans_e Nat
+          (mult (mult (succ k) n) p)
+          (plus (mult n p) (mult (mult k n) p))
+          (mult (succ k) (mult n p))
+          (trans_e Nat
+            (mult (mult (succ k) n) p)
+            (mult (plus n (mult k n)) p)
+            (plus (mult n p) (mult (mult k n) p))
+            (refl (mult (plus n (mult k n)) p))
+            (mult_plus n (mult k n) p))
+          (trans_e Nat
+            (plus (mult n p) (mult (mult k n) p))
+            (plus (mult n p) (mult k (mult n p)))
+            (mult (succ k) (mult n p))
+            (cong_e Nat Nat ((x: Nat) => plus (mult n p) x)
+              (mult (mult k n) p) (mult k (mult n p))
+              (ih n p))
+            (refl (plus (mult n p) (mult k (mult n p))))))
+    m
+
 // --- List-domain proofs ---------------------------------------------------
 //
 // Parametric-type variants of the Nat-domain proofs above, in natural
