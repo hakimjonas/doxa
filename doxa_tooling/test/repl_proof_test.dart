@@ -196,9 +196,7 @@ void main() {
       (_, session) = session.processInput(
         ':goal theorem id : (A: Type) -> A -> A',
       );
-      final (result, _) = session.processInput(
-        ':goal theorem other : Type',
-      );
+      final (result, _) = session.processInput(':goal theorem other : Type');
       expect(result, isA<ReplMeta>());
       expect((result as ReplMeta).text, contains('Already in proof mode'));
     });

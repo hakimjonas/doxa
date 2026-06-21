@@ -23,7 +23,15 @@ import 'package:doxa/src/report.dart';
 import 'package:doxa/src/source.dart';
 import 'package:doxa/src/surface.dart';
 import 'package:doxa/src/tactic.dart'
-    show TacticState, TacticOk, TacticFail, intro, exact, refl, tacticApply, trivial;
+    show
+        TacticState,
+        TacticOk,
+        TacticFail,
+        intro,
+        exact,
+        refl,
+        tacticApply,
+        trivial;
 import 'package:doxa/src/term.dart' show TPi, TBound, TData, Term, Icit;
 import 'package:doxa/src/value.dart';
 
@@ -417,10 +425,16 @@ final class ReplSession {
       if (ps == null) {
         return (const ReplError(':goal requires a theorem declaration.'), this);
       }
-      return (ReplMeta(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType)), this);
+      return (
+        ReplMeta(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType)),
+        this,
+      );
     }
     if (proofState != null) {
-      return (const ReplMeta('Already in proof mode. Use :qed, :abort, or :undo.'), this);
+      return (
+        const ReplMeta('Already in proof mode. Use :qed, :abort, or :undo.'),
+        this,
+      );
     }
 
     // Strip 'theorem ' prefix and ' := ' suffix.
@@ -553,7 +567,10 @@ final class ReplSession {
   ReplStep _handleStep(String arg) {
     final ps = proofState;
     if (ps == null) {
-      return (const ReplMeta('No proof in progress. Use :goal to start.'), this);
+      return (
+        const ReplMeta('No proof in progress. Use :goal to start.'),
+        this,
+      );
     }
     final text = arg.trim();
     if (text.isEmpty) {
@@ -577,10 +594,7 @@ final class ReplSession {
       case 'trivial':
         return _stepTrivial(ps);
       case 'rewrite':
-        return (
-          ReplMeta('rewrite: not yet implemented in this version'),
-          this,
-        );
+        return (ReplMeta('rewrite: not yet implemented in this version'), this);
       case 'induction':
         return (
           ReplMeta('induction: not yet implemented in this version'),
@@ -607,7 +621,12 @@ final class ReplSession {
       List.unmodifiable(ps.binderNames),
     );
 
-    final tstate = TacticState(ps.metas, ps.ctx, ps.currentGoalMeta, ps.binderNames);
+    final tstate = TacticState(
+      ps.metas,
+      ps.ctx,
+      ps.currentGoalMeta,
+      ps.binderNames,
+    );
     final result = intro(tstate, name: name);
     return switch (result) {
       TacticOk(:final term, :final subMeta) => () {
@@ -645,7 +664,9 @@ final class ReplSession {
       expr = exprResult.value;
     } else {
       return (
-        ReplError(_formatParseFailure(exprResult as Failure<ParseError, dynamic>)),
+        ReplError(
+          _formatParseFailure(exprResult as Failure<ParseError, dynamic>),
+        ),
         this,
       );
     }
@@ -675,7 +696,12 @@ final class ReplSession {
       List.unmodifiable(ps.binderNames),
     );
 
-    final tstate = TacticState(ps.metas, ps.ctx, ps.currentGoalMeta, ps.binderNames);
+    final tstate = TacticState(
+      ps.metas,
+      ps.ctx,
+      ps.currentGoalMeta,
+      ps.binderNames,
+    );
     final result = exact(term)(tstate);
     return switch (result) {
       TacticOk() => () {
@@ -711,7 +737,9 @@ final class ReplSession {
       expr = exprResult.value;
     } else {
       return (
-        ReplError(_formatParseFailure(exprResult as Failure<ParseError, dynamic>)),
+        ReplError(
+          _formatParseFailure(exprResult as Failure<ParseError, dynamic>),
+        ),
         this,
       );
     }
@@ -739,7 +767,12 @@ final class ReplSession {
       List.unmodifiable(ps.binderNames),
     );
 
-    final tstate = TacticState(ps.metas, ps.ctx, ps.currentGoalMeta, ps.binderNames);
+    final tstate = TacticState(
+      ps.metas,
+      ps.ctx,
+      ps.currentGoalMeta,
+      ps.binderNames,
+    );
     final result = tacticApply(term)(tstate);
     return switch (result) {
       TacticOk() => () {
@@ -759,7 +792,12 @@ final class ReplSession {
       ps.ctx,
       List.unmodifiable(ps.binderNames),
     );
-    final tstate = TacticState(ps.metas, ps.ctx, ps.currentGoalMeta, ps.binderNames);
+    final tstate = TacticState(
+      ps.metas,
+      ps.ctx,
+      ps.currentGoalMeta,
+      ps.binderNames,
+    );
     final result = refl(tstate);
     return switch (result) {
       TacticOk() => () {
@@ -789,7 +827,12 @@ final class ReplSession {
       ps.ctx,
       List.unmodifiable(ps.binderNames),
     );
-    final tstate = TacticState(ps.metas, ps.ctx, ps.currentGoalMeta, ps.binderNames);
+    final tstate = TacticState(
+      ps.metas,
+      ps.ctx,
+      ps.currentGoalMeta,
+      ps.binderNames,
+    );
     final result = trivial(tstate);
     return switch (result) {
       TacticOk() => () {
@@ -855,7 +898,10 @@ final class ReplSession {
   ReplStep _handleQed() {
     final ps = proofState;
     if (ps == null) {
-      return (const ReplMeta('No proof in progress. Use :goal to start.'), this);
+      return (
+        const ReplMeta('No proof in progress. Use :goal to start.'),
+        this,
+      );
     }
 
     // Check for unsolved metas.
@@ -901,7 +947,9 @@ final class ReplSession {
 
     final newBindings = [...bindings, binding];
     return (
-      ReplMeta('${ps.theoremName} : ${prettyTerm(ps.theoremType, outerDepth: 0)}'),
+      ReplMeta(
+        '${ps.theoremName} : ${prettyTerm(ps.theoremType, outerDepth: 0)}',
+      ),
       ReplSession(
         bindings: newBindings,
         dataDecls: dataDecls,
