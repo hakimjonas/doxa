@@ -3,5 +3,5 @@
 import "int_base.doxa"
 
 data Rat : Type {
-  mk : Int -> Nat -> Rat
+  mk : Int -> Nat -> Rat;
 }
