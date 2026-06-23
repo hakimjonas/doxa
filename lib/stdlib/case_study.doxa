@@ -98,15 +98,8 @@ data Lt : Nat -> Nat -> Prop {
   lt_trans : (n: Nat) -> (m: Nat) -> (k: Nat) -> Lt n m -> Lt m k -> Lt n k;
 }
 // nat_wf: every Nat is accessible under Lt (well-foundedness).
-// The zero case uses Lt.rec to eliminate impossible Lt y zero.
-// The succ case constructs acc_intro and delegates to nat_wf_help
-// for the Lt y (succ k) sub-proof.
-//
-// The simple version (only lt_succ arm) type-checks modulo the
-// coverage checker requiring an lt_trans arm (conservative).
-// The full version with lt_trans + nested match on acc_intro still
-// fails with an Lt index mismatch in the checker's per-arm
-// expected-type refinement. Tracked as follow-up.
+// (Commented out: the lt_trans arm with nested match on acc_intro
+//  requires a checker fix for per-arm expected-type refinement.)
 //
 // fun nat_wf(n: Nat) : Acc[Nat] ((x: Nat) => (y: Nat) => Lt x y) n = match n {
 //   case zero => acc_intro ((x: Nat) => (y: Nat) => Lt x y) zero
@@ -142,3 +135,33 @@ fun half(n: Nat) : Nat = match n {
 }
 
 val lt_succ_right : (n: Nat) -> (m: Nat) -> Lt n m -> Lt n (succ m) = (n: Nat) => (m: Nat) => (h: Lt n m) => lt_trans n m (succ m) h (lt_succ m)
+
+// --- Algebraic lemmas for the sqrt2 proof --------------------------------
+
+// mult_4_eq: mult 4 n = mult 2 (mult 2 n)
+val mult_4_eq : (n: Nat) -> Eq Nat (mult four n) (mult two (mult two n)) = (n: Nat) => mult_assoc two two n
+
+// --- Remaining lemmas (to be completed) ----------------------------------
+//
+// lt_half_succ: (k: Nat) -> Lt (succ k) (mult two (succ k))
+//   Proof via lt_succ and transitivity bridging mult 2 (succ k)
+//   and succ (succ (plus k k)).
+//
+// even_implies_double: (n: Nat) -> Eq Bool (even n) true_ ->
+//   Eq Nat n (mult two (half n))
+//   Proof by induction on n.
+//
+// mult_2_inj: (a: Nat) -> (b: Nat) ->
+//   Eq Nat (mult two a) (mult two b) -> Eq Nat a b
+//   Proof by induction on a with plus cancellation.
+//
+// square_double: (n: Nat) ->
+//   Eq Nat (square (mult two n)) (mult four (square n))
+//   Proof by algebra using mult_comm, mult_assoc, mult_plus.
+//
+// --- Theorem: n^2 = 2*m^2 implies n = 0 ---------------------------------
+//
+// Proved by structural induction on n (avoids the nat_wf mutual-block
+// issue). From sqrt2_parity we get even n = true_. Case analysis on n
+// shows n must be zero, or the parity algebra forces a contradiction.
+// Requires even_implies_double, mult_2_inj, square_double, mult_4_eq.
