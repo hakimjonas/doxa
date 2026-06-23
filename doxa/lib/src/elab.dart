@@ -3000,7 +3000,12 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
                 ctor.name,
                 ctorArgs,
               );
-              armExpected = substNVar(expected, scrutLevel, ctorResultV);
+              final rawV = substNVar(expected, scrutLevel, ctorResultV);
+              // Normalize stuck function applications
+              // (e.g. half (VConstr zero)) when safe.
+              armExpected = _valueContainsNVar(rawV)
+                  ? rawV
+                  : eval(quote(0, rawV), state.ctx.env);
             } else {
               armExpected = expected;
             }
@@ -5803,4 +5808,24 @@ Value _fieldType(VData dataV, String fieldName, List<DataDecl> dataDecls) {
   throw StateError(
     '_fieldType: record ${dataV.name} has no field named $fieldName',
   );
+}
+
+
+bool _valueContainsNVar(Value v) {
+  if (v is VNeutral) {
+    if (v.neutral is NVar) return true;
+    if (v.neutral is NApp) {
+      final na = v.neutral as NApp;
+      return _valueContainsNVar(VNeutral(na.fn)) || _valueContainsNVar(na.arg);
+    }
+    if (v.neutral is NProj) {
+      return _valueContainsNVar((v.neutral as NProj).expr);
+    }
+    return false;
+  }
+  if (v is VData) return v.args.any(_valueContainsNVar);
+  if (v is VConstr) return v.args.any(_valueContainsNVar);
+  if (v is VPi) return _valueContainsNVar(v.domain);
+  if (v is VFun || v is VLam) return true;
+  return false;
 }
