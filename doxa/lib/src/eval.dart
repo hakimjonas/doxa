@@ -7866,10 +7866,29 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
 /// matching on a variable scrutinee with non-indexed data: replaces the
 /// scrutinee variable with the ctor result in the expected type.
 Value substNVar(Value value, int scrutLevel, Value replacement) {
-  if (value is VNeutral && value.neutral is NVar) {
-    final nvar = value.neutral as NVar;
-    if (nvar.level == scrutLevel) return replacement;
-    return value;
+  if (value is VNeutral) {
+    // Descend into the neutral's components so that NVar references
+    // embedded in NApp args are replaced.
+    final n = value.neutral;
+    switch (n) {
+      case NVar(:final level):
+        return level == scrutLevel ? replacement : value;
+      case NApp(:final fn, :final arg):
+        final newArg = substNVar(arg, scrutLevel, replacement);
+        if (identical(newArg, arg)) return value;
+        return VNeutral(NApp(fn, newArg));
+      case NProj(:final expr, :final fieldName):
+        final newExpr = substNVar(expr, scrutLevel, replacement);
+        if (identical(newExpr, expr)) return value;
+        return VNeutral(NProj(newExpr, fieldName));
+      case NStuck():
+        final stuck = (n as NStuck).value;
+        final newStuck = substNVar(stuck, scrutLevel, replacement);
+        if (identical(newStuck, stuck)) return value;
+        return VNeutral(NStuck(newStuck));
+      default:
+        return value;
+    }
   }
   if (value is VData) {
     final newArgs = <Value>[];
