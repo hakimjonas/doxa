@@ -7021,7 +7021,7 @@ bool _ctorReachable(
   }
   for (var i = 0; i < ctor.resultIndices.length; i++) {
     final ctorIdxV = eval(ctor.resultIndices[i], teleEnv);
-    if (!_firstOrderUnifiable(scrutineeIndices[i], ctorIdxV)) {
+    if (!_firstOrderUnifiable(scrutineeIndices[i], ctorIdxV, level)) {
       return false;
     }
   }
@@ -7032,21 +7032,44 @@ bool _ctorReachable(
 /// [_ctorReachable]. Returns true iff the two values *might* be
 /// equal under some substitution (conservative); false iff they
 /// have structurally incompatible ctor heads.
-bool _firstOrderUnifiable(Value a, Value b) {
+///
+/// [outerLevel] is the context level at the match site.  Telescope-
+/// fresh neutrals (levels >= [outerLevel]) cannot unify with a
+/// constructor because they represent opaque constructor arguments;
+/// scrutinee neutrals (levels < [outerLevel]) are rigid variables
+/// that *could* be instantiated to the constructor.
+bool _firstOrderUnifiable(Value a, Value b, int outerLevel) {
   if (a is VConstr && b is VConstr) {
     if (a.dataName != b.dataName || a.ctorName != b.ctorName) {
       return false;
     }
     if (a.args.length != b.args.length) return false;
     for (var i = 0; i < a.args.length; i++) {
-      if (!_firstOrderUnifiable(a.args[i], b.args[i])) return false;
+      if (!_firstOrderUnifiable(a.args[i], b.args[i], outerLevel)) return false;
     }
     return true;
   }
+  // A constructor cannot match a telescope-fresh neutral: the
+  // neutral was created for an opaque ctor argument and is never
+  // instantiated.  Scrutinee neutrals (levels < outerLevel) are
+  // rigid variables that could in principle be equal.
+  if (a is VConstr && _isTelescopeNeutral(b, outerLevel)) return false;
+  if (b is VConstr && _isTelescopeNeutral(a, outerLevel)) return false;
   // Any other shape: neutrals, stuck forms, mismatched kinds, the
   // first-order check gives up and returns POSSIBLE. Pattern
   // unification handles the refined cases.
   return true;
+}
+
+/// Returns true iff [v] is a VNeutral NVar at a level >= [outerLevel],
+/// i.e. a fresh neutral injected into the telescope env for coverage
+/// checking.  Such neutrals stand for opaque ctor arguments and
+/// cannot be structurally equal to a constructor.
+bool _isTelescopeNeutral(Value v, int outerLevel) {
+  if (v is VNeutral && v.neutral is NVar) {
+    return (v.neutral as NVar).level >= outerLevel;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------

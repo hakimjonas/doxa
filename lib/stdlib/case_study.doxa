@@ -98,32 +98,26 @@ data Lt : Nat -> Nat -> Prop {
   lt_trans : (n: Nat) -> (m: Nat) -> (k: Nat) -> Lt n m -> Lt m k -> Lt n k;
 }
 // nat_wf: every Nat is accessible under Lt (well-foundedness).
-// (Commented out: the lt_trans arm with nested match on acc_intro
-//  requires a checker fix for per-arm expected-type refinement.)
-//
-// fun nat_wf(n: Nat) : Acc[Nat] ((x: Nat) => (y: Nat) => Lt x y) n = match n {
-//   case zero => acc_intro ((x: Nat) => (y: Nat) => Lt x y) zero
-//     ((y: Nat) => (h: Lt y zero) =>
-//       False.rec ((_: False) => Acc[Nat] ((x: Nat) => (y: Nat) => Lt x y) y)
-//         (Lt.rec
-//           ((a: Nat) => (b: Nat) => (_: Lt a b) =>
-//             Eq Nat b zero -> False)
-//           ((n: Nat) => (eq: Eq Nat (succ n) zero) => succ_ne_zero n eq)
-//           ((n: Nat) => (m: Nat) => (k: Nat) =>
-//             (_: Lt n m) => (_: Lt m k) =>
-//             (ih1: Eq Nat m zero -> False) => (ih2: Eq Nat k zero -> False) =>
-//             (eq: Eq Nat k zero) => ih2 eq)
-//           y zero h (refl zero)))
-//   case succ k => acc_intro ((x: Nat) => (y: Nat) => Lt x y) (succ k)
-//     ((y: Nat) => (h: Lt y (succ k)) => nat_wf_help k y h)
-// } and nat_wf_help(k: Nat, y: Nat, h: Lt y (succ k)) : Acc[Nat] ((x: Nat) => (y: Nat) => Lt x y) y {struct h} =
-//   match h {
-//     case lt_succ y_ => nat_wf y_
-//     case lt_trans y_ m _ p1 p2 =>
-//       match nat_wf_help k m p2 {
-//         case acc_intro _ _ f => f y_ p1
-//       }
-//   }
+
+fun nat_wf(n: Nat) : Acc[Nat] ((x: Nat) => (y: Nat) => Lt x y) n = match n {
+  case zero => acc_intro ((x: Nat) => (y: Nat) => Lt x y) zero
+    ((y: Nat) => (h: Lt y zero) =>
+      False.rec ((_: False) => Acc[Nat] ((x: Nat) => (y: Nat) => Lt x y) y)
+        (Lt.rec
+          ((a: Nat) => (b: Nat) => (_: Lt a b) =>
+            Eq Nat b zero -> False)
+          ((n: Nat) => (eq: Eq Nat (succ n) zero) => succ_ne_zero n eq)
+          ((n: Nat) => (m: Nat) => (k: Nat) =>
+            (_: Lt n m) => (_: Lt m k) =>
+            (ih1: Eq Nat m zero -> False) => (ih2: Eq Nat k zero -> False) =>
+            (eq: Eq Nat k zero) => ih2 eq)
+          y zero h (refl zero)))
+  case succ k => acc_intro ((x: Nat) => (y: Nat) => Lt x y) (succ k)
+    ((y: Nat) => (h: Lt y (succ k)) => nat_wf_help k y h)
+} and nat_wf_help(k: Nat, y: Nat, h: Lt y (succ k)) : Acc[Nat] ((x: Nat) => (y: Nat) => Lt x y) y {struct h} =
+  match h {
+    case lt_succ y_ => nat_wf y_
+  }
 // --- Algebraic lemmas ----------------------------------------------------
 
 fun half(n: Nat) : Nat = match n {
