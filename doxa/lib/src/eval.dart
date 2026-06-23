@@ -6727,6 +6727,34 @@ _Step _checkMatchArmStep(
     // binder is now in scope for subsequent arg types).
     teleEnv = teleEnv.extend(VNeutral(NVar(armCtx.level - 1)));
   }
+  // Check whether this ctor arm is unreachable: if any
+  // scrutinee-index / ctor-result-index pair has a telescope-
+  // fresh neutral on one side and a VConstr on the other, the
+  // arm can never fire.  In that case skip the body check;
+  // the arm is dead code and any body is valid.
+  var armReachable = true;
+  if (indicesV.isNotEmpty && ctorDecl.resultIndices.isNotEmpty) {
+    checkReach:
+    for (
+      var i = 0;
+      i < ctorDecl.resultIndices.length && i < indicesV.length;
+      i++
+    ) {
+      final ctorIdxV = eval(ctorDecl.resultIndices[i], teleEnv);
+      if ((indicesV[i] is VConstr &&
+              _isTelescopeNeutral(ctorIdxV, ctx.level)) ||
+          (ctorIdxV is VConstr &&
+              _isTelescopeNeutral(indicesV[i], ctx.level))) {
+        armReachable = false;
+        break checkReach;
+      }
+    }
+  }
+  if (!armReachable) {
+    // Unreachable arm: body is dead code, yield expected.
+    return _YieldV(expected);
+  }
+
   // first-order index refinement.
   //
   // Compute the ctor's resultIndices as Values under teleEnv (which

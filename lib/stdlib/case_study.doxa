@@ -117,6 +117,10 @@ fun nat_wf(n: Nat) : Acc[Nat] ((x: Nat) => (y: Nat) => Lt x y) n = match n {
 } and nat_wf_help(k: Nat, y: Nat, h: Lt y (succ k)) : Acc[Nat] ((x: Nat) => (y: Nat) => Lt x y) y {struct h} =
   match h {
     case lt_succ y_ => nat_wf y_
+    case lt_trans y_ m _ p1 p2 =>
+      match nat_wf_help k m p2 {
+        case acc_intro _ _ f => f y_ p1
+      }
   }
 // --- Algebraic lemmas ----------------------------------------------------
 
