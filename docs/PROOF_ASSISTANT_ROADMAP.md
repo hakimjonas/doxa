@@ -48,6 +48,7 @@ Option A is self-contained and fits in ~60 lines. Option B is more traditional b
 
 | Task | Effort | Description |
 |------|--------|-------------|
+| `induction` on arbitrary inductives | 2 sessions | Current `induction n` in `by { }` blocks only handles `Nat.ind`. Generalise to any inductive type: given a goal `(x: T) -> P(x)` and an inductive `T`, generate the elimination motive and one subgoal per constructor. Uses the existing `MetaContext` and `TacticState`. The 15-constructor `Term` type is the stress test. |
 | `apply` with hole-filling | 1-2 sessions | Current `apply f` requires exact match of conclusion to goal. Expansion: if `f : A → B → C` and goal is `C`, create two fresh subgoal metas for `A` and `B`. Return `f ?a ?b` as partial proof term with `?a`, `?b` as new goals. The `MetaContext` already supports this pattern. |
 | `:search <pattern>` | 1 session | Search scope (bindings + dataDecls + imported modules) for lemmas whose conclusion type structurally contains `<pattern>`. Uses `:browse` infrastructure. |
 | `simp` tactic | 1 session | Normalize the goal via `nf`/`conv`. Reduces `plus zero n` to `n`, `refl`-applied terms, etc. Single-pass rewrite against a built-in set of simplification lemmas. |
@@ -82,8 +83,8 @@ Option A is self-contained and fits in ~60 lines. Option B is more traditional b
 | 25.5 — Case study completion | 1 | 1 |
 | 26 — Interactive REPL | 2 | 3 |
 | 27 — Documentation | 1.5 | 4.5 |
-| 28 — Tactic expansion | 4 | 8.5 |
-| 29 — Tactic automation | 5 | 13.5 |
-| 30 — Gamified book | 6+ | 20+ |
+| 28 — Tactic expansion | 6 | 10.5 |
+| 29 — Tactic automation | 5 | 15.5 |
+| 30 — Gamified book | 6+ | 22+ |
 
 After Phase 27, Doxa is a credible proof assistant with interactive proof construction and proper documentation. Phases 28-29 close the quality-of-life gap with mature systems. Phase 30 is the public launch.

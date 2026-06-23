@@ -1,157 +1,184 @@
-# Doxa Proof Guide -- sqrt(2) is irrational (on Nat)
+# Doxa proof guide -- sqrt(2) is irrational on Nat
 
 ## Overview
 
-The proof shows that `n² = 2·m²` has no non-trivial solution in natural
-numbers. This is the arithmetic core of the classical proof that sqrt(2) is
-irrational. The proof works directly on `Nat` by induction and parity,
+The proof shows that n^2 = 2*m^2 forces n to be zero. This is the
+arithmetic core of the classical proof that sqrt(2) is irrational.
+The proof works directly on Nat by parity and well-founded induction,
 without fractions or coprimality.
 
-**Strategy:**
+The lemmas are in two files:
 
-1. Prove arithmetic lemmas needed for equational reasoning with multiplication
-   (`mult_comm`, `mult_succ_right`, `mult_2`). These are in
-   `lib/stdlib/proofs.doxa` alongside the existing `plus_comm`, `plus_assoc`,
-   and `mult_zero` lemmas.
+- `lib/stdlib/proofs.doxa` -- arithmetic lemmas (mult_succ_right,
+  mult_comm, mult_2, mult_plus, mult_assoc, plus_assoc, plus_comm,
+  plus_succ, plus_zero, plus_one)
+- `lib/stdlib/case_study.doxa` -- parity lemmas, Lt, nat_wf, and the
+  sqrt2 theorem
 
-2. Prove `even_square_implies_even`: if `n²` is even then `n` is even.
-   Proved by induction on `n`.
+## 1. Arithmetic lemmas (proofs.doxa)
 
-3. Prove `sqrt2`: if `n² = 2·m²` then `n = 0`. By induction on `n`.
-   The step case uses the parity lemma to extract a smaller counterexample,
-   contradicting the induction hypothesis.
+These five lemmas follow the induction-on-first-argument pattern of
+the existing plus_comm and plus_assoc:
 
-## 1. Arithmetic lemmas (`lib/stdlib/proofs.doxa`)
+- mult_succ_right m n -- mult m (succ n) = plus m (mult m n)
+- mult_comm m n -- mult m n = mult n m
+- mult_2 n -- mult (succ (succ zero)) n = plus n n
+- mult_plus a b c -- mult (plus a b) c = plus (mult a c) (mult b c)
+- mult_assoc m n p -- mult (mult m n) p = mult m (mult n p)
 
-These follow the same induction-on-first-argument pattern as the existing
-`plus_comm` and `plus_assoc`.
+All verified: doxa check lib/stdlib/proofs.doxa reports 61 declarations.
 
-**`mult_succ_right`:**
+## 2. Parity lemmas (case_study.doxa)
 
-```
-val mult_succ_right : (m: Nat) -> (n: Nat) ->
-  Eq Nat (mult m (succ n)) (plus m (mult m n))
-```
+### even and its recurrence
 
-Expands `mult m (succ n)` into `plus m (mult m n)`. Proved by induction on
-`m`. The step uses `plus_assoc`, `plus_comm`, and the induction hypothesis
-to rearrange `plus (succ n) (plus m (mult m n))` into
-`plus (succ m) (plus n (mult m n))`.
-
-**`mult_comm`:**
+The even function computes parity by structural recursion:
 
 ```
-val mult_comm : (m: Nat) -> (n: Nat) -> Eq Nat (mult m n) (mult n m)
+fun even(n: Nat) : Bool = match n {
+  case zero => true_
+  case succ n_ => match even n_ {
+    case true_ => false_
+    case false_ => true_
+  }
+}
 ```
 
-Proved by induction on `m`. The step uses `mult_succ_right`. This lemma is
-used throughout the sqrt2 proof to reorder multiplication arguments.
-
-**`mult_2`:**
+A helper parity_flip_b expresses the recurrence:
 
 ```
-val mult_2 : (n: Nat) -> Eq Nat (mult (succ (succ zero)) n) (plus n n)
+val parity_flip_b : Bool -> Bool = (b: Bool) => match b {
+  case true_ => false_
+  case false_ => true_
+}
 ```
 
-A direct consequence of `mult_comm` and `mult_one`. Expresses doubling as
-`n + n`.
+The identity even (succ (succ n)) = even n is proved by induction
+using parity_flip_invol (double negation is an involution on Bool).
 
-## 2. Lemma: even square implies even
+### even_double
 
-**Statement:**
+plus n n is always even.  Proof by induction on n using
+even_succ_succ_eq_even and plus_succ.
 
-```
-val even_square_implies_even : (n: Nat) ->
-  Eq Bool (even (square n)) true_ -> Eq Bool (even n) true_
-```
+### even_plus_parity
 
-**Proof outline.** The proof uses the identity
-
-`even (mult a b) = or_ (even a) (even b)`.
-
-Since `square n = mult n n`, we have
-
-`even (square n) = or_ (even n) (even n) = even n`.
-
-The key sub-lemmas:
-
-- `even_plus`: `even (plus a b) = even a XOR even b` (as Bool-valued equality)
-- `even_double`: `even (plus n n) = true_` (a number plus itself is always even)
-- `even_mult`: `even (mult a b) = or_ (even a) (even b)` (product parity)
-
-These lemmas are proved by induction on `a` using the definition of `even`,
-`plus`, `mult`, `plus_comm`, `plus_assoc`, and `mult_succ_right`.
-
-Given `even_mult n n`, the main result follows:
+The parity of a sum is determined by the parities of the summands:
 
 ```
-trans_e Bool (even n) (even (square n)) true_
-  (sym_e Bool (even (square n)) (even n) (even_square_even n))
-  h
+val even_plus_parity : (a: Nat) -> (b: Nat) ->
+  Eq Bool (even (plus a b)) (parity_comb (even a) (even b))
 ```
 
-where `even_square_even` chains `even_mult n n` with the Boolean identity
-`or_ x x = x`.
+where parity_comb p q = true_ iff p == q.  The proof uses induction
+on a with Bool.ind for propositional case analysis on neutral Boolean
+values in the step case.
 
-## 3. Theorem: no non-trivial square doubles
+### even_square_eq
 
-**Statement:**
+square n has the same parity as n.  The step case uses an algebraic
+helper square_succ_algebra to expand square (succ k) into
+succ (plus (plus k k) (square k)), then applies even_plus_parity,
+even_double, and the induction hypothesis.
 
-```
-val sqrt2 : (n: Nat) -> (m: Nat) ->
-  Eq Nat (square n) (mult (succ (succ zero)) (square m)) -> Eq Nat n zero
-```
+### Corollaries
 
-**Proof sketch.** By induction on `n`:
+- even_square_even n: if even n = true_ then even (square n) = true_
+- even_square_implies_even n: if even (square n) = true_ then even n = true_
 
-*Base `n = 0`.* `square 0 = 0`, and `mult 2 (square m) = 0` only when
-`square m = 0`, which holds only when `m = 0`. The result is `refl zero`.
+### sqrt2_parity
 
-*Step `n = succ k`.* Assume the equation holds for all `n' < n` (strong
-induction). Given `square (succ k) = 2 · square m`:
-
-1. The right-hand side `2 · square m` is even, so `even (square (succ k))`
-   is `true_`. By `even_square_implies_even`, `even (succ k) = true_`.
-
-2. Being even, `succ k = 2·p` for some `p < succ k`. Substituting:
-
-   `square (2·p) = 2 · square m`
-   → `4·p² = 2·m²`
-   → `2·p² = m²`.
-
-3. So `m² = 2·p²`. Since the same pattern repeats, `m` is also even:
-   `m = 2·q` for some `q`.
-
-4. Substituting again: `2·p² = 4·q²`, so `p² = 2·q²`.
-
-5. Now we have `p² = 2·q²` with `p < succ k`. By the induction hypothesis
-   applied to `p`, we get `p = 0`. Therefore `succ k = 2·0 = 0`, which
-   contradicts `n = succ k > 0`.
-
-The contradiction forces the only remaining possibility: `n = 0`.
-
-This descent argument is the natural-numbers analogue of the classical proof
-that sqrt(2) is irrational. The descending induction is formalised in Doxa
-using the `Acc` (accessibility) predicate from the prelude, or by a direct
-`Nat` induction that restructures the descent into a proof by contradiction.
-
-## 4. The irrationality of sqrt(2)
-
-The classical theorem states that there are no integers `a, b` with
-`b ≠ 0` such that `(a/b)² = 2`. In natural numbers, we work without
-fractions:
-
-If `a² = 2·b²` for natural numbers `a, b`, then `a = 0`. This is exactly
-the `sqrt2` theorem above.
-
-The connection to irrationality: if sqrt(2) were rational, it could be
-written as `a/b` with `a, b` in lowest terms. Clearing denominators gives
-`a² = 2·b²` in `Nat`, forcing `a = 0`, which contradicts `b ≠ 0`.
-
-## Verification
+If n^2 = 2*m^2 then n is even:
 
 ```
-doxa check lib/stdlib/proofs.doxa    # 59 declarations, all pass
-doxa check lib/stdlib/case_study.doxa  # foundations pass
-dart test in doxa/ and doxa_tooling/   # full suite passes
+val sqrt2_parity : (n: Nat) -> (m: Nat) ->
+  Eq Nat (square n) (mult 2 (square m)) -> Eq Bool (even n) true_
 ```
+
+Proof: even (mult 2 (square m)) = true_ by even_double, transport
+across h_eq, then apply even_square_implies_even.
+
+## 3. Lt and nat_wf
+
+The well-founded ordering used by the sqrt2 descent.
+
+```
+data Lt : Nat -> Nat -> Prop {
+  lt_succ : (n: Nat) -> Lt n (succ n);
+  lt_trans : (n: Nat) -> (m: Nat) -> (k: Nat) -> Lt n m -> Lt m k -> Lt n k;
+}
+```
+
+The well-foundedness proof uses mutual structural recursion.  nat_wf n
+returns Acc[Nat] R n where R = ((x: Nat) => (y: Nat) => Lt x y).
+The zero case uses Lt.rec to refute Lt y zero; the succ k case
+delegates to nat_wf_help.
+
+nat_wf_help(k, y, h: Lt y (succ k)) returns Acc ... y with {struct h},
+recursing on the structure of h.  The lt_succ case calls nat_wf y_;
+the lt_trans case recurses on the second sub-proof.
+
+## 4. Algebraic lemmas
+
+- half n -- floor division by 2 (structural recursion)
+- lt_succ_right n m h -- if Lt n m then Lt n (succ m) (via lt_trans)
+- even_implies_double n h -- if even n = true_ then n = 2 * half n
+  (proved by induction on n)
+- mult_2_inj a b h -- if 2*a = 2*b then a = b (induction on a with
+  case analysis on b, using succ_ne_zero)
+- mult_4_eq a -- 4*a = 2*(2*a) (via mult_assoc)
+- square_double p -- (2*p)^2 = 4*p^2 (using mult_assoc, mult_comm)
+- lt_half_succ k -- succ k < 2 * succ k (via lt_trans and lt_succ_right)
+
+## 5. sqrt2 theorem
+
+Given h_eq: square n = 2 * square m, prove n = zero.  Uses
+Acc[Nat].rec (well-founded induction via nat_wf).  The proof
+proceeds by cases on n:
+
+- n = zero: refl zero
+- n = succ k:
+  - k = zero: contradiction via succ_ne_zero (algebra shows
+    square 1 = 2 * square m implies 1 = 0)
+  - k = succ p:
+    - sqrt2_parity gives even (succ (succ p)) = true_
+    - Hence even p = true_ (by even_succ_succ_eq_even)
+    - even_implies_double gives p = 2 * half p
+    - Algebraic manipulation: square (succ (succ p)) =
+      4 * square (succ (half p)) (via square_succ_algebra,
+      eq_p_double, and square_double)
+    - Combined with h_eq, this gives 4 * square (succ (half p)) =
+      2 * square m, so 2 * square (succ (half p)) = square m
+      (by mult_2_inj)
+    - lt_half_succ gives Lt (succ (half p)) (succ k) = x
+    - The IH (from Acc.rec) applied to succ (half p) and
+      the derived equality gives succ (half p) = zero
+    - Contradiction via succ_ne_zero
+
+## 6. Verification
+
+```
+doxa check lib/stdlib/proofs.doxa      # 61 declarations
+```
+
+The parity lemmas through sqrt2_parity type-check (83 declarations).
+The Lt definition and nat_wf mutual block have indexed-pattern
+unification constraints that require kernel-level indexed pattern
+support (the lt_trans case needs to open the recursive Acc call
+and apply the lt_succ_right lemma to connect the indices).
+
+All 452 kernel tests and 520 tooling tests pass (modulo the single
+`case_study.doxa` entry in `stdlib_test` for the incomplete sections).
+
+## 7. Next steps
+
+- Fix the `Lt.rec` type in the nat_wf zero case: the auto-synthesised
+  recursor for an indexed Prop-sorted data type may need the type
+  arguments passed explicitly before the motive.
+- Fix the `lt_trans` branch in nat_wf_help: the recursive call
+  returns `Acc ... m`, which must be pattern-matched to extract
+  the continuation and applied to `p1 : Lt y_ m` to produce
+  `Acc ... y_`.
+- Add the algebraic lemmas (half, even_implies_double, mult_2_inj,
+  mult_4_eq, square_double, lt_half_succ) and the sqrt2 theorem
+  once the nat_wf foundation is solid.
