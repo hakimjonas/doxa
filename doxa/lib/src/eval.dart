@@ -7882,9 +7882,8 @@ Value substNVar(Value value, int scrutLevel, Value replacement) {
         if (identical(newExpr, expr)) return value;
         return VNeutral(NProj(newExpr, fieldName));
       case NStuck():
-        final stuckValue = (n as NStuck).value;
-        final newStuck = substNVar(stuckValue, scrutLevel, replacement);
-        if (identical(newStuck, stuckValue)) return value;
+        final newStuck = substNVar(n.value, scrutLevel, replacement);
+        if (identical(newStuck, n.value)) return value;
         return VNeutral(NStuck(newStuck));
       default:
         return value;
