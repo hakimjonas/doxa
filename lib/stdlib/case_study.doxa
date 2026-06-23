@@ -100,8 +100,13 @@ data Lt : Nat -> Nat -> Prop {
 // nat_wf: every Nat is accessible under Lt (well-foundedness).
 // The zero case uses Lt.rec to eliminate impossible Lt y zero.
 // The succ case constructs acc_intro and delegates to nat_wf_help
-// for the Lt y (succ k) sub-proof (commented out pending mutual-block
-// fix for acc_intro A-parameter inference inside a mutual fun block).
+// for the Lt y (succ k) sub-proof.
+//
+// The simple version (only lt_succ arm) type-checks modulo the
+// coverage checker requiring an lt_trans arm (conservative).
+// The full version with lt_trans + nested match on acc_intro still
+// fails with an Lt index mismatch in the checker's per-arm
+// expected-type refinement. Tracked as follow-up.
 //
 // fun nat_wf(n: Nat) : Acc[Nat] ((x: Nat) => (y: Nat) => Lt x y) n = match n {
 //   case zero => acc_intro ((x: Nat) => (y: Nat) => Lt x y) zero
