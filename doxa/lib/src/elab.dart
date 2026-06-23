@@ -3000,7 +3000,7 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
                 ctor.name,
                 ctorArgs,
               );
-              armExpected = _substNVar(expected, scrutLevel, ctorResultV);
+              armExpected = substNVar(expected, scrutLevel, ctorResultV);
             } else {
               armExpected = expected;
             }
@@ -5763,41 +5763,10 @@ bool _isRecord(String dataName, List<DataDecl> dataDecls) {
 
 /// Substitute [scrutLevel] NVar references in [value] with [replacement].
 /// Used by match-arm expected-type refinement for non-indexed data whose
-/// return type depends on the scrutinee variable.
-Value _substNVar(Value value, int scrutLevel, Value replacement) {
-  if (value is VNeutral && value.neutral is NVar) {
-    final nvar = value.neutral as NVar;
-    if (nvar.level == scrutLevel) return replacement;
-    return value;
-  }
-  if (value is VData) {
-    final newArgs = <Value>[];
-    var changed = false;
-    for (final a in value.args) {
-      final na = _substNVar(a, scrutLevel, replacement);
-      newArgs.add(na);
-      if (!identical(na, a)) changed = true;
-    }
-    return changed ? VData(value.name, newArgs) : value;
-  }
-  if (value is VConstr) {
-    final newArgs = <Value>[];
-    var changed = false;
-    for (final a in value.args) {
-      final na = _substNVar(a, scrutLevel, replacement);
-      newArgs.add(na);
-      if (!identical(na, a)) changed = true;
-    }
-    return changed ? VConstr(value.dataName, value.ctorName, newArgs) : value;
-  }
-  if (value is VPi) {
-    final nd = _substNVar(value.domain, scrutLevel, replacement);
-    return identical(nd, value.domain)
-        ? value
-        : VPi(nd, value.codomain, name: value.name, icit: value.icit);
-  }
-  return value;
-}
+/// return type depends on the scrutinee variable. Delegates to
+/// [substNVar] in eval.dart.
+// (The implementation lives in eval.dart as a public function so the
+// checker can also use it for consistent per-arm expected types.)
 
 /// Compute the type of [fieldName] in record type [dataV] (a VData with
 /// args containing the params). Looks up the field in the constructor's

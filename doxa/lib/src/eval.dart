@@ -6748,7 +6748,26 @@ _Step _checkMatchArmStep(
     ctorResultIndexTerms: ctorDecl.resultIndices,
     teleEnv: teleEnv,
   );
-  return _Check(armCtx, arm.body, armExpected);
+
+  // Non-indexed data with a variable scrutinee: the elaborator
+  // per-arm expected type substitutes the scrutinee variable with
+  // the ctor result (e.g. `Acc Nat rel zero` for the `zero` arm
+  // when matching on `n`). Do the same substitution here so the
+  // checker agrees with the elaborator's per-arm type.
+  var armExpectedFinal = armExpected;
+  if (indicesV.isEmpty) {
+    final scrutineeV = eval(matchTerm.scrutinee, ctx.env);
+    if (scrutineeV is VNeutral && scrutineeV.neutral is NVar) {
+      final scrutLevel = (scrutineeV.neutral as NVar).level;
+      final ctorArgs = <Value>[
+        for (var k = 0; k < arm.nBinders; k++)
+          VNeutral(NVar(armCtx.level - arm.nBinders + k)),
+      ];
+      final ctorResultV = VConstr(dataDecl.name, arm.ctorName, ctorArgs);
+      armExpectedFinal = substNVar(armExpected, scrutLevel, ctorResultV);
+    }
+  }
+  return _Check(armCtx, arm.body, armExpectedFinal);
 }
 
 /// Public entry to the kernel's per-arm first-order index refinement.
@@ -7789,4 +7808,43 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
   }
 
   return result;
+}
+
+/// Substitute every occurrence of `VNeutral(NVar(scrutLevel))` in [value]
+/// with [replacement]. Used for per-arm expected-type computation when
+/// matching on a variable scrutinee with non-indexed data: replaces the
+/// scrutinee variable with the ctor result in the expected type.
+Value substNVar(Value value, int scrutLevel, Value replacement) {
+  if (value is VNeutral && value.neutral is NVar) {
+    final nvar = value.neutral as NVar;
+    if (nvar.level == scrutLevel) return replacement;
+    return value;
+  }
+  if (value is VData) {
+    final newArgs = <Value>[];
+    var changed = false;
+    for (final a in value.args) {
+      final na = substNVar(a, scrutLevel, replacement);
+      newArgs.add(na);
+      if (!identical(na, a)) changed = true;
+    }
+    return changed ? VData(value.name, newArgs) : value;
+  }
+  if (value is VConstr) {
+    final newArgs = <Value>[];
+    var changed = false;
+    for (final a in value.args) {
+      final na = substNVar(a, scrutLevel, replacement);
+      newArgs.add(na);
+      if (!identical(na, a)) changed = true;
+    }
+    return changed ? VConstr(value.dataName, value.ctorName, newArgs) : value;
+  }
+  if (value is VPi) {
+    final nd = substNVar(value.domain, scrutLevel, replacement);
+    return identical(nd, value.domain)
+        ? value
+        : VPi(nd, value.codomain, name: value.name, icit: value.icit);
+  }
+  return value;
 }
