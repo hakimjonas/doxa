@@ -5,6 +5,8 @@
 import "bool.doxa"
 
 import "nat.doxa"
+
+import "proofs.doxa"
 // even(n) = true_ iff n is even
 
 fun even(n: Nat) : Bool = match n {
@@ -44,9 +46,94 @@ fun divisibleBy2(n: Nat) : Prop = Eq Bool (even n) true_
 // The key property: if n is not even, then n^2 is not even
 // This can be proved by induction on n (using the even function's
 // alternating behavior). For now we verify the base cases.
-// Euclid's theorem structure for sqrt2 irrationality:
-// 1. Suppose sqrt(2) = a/b with a,b coprime
-// 2. Then a^2 = 2*b^2, so even(a^2) is true
-// 3. If a is odd, then a^2 is odd (contradiction), so a is even
-// 4. Write a = 2k, then 4k^2 = 2b^2 => b^2 = 2k^2, so b is even
-// 5. Both a,b even => not coprime => contradiction
+// Nat aliases for small constants — surface syntax has no decimal literals.
+
+val two : Nat = succ (succ zero)
+
+val four : Nat = succ (succ (succ (succ zero)))
+// --- Parity infrastructure ------------------------------------------------
+
+fun parity_flip_b(b: Bool) : Bool = match b {
+  case true_ => false_
+  case false_ => true_
+}
+
+val parity_flip_invol : (b: Bool) -> Eq Bool (parity_flip_b (parity_flip_b b)) b = Bool.ind ((b: Bool) => Eq Bool (parity_flip_b (parity_flip_b b)) b) (refl true_) (refl false_)
+
+val even_succ_succ_eq_even : (n: Nat) -> Eq Bool (even (succ (succ n))) (even n) = Nat.ind ((k: Nat) => Eq Bool (even (succ (succ k))) (even k)) (refl true_) ((k: Nat) => (ih: Eq Bool (even (succ (succ k))) (even k)) => trans_e Bool (even (succ (succ (succ k)))) (parity_flip_b (even (succ (succ k)))) (even (succ k)) (refl (parity_flip_b (even (succ (succ k))))) (cong_e Bool Bool parity_flip_b (even (succ (succ k))) (even k) ih))
+// even_double: plus n n is always even
+
+val even_double : (n: Nat) -> Eq Bool (even (plus n n)) true_ = Nat.ind ((k: Nat) => Eq Bool (even (plus k k)) true_) (refl true_) ((k: Nat) => (ih: Eq Bool (even (plus k k)) true_) => trans_e Bool (even (plus (succ k) (succ k))) (even (succ (succ (plus k k)))) true_ (cong_e Nat Bool even (plus (succ k) (succ k)) (succ (succ (plus k k))) (cong ((x: Nat) => succ x) (plus_succ k k))) (trans_e Bool (even (succ (succ (plus k k)))) (even (plus k k)) true_ (even_succ_succ_eq_even (plus k k)) ih))
+
+fun parity_comb(p: Bool, q: Bool) : Bool = match p {
+  case true_ => q
+  case false_ => match q {
+    case true_ => false_
+    case false_ => true_
+  }
+}
+
+fun parity_flip_parity_comb_lemma(p: Bool, q: Bool) : Eq Bool (parity_flip_b (parity_comb p q)) (parity_comb (parity_flip_b p) q) = Bool.ind ((p: Bool) => (q: Bool) -> Eq Bool (parity_flip_b (parity_comb p q)) (parity_comb (parity_flip_b p) q)) ((q: Bool) => refl (parity_flip_b q)) ((q: Bool) => parity_flip_invol q) p q
+
+val even_plus_parity : (a: Nat) -> (b: Nat) -> Eq Bool (even (plus a b)) (parity_comb (even a) (even b)) = (a: Nat) => Nat.ind ((k: Nat) => (b: Nat) -> Eq Bool (even (plus k b)) (parity_comb (even k) (even b))) ((b: Nat) => refl (even b)) ((k: Nat) => (ih: (b: Nat) -> Eq Bool (even (plus k b)) (parity_comb (even k) (even b))) => (b: Nat) => trans_e Bool (even (plus (succ k) b)) (parity_flip_b (even (plus k b))) (parity_comb (parity_flip_b (even k)) (even b)) (refl (parity_flip_b (even (plus k b)))) (trans_e Bool (parity_flip_b (even (plus k b))) (parity_flip_b (parity_comb (even k) (even b))) (parity_comb (parity_flip_b (even k)) (even b)) (cong_e Bool Bool parity_flip_b (even (plus k b)) (parity_comb (even k) (even b)) (ih b)) (parity_flip_parity_comb_lemma (even k) (even b)))) a
+// square_succ_algebra: (k+1)^2 = succ (k + k + k^2)
+
+val square_succ_algebra : (k: Nat) -> Eq Nat (square (succ k)) (succ (plus (plus k k) (square k))) = (k: Nat) => trans_e Nat (square (succ k)) (mult (succ k) (succ k)) (succ (plus (plus k k) (square k))) (refl (mult (succ k) (succ k))) (trans_e Nat (mult (succ k) (succ k)) (plus (succ k) (mult (succ k) k)) (succ (plus (plus k k) (square k))) (mult_succ_right (succ k) k) (trans_e Nat (plus (succ k) (mult (succ k) k)) (plus (succ k) (mult k (succ k))) (succ (plus (plus k k) (square k))) (cong_e Nat Nat ((z: Nat) => plus (succ k) z) (mult (succ k) k) (mult k (succ k)) (mult_comm (succ k) k)) (trans_e Nat (plus (succ k) (mult k (succ k))) (succ (plus k (mult k (succ k)))) (succ (plus (plus k k) (square k))) (refl (succ (plus k (mult k (succ k))))) (cong ((x: Nat) => succ x) (trans_e Nat (plus k (mult k (succ k))) (plus k (plus k (mult k k))) (plus (plus k k) (square k)) (cong_e Nat Nat ((z: Nat) => plus k z) (mult k (succ k)) (plus k (mult k k)) (mult_succ_right k k)) (sym_e Nat (plus (plus k k) (mult k k)) (plus k (plus k (mult k k))) (plus_assoc k k (mult k k))))))))
+
+fun parity_comb_true(x: Bool) : Eq Bool (parity_comb true_ x) x = Bool.ind ((x: Bool) => Eq Bool (parity_comb true_ x) x) (refl true_) (refl false_) x
+
+val even_plus_double : (n: Nat) -> (k: Nat) -> Eq Bool (even (plus (plus k k) n)) (even n) = (n: Nat) => (k: Nat) => trans_e Bool (even (plus (plus k k) n)) (parity_comb (even (plus k k)) (even n)) (even n) (even_plus_parity (plus k k) n) (trans_e Bool (parity_comb (even (plus k k)) (even n)) (parity_comb true_ (even n)) (even n) (cong_e Bool Bool ((x: Bool) => parity_comb x (even n)) (even (plus k k)) true_ (even_double k)) (parity_comb_true (even n)))
+
+val even_square_eq : (k: Nat) -> Eq Bool (even (square k)) (even k) = Nat.ind ((k: Nat) => Eq Bool (even (square k)) (even k)) (refl true_) ((k: Nat) => (ih: Eq Bool (even (square k)) (even k)) => trans_e Bool (even (square (succ k))) (parity_flip_b (even (square k))) (even (succ k)) (trans_e Bool (even (square (succ k))) (even (succ (plus (plus k k) (square k)))) (parity_flip_b (even (square k))) (cong_e Nat Bool even (square (succ k)) (succ (plus (plus k k) (square k))) (square_succ_algebra k)) (trans_e Bool (even (succ (plus (plus k k) (square k)))) (parity_flip_b (even (plus (plus k k) (square k)))) (parity_flip_b (even (square k))) (refl (parity_flip_b (even (plus (plus k k) (square k))))) (cong_e Bool Bool parity_flip_b (even (plus (plus k k) (square k))) (even (square k)) (even_plus_double (square k) k)))) (cong_e Bool Bool parity_flip_b (even (square k)) (even k) ih))
+
+val even_square_even : (n: Nat) -> Eq Bool (even n) true_ -> Eq Bool (even (square n)) true_ = (n: Nat) => (h: Eq Bool (even n) true_) => trans_e Bool (even (square n)) (even n) true_ (even_square_eq n) h
+
+val even_square_implies_even : (n: Nat) -> Eq Bool (even (square n)) true_ -> Eq Bool (even n) true_ = (n: Nat) => (h: Eq Bool (even (square n)) true_) => trans_e Bool (even n) (even (square n)) true_ (sym_e Bool (even (square n)) (even n) (even_square_eq n)) h
+
+val sqrt2_parity : (n: Nat) -> (m: Nat) -> Eq Nat (square n) (mult two (square m)) -> Eq Bool (even n) true_ = (n: Nat) => (m: Nat) => (h_eq: Eq Nat (square n) (mult two (square m))) => trans_e Bool (even n) (even (square n)) true_ (sym_e Bool (even (square n)) (even n) (even_square_eq n)) (trans_e Bool (even (square n)) (even (mult two (square m))) true_ (cong_e Nat Bool even (square n) (mult two (square m)) h_eq) (trans_e Bool (even (mult two (square m))) (even (plus (square m) (square m))) true_ (cong_e Nat Bool even (mult two (square m)) (plus (square m) (square m)) (mult_2 (square m))) (even_double (square m))))
+// --- Lt and well-founded recursion ----------------------------------------
+
+data Lt : Nat -> Nat -> Prop {
+  lt_succ : (n: Nat) -> Lt n (succ n);
+  lt_trans : (n: Nat) -> (m: Nat) -> (k: Nat) -> Lt n m -> Lt m k -> Lt n k;
+}
+// nat_wf: every Nat is accessible under Lt (well-foundedness).
+// The zero case uses Lt.rec to eliminate impossible Lt y zero.
+// The succ case constructs acc_intro and delegates to nat_wf_help
+// for the Lt y (succ k) sub-proof (commented out pending mutual-block
+// fix for acc_intro A-parameter inference inside a mutual fun block).
+//
+// fun nat_wf(n: Nat) : Acc[Nat] ((x: Nat) => (y: Nat) => Lt x y) n = match n {
+//   case zero => acc_intro ((x: Nat) => (y: Nat) => Lt x y) zero
+//     ((y: Nat) => (h: Lt y zero) =>
+//       False.rec ((_: False) => Acc[Nat] ((x: Nat) => (y: Nat) => Lt x y) y)
+//         (Lt.rec
+//           ((a: Nat) => (b: Nat) => (_: Lt a b) =>
+//             Eq Nat b zero -> False)
+//           ((n: Nat) => (eq: Eq Nat (succ n) zero) => succ_ne_zero n eq)
+//           ((n: Nat) => (m: Nat) => (k: Nat) =>
+//             (_: Lt n m) => (_: Lt m k) =>
+//             (ih1: Eq Nat m zero -> False) => (ih2: Eq Nat k zero -> False) =>
+//             (eq: Eq Nat k zero) => ih2 eq)
+//           y zero h (refl zero)))
+//   case succ k => acc_intro ((x: Nat) => (y: Nat) => Lt x y) (succ k)
+//     ((y: Nat) => (h: Lt y (succ k)) => nat_wf_help k y h)
+// } and nat_wf_help(k: Nat, y: Nat, h: Lt y (succ k)) : Acc[Nat] ((x: Nat) => (y: Nat) => Lt x y) y {struct h} =
+//   match h {
+//     case lt_succ y_ => nat_wf y_
+//     case lt_trans y_ m _ p1 p2 =>
+//       match nat_wf_help k m p2 {
+//         case acc_intro _ _ f => f y_ p1
+//       }
+//   }
+// --- Algebraic lemmas ----------------------------------------------------
+
+fun half(n: Nat) : Nat = match n {
+  case zero => zero
+  case succ n_ => match n_ {
+    case zero => zero
+    case succ n__ => succ (half n__)
+  }
+}
+
+val lt_succ_right : (n: Nat) -> (m: Nat) -> Lt n m -> Lt n (succ m) = (n: Nat) => (m: Nat) => (h: Lt n m) => lt_trans n m (succ m) h (lt_succ m)

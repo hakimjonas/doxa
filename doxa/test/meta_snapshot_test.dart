@@ -2,7 +2,6 @@
 library;
 
 import 'package:doxa/src/ctx.dart';
-import 'package:doxa/src/eval.dart';
 import 'package:doxa/src/meta.dart';
 import 'package:doxa/src/term.dart';
 import 'package:doxa/src/value.dart';

@@ -1331,15 +1331,23 @@ final Parser<ParseError, SFunKind> _implFunMember = _keyword(
 ).skipThen(_mkFunBody(false));
 
 /// Any declaration.
+///
+/// Order matters: `_dataDecl` is tried before `_funDecl` so that the mutual
+/// `fun … and …` parser does not encounter stray `and` tokens left by a
+/// preceding `data` block. Each sub-parser starts with its own keyword and
+/// consumes trailing whitespace; Rumil's `Or` restores state on failure, so
+/// an earlier alternative that partially consumes input (e.g. `_opaqueMod`
+/// inside `_funDecl` when the keyword turns out to be `data`) is fully
+/// rolled back.
 final Parser<ParseError, SDecl> _decl =
     _typeclassDecl |
     _implDecl |
     _importDecl |
+    _dataDecl |
     _theoremDecl |
     _valDecl |
     _typeDecl |
-    _funDecl |
-    _dataDecl;
+    _funDecl;
 
 /// A program: leading whitespace, declarations, trailing whitespace, eof.
 final Parser<ParseError, SProgram> _program = _ws

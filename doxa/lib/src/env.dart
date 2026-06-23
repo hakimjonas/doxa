@@ -40,6 +40,7 @@
 library;
 
 import 'registry.dart';
+import 'term.dart';
 import 'value.dart';
 
 /// A top-level binding's recorded type and value.
@@ -47,8 +48,20 @@ import 'value.dart';
 /// Pair type used in [Env.topBindings]. Named for clarity over a bare
 /// `(Value, Value)` record, which would mix meanings at read sites.
 final class TopBindingEntry {
-  /// The binding's type.
+  /// The binding's type (evaluated value). For recursor bindings this
+  /// is a [VPi] chain whose closures' captured env was determined at
+  /// evaluation time. When [typeTerm] is non-null, callers can
+  /// re-evaluate it at a different depth to avoid NVar collisions
+  /// (see [_Infer TTop] in eval.dart).
   final Value type;
+
+  /// The original type [Term] for recursor bindings (whose [term] is
+  /// [TRec]). Null for non-recursor bindings. When non-null, the
+  /// [type] value was obtained by evaluating this term at depth 0
+  /// during [TopEnv.toCtx]; callers that need the type at a different
+  /// depth can re-evaluate this term under an [ELevel] env to obtain
+  /// a fresh [VPi] chain whose closures capture the correct depth.
+  final Term? typeTerm;
 
   /// The binding's value. For ordinary (non-recursive) bindings this
   /// is the fully-evaluated body. For co-recursive group members
@@ -79,12 +92,15 @@ final class TopBindingEntry {
 
   /// Creates a top-binding entry. [recDecreasingArg]/[recArity] are set
   /// only for structurally-recursive `fun`s (see [recDecreasingArg]).
+  /// [typeTerm] is optionally stored for recursor bindings so their
+  /// type can be re-evaluated at the correct depth.
   const TopBindingEntry(
     this.type,
     this.value, {
     this.recDecreasingArg,
     this.recArity,
     this.isOpaque = false,
+    this.typeTerm,
   });
 }
 
@@ -142,6 +158,7 @@ sealed class Env {
     while (true) {
       switch (env) {
         case ENil():
+        case ELevel():
           throw RangeError(
             'Env.lookup($index) on depth $i: index out of bounds. '
             'This indicates a kernel invariant violation (open term '
@@ -177,6 +194,36 @@ sealed class Env {
   /// Look up a top-level binding by name, or null if absent.
   /// Used by the [TTop(name)] eval case.
   TopBindingEntry? lookupTop(String name) => topBindings[name];
+}
+
+/// An [Env] with a given [depth] but no local-value binders.
+///
+/// Used as the base environment for evaluating [synthRecursorType] so
+/// the resulting VPi closures' captured environment starts at the
+/// checker's current Ctx depth, but without any of the checker's
+/// actual local binders.
+final class ELevel extends Env {
+  @override
+  final int depth;
+
+  @override
+  final List<DataDecl> dataDecls;
+
+  @override
+  final Map<String, TopBindingEntry> topBindings;
+
+  const ELevel(
+    this.depth, {
+    this.dataDecls = const <DataDecl>[],
+    this.topBindings = const <String, TopBindingEntry>{},
+  });
+
+  @override
+  Env withTopBindings(Map<String, TopBindingEntry> additional) => ELevel(
+    depth,
+    dataDecls: dataDecls,
+    topBindings: {...topBindings, ...additional},
+  );
 }
 
 /// The empty environment.

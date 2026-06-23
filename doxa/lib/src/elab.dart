@@ -118,6 +118,17 @@ final class NonStructuralRecursion extends ElabError {
   String toString() => 'NonStructuralRecursion($calleeName @ $span)';
 }
 
+/// A cross-call from one mutual-block member to another, collected
+/// during the structural-recursion walk. Used by cycle-aware analysis
+/// to distinguish "unguarded edge that is part of a true cycle" from
+/// "unguarded edge in an acyclic graph" (which is valid mutual recursion).
+final class _CrossCall {
+  final String caller;
+  final String callee;
+  final DoxaSpan span;
+  const _CrossCall(this.caller, this.callee, this.span);
+}
+
 /// The `{struct <name>}` annotation references a parameter that does not
 /// exist in the function's value parameter list.
 final class StructAnnotationNotFound extends ElabError {
@@ -1175,7 +1186,9 @@ List<TopBinding> checkDeclResult(TopEnv topEnv, DeclResult result) {
   // Check each member's body.
   for (var i = 0; i < group.members.length; i++) {
     final binding = result.bindings[group.members[i].bindingIndex];
-    check(groupCtx, binding.term, memberTypes[i]);
+    final term =
+        metas != null ? inlineSolvedMetas(binding.term, metas) : binding.term;
+    check(groupCtx, term, memberTypes[i]);
   }
   return _finalizeDeclBindings(result.bindings, metas);
 }
@@ -2783,11 +2796,35 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
   // binders need REAL types
   // even in infer-mode match elaboration, not a VType(0)
   // placeholder).
-  List<Value>? paramsV;
+  // conv-compares arm-binder types against expected domains, so arm
+  // binders need REAL types
+  // even in infer-mode match elaboration, not a VType(0)
+  // placeholder).
+  //
+  // For VNeutral scrutinees (e.g., a function-parameter scrutinee in a
+  // mutual-fun block), extract the data-type arguments from the scrutinee's
+  // type in the context.
+  List<Value>? scrutineeAllArgs;
   if (scrutineeV is VData && scrutineeData != null) {
+    scrutineeAllArgs = scrutineeV.args;
+  } else if (scrutineeV is VNeutral &&
+      scrutineeV.neutral is NVar &&
+      scrutineeData != null) {
+    final scrutLevel = (scrutineeV.neutral as NVar).level;
+    final scrutIdx = state.ctx.level - 1 - scrutLevel;
+    if (scrutIdx >= 0) {
+      final scrutType = state.ctx.lookupType(scrutIdx);
+      if (scrutType is VData && scrutType.name == scrutineeData.name) {
+        scrutineeAllArgs = scrutType.args;
+      }
+    }
+  }
+
+  List<Value>? paramsV;
+  if (scrutineeAllArgs != null && scrutineeData != null) {
     final paramCount = scrutineeData.params.length;
-    if (scrutineeV.args.length >= paramCount) {
-      paramsV = scrutineeV.args.sublist(0, paramCount);
+    if (scrutineeAllArgs.length >= paramCount) {
+      paramsV = scrutineeAllArgs.sublist(0, paramCount);
     }
   }
 
@@ -2866,10 +2903,10 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
         if (paramsV != null) {
           // Determine which ctor args need actual index values.
           final argToIndexValue = <int, Value>{};
-          if (scrutineeV is VData && scrutineeData != null) {
+          if (scrutineeAllArgs != null && scrutineeData != null) {
             final paramCount = scrutineeData.params.length;
-            if (scrutineeV.args.length > paramCount) {
-              final indexValues = scrutineeV.args.sublist(paramCount);
+            if (scrutineeAllArgs.length > paramCount) {
+              final indexValues = scrutineeAllArgs.sublist(paramCount);
               final argCount = ctor.args.length;
               for (
                 var pos = 0;
@@ -2968,9 +3005,9 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
               armExpected = expected;
             }
             bodyT = _checkExpr(armState, arm.body, armExpected);
-          } else if (armTeleEnv != null && scrutineeV is VData) {
+          } else if (armTeleEnv != null && scrutineeAllArgs != null) {
             final paramCount = scrutineeData.params.length;
-            final scrutineeIndicesV = scrutineeV.args.sublist(paramCount);
+            final scrutineeIndicesV = scrutineeAllArgs.sublist(paramCount);
             final armExpected = refineMatchArmExpected(
               ctx: state.ctx,
               armCtx: armState.ctx,
@@ -3487,7 +3524,7 @@ DeclResult _elabImpl(
   // TConstr takes the full spine: data type params followed by ctor args.
   final typeArgTerms = <Term>[];
   switch (typeclassRef.kind) {
-    case SAppKind(:final fn, :final arg):
+    case SAppKind(:final arg):
       typeArgTerms.add(_elabExpr(topEnv, const _LocalNil(), arg, metas: metas));
     case _:
       break;
@@ -3799,9 +3836,16 @@ TopBinding _elabFun(
   final memberDeclIdxs = <String, int>{
     for (final m in members) m.fun.name: _designatedArgIndex(m.fun) ?? 0,
   };
+  final unguardedCrossCalls = <_CrossCall>[];
   for (final m in members) {
     if (m.fun.terminationBy == null && extractedTby[m] == null) {
-      _checkStructuralRecursion(m.fun, memberNames, memberDeclIdxs);
+      _checkStructuralRecursion(
+        m.fun,
+        memberNames,
+        memberDeclIdxs,
+        callerName: m.fun.name,
+        unguardedCrossCalls: unguardedCrossCalls,
+      );
     }
     // Validate {struct name} annotation even for non-recursive members.
     if (m.fun.structAnn != null &&
@@ -3818,6 +3862,7 @@ TopBinding _elabFun(
       }
     }
   }
+  _analyzeCrossCallCycles(unguardedCrossCalls, memberNames);
 
   // Pass 1: elaborate each member's signature against the outer
   // topEnv. Sibling references in signatures would fail with
@@ -4095,7 +4140,21 @@ void checkStructuralRecursion(
   SFunKind kind,
   Set<String> blockMembers, [
   Map<String, int> memberDeclIdxs = const <String, int>{},
-]) => _checkStructuralRecursion(kind, blockMembers, memberDeclIdxs);
+  List<SFunKind> blockKinds = const <SFunKind>[],
+]) {
+  final calls = <_CrossCall>[];
+  final allKinds = [kind, ...blockKinds];
+  for (final k in allKinds) {
+    _checkStructuralRecursion(
+      k,
+      blockMembers,
+      memberDeclIdxs,
+      callerName: k.name,
+      unguardedCrossCalls: calls,
+    );
+  }
+  _analyzeCrossCallCycles(calls, blockMembers);
+}
 
 /// Find the de-Bruijn position of a value parameter [name] in [fun].
 /// Returns the position counting type params first, so the first value
@@ -4170,9 +4229,11 @@ int? _designatedArgIndex(SFunKind kind) {
 
 void _checkStructuralRecursion(
   SFunKind kind,
-  Set<String> blockMembers, [
-  Map<String, int> memberDeclIdxs = const <String, int>{},
-]) {
+  Set<String> blockMembers,
+  Map<String, int> memberDeclIdxs, {
+  required String callerName,
+  required List<_CrossCall> unguardedCrossCalls,
+}) {
   // Shadow set: type-params and all value-params start in scope
   // (they mask any block-member name that coincides with them).
   final shadowed = <String>{
@@ -4198,6 +4259,8 @@ void _checkStructuralRecursion(
     subTerms: const <String>{},
     shadowed: shadowed,
     memberDeclIdxs: memberDeclIdxs,
+    callerName: callerName,
+    unguardedCrossCalls: unguardedCrossCalls,
   );
   _walkForRecursion(
     expr: kind.returnType,
@@ -4207,6 +4270,8 @@ void _checkStructuralRecursion(
     subTerms: const <String>{},
     shadowed: shadowed,
     memberDeclIdxs: memberDeclIdxs,
+    callerName: callerName,
+    unguardedCrossCalls: unguardedCrossCalls,
   );
   for (final p in kind.params) {
     _walkForRecursion(
@@ -4217,6 +4282,8 @@ void _checkStructuralRecursion(
       subTerms: const <String>{},
       shadowed: const <String>{},
       memberDeclIdxs: memberDeclIdxs,
+      callerName: callerName,
+      unguardedCrossCalls: unguardedCrossCalls,
     );
   }
   for (final tp in kind.typeParams) {
@@ -4229,8 +4296,54 @@ void _checkStructuralRecursion(
         subTerms: const <String>{},
         shadowed: const <String>{},
         memberDeclIdxs: memberDeclIdxs,
+        callerName: callerName,
+        unguardedCrossCalls: unguardedCrossCalls,
       );
     }
+  }
+}
+
+/// Run a DFS on the unguarded-cross-call graph. If a cycle exists, throw
+/// [NonStructuralRecursion] for the first cross-call participating in a
+/// cycle. A DAG of unguarded edges is accepted (mutual recursion where
+/// each path through the call graph eventually reaches a guarded call).
+///
+/// Self-loops (caller == callee) are already rejected as immediate
+/// [NonStructuralRecursion] by the walker, so they never reach here.
+void _analyzeCrossCallCycles(
+  List<_CrossCall> unguardedCrossCalls,
+  Set<String> blockMembers,
+) {
+  if (unguardedCrossCalls.isEmpty) return;
+  // Build adjacency list.
+  final graph = <String, List<_CrossCall>>{};
+  for (final c in unguardedCrossCalls) {
+    (graph[c.caller] ??= []).add(c);
+  }
+  // DFS state.
+  final white = <String>{...blockMembers};
+  final grey = <String>{};
+  final black = <String>{};
+  void dfs(String node) {
+    white.remove(node);
+    grey.add(node);
+    final edges = graph[node];
+    if (edges != null) {
+      for (final e in edges) {
+        if (grey.contains(e.callee)) {
+          throw NonStructuralRecursion(e.callee, e.span);
+        }
+        if (white.contains(e.callee)) {
+          dfs(e.callee);
+        }
+      }
+    }
+    grey.remove(node);
+    black.add(node);
+  }
+
+  for (final n in white.toList()) {
+    dfs(n);
   }
 }
 
@@ -4245,6 +4358,8 @@ void _walkForRecursion({
   required Set<String> subTerms,
   required Set<String> shadowed,
   Map<String, int> memberDeclIdxs = const <String, int>{},
+  String callerName = '',
+  List<_CrossCall> unguardedCrossCalls = const <_CrossCall>[],
 }) {
   switch (expr.kind) {
     case SIdentKind(:final name):
@@ -4272,6 +4387,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        callerName: callerName,
+        unguardedCrossCalls: unguardedCrossCalls,
       );
     case SAppKind():
       // Application chain. Flatten left-to-right so we can inspect
@@ -4320,7 +4437,20 @@ void _walkForRecursion({
         final argIdent = designatedArg.kind;
         final argName = argIdent is SIdentKind ? argIdent.name : null;
         if (argName == null || !subTerms.contains(argName)) {
-          throw NonStructuralRecursion(headKind.name, expr.span);
+          if (headKind.name == callerName) {
+            // Self-call unguarded: always a cycle, reject immediately.
+            throw NonStructuralRecursion(headKind.name, expr.span);
+          }
+          // Cross-call unguarded: collect for cycle analysis,
+          // but only when we have a real caller (not from a
+          // recursive descent within the same function body).
+          if (callerName.isNotEmpty) {
+            unguardedCrossCalls.add(
+              _CrossCall(callerName, headKind.name, expr.span),
+            );
+          } else {
+            throw NonStructuralRecursion(headKind.name, expr.span);
+          }
         }
         // Walk the other args normally (they may contain more block
         // references).
@@ -4333,6 +4463,8 @@ void _walkForRecursion({
             subTerms: subTerms,
             shadowed: shadowed,
             memberDeclIdxs: memberDeclIdxs,
+            callerName: callerName,
+            unguardedCrossCalls: unguardedCrossCalls,
           );
         }
       } else {
@@ -4348,6 +4480,8 @@ void _walkForRecursion({
           subTerms: subTerms,
           shadowed: shadowed,
           memberDeclIdxs: memberDeclIdxs,
+          callerName: callerName,
+          unguardedCrossCalls: unguardedCrossCalls,
         );
         _walkForRecursion(
           expr: app.arg,
@@ -4357,6 +4491,8 @@ void _walkForRecursion({
           subTerms: subTerms,
           shadowed: shadowed,
           memberDeclIdxs: memberDeclIdxs,
+          callerName: callerName,
+          unguardedCrossCalls: unguardedCrossCalls,
         );
       }
     case SLamKind(:final param, :final domain, :final body):
@@ -4369,6 +4505,8 @@ void _walkForRecursion({
           subTerms: subTerms,
           shadowed: shadowed,
           memberDeclIdxs: memberDeclIdxs,
+          callerName: callerName,
+          unguardedCrossCalls: unguardedCrossCalls,
         );
       }
       _walkForRecursion(
@@ -4378,6 +4516,9 @@ void _walkForRecursion({
         designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: {...shadowed, param},
+        memberDeclIdxs: memberDeclIdxs,
+        callerName: callerName,
+        unguardedCrossCalls: unguardedCrossCalls,
       );
     case SPiKind(:final param, :final domain, :final codomain):
       _walkForRecursion(
@@ -4388,6 +4529,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        callerName: callerName,
+        unguardedCrossCalls: unguardedCrossCalls,
       );
       _walkForRecursion(
         expr: codomain,
@@ -4396,6 +4539,9 @@ void _walkForRecursion({
         designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: param == null ? shadowed : {...shadowed, param},
+        memberDeclIdxs: memberDeclIdxs,
+        callerName: callerName,
+        unguardedCrossCalls: unguardedCrossCalls,
       );
     case SLetKind(:final param, :final domain, :final bound, :final body):
       if (domain != null) {
@@ -4407,6 +4553,8 @@ void _walkForRecursion({
           subTerms: subTerms,
           shadowed: shadowed,
           memberDeclIdxs: memberDeclIdxs,
+          callerName: callerName,
+          unguardedCrossCalls: unguardedCrossCalls,
         );
       }
       _walkForRecursion(
@@ -4417,6 +4565,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        callerName: callerName,
+        unguardedCrossCalls: unguardedCrossCalls,
       );
       _walkForRecursion(
         expr: body,
@@ -4425,6 +4575,9 @@ void _walkForRecursion({
         designatedIdx: designatedIdx,
         subTerms: subTerms,
         shadowed: {...shadowed, param},
+        memberDeclIdxs: memberDeclIdxs,
+        callerName: callerName,
+        unguardedCrossCalls: unguardedCrossCalls,
       );
     case SMatchKind(:final scrutinee, :final motive, :final cases):
       _walkForRecursion(
@@ -4435,6 +4588,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        callerName: callerName,
+        unguardedCrossCalls: unguardedCrossCalls,
       );
       if (motive != null) {
         _walkForRecursion(
@@ -4445,6 +4600,8 @@ void _walkForRecursion({
           subTerms: subTerms,
           shadowed: shadowed,
           memberDeclIdxs: memberDeclIdxs,
+          callerName: callerName,
+          unguardedCrossCalls: unguardedCrossCalls,
         );
       }
       // Determine whether the scrutinee names a known sub-term, if
@@ -4472,6 +4629,8 @@ void _walkForRecursion({
               subTerms: extendedSubTerms,
               shadowed: extendedShadow,
               memberDeclIdxs: memberDeclIdxs,
+              callerName: callerName,
+              unguardedCrossCalls: unguardedCrossCalls,
             );
           case SWildcardCase(:final body):
             _walkForRecursion(
@@ -4482,6 +4641,8 @@ void _walkForRecursion({
               subTerms: subTerms,
               shadowed: shadowed,
               memberDeclIdxs: memberDeclIdxs,
+              callerName: callerName,
+              unguardedCrossCalls: unguardedCrossCalls,
             );
         }
       }
@@ -4494,6 +4655,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        callerName: callerName,
+        unguardedCrossCalls: unguardedCrossCalls,
       );
       _walkForRecursion(
         expr: relation,
@@ -4503,6 +4666,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        callerName: callerName,
+        unguardedCrossCalls: unguardedCrossCalls,
       );
     case SQuotMkKind(:final arg):
       _walkForRecursion(
@@ -4513,6 +4678,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        callerName: callerName,
+        unguardedCrossCalls: unguardedCrossCalls,
       );
     case SQuotLiftKind(:final fn, :final proof):
       _walkForRecursion(
@@ -4523,6 +4690,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        callerName: callerName,
+        unguardedCrossCalls: unguardedCrossCalls,
       );
       _walkForRecursion(
         expr: proof,
@@ -4532,6 +4701,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        callerName: callerName,
+        unguardedCrossCalls: unguardedCrossCalls,
       );
     case SIntersectionKind():
     case SByKind():

@@ -94,25 +94,22 @@ void main() {
       );
     });
 
-    test('mutual non-decrease fails (g references f on g\'s arg)', () {
-      expect(
-        () => elabProgram(
+    test(
+      'mutual non-decrease accepted (no cycle: g calls non-recursive f)',
+      () {
+        final env = elabProgram(
           pp('''
-          fun f(x: Type): Type = x
-          and g(x: Type): Type = f x
-        '''),
-        ),
-        throwsA(
-          isA<NonStructuralRecursion>().having(
-            (e) => e.calleeName,
-            'calleeName',
-            'f',
-          ),
-        ),
-      );
-    });
+        fun f(x: Type): Type = x
+        and g(x: Type): Type = f x
+      '''),
+        );
+        expect(env.bindings, hasLength(2));
+        expect(env.bindings[0].name, 'f');
+        expect(env.bindings[1].name, 'g');
+      },
+    );
 
-    test('mutual reference through the return type rejected', () {
+    test('mutual reference through the return type fails at sig elab', () {
       expect(
         () => elabProgram(
           pp('''
@@ -120,50 +117,32 @@ void main() {
           and g(A: Type): f A = A
         '''),
         ),
-        throwsA(
-          isA<NonStructuralRecursion>().having(
-            (e) => e.calleeName,
-            'calleeName',
-            'f',
-          ),
-        ),
+        throwsA(isA<UnresolvedName>()),
       );
     });
 
-    test('ref through a non-dep arrow codomain rejected', () {
-      expect(
-        () => elabProgram(
-          pp('''
-          fun f(A: Type): Type = A
-          and g(A: Type): Type = A -> f A
-        '''),
-        ),
-        throwsA(
-          isA<NonStructuralRecursion>().having(
-            (e) => e.calleeName,
-            'calleeName',
-            'f',
-          ),
-        ),
+    test('ref through a non-dep arrow codomain accepted (no cycle)', () {
+      final env = elabProgram(
+        pp('''
+        fun f(A: Type): Type = A
+        and g(A: Type): Type = A -> f A
+      '''),
       );
+      expect(env.bindings, hasLength(2));
+      expect(env.bindings[0].name, 'f');
+      expect(env.bindings[1].name, 'g');
     });
 
-    test('ref inside a let body rejected', () {
-      expect(
-        () => elabProgram(
-          pp('''
-          fun f(A: Type): Type = A
-          and g(A: Type): Type = { val x: Type = A; f x }
-        '''),
-        ),
-        throwsA(
-          isA<NonStructuralRecursion>().having(
-            (e) => e.calleeName,
-            'calleeName',
-            'f',
-          ),
-        ),
+    test('ref inside a let body accepted (no cycle)', () {
+      final env = elabProgram(
+        pp('''
+        fun f(A: Type): Type = A
+        and g(A: Type): Type = { val x: Type = A; f x }
+      '''),
       );
+      expect(env.bindings, hasLength(2));
+      expect(env.bindings[0].name, 'f');
+      expect(env.bindings[1].name, 'g');
     });
   });
 

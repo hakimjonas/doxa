@@ -114,7 +114,6 @@ void main() {
       'positivity_violation.doxa': 'error: positivity violation',
       'ctor_arg_mismatch.doxa': 'error: type mismatch',
       'non_structural_recursion.doxa': 'error: non-structural recursion',
-      'mutual_non_structural.doxa': 'error: non-structural recursion',
       'prop_elim_into_type.doxa': 'error: Prop elimination into Type',
       'prop_elim_informative_arg.doxa': 'error: Prop elimination into Type',
       'non_exhaustive_match.doxa': 'error: match is not exhaustive',

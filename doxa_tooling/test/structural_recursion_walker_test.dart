@@ -116,21 +116,27 @@ fun loop(n: Nat): Nat = loop n
 
     test('mutual call passing the caller\'s designated arg fails', () {
       // Neither `g n` nor `f n` decreases the designated arg.
-      final fun = _parseFun('''
+      // f→g and g→f forms an unguarded cycle → rejected.
+      final fKind = _parseFun('''
 data Nat : Type { zero : Nat; succ : Nat -> Nat; }
 
 fun f(n: Nat): Nat = g n
 and g(n: Nat): Nat = f n
 ''', memberName: 'f');
+      final gKind = _parseFun('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+
+fun f(n: Nat): Nat = g n
+and g(n: Nat): Nat = f n
+''', memberName: 'g');
       expect(
-        () => checkStructuralRecursion(fun, {'f', 'g'}, <String, int>{}),
-        throwsA(
-          isA<NonStructuralRecursion>().having(
-            (e) => e.calleeName,
-            'calleeName',
-            'g',
-          ),
+        () => checkStructuralRecursion(
+          fKind,
+          {'f', 'g'},
+          <String, int>{},
+          [gKind],
         ),
+        throwsA(isA<NonStructuralRecursion>()),
       );
     });
 
@@ -153,40 +159,22 @@ and g(x: Type): Type = f
       );
     });
 
-    test('ref inside a non-dep arrow codomain rejected', () {
-      // `f A` sits in an arrow codomain; A is g's designated arg, not a
-      // sub-term of itself.
+    test('ref inside a non-dep arrow codomain accepted (no cycle)', () {
+      // `f A` sits in an arrow codomain; A is g's designated arg.  No
+      // cycle exists because f doesn't call back, so the block is valid.
       final fun = _parseFun('''
 fun f(A: Type): Type = A
 and g(A: Type): Type = A -> f A
 ''', memberName: 'g');
-      expect(
-        () => checkStructuralRecursion(fun, {'f', 'g'}, <String, int>{}),
-        throwsA(
-          isA<NonStructuralRecursion>().having(
-            (e) => e.calleeName,
-            'calleeName',
-            'f',
-          ),
-        ),
-      );
+      checkStructuralRecursion(fun, {'f', 'g'}, <String, int>{});
     });
 
-    test('ref inside a let body rejected', () {
+    test('ref inside a let body accepted (no cycle)', () {
       final fun = _parseFun('''
 fun f(A: Type): Type = A
 and g(A: Type): Type = { val x: Type = A; f x }
 ''', memberName: 'g');
-      expect(
-        () => checkStructuralRecursion(fun, {'f', 'g'}, <String, int>{}),
-        throwsA(
-          isA<NonStructuralRecursion>().having(
-            (e) => e.calleeName,
-            'calleeName',
-            'f',
-          ),
-        ),
-      );
+      checkStructuralRecursion(fun, {'f', 'g'}, <String, int>{});
     });
 
     test('zero-arg function with a recursive call rejected', () {
