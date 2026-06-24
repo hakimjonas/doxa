@@ -1050,7 +1050,7 @@ final class TopEnv {
   /// Each binding is evaluated in an env that already has all prior
   /// bindings registered, so later bindings can reference earlier
   /// ones via TTop without an out-of-scope error.
-  Ctx toCtx() {
+  Ctx toCtx({MetaContext? metas}) {
     // Build the topBindings map incrementally. Each binding's type
     // and term evaluate in an env with all EARLIER bindings already
     // registered (so `later` can reference `earlier` via TTop).
@@ -1068,7 +1068,11 @@ final class TopEnv {
         isOpaque: b.isOpaque,
       );
     }
-    return CNil.withRegistries(dataDecls: dataDecls, topBindings: acc);
+    return CNil.withRegistries(
+      dataDecls: dataDecls,
+      topBindings: acc,
+      metas: metas,
+    );
   }
 }
 
@@ -1789,10 +1793,9 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       if (isRec) {
         // Recursive local binding `val rec f(x: T): R = body; result`.
         // The domain is a Pi type built by the parser, and the bound is
-        // a lambda chain. Self-references inside the lambda body are NOT
-        // supported (use a top-level `fun` for full recursion). The
-        // result body CAN reference the function via the TLet binder.
-        // At eval time, the TLet wraps the bound in a VFun guard.
+        // a lambda chain. Self-references inside the lambda body
+        // resolve via a placeholder TopBinding added to topEnv, matching
+        // the way top-level `fun` blocks handle mutual recursion.
         final (piTerm, _) = _inferExpr(state, domain!);
         final piV = eval(piTerm, state.ctx.env);
 
@@ -1812,9 +1815,32 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
           }
         }
 
+        // Register a placeholder TopBinding so the lambda body can
+        // reference itself via the topEnv.  The placeholder's term
+        // (TType 0) is never evaluated; TTop(name) in the body
+        // resolves through the topBindings map, matching how
+        // top-level `fun` blocks handle mutual recursion.
+        // The isOpaque flag ensures TTop stays as a stuck neutral
+        // (NTop) during elaboration, avoiding evaluation of the
+        // placeholder term before the actual body is available.
+        final placeholderBinding = TopBinding(
+          name: param,
+          type: piTerm,
+          term: const TType(_l0),
+          span: expr.span,
+          isOpaque: true,
+        );
+        final recTopEnv = TopEnv(
+          [...state.topEnv.bindings, placeholderBinding],
+          state.topEnv.dataDecls,
+          state.topEnv.classRegistry,
+          state.topEnv.namespaceBindings,
+        );
+        final recCtx = recTopEnv.toCtx(metas: state.ctx.metas);
+
         // Elaborate param domains and build the TLam chain.
-        // The lambda body is elaborated WITHOUT the rec name in scope.
-        var funState = state;
+        // The lambda body is elaborated WITH the rec name in scope.
+        var funState = _ElabState(recTopEnv, recCtx, state.names);
         final domainTerms = <Term>[];
         for (var i = 0; i < paramNames.length; i++) {
           final (domT, _) = _inferExpr(funState, paramDomains[i]);
@@ -1964,20 +1990,35 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
 
         // 2b. Determine the argument term.
         final Term argT;
+        // When an opaque placeholder is resolved via TTop, headV is a
+        // VNeutral(NTop(name)).  Extract the real Pi type from
+        // topBindings so argument elaboration checks against the
+        // correct domain.
+        final headVAsPi =
+            headV is VPi
+                ? headV
+                : (headV is VNeutral && headV.neutral is NTop
+                    ? (switch (state.ctx.env
+                        .lookupTop((headV.neutral as NTop).name)
+                        ?.type) {
+                      VPi pi => pi,
+                      _ => null,
+                    })
+                    : null);
         if (i == fns.length - 1 || followFn[i]) {
           // Innermost or left-deep: arg is a raw SExpr.
-          if (headV is VPi) {
-            argT = _checkExpr(state, argExprs[i], headV.domain);
+          if (headVAsPi != null) {
+            argT = _checkExpr(state, argExprs[i], headVAsPi.domain);
           } else {
             argT = _inferExpr(state, argExprs[i]).$1;
           }
         } else {
           // Right-deep non-innermost: arg is the previous result.
-          if (headV is VPi) {
+          if (headVAsPi != null) {
             final sr = subtype(
               state.ctx.level,
               resultV!,
-              headV.domain,
+              headVAsPi.domain,
               dataDecls: state.ctx.dataDecls,
               metas: state.ctx.metas,
               topBindings: state.ctx.env.topBindings,
@@ -1985,7 +2026,7 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
             if (sr is ConvMismatch) {
               throw TypeMismatch(
                 resultV,
-                headV.domain,
+                headVAsPi.domain,
                 sr,
                 level: state.ctx.level,
               );
@@ -2008,13 +2049,12 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
 
         // 2d. Advance type value to codomain.
         Value builtV = _vType0;
-        if (headV is VPi) {
+        if (headVAsPi != null) {
           final argV = eval(argT, state.ctx.env);
-          try {
-            builtV = eval(headV.codomain.body, headV.codomain.env.extend(argV));
-          } on StateError {
-            // Keep placeholder; kernel reports the real error.
-          }
+          builtV = eval(
+            headVAsPi.codomain.body,
+            headVAsPi.codomain.env.extend(argV),
+          );
         }
 
         resultT = builtT;
