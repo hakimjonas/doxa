@@ -2051,19 +2051,10 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
               headVAsPi.codomain.env.extend(argV),
             );
           } on StateError catch (_) {
-            // Direct eval failed — the closure env depth doesn't
-            // match.  Rebuild from the codomain body term with
-            // padded env.
-            builtV = _rebuildVPiForShim(
-              headVAsPi.codomain.body,
-              headVAsPi.codomain.env,
-              headVAsPi,
-            );
-            // The rebuild gives the full Pi chain; advance past
-            // the first argument.
-            if (builtV is VPi) {
-              builtV = _stepPi(builtV, argV) ?? _vType0;
-            }
+            // The closure env depth doesn't match the TBound refs.
+            // Use the current elaboration env which has the
+            // function params pushed at the right depth.
+            builtV = eval(headVAsPi.codomain.body, state.ctx.env.extend(argV));
           }
         }
 
@@ -2694,10 +2685,12 @@ Value _rebuildVPiForShim(Term typeTerm, Env shimEnv, Value oldVPi) {
   try {
     final rebuilt = eval(typeTerm, paddedEnv);
     if (rebuilt is VPi) return _stripBodyIsNormal(rebuilt);
-  } on StateError {
-    // Padded eval failed; fall back to stripping the old VPi.
+    throw StateError(
+      '_rebuildVPiForShim: eval returned ${rebuilt.runtimeType}',
+    );
+  } on StateError catch (e) {
+    throw StateError('_rebuildVPiForShim failed at piCount=$piCount: $e');
   }
-  return _stripBodyIsNormal(oldVPi);
 }
 
 /// Step a VPi through one application: evaluate the codomain with
