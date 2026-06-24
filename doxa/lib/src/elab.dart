@@ -2051,10 +2051,14 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
         Value builtV = _vType0;
         if (headVAsPi != null) {
           final argV = eval(argT, state.ctx.env);
-          builtV = eval(
-            headVAsPi.codomain.body,
-            headVAsPi.codomain.env.extend(argV),
-          );
+          try {
+            builtV = eval(
+              headVAsPi.codomain.body,
+              headVAsPi.codomain.env.extend(argV),
+            );
+          } on StateError {
+            // Keep placeholder; kernel reports the real error.
+          }
         }
 
         resultT = builtT;
