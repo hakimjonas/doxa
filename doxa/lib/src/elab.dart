@@ -2635,6 +2635,22 @@ Value? _computePiSort(Value domSort, Value codSort) {
   return VType(LMax(domLevel, codLevel));
 }
 
+/// Strip `bodyIsNormal` from a VPi and its nested codomain closures.
+/// Needed when a VPi built at one env depth (e.g. during
+/// `_buildFunType`) is later used at a different depth (e.g. in
+/// `_shimState`).  The fast-eval path for `bodyIsNormal: true` bodies
+/// requires the original depth; stripping the flag forces the standard
+/// eval path which adapts to the current context.
+Value _stripBodyIsNormal(Value v) => switch (v) {
+  VPi(:final domain, :final codomain, :final name, :final icit) => VPi(
+    domain,
+    Closure(codomain.env, codomain.body, bodyIsNormal: false),
+    name: name,
+    icit: icit,
+  ),
+  _ => v,
+};
+
 /// Build an `_ElabState` approximating the current [topEnv] + [locals]
 /// for the `_elabExpr` shim. Each local binder is pushed into [Ctx]
 /// with a placeholder [VType(0)] type, the shim discards any [Value]
@@ -2676,11 +2692,15 @@ _ElabState _shimState(TopEnv topEnv, _LocalScope locals, {MetaContext? metas}) {
       dataDecls: topEnv.dataDecls,
       topBindings: entries,
     );
-    final typeV = eval(b.type, env);
+    var typeV = eval(b.type, env);
     final Value valueV;
     if (b.term == const TType(_l0) && typeV is VPi) {
       // Mutual-pre-binding sentinel: stub as NTop neutral.
       valueV = VNeutral(NTop(b.name));
+      // The VPi closures were created during `_buildFunType` at a
+      // higher env depth (function params pushed).  Strip
+      // `bodyIsNormal` so the codomain re-evaluates correctly.
+      typeV = _stripBodyIsNormal(typeV);
     } else {
       valueV = eval(b.term, env);
     }
