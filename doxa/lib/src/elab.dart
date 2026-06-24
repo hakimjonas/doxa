@@ -2029,10 +2029,17 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
         Value builtV = _vType0;
         if (headVAsPi != null) {
           final argV = eval(argT, state.ctx.env);
-          builtV = eval(
-            headVAsPi.codomain.body,
-            headVAsPi.codomain.env.extend(argV),
-          );
+          try {
+            builtV = eval(
+              headVAsPi.codomain.body,
+              headVAsPi.codomain.env.extend(argV),
+            );
+          } on StateError catch (e) {
+            // The codomain eval failed — the Pi closure env doesn't
+            // match the current context.  Reconstruct the closure
+            // using the current elaboration env.
+            builtV = eval(headVAsPi.codomain.body, state.ctx.env.extend(argV));
+          }
         }
 
         resultT = builtT;
