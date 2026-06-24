@@ -2654,6 +2654,30 @@ Value _stripBodyIsNormal(Value v) => switch (v) {
   _ => v,
 };
 
+/// Rebuild a VPi from [typeTerm] by evaluating it in an env padded
+/// with dummy binders matching the Pi depth.  Fixes TBound index
+/// mismatches from terms built by `_dataSignatureTerm` or
+/// `_buildFunType` where indices assume a specific scope depth.
+Value _rebuildVPiForShim(Term typeTerm, Env shimEnv, Value oldVPi) {
+  var piCount = 0;
+  var cur = typeTerm;
+  while (cur is TPi) {
+    piCount++;
+    cur = (cur as TPi).codomain;
+  }
+  var paddedEnv = shimEnv;
+  for (var i = 0; i < piCount; i++) {
+    paddedEnv = paddedEnv.extend(const VType(_l0));
+  }
+  try {
+    final rebuilt = eval(typeTerm, paddedEnv);
+    if (rebuilt is VPi) return _stripBodyIsNormal(rebuilt);
+  } on StateError {
+    // Padded eval failed; fall back to stripping the old VPi.
+  }
+  return _stripBodyIsNormal(oldVPi);
+}
+
 /// Build an `_ElabState` approximating the current [topEnv] + [locals]
 /// for the `_elabExpr` shim. Each local binder is pushed into [Ctx]
 /// with a placeholder [VType(0)] type, the shim discards any [Value]
@@ -2700,12 +2724,15 @@ _ElabState _shimState(TopEnv topEnv, _LocalScope locals, {MetaContext? metas}) {
     if (b.term == const TType(_l0) && typeV is VPi) {
       // Mutual-pre-binding sentinel: stub as NTop neutral.
       valueV = VNeutral(NTop(b.name));
-      // The VPi closures were created during `_buildFunType` at a
-      // higher env depth (function params pushed).  Strip
-      // `bodyIsNormal` so the codomain re-evaluates correctly.
-      typeV = _stripBodyIsNormal(typeV);
+      // Rebuild the VPi with padded env so codomain eval works.
+      typeV = _rebuildVPiForShim(b.type, env, typeV);
     } else {
       valueV = eval(b.term, env);
+      if (typeV is VPi) {
+        // Non-sentinel VPi types may also have depth-dependent
+        // TBound refs (e.g. _dataSignatureTerm).  Rebuild them.
+        typeV = _rebuildVPiForShim(b.type, env, typeV);
+      }
     }
     entries[b.name] = TopBindingEntry(
       typeV,
