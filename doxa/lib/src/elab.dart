@@ -1968,21 +1968,37 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
 
         // 2b. Determine the argument term.
         final Term argT;
-        // When an opaque placeholder is resolved via TTop, headV is a
-        // VNeutral(NTop(name)).  Extract the real Pi type from
-        // topBindings so argument elaboration checks against the
-        // correct domain.
-        final headVAsPi =
-            headV is VPi
-                ? headV
-                : (headV is VNeutral && headV.neutral is NTop
-                    ? (switch (state.ctx.env
-                        .lookupTop((headV.neutral as NTop).name)
-                        ?.type) {
-                      VPi pi => pi,
-                      _ => null,
-                    })
-                    : null);
+        // When headV is a VPi, use it directly.  For VNeutral(NTop)
+        // or VNeutral(NApp(NTop(...), ...)) — opaque placeholders
+        // resolved via TTop — extract the Pi from topBindings and
+        // advance it through any accumulated neutral applications.
+        VPi? _computeHeadPi(Value v) {
+          if (v is VPi) return v;
+          if (v is! VNeutral) return null;
+          final args = <Value>[];
+          var n = v.neutral;
+          while (n is NApp) {
+            args.add(n.arg);
+            n = n.fn;
+          }
+          if (n is! NTop) return null;
+          final te = state.ctx.env.lookupTop(n.name);
+          if (te == null) return null;
+          if (te.type is! VPi) return null;
+          // The VPi from topBindings may have depth-mismatched
+          // closures.  Advance it through any accumulated neutral
+          // applications using _stepPi which handles mismatches.
+          var cur = te.type as Value;
+          for (final a in args.reversed) {
+            if (cur is! VPi) return null;
+            final next = _stepPi(cur, a);
+            if (next == null) return null;
+            cur = next;
+          }
+          return cur is VPi ? cur : null;
+        }
+
+        final headVAsPi = _computeHeadPi(headV);
         if (i == fns.length - 1 || followFn[i]) {
           // Innermost or left-deep: arg is a raw SExpr.
           if (headVAsPi != null) {
@@ -2035,13 +2051,19 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
               headVAsPi.codomain.env.extend(argV),
             );
           } on StateError catch (_) {
-            // The codomain eval failed — the VPi was built at a
-            // different env depth.  Strip bodyIsNormal and retry.
-            final stripped = _stripBodyIsNormal(headVAsPi) as VPi;
-            builtV = eval(
-              stripped.codomain.body,
-              stripped.codomain.env.extend(argV),
+            // Direct eval failed — the closure env depth doesn't
+            // match.  Rebuild from the codomain body term with
+            // padded env.
+            builtV = _rebuildVPiForShim(
+              headVAsPi.codomain.body,
+              headVAsPi.codomain.env,
+              headVAsPi,
             );
+            // The rebuild gives the full Pi chain; advance past
+            // the first argument.
+            if (builtV is VPi) {
+              builtV = _stepPi(builtV, argV) ?? _vType0;
+            }
           }
         }
 
@@ -2676,6 +2698,43 @@ Value _rebuildVPiForShim(Term typeTerm, Env shimEnv, Value oldVPi) {
     // Padded eval failed; fall back to stripping the old VPi.
   }
   return _stripBodyIsNormal(oldVPi);
+}
+
+/// Step a VPi through one application: evaluate the codomain with
+/// [argV] substituted for the domain binder.  Returns the resulting
+/// VPi, or null if evaluation fails or produces a non-VPi value.
+VPi? _stepPi(VPi pi, Value argV) {
+  try {
+    final codV = eval(pi.codomain.body, pi.codomain.env.extend(argV));
+    if (codV is VPi) return codV;
+    return null;
+  } on StateError {
+    try {
+      final stripped = _stripBodyIsNormal(pi) as VPi;
+      final codV = eval(
+        stripped.codomain.body,
+        stripped.codomain.env.extend(argV),
+      );
+      if (codV is VPi) return codV;
+      return null;
+    } on StateError {
+      return null;
+    }
+  }
+}
+
+/// Compute the result type of applying a function of type [pi] to
+/// [args].  Returns the final codomain (possibly non-VPi for the
+/// last step), or null if any step fails.
+Value? _applyPiToArgs(VPi pi, List<Value> args) {
+  var cur = pi as Value;
+  for (final arg in args) {
+    if (cur is! VPi) return null;
+    final next = _stepPi(cur, arg);
+    if (next == null) return null;
+    cur = next;
+  }
+  return cur;
 }
 
 /// Build an `_ElabState` approximating the current [topEnv] + [locals]
