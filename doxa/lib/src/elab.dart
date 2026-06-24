@@ -2034,11 +2034,14 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
               headVAsPi.codomain.body,
               headVAsPi.codomain.env.extend(argV),
             );
-          } on StateError catch (e) {
-            // The codomain eval failed — the Pi closure env doesn't
-            // match the current context.  Reconstruct the closure
-            // using the current elaboration env.
-            builtV = eval(headVAsPi.codomain.body, state.ctx.env.extend(argV));
+          } on StateError catch (_) {
+            // The codomain eval failed — the VPi was built at a
+            // different env depth.  Strip bodyIsNormal and retry.
+            final stripped = _stripBodyIsNormal(headVAsPi) as VPi;
+            builtV = eval(
+              stripped.codomain.body,
+              stripped.codomain.env.extend(argV),
+            );
           }
         }
 

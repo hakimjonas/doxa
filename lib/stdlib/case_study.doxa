@@ -162,6 +162,20 @@ val mult_two_succ : (n: Nat) -> Eq Nat (mult two (succ n)) (succ (succ (mult two
           (cong ((x: Nat) => succ x) (plus_succ n n))
           (cong ((x: Nat) => succ x) (cong ((x: Nat) => succ x) (sym_e Nat (mult two n) (plus n n) (mult_2 n)))))))
 
+fun even_implies_double(n: Nat, h: Eq Bool (even n) true_) : Eq Nat n (mult two (half n)) = go n h
+and go(n: Nat, h0: Eq Bool (even n) true_) : Eq Nat n (mult two (half n)) = Nat.ind ((m: Nat) => Eq Bool (even m) true_ -> Eq Nat m (mult two (half m)))
+  ((hz: Eq Bool (even zero) true_) => trans_e Nat zero (mult two zero) (mult two (half zero)) (sym_e Nat (mult two zero) zero (trans_e Nat (mult two zero) (plus zero zero) zero (mult_2 zero) (plus_zero zero))) (refl (mult two (half zero))))
+  ((k: Nat) => (ih: Eq Bool (even k) true_ -> Eq Nat k (mult two (half k))) => (hsk: Eq Bool (even (succ k)) true_) =>
+    Nat.ind ((j: Nat) => Eq Bool (even (succ j)) true_ -> Eq Nat (succ j) (mult two (half (succ j))))
+      ((hsz: Eq Bool (even (succ zero)) true_) =>
+        False.rec ((_: False) => Eq Nat (succ zero) (mult two (half (succ zero)))) (true_ne_false (cong_e Bool Bool parity_flip_b (even (succ zero)) true_ hsz)))
+      ((m: Nat) => (ihm: Eq Bool (even (succ m)) true_ -> Eq Nat (succ m) (mult two (half (succ m)))) => (hssm: Eq Bool (even (succ (succ m))) true_) => {
+        val even_m_true : Eq Bool (even m) true_ = trans_e Bool (even m) (even (succ (succ m))) true_ (sym_e Bool (even (succ (succ m))) (even m) (even_succ_succ_eq_even m)) hssm;
+        val rec_m : Eq Nat m (mult two (half m)) = go m even_m_true;
+        trans_e Nat (succ (succ m)) (succ (succ (mult two (half m)))) (mult two (half (succ (succ m)))) (cong ((x: Nat) => succ (succ x)) rec_m) (sym_e Nat (mult two (half (succ (succ m)))) (succ (succ (mult two (half m)))) (mult_two_succ (half m)))
+      })
+    n h0)
+
 // --- Theorem: n^2 = 2*m^2 implies n = 0 ---------------------------------
 //
 // Proved by structural induction on n (avoids the nat_wf mutual-block
