@@ -2839,10 +2839,11 @@ Object _drive(
               );
             }
             final ctorDecl = dataDecl.ctors[ctorIndex];
-            // Spine layout: [params..., motive, method_0, ..., method_{n-1},
-            // indices..., scrutinee]
+            // Spine layout: [params..., motive, indices..., method_0, ...,
+            // method_{n-1}, scrutinee]
             final paramCount = dataDecl.params.length;
-            final method = newSpine[paramCount + 1 + ctorIndex];
+            final indexCount = dataDecl.indices.length;
+            final method = newSpine[paramCount + 1 + indexCount + ctorIndex];
             // Build the argument list for the method by walking the
             // ctor's args telescope. Ordering per CIC convention: all
             // ctor-args first, then all IHs (one per recursive
@@ -2858,7 +2859,8 @@ Object _drive(
             // each recursive arg schedule a driver step via a
             // _RecCollectIH frame. The ihs list accumulates as the
             // driver yields each IH value.
-            final headSpineLen = paramCount + 1 + dataDecl.ctors.length;
+            final headSpineLen =
+                paramCount + 1 + indexCount + dataDecl.ctors.length;
             final headSpine = newSpine.sublist(0, headSpineLen);
 
             // Fast path: no recursive args in this ctor. No IH
@@ -7106,8 +7108,8 @@ bool _isTelescopeNeutral(Value v, int outerLevel) {
 
 /// The saturated-spine arity of the recursor for [d].
 ///
-/// Shape: `[params..., motive, method_0, ..., method_{n-1},
-/// indices..., scrutinee]`.
+/// Shape: `[params..., motive, indices..., method_0, ..., method_{n-1},
+/// scrutinee]`.
 int _recursorArity(DataDecl d) =>
     d.params.length + 1 + d.ctors.length + d.indices.length + 1;
 
@@ -7245,16 +7247,16 @@ Term synthRecursorType(DataDecl d, {Term? motiveSort}) {
   // The inner-most reference shapes:
   //   At the innermost position, the bound variables (innermost-first) are:
   //     scrutinee @ depth 0
-  //     index_{last} @ depth 1
+  //     method_{last} @ depth 1
   //     ...
-  //     index_0 @ depth indices.length
-  //     method_{last} @ depth indices.length + 1
+  //     method_0 @ depth ctors.length
+  //     index_{last} @ depth ctors.length + 1
   //     ...
-  //     method_0 @ depth indices.length + ctors.length
-  //     motive @ depth indices.length + ctors.length + 1 (= depth of motive)
-  //     param_{last} @ depth indices.length + ctors.length + 2
+  //     index_0 @ depth ctors.length + indices.length
+  //     motive @ depth ctors.length + indices.length + 1 (= depth of motive)
+  //     param_{last} @ depth ctors.length + indices.length + 2
   //     ...
-  //     param_0 @ depth indices.length + ctors.length + 1 + params.length
+  //     param_0 @ depth ctors.length + indices.length + 1 + params.length
   //
   // Building the innermost result: P applied to indices (TBound 1..indices.length)
   // applied to scrutinee (TBound 0).
@@ -7265,16 +7267,16 @@ Term synthRecursorType(DataDecl d, {Term? motiveSort}) {
 
   // Step 1: motive-applied-to-all-indices-and-scrutinee at the inner-
   // most point.
-  // motive depth from innermost = indices.length + ctorCount + 1
-  final motiveDepthInner = indexCount + ctorCount + 1;
+  // motive depth from innermost = ctors.length + indices.length + 1
+  final motiveDepthInner = ctorCount + indexCount + 1;
   Term result = TBound(motiveDepthInner);
-  // Apply to each index (outermost-first-in-result, i.e. TBound(indices.length),
-  // ..., TBound(1)). Actually at the innermost point, index_0 is at
-  // depth indices.length (furthest), index_{last} is at depth 1.
+  // Apply to each index (outermost-first-in-result).
+  // At the innermost point, index_0 is at depth ctorCount + indices.length
+  // (furthest), index_{last} is at depth ctorCount + 1.
   for (var k = 0; k < indexCount; k++) {
-    // index_k is at depth (indices.length - k) from the innermost
-    // binder (the scrutinee at depth 0).
-    result = TApp(result, TBound(indexCount - k));
+    // index_k is at depth ctorCount + (indices.length - k) from the
+    // innermost binder (the scrutinee at depth 0).
+    result = TApp(result, TBound(ctorCount + indexCount - k));
   }
   // Apply to scrutinee.
   result = TApp(result, const TBound(0));
@@ -7291,71 +7293,28 @@ Term synthRecursorType(DataDecl d, {Term? motiveSort}) {
   // Scrutinee type: TData(d.name, [param_0, ..., param_{pc-1},
   //                                index_0, ..., index_{ic-1}])
   // At the pre-scrutinee-wrap depth:
-  //   indices are TBound(0)..TBound(ic-1) (innermost-first? no, outermost-
-  //   first: index_0 is outer, index_{last} is inner).
-  //   No wait: we haven't wrapped scrutinee yet but we HAVE wrapped
-  //   indices. So at pre-scrutinee depth, indices are TBound(ic-1)..
-  //   TBound(0) (index_0 outermost, index_{last} innermost at depth 0).
-  //   Params are at depth ic + ctorCount + 1 (motive adds 1) and up.
-  //
-  // Let's compute fresh. At the "pre-scrutinee-Pi-wrap" point, the
-  // binders (innermost-first from that point's perspective) are:
-  //   index_{last} @ 0
-  //   ...
-  //   index_0 @ ic - 1
-  //   method_{last} @ ic
-  //   ...
-  //   method_0 @ ic + ctorCount - 1
-  //   motive @ ic + ctorCount
-  //   param_{last} @ ic + ctorCount + 1
-  //   ...
-  //   param_0 @ ic + ctorCount + paramCount
+  //   methods (ctorCount) are between scrutinee and indices
+  //   index_{last} @ ctorCount (innermost index, just outside methods)
+  //   index_0 @ ctorCount + ic - 1 (outermost index)
+  //   motive @ ctorCount + ic
+  //   param_{last} @ ctorCount + ic + 1
+  //   param_0 @ ctorCount + ic + paramCount
   final scrutTypeDataArgs = <Term>[];
   // Params:
   for (var i = 0; i < paramCount; i++) {
     scrutTypeDataArgs.add(
-      TBound(indexCount + ctorCount + 1 + paramCount - 1 - i),
+      TBound(ctorCount + indexCount + 1 + paramCount - 1 - i),
     );
   }
   // Indices:
   for (var j = 0; j < indexCount; j++) {
-    scrutTypeDataArgs.add(TBound(indexCount - 1 - j));
+    scrutTypeDataArgs.add(TBound(ctorCount + indexCount - 1 - j));
   }
   final scrutType = TData(d.name, scrutTypeDataArgs);
   result = TPi(scrutType, result, name: null);
 
-  // Step 3: Wrap with Pi for each index, innermost-first (so the
-  // outermost wrap lands on index_0). Each index's type was
-  // elaborated under the data's telescope [params ++ prior-indices],
-  // ordered innermost-first. In that scope, `TBound(j)` for
-  //   * j < k: refers to prior index `index_{k-1-j}`.
-  //   * j >= k: refers to param `param_{paramCount - 1 - (j - k)}`.
-  //
-  // In the recursor's scope, at the point of wrapping index_k's Pi:
-  //   * prior indices (index_0..index_{k-1}) stay at their original
-  //     depths (0 .. k-1 from this wrap point, innermost-first)
-  //     no shift.
-  //   * params are further out: index-wraps first (k of them, already
-  //     wrapped), then methods (ctorCount), then motive (1). So the
-  //     param at original depth k lands at recursor depth
-  //     k + ctorCount + 1, i.e. shifted by `ctorCount + 1`.
-  //
-  // This shift is load-bearing whenever an index type is itself a
-  // TBound referring to a param (e.g. the prelude's Eq, whose index
-  // type `A` refers to param A): without it the index's TBound points
-  // at whatever binder sits at the pre-shift depth, so Eq.rec's
-  // synthesized type is ill-formed and the derived library (sym,
-  // trans, cong, subst) cannot be checked.
-  for (var k = indexCount - 1; k >= 0; k--) {
-    final shifted = _shiftTBoundPastThreshold(
-      d.indices[k].type,
-      threshold: k,
-      shiftBy: ctorCount + 1,
-    );
-    result = TPi(shifted, result, name: d.indices[k].name);
-  }
-
-  // Step 4: Wrap with Pi for each method, in reverse ctor order.
+  // Step 3: Wrap with Pi for each method, in reverse ctor order.
+  // Methods now sit INSIDE indices (indices wrap outside methods).
   // Each method's type is computed from the ctor's telescope (after
   // params) plus a final motive-application for the resulting ctor
   // instance.
@@ -7382,6 +7341,37 @@ Term synthRecursorType(DataDecl d, {Term? motiveSort}) {
   for (var i = ctorCount - 1; i >= 0; i--) {
     final methodType = _synthMethodType(d, i);
     result = TPi(methodType, result, name: null);
+  }
+
+  // Step 4: Wrap with Pi for each index, innermost-first (so the
+  // outermost wrap lands on index_0). Indices wrap OUTSIDE methods.
+  // Each index's type was elaborated under the data's telescope
+  // [params ++ prior-indices], ordered innermost-first. In that scope,
+  // `TBound(j)` for
+  //   * j < k: refers to prior index `index_{k-1-j}`.
+  //   * j >= k: refers to param `param_{paramCount - 1 - (j - k)}`.
+  //
+  // In the recursor's scope, at the point of wrapping index_k's Pi:
+  //   * prior indices (index_0..index_{k-1}) stay at their original
+  //     depths (0 .. k-1 from this wrap point, innermost-first)
+  //     no shift.
+  //   * params are further out: remaining indices (k more wraps), then
+  //     motive (1). So the param at original depth k lands at recursor
+  //     depth k + 1, i.e. shifted by 1 (the motive).
+  //
+  // This shift is load-bearing whenever an index type is itself a
+  // TBound referring to a param (e.g. the prelude's Eq, whose index
+  // type `A` refers to param A): without it the index's TBound points
+  // at whatever binder sits at the pre-shift depth, so Eq.rec's
+  // synthesized type is ill-formed and the derived library (sym,
+  // trans, cong, subst) cannot be checked.
+  for (var k = indexCount - 1; k >= 0; k--) {
+    final shifted = _shiftTBoundPastThreshold(
+      d.indices[k].type,
+      threshold: k,
+      shiftBy: 1,
+    );
+    result = TPi(shifted, result, name: d.indices[k].name);
   }
 
   // Step 5: Wrap with Pi for the motive.
@@ -7487,16 +7477,19 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
   //   a_0 @ ihCount + argCount - 1
   //   prior methods (for ctors 0..ctorIndex-1) @ ihCount + argCount ..
   //                                              ihCount + argCount + ctorIndex - 1
-  //   motive @ ihCount + argCount + ctorIndex
-  //   param_{p-1} @ ihCount + argCount + ctorIndex + 1
+  //   index_{last} @ ihCount + argCount + ctorIndex
   //   ...
-  //   param_0 @ ihCount + argCount + ctorIndex + paramCount
+  //   index_0 @ ihCount + argCount + ctorIndex + indexCount - 1
+  //   motive @ ihCount + argCount + ctorIndex + indexCount
+  //   param_{p-1} @ ihCount + argCount + ctorIndex + indexCount + 1
+  //   ...
+  //   param_0 @ ihCount + argCount + ctorIndex + indexCount + paramCount
   //
   // The `ctorIndex` offset is load-bearing: when synthRecursorType
   // wraps methods outer-to-inner (method 0 outermost, method n-1
   // innermost), the method for ctor i has (ctorIndex = i) prior
   // methods already wrapped *outside* it. From the inside of method i,
-  // those prior methods sit between the ctor args and the motive, so
+  // those prior methods sit between the ctor args and the indices, so
   // omitting the offset aliases the motive with the wrong binder and
   // produces an ill-formed type (failing both checking and
   // ι-reduction).
@@ -7504,14 +7497,15 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
   // Depth of ctor arg j at the innermost point:
   //   a_j @ ihCount + (argCount - 1 - j)
   int argDepthAtInner(int j) => ihCount + (argCount - 1 - j);
-  final motiveDepthAtInner = ihCount + argCount + ctorIndex;
+  final motiveDepthAtInner = ihCount + argCount + ctorIndex + indexCount;
   int paramDepthAtInner(int i) =>
-      ihCount + argCount + ctorIndex + 1 + (paramCount - 1 - i);
+      ihCount + argCount + ctorIndex + indexCount + 1 + (paramCount - 1 - i);
 
-  // Remap a Term `t` that was elaborated under (params ++ ctor.args)
-  // so TBound(k) for k < argCount refers to ctor arg (argCount - 1 - k)
-  // (innermost = a_{argCount-1}), and TBound(k) for k >= argCount
-  // refers to param (k - argCount).
+  // Remap a Term `t` that was elaborated under (params ++ indices ++
+  // ctor.args) so TBound(k) for k < argCount refers to ctor arg
+  // (argCount - 1 - k), for argCount <= k < argCount + indexCount
+  // refers to index (indexCount - 1 - (k - argCount)), and for
+  // k >= argCount + indexCount refers to param (k - argCount - indexCount).
   //
   // At the *innermost method point*, remap these to the method's
   // depths.
@@ -7519,8 +7513,11 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
     TBound(:final index) when index < argCount => TBound(
       argDepthAtInner(argCount - 1 - index),
     ),
+    TBound(:final index) when index < argCount + indexCount => TBound(
+      ihCount + argCount + ctorIndex + (index - argCount),
+    ),
     TBound(:final index) => TBound(
-      paramDepthAtInner(paramCount - 1 - (index - argCount)),
+      paramDepthAtInner(paramCount - 1 - (index - argCount - indexCount)),
     ),
     TType() ||
     TSProp() ||
@@ -7613,6 +7610,7 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
     //   outer IH binders (ihCount - 1 - mOutward of them, innermost),
     //   then a_{k-1} .. a_0,
     //   then prior-ctor method binders (ctorIndex of them),
+    //   then index binders (indexCount of them),
     //   then motive,
     //   then params (paramCount of them, outermost).
     //
@@ -7625,9 +7623,14 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
     // ≥ 2 recursive args (Tree.node, Forest.fcons): test those.
     final outerCount = ihCount - 1 - mOutward;
     int argDepth(int j) => outerCount + (argCount - 1 - j);
-    final motiveDepth = outerCount + argCount + ctorIndex;
+    final motiveDepth = outerCount + argCount + ctorIndex + indexCount;
     int paramDepth(int i) =>
-        outerCount + argCount + ctorIndex + 1 + (paramCount - 1 - i);
+        outerCount +
+        argCount +
+        ctorIndex +
+        indexCount +
+        1 +
+        (paramCount - 1 - i);
 
     // `argType` was elaborated at the point *before* ctor.args[posIdx]
     // was pushed, i.e. under scope `[ctor.args[posIdx-1], ...,
@@ -7799,8 +7802,9 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
   // The ctor-arg's type was elaborated under (params ++ prior ctor args).
   // In the recursor method's scope, prior ctor args are at the same
   // positions (unchanged), but params are pushed DOWN by the binders
-  // inserted between: motive (1) + prior methods (ctorIndex).
-  final paramShift = 1 + ctorIndex;
+  // inserted between: motive (1) + prior methods (ctorIndex) + indices
+  // (indexCount).
+  final paramShift = 1 + ctorIndex + indexCount;
   Term shiftArgType(Term t, int j, int depth) => switch (t) {
     TBound(:final index) when index < j => t, // ctor arg, unchanged
     TBound(:final index) => TBound(index + paramShift),

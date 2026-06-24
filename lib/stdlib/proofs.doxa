@@ -29,11 +29,11 @@ import "vec.doxa"
 // definitionally equal to the implicit versions, they just pass
 // types positionally.
 
-val sym_e : (A: Type) -> (x: A) -> (y: A) -> Eq A x y -> Eq A y x = (A: Type) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b a) ((z: A) => refl z) x y p
+val sym_e : (A: Type) -> (x: A) -> (y: A) -> Eq A x y -> Eq A y x = (A: Type) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b a) x y ((z: A) => refl z) p
 
-val trans_e : (A: Type) -> (x: A) -> (y: A) -> (z: A) -> Eq A x y -> Eq A y z -> Eq A x z = (A: Type) => (x: A) => (y: A) => (z: A) => (p: Eq A x y) => (q: Eq A y z) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b z -> Eq A a z) ((w: A) => (r: Eq A w z) => r) x y p q
+val trans_e : (A: Type) -> (x: A) -> (y: A) -> (z: A) -> Eq A x y -> Eq A y z -> Eq A x z = (A: Type) => (x: A) => (y: A) => (z: A) => (p: Eq A x y) => (q: Eq A y z) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b z -> Eq A a z) x y ((w: A) => (r: Eq A w z) => r) p q
 
-val cong_e : (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x y -> Eq B (f x) (f y) = (A: Type) => (B: Type) => (f: A -> B) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) ((z: A) => refl (f z)) x y p
+val cong_e : (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x y -> Eq B (f x) (f y) = (A: Type) => (B: Type) => (f: A -> B) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) x y ((z: A) => refl (f z)) p
 // --- Nat-domain proofs (implicit style) -----------------------------------
 //
 // These proofs compose `cong`/`trans`/`sym` in implicit style.
@@ -107,9 +107,9 @@ fun isTrue(b: Bool) : Prop = match b {
   case false_ => False
 }
 
-val succ_ne_zero : (n: Nat) -> Eq Nat (succ n) zero -> False = (n: Nat) => (p: Eq Nat (succ n) zero) => Eq.rec Nat ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => isZero b -> isZero a) ((z: Nat) => (h: isZero z) => h) (succ n) zero p (refl zero)
+val succ_ne_zero : (n: Nat) -> Eq Nat (succ n) zero -> False = (n: Nat) => (p: Eq Nat (succ n) zero) => Eq.rec Nat ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => isZero b -> isZero a) (succ n) zero ((z: Nat) => (h: isZero z) => h) p (refl zero)
 
-val true_ne_false : Eq Bool true_ false_ -> False = (p: Eq Bool true_ false_) => Eq.rec Bool ((a: Bool) => (b: Bool) => (_: Eq Bool a b) => isTrue a -> isTrue b) ((z: Bool) => (h: isTrue z) => h) true_ false_ p (refl true_)
+val true_ne_false : Eq Bool true_ false_ -> False = (p: Eq Bool true_ false_) => Eq.rec Bool ((a: Bool) => (b: Bool) => (_: Eq Bool a b) => isTrue a -> isTrue b) true_ false_ ((z: Bool) => (h: isTrue z) => h) p (refl true_)
 // --- Theorems about an indexed family -----------------------------------
 //
 // `Vec[A] n` is length-indexed: the length lives in the type. These prove
@@ -118,7 +118,7 @@ val true_ne_false : Eq Bool true_ false_ -> False = (p: Eq Bool true_ false_) =>
 // This is the part that requires elaboration, indexed-family recursion,
 // and dependent motives to cohere, beyond merely computing with the type.
 
-val vlength_index : (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) n = (A: Type) => Vec.ind A ((m: Nat) => (w: Vec A m) => Eq Nat (vlength w) m) (refl zero) ((k: Nat) => (x: A) => (rest: Vec A k) => (ih: Eq Nat (vlength rest) k) => cong ((j: Nat) => succ j) ih)
+val vlength_index : (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) n = (A: Type) => (n: Nat) => (v: Vec A n) => Vec.ind A ((m: Nat) => (w: Vec A m) => Eq Nat (vlength w) m) n (refl zero) ((k: Nat) => (x: A) => (rest: Vec A k) => (ih: Eq Nat (vlength rest) k) => cong ((j: Nat) => succ j) ih) v
 
 // succ_inj: succ is injective
 val succ_inj : (a: Nat) -> (b: Nat) -> Eq Nat (succ a) (succ b) -> Eq Nat a b = (a: Nat) => (b: Nat) => (p: Eq Nat (succ a) (succ b)) => cong_e Nat Nat ((n: Nat) => match n { case zero => zero case succ n_ => n_ }) (succ a) (succ b) p

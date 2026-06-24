@@ -7,13 +7,13 @@ data Nat : Type {
 }
 // --- lemmas ---
 
-fun sym{A: Type, x: A, y: A}(p: Eq A x y) : Eq A y x = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b a) ((z: A) => refl z) x y p
+fun sym{A: Type, x: A, y: A}(p: Eq A x y) : Eq A y x = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b a) x y ((z: A) => refl z) p
 
-fun trans{A: Type, x: A, y: A, z: A}(p: Eq A x y, q: Eq A y z) : Eq A x z = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b z -> Eq A a z) ((w: A) => (r: Eq A w z) => r) x y p q
+fun trans{A: Type, x: A, y: A, z: A}(p: Eq A x y, q: Eq A y z) : Eq A x z = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b z -> Eq A a z) x y ((w: A) => (r: Eq A w z) => r) p q
 
-fun cong{A: Type, B: Type, x: A, y: A}(f: A -> B, p: Eq A x y) : Eq B (f x) (f y) = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) ((z: A) => refl (f z)) x y p
+fun cong{A: Type, B: Type, x: A, y: A}(f: A -> B, p: Eq A x y) : Eq B (f x) (f y) = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) x y ((z: A) => refl (f z)) p
 
-fun subst{A: Type, x: A, y: A}(P: A -> Type, p: Eq A x y, px: P x) : P y = Eq.rect A ((a: A) => (b: A) => (_: Eq A a b) => P a -> P b) ((z: A) => (pz: P z) => pz) x y p px
+fun subst{A: Type, x: A, y: A}(P: A -> Type, p: Eq A x y, px: P x) : P y = Eq.rect A ((a: A) => (b: A) => (_: Eq A a b) => P a -> P b) x y ((z: A) => (pz: P z) => pz) p px
 // --- usage: small proofs via the implicit-style lemmas ---
 // sym on a trivially-equal Nat. Pattern unification solves A, x, y
 // from `refl zero : Eq[Nat] zero zero`.

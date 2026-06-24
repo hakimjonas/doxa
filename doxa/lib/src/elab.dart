@@ -3003,9 +3003,10 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
               final rawV = substNVar(expected, scrutLevel, ctorResultV);
               // Normalize stuck function applications
               // (e.g. half (VConstr zero)) when safe.
-              armExpected = _valueContainsNVar(rawV)
-                  ? rawV
-                  : eval(quote(0, rawV), state.ctx.env);
+              armExpected =
+                  _valueContainsNVar(rawV)
+                      ? rawV
+                      : eval(quote(0, rawV), state.ctx.env);
             } else {
               armExpected = expected;
             }
@@ -5809,7 +5810,6 @@ Value _fieldType(VData dataV, String fieldName, List<DataDecl> dataDecls) {
     '_fieldType: record ${dataV.name} has no field named $fieldName',
   );
 }
-
 
 bool _valueContainsNVar(Value v) {
   if (v is VNeutral) {

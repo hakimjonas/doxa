@@ -63,11 +63,11 @@ fun isZero(n: Nat) : Prop = match n {
   case succ k => False
 }
 
-val succ_ne_zero : (n: Nat) -> Eq Nat (succ n) zero -> False = (n: Nat) => (p: Eq Nat (succ n) zero) => Eq.rec Nat ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => isZero b -> isZero a) ((z: Nat) => (h: isZero z) => h) (succ n) zero p (refl zero)
+val succ_ne_zero : (n: Nat) -> Eq Nat (succ n) zero -> False = (n: Nat) => (p: Eq Nat (succ n) zero) => Eq.rec Nat ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => isZero b -> isZero a) (succ n) zero ((z: Nat) => (h: isZero z) => h) p (refl zero)
 // Indexed families carry data in their types. `Vec[A] n` is a list whose
 // length `n` is part of its type. The theorem below is proved about that
 // index: the runtime length of a vector equals the index its type
 // carries. The proof uses `Vec.ind`, the dependent eliminator whose
 // motive ranges over both the index and the vector.
 
-val vlength_index : (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) n = (A: Type) => Vec.ind A ((m: Nat) => (w: Vec A m) => Eq Nat (vlength w) m) (refl zero) ((k: Nat) => (x: A) => (rest: Vec A k) => (ih: Eq Nat (vlength rest) k) => cong ((j: Nat) => succ j) ih)
+val vlength_index : (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) n = (A: Type) => (n: Nat) => (v: Vec A n) => Vec.ind A ((m: Nat) => (w: Vec A m) => Eq Nat (vlength w) m) n (refl zero) ((k: Nat) => (x: A) => (rest: Vec A k) => (ih: Eq Nat (vlength rest) k) => cong ((j: Nat) => succ j) ih) v

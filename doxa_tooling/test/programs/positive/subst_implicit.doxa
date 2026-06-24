@@ -6,7 +6,7 @@ data Nat : Type {
   succ : Nat -> Nat;
 }
 
-fun subst{A: Type, x: A, y: A}(P: A -> Type, p: Eq A x y, px: P x) : P y = Eq.rect A ((a: A) => (b: A) => (_: Eq A a b) => P a -> P b) ((z: A) => (pz: P z) => pz) x y p px
+fun subst{A: Type, x: A, y: A}(P: A -> Type, p: Eq A x y, px: P x) : P y = Eq.rect A ((a: A) => (b: A) => (_: Eq A a b) => P a -> P b) x y ((z: A) => (pz: P z) => pz) p px
 
 val p : Eq Nat zero zero = refl zero
 

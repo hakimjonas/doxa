@@ -11,7 +11,7 @@ fun map{A: Type, B: Type}(xs: List A, f: A -> B) : List B = match xs {
   case cons h t => cons (f h) (map t f)
 }
 
-val cong_e : (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x y -> Eq B (f x) (f y) = (A: Type) => (B: Type) => (f: A -> B) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) ((z: A) => refl (f z)) x y p
+val cong_e : (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x y -> Eq B (f x) (f y) = (A: Type) => (B: Type) => (f: A -> B) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) x y ((z: A) => refl (f z)) p
 // The map_compose cons step as a standalone goal (no List.ind motive
 // wrapping): both sides are concrete cons-reductions.
 

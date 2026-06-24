@@ -354,8 +354,9 @@ val succ_injective : (a: Nat) -> (b: Nat) -> Eq[Nat] (succ a) (succ b) -> Eq[Nat
   (a: Nat) => (b: Nat) => (h: Eq[Nat] (succ a) (succ b)) =>
     Eq.rec Nat
       ((x: Nat) => (y: Nat) => (p: Eq[Nat] x y) => Eq[Nat] (pred x) (pred y))
+      (succ a) (succ b)
       ((z: Nat) => refl (pred z))
-      (succ a) (succ b) h
+      h
 ''';
       final prog = _parse(src);
       var bindings = const <TopBinding>[];
