@@ -1793,9 +1793,10 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       if (isRec) {
         // Recursive local binding `val rec f(x: T): R = body; result`.
         // The domain is a Pi type built by the parser, and the bound is
-        // a lambda chain. Self-references inside the lambda body
-        // resolve via a placeholder TopBinding added to topEnv, matching
-        // the way top-level `fun` blocks handle mutual recursion.
+        // a lambda chain. Self-references inside the lambda body are NOT
+        // supported (use a top-level `fun` for full recursion). The
+        // result body CAN reference the function via the TLet binder.
+        // At eval time, the TLet wraps the bound in a VFun guard.
         final (piTerm, _) = _inferExpr(state, domain!);
         final piV = eval(piTerm, state.ctx.env);
 
@@ -1815,32 +1816,9 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
           }
         }
 
-        // Register a placeholder TopBinding so the lambda body can
-        // reference itself via the topEnv.  The placeholder's term
-        // (TType 0) is never evaluated; TTop(name) in the body
-        // resolves through the topBindings map, matching how
-        // top-level `fun` blocks handle mutual recursion.
-        // The isOpaque flag ensures TTop stays as a stuck neutral
-        // (NTop) during elaboration, avoiding evaluation of the
-        // placeholder term before the actual body is available.
-        final placeholderBinding = TopBinding(
-          name: param,
-          type: piTerm,
-          term: const TType(_l0),
-          span: expr.span,
-          isOpaque: true,
-        );
-        final recTopEnv = TopEnv(
-          [...state.topEnv.bindings, placeholderBinding],
-          state.topEnv.dataDecls,
-          state.topEnv.classRegistry,
-          state.topEnv.namespaceBindings,
-        );
-        final recCtx = recTopEnv.toCtx(metas: state.ctx.metas);
-
         // Elaborate param domains and build the TLam chain.
-        // The lambda body is elaborated WITH the rec name in scope.
-        var funState = _ElabState(recTopEnv, recCtx, state.names);
+        // The lambda body is elaborated WITHOUT the rec name in scope.
+        var funState = state;
         final domainTerms = <Term>[];
         for (var i = 0; i < paramNames.length; i++) {
           final (domT, _) = _inferExpr(funState, paramDomains[i]);
@@ -2051,14 +2029,10 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
         Value builtV = _vType0;
         if (headVAsPi != null) {
           final argV = eval(argT, state.ctx.env);
-          try {
-            builtV = eval(
-              headVAsPi.codomain.body,
-              headVAsPi.codomain.env.extend(argV),
-            );
-          } on StateError {
-            // Keep placeholder; kernel reports the real error.
-          }
+          builtV = eval(
+            headVAsPi.codomain.body,
+            headVAsPi.codomain.env.extend(argV),
+          );
         }
 
         resultT = builtT;
@@ -3945,6 +3919,7 @@ TopBinding _elabFun(
           _l0,
         ), // never evaluated, TTop resolves via topBindings
         span: m.span,
+        isOpaque: true, // stays stuck as NTop during elaboration
       ),
     );
   }
@@ -4397,6 +4372,60 @@ void _analyzeCrossCallCycles(
   }
 }
 
+/// Returns true if [name] is a dotted inductively-generated recursor
+/// name (e.g. `Nat.ind`, `Bool.rec`, `Eq.rect`).
+bool _isInductiveRecursor(String name) {
+  final dot = name.indexOf('.');
+  if (dot < 0) return false;
+  final suffix = name.substring(dot + 1);
+  return suffix == 'ind' || suffix == 'rec' || suffix == 'rect';
+}
+
+/// Walk the step lambda of an induction principle call (e.g. `Nat.ind`).
+/// The step function has shape `(k: Nat) => (ih: ...) => body`.  The
+/// predecessor parameter `k` is added to [subTerms] when walking the
+/// body, since `k` is a strict sub-term of the induction scrutinee.
+void _walkStepForInd(
+  SExpr step, {
+  required Set<String> blockMembers,
+  required String? designated,
+  required int? designatedIdx,
+  required Set<String> subTerms,
+  required Set<String> shadowed,
+  required Map<String, int> memberDeclIdxs,
+  required String callerName,
+  required List<_CrossCall> unguardedCrossCalls,
+}) {
+  if (step.kind is! SLamKind) return;
+  final lam = step.kind as SLamKind;
+  // Walk domain.
+  if (lam.domain != null) {
+    _walkForRecursion(
+      expr: lam.domain!,
+      blockMembers: blockMembers,
+      designated: designated,
+      designatedIdx: designatedIdx,
+      subTerms: subTerms,
+      shadowed: shadowed,
+      memberDeclIdxs: memberDeclIdxs,
+      callerName: callerName,
+      unguardedCrossCalls: unguardedCrossCalls,
+    );
+  }
+  // Walk the body with the predecessor parameter (k) in subTerms.
+  _walkForRecursion(
+    expr: lam.body,
+    blockMembers: blockMembers,
+    designated: designated,
+    designatedIdx: designatedIdx,
+    subTerms: {...subTerms, lam.param},
+    shadowed: {...shadowed, lam.param},
+    memberDeclIdxs: memberDeclIdxs,
+    callerName: callerName,
+    unguardedCrossCalls: unguardedCrossCalls,
+  );
+}
+
 /// Core walker for [_checkStructuralRecursion]. Descends into the
 /// surface AST, tracking shadowed names and sub-term bindings. Every
 /// reference to a block member is checked for structurality.
@@ -4518,32 +4547,81 @@ void _walkForRecursion({
           );
         }
       } else {
-        // Non-block-member head: walk fn + arg normally. Use the
-        // original SAppKind fields rather than the flattened shape
-        // so we don't re-traverse.
-        final app = expr.kind as SAppKind;
-        _walkForRecursion(
-          expr: app.fn,
-          blockMembers: blockMembers,
-          designated: designated,
-          designatedIdx: designatedIdx,
-          subTerms: subTerms,
-          shadowed: shadowed,
-          memberDeclIdxs: memberDeclIdxs,
-          callerName: callerName,
-          unguardedCrossCalls: unguardedCrossCalls,
-        );
-        _walkForRecursion(
-          expr: app.arg,
-          blockMembers: blockMembers,
-          designated: designated,
-          designatedIdx: designatedIdx,
-          subTerms: subTerms,
-          shadowed: shadowed,
-          memberDeclIdxs: memberDeclIdxs,
-          callerName: callerName,
-          unguardedCrossCalls: unguardedCrossCalls,
-        );
+        // Non-block-member head: walk fn + arg normally.
+        // Special case: induction principles like `Nat.ind(motive, base,
+        // step, scrutinee)`.  If the scrutinee (4th arg) is a sub-term,
+        // then the predecessor parameter of the step lambda is also a
+        // sub-term.
+        final (flatHead, flatArgs) = _flattenApp(expr);
+        final headName = _flattenDottedIdent(flatHead);
+        final isInd = headName != null && _isInductiveRecursor(headName);
+        if (isInd && flatArgs.length >= 4) {
+          // Argument layout: [motive, base, step, scrutinee].
+          final scrutinee = flatArgs[3];
+          final scrName =
+              scrutinee.kind is SIdentKind
+                  ? (scrutinee.kind as SIdentKind).name
+                  : null;
+          final scrIsSubTerm =
+              (scrName != null && subTerms.contains(scrName)) ||
+              (scrName != null && scrName == designated);
+          // Walk mot, base, step, scrutinee normally.
+          for (var i = 0; i < flatArgs.length; i++) {
+            if (i == 2 && scrIsSubTerm) {
+              // Step lambda: (k: Nat) => (ih: ...) => body.
+              // k is a sub-term of scrutinee via induction.
+              final step = flatArgs[2];
+              _walkStepForInd(
+                step,
+                blockMembers: blockMembers,
+                designated: designated,
+                designatedIdx: designatedIdx,
+                subTerms: subTerms,
+                shadowed: shadowed,
+                memberDeclIdxs: memberDeclIdxs,
+                callerName: callerName,
+                unguardedCrossCalls: unguardedCrossCalls,
+              );
+            } else {
+              _walkForRecursion(
+                expr: flatArgs[i],
+                blockMembers: blockMembers,
+                designated: designated,
+                designatedIdx: designatedIdx,
+                subTerms: subTerms,
+                shadowed: shadowed,
+                memberDeclIdxs: memberDeclIdxs,
+                callerName: callerName,
+                unguardedCrossCalls: unguardedCrossCalls,
+              );
+            }
+          }
+        } else {
+          // Default: walk fn + arg from the original SAppKind.
+          final app = expr.kind as SAppKind;
+          _walkForRecursion(
+            expr: app.fn,
+            blockMembers: blockMembers,
+            designated: designated,
+            designatedIdx: designatedIdx,
+            subTerms: subTerms,
+            shadowed: shadowed,
+            memberDeclIdxs: memberDeclIdxs,
+            callerName: callerName,
+            unguardedCrossCalls: unguardedCrossCalls,
+          );
+          _walkForRecursion(
+            expr: app.arg,
+            blockMembers: blockMembers,
+            designated: designated,
+            designatedIdx: designatedIdx,
+            subTerms: subTerms,
+            shadowed: shadowed,
+            memberDeclIdxs: memberDeclIdxs,
+            callerName: callerName,
+            unguardedCrossCalls: unguardedCrossCalls,
+          );
+        }
       }
     case SLamKind(:final param, :final domain, :final body):
       if (domain != null) {
