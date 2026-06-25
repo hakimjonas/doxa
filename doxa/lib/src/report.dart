@@ -445,10 +445,14 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
 }
 
 /// Pretty-print a [Value] by quoting it at the supplied [level] and
-/// rendering with the printer pre-populated with that many outer
-/// placeholder scopes.
+/// rendering with the compact printer (depth-capped) pre-populated
+/// with that many outer placeholder scopes.
 String _prettyValueAt(
   Value v,
   int level, [
   List<String?> outerNames = const <String?>[],
-]) => prettyTerm(quote(level, v), outerDepth: level, outerNames: outerNames);
+]) => prettyTermCompact(
+  quote(level, v),
+  outerDepth: level,
+  outerNames: outerNames,
+);

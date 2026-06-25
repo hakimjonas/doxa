@@ -32,11 +32,16 @@ import 'term.dart';
 /// the list is shorter than [outerDepth], the remaining outer binders
 /// get synthesized names too.
 ///
+/// When [maxDepth] is non-null, terms nested deeper than [maxDepth] are
+/// rendered as `…`.  This is used by [prettyTermCompact] to keep error
+/// messages from dumping multi-kilobyte kernel terms.
+///
 /// See the library docstring for caveats.
 String prettyTerm(
   Term term, {
   int outerDepth = 0,
   List<String?> outerNames = const <String?>[],
+  int? maxDepth,
 }) {
   final printer = _Printer();
   for (var i = 0; i < outerDepth; i++) {
@@ -47,8 +52,25 @@ String prettyTerm(
             : '?${printer._letterName(i)}';
     printer.scope.add(name);
   }
-  return printer.term(term, _precTop);
+  return printer.term(term, _precTop, depth: maxDepth ?? _maxDepth);
 }
+
+/// Like [prettyTerm] but caps nesting at a shallow depth so that enormous
+/// kernel terms (expanded `Eq.rec` chains, unsolved metas with huge
+/// spines) don't overwhelm error output.
+String prettyTermCompact(
+  Term term, {
+  int outerDepth = 0,
+  List<String?> outerNames = const <String?>[],
+}) => prettyTerm(
+  term,
+  outerDepth: outerDepth,
+  outerNames: outerNames,
+  maxDepth: 8,
+);
+
+/// Default depth limit for [prettyTerm] (no limit).
+const int _maxDepth = 1000000;
 
 // Precedence levels. Higher = binds tighter. Used to decide when to
 // wrap a sub-expression in parentheses.
@@ -76,7 +98,12 @@ class _Printer {
       'Type (imax ${_prettyLevel(lhs)} ${_prettyLevel(rhs)})',
   };
 
-  String term(Term t, int prec) => switch (t) {
+  String term(Term t, int prec, {int depth = _maxDepth}) {
+    if (depth <= 0) return '…';
+    return _termInner(t, prec, depth: depth);
+  }
+
+  String _termInner(Term t, int prec, {required int depth}) => switch (t) {
     TType(:final level) => _prettyLevel(level),
     TProp() => 'Prop',
     TSProp() => 'SProp',
@@ -84,18 +111,20 @@ class _Printer {
     // TFree should not appear in well-formed kernel terms after
     // elaboration, but we still render it sanely.
     TFree(:final name) => name,
-    TApp(:final fn, :final arg) => _app(fn, arg, prec),
+    TApp(:final fn, :final arg) => _app(fn, arg, prec, depth: depth),
     TLam(:final name, :final domain, :final body) => _lam(
       name,
       domain,
       body,
       prec,
+      depth: depth,
     ),
     TPi(:final name, :final domain, :final codomain) => _pi(
       name,
       domain,
       codomain,
       prec,
+      depth: depth,
     ),
     TLet(:final name, :final domain, :final bound, :final body) => _let(
       name,
@@ -103,25 +132,36 @@ class _Printer {
       bound,
       body,
       prec,
+      depth: depth,
     ),
-    TData(:final name, :final args) => _data(name, args, prec),
+    TData(:final name, :final args) => _data(name, args, prec, depth: depth),
     TConstr(:final dataName, :final ctorName, :final args) => _constr(
       dataName,
       ctorName,
       args,
       prec,
+      depth: depth,
     ),
     TRec(:final dataName) => '$dataName.rec',
     TTop(:final name) => name,
     TMeta(:final id) => '?$id',
-    TMatch(:final scrutinee, :final cases) => _match(scrutinee, cases, prec),
+    TMatch(:final scrutinee, :final cases) => _match(
+      scrutinee,
+      cases,
+      prec,
+      depth: depth,
+    ),
     TQuot(:final carrier, :final relation) =>
-      'Quot(${term(carrier, _precTop)}, ${term(relation, _precTop)})',
-    TQuotMk(:final arg) => 'Quot.mk(${term(arg, _precAppArg)})',
+      'Quot(${term(carrier, _precTop, depth: depth - 1)}, '
+          '${term(relation, _precTop, depth: depth - 1)})',
+    TQuotMk(:final arg) =>
+      'Quot.mk(${term(arg, _precAppArg, depth: depth - 1)})',
     TQuotLift(:final quot, :final fn, :final proof) =>
-      'Quot.lift(${term(quot, _precAppArg)}, ${term(fn, _precAppArg)}, ${term(proof, _precAppArg)})',
+      'Quot.lift(${term(quot, _precAppArg, depth: depth - 1)}, '
+          '${term(fn, _precAppArg, depth: depth - 1)}, '
+          '${term(proof, _precAppArg, depth: depth - 1)})',
     TProj(:final expr, :final fieldName) =>
-      '${term(expr, _precAppArg)}.$fieldName',
+      '${term(expr, _precAppArg, depth: depth - 1)}.$fieldName',
   };
 
   /// Render a `match` expression in surface form (no separator between
@@ -129,10 +169,15 @@ class _Printer {
   /// surface syntax allows `returning P` but the common case is the
   /// inferred motive, which readers don't want echoed back. If needed,
   /// a `returning P` variant of the printer can be added later.
-  String _match(Term scrutinee, List<TMatchCase> cases, int prec) {
+  String _match(
+    Term scrutinee,
+    List<TMatchCase> cases,
+    int prec, {
+    required int depth,
+  }) {
     final sb = StringBuffer();
     sb.write('match ');
-    sb.write(term(scrutinee, _precAppArg));
+    sb.write(term(scrutinee, _precAppArg, depth: depth - 1));
     sb.write(' {');
     for (final arm in cases) {
       sb.write(' case ');
@@ -156,7 +201,7 @@ class _Printer {
         }
       }
       sb.write(' => ');
-      sb.write(term(arm.body, _precTop));
+      sb.write(term(arm.body, _precTop, depth: depth - 1));
       for (var i = 0; i < pushed.length; i++) {
         scope.removeLast();
       }
@@ -202,20 +247,26 @@ class _Printer {
     return round == 0 ? letter : '$letter$round';
   }
 
-  String _app(Term fn, Term arg, int prec) {
-    final fnStr = term(fn, _precAppFn);
-    final argStr = term(arg, _precAppArg);
+  String _app(Term fn, Term arg, int prec, {required int depth}) {
+    final fnStr = term(fn, _precAppFn, depth: depth - 1);
+    final argStr = term(arg, _precAppArg, depth: depth - 1);
     final s = '$fnStr $argStr';
     return prec >= _precAppArg ? '($s)' : s;
   }
 
-  String _lam(String? hint, Term domain, Term body, int prec) {
+  String _lam(
+    String? hint,
+    Term domain,
+    Term body,
+    int prec, {
+    required int depth,
+  }) {
     final name = _freshBinder(hint);
-    final domStr = term(domain, _precTop);
+    final domStr = term(domain, _precTop, depth: depth - 1);
     scope.add(name);
     // Lambdas are right-extended: the body goes at _precTop so a nested
     // lambda doesn't wrap.
-    final bodyStr = term(body, _precTop);
+    final bodyStr = term(body, _precTop, depth: depth - 1);
     scope.removeLast();
     final s = '($name: $domStr) => $bodyStr';
     // Lambda and arrow share the same syntactic "right-biased" shape.
@@ -223,35 +274,48 @@ class _Printer {
     return prec >= _precAppFn ? '($s)' : s;
   }
 
-  String _pi(String? hint, Term domain, Term codomain, int prec) {
+  String _pi(
+    String? hint,
+    Term domain,
+    Term codomain,
+    int prec, {
+    required int depth,
+  }) {
     // Non-dependent arrow detection: hint is null AND the codomain
     // never references TBound(0). This is the syntactic shortcut
     // `A -> B` rather than `(_: A) -> B`.
     if (hint == null && !_referencesBound0(codomain)) {
-      final domStr = term(domain, _precAppFn);
+      final domStr = term(domain, _precAppFn, depth: depth - 1);
       scope.add('_'); // placeholder for index accounting
       // Right-associative: the codomain accepts another arrow without
       // parens. Use _precTop to allow that.
-      final codStr = term(codomain, _precTop);
+      final codStr = term(codomain, _precTop, depth: depth - 1);
       scope.removeLast();
       final s = '$domStr -> $codStr';
       return prec >= _precAppFn ? '($s)' : s;
     }
     final name = _freshBinder(hint);
-    final domStr = term(domain, _precTop);
+    final domStr = term(domain, _precTop, depth: depth - 1);
     scope.add(name);
-    final codStr = term(codomain, _precTop);
+    final codStr = term(codomain, _precTop, depth: depth - 1);
     scope.removeLast();
     final s = '($name: $domStr) -> $codStr';
     return prec >= _precAppFn ? '($s)' : s;
   }
 
-  String _let(String? hint, Term domain, Term bound, Term body, int prec) {
+  String _let(
+    String? hint,
+    Term domain,
+    Term bound,
+    Term body,
+    int prec, {
+    required int depth,
+  }) {
     final name = _freshBinder(hint);
-    final domStr = term(domain, _precTop);
-    final boundStr = term(bound, _precTop);
+    final domStr = term(domain, _precTop, depth: depth - 1);
+    final boundStr = term(bound, _precTop, depth: depth - 1);
     scope.add(name);
-    final bodyStr = term(body, _precTop);
+    final bodyStr = term(body, _precTop, depth: depth - 1);
     scope.removeLast();
     // Value-block form: a `val` binding (terminated by `;`) then the
     // body as the block's value (implicit, no `in` keyword). A let-chain
@@ -260,20 +324,32 @@ class _Printer {
     return '{ val $name: $domStr = $boundStr; $bodyStr }';
   }
 
-  String _data(String name, List<Term> args, int prec) {
+  String _data(String name, List<Term> args, int prec, {required int depth}) {
     if (args.isEmpty) return name;
-    final parts = [name, for (final a in args) term(a, _precAppArg)];
+    final parts = [
+      name,
+      for (final a in args) term(a, _precAppArg, depth: depth - 1),
+    ];
     final s = parts.join(' ');
     return prec >= _precAppArg ? '($s)' : s;
   }
 
-  String _constr(String dataName, String ctorName, List<Term> args, int prec) {
+  String _constr(
+    String dataName,
+    String ctorName,
+    List<Term> args,
+    int prec, {
+    required int depth,
+  }) {
     // Constructors are printed as `ctorName` or `ctorName a1 a2 ...`.
     // The data parameters occupy the initial positions in `args` and are
     // inferable from the expected type at the call site; for clarity we
     // print them all.
     if (args.isEmpty) return ctorName;
-    final parts = [ctorName, for (final a in args) term(a, _precAppArg)];
+    final parts = [
+      ctorName,
+      for (final a in args) term(a, _precAppArg, depth: depth - 1),
+    ];
     final s = parts.join(' ');
     return prec >= _precAppArg ? '($s)' : s;
   }
