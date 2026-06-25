@@ -81,30 +81,28 @@ void main() {
 
   group('Block elaboration (de Bruijn)', () {
     test('body references bound name via TBound(0)', () {
-      final t = ee('{ val x: Type = Type; x }');
+      final t = ee('{ val x: Type 1 = Type; x }');
       expect(
         t,
-        const TLet(TType(LLevel(0)), TType(LLevel(0)), TBound(0), name: 'x'),
+        const TLet(TType(LLevel(1)), TType(LLevel(0)), TBound(0), name: 'x'),
       );
     });
 
     test('two bindings: result refers to outer via TBound(1)', () {
-      final t = ee('{ val x: Type = Type; val y: Type = Type; x }');
+      final t = ee('{ val x: Type 1 = Type; val y: Type 1 = Type; x }');
       // Under inner's binder, x = TBound(1), y = TBound(0).
       expect(
         t,
         const TLet(
+          TType(LLevel(1)),
           TType(LLevel(0)),
-          TType(LLevel(0)),
-          TLet(TType(LLevel(0)), TType(LLevel(0)), TBound(1), name: 'y'),
+          TLet(TType(LLevel(1)), TType(LLevel(0)), TBound(1), name: 'y'),
           name: 'x',
         ),
       );
     });
 
     test('elab infers an unannotated binding from the bound expr', () {
-      // Binder type inferred from the bound expr: `Type : Type 1`, so the
-      // TLet's domain term is `TType(LLevel(1))`.
       final t = ee('{ val x = Type; x }');
       expect(
         t,
@@ -115,14 +113,14 @@ void main() {
 
   group('Block evaluation', () {
     test('bound value is inlined into env; no block value remains', () {
-      final t = ee('{ val x: Type = Type 5; x }');
+      final t = ee('{ val x: Type 6 = Type 5; x }');
       final v = eval(t, const ENil());
       expect(v, isA<VType>());
       expect((v as VType).level, const LLevel(5));
     });
 
     test('shared value across body uses', () {
-      final t = ee('{ val x: Type = Type 3; x -> x }');
+      final t = ee('{ val x: Type 4 = Type 3; x -> x }');
       final nf_ = nf(t);
       // Normalizes to TPi(Type 3, Type 3): binding gone, both x resolved.
       expect(nf_, isA<TPi>());
@@ -134,33 +132,29 @@ void main() {
 
   group('Block type inference', () {
     test('infer type of block body under extended ctx', () {
-      final t = ee('{ val x: Type = Type; x }');
+      final t = ee('{ val x: Type 1 = Type; x }');
       expect(t, isA<TLet>());
       final env = elabProgram(
-        parseProgramOk('val x: Type 1 = { val x: Type = Type; x }'),
+        parseProgramOk('val x: Type 2 = { val x: Type 1 = Type; x }'),
       );
       expect(env.bindings, hasLength(1));
     });
 
     test('block checked against expected type (success)', () {
-      final program = parseProgramOk('val y: Type = { val x: Type = Type; x }');
+      final program = parseProgramOk(
+        'val y: Type 2 = { val x: Type 1 = Type; x }',
+      );
       final env = elabProgram(program);
       expect(env.bindings, hasLength(1));
     });
 
-    test('block with ill-typed bound expression fails at check time', () {
+    test('block with ill-typed bound expression fails at elab time', () {
       // `Type : Type 1` is NOT <= `Type 0` (the annotation); the bound
-      // is checked against the domain at type-check time, not elab time.
+      // is now checked against the domain at elab time via check mode.
       final program = parseProgramOk(
         'val y: Type 1 = { val x: Type = Type; x }',
       );
-      final env = elabProgram(program);
-      final b = env.bindings[0];
-      final ctx = env.toCtx();
-      expect(
-        () => check(ctx, b.term, eval(b.type, ctx.env)),
-        throwsA(isA<TypeMismatch>()),
-      );
+      expect(() => elabProgram(program), throwsA(isA<TypeMismatch>()));
     });
 
     test('block with matching types succeeds (Type 1 annotation)', () {
@@ -214,8 +208,8 @@ void main() {
 
   group('Block pretty-printing', () {
     test('simple binding round-trips as a block', () {
-      final t = ee('{ val x: Type = Type; x }');
-      expect(prettyTerm(t), '{ val x: Type = Type; x }');
+      final t = ee('{ val x: Type 1 = Type; x }');
+      expect(prettyTerm(t), '{ val x: Type 1 = Type; x }');
     });
   });
 

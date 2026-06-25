@@ -7919,5 +7919,23 @@ Value substNVar(Value value, int scrutLevel, Value replacement) {
         ? value
         : VPi(nd, value.codomain, name: value.name, icit: value.icit);
   }
+  if (value is VFun) {
+    var changed = false;
+    final newSpine = <Value>[];
+    for (final a in value.spine) {
+      final na = substNVar(a, scrutLevel, replacement);
+      newSpine.add(na);
+      if (!identical(na, a)) changed = true;
+    }
+    return changed
+        ? VFun(
+          value.name,
+          value.lam,
+          value.decreasingArg,
+          value.arity,
+          newSpine,
+        )
+        : value;
+  }
   return value;
 }

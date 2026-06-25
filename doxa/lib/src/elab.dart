@@ -1862,12 +1862,11 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
         boundTerm = inferredBound;
         domainTerm = quote(state.ctx.level, boundType);
       } else {
-        // Annotated binder: infer both sides under the threaded state.
-        // The kernel's TLet check enforces `bound : domain`.
+        // Annotated binder: elaborate domain, then check bound against it.
         final (annTerm, _) = _inferExpr(state, domain);
         domainTerm = annTerm;
-        final (inferredBound, _) = _inferExpr(state, bound);
-        boundTerm = inferredBound;
+        final domainV = eval(domainTerm, state.ctx.env);
+        boundTerm = _checkExpr(state, bound, domainV);
       }
       final domainV = eval(domainTerm, state.ctx.env);
       final boundV = eval(boundTerm, state.ctx.env);
@@ -1968,37 +1967,21 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
 
         // 2b. Determine the argument term.
         final Term argT;
-        // When headV is a VPi, use it directly.  For VNeutral(NTop)
-        // or VNeutral(NApp(NTop(...), ...)) — opaque placeholders
-        // resolved via TTop — extract the Pi from topBindings and
-        // advance it through any accumulated neutral applications.
-        VPi? _computeHeadPi(Value v) {
-          if (v is VPi) return v;
-          if (v is! VNeutral) return null;
-          final args = <Value>[];
-          var n = v.neutral;
-          while (n is NApp) {
-            args.add(n.arg);
-            n = n.fn;
-          }
-          if (n is! NTop) return null;
-          final te = state.ctx.env.lookupTop(n.name);
-          if (te == null) return null;
-          if (te.type is! VPi) return null;
-          // The VPi from topBindings may have depth-mismatched
-          // closures.  Advance it through any accumulated neutral
-          // applications using _stepPi which handles mismatches.
-          var cur = te.type as Value;
-          for (final a in args.reversed) {
-            if (cur is! VPi) return null;
-            final next = _stepPi(cur, a);
-            if (next == null) return null;
-            cur = next;
-          }
-          return cur is VPi ? cur : null;
-        }
-
-        final headVAsPi = _computeHeadPi(headV);
+        // When an opaque placeholder is resolved via TTop, headV is a
+        // VNeutral(NTop(name)).  Extract the real Pi type from
+        // topBindings so argument elaboration checks against the
+        // correct domain.
+        final headVAsPi =
+            headV is VPi
+                ? headV
+                : (headV is VNeutral && headV.neutral is NTop
+                    ? (switch (state.ctx.env
+                        .lookupTop((headV.neutral as NTop).name)
+                        ?.type) {
+                      VPi pi => pi,
+                      _ => null,
+                    })
+                    : null);
         if (i == fns.length - 1 || followFn[i]) {
           // Innermost or left-deep: arg is a raw SExpr.
           if (headVAsPi != null) {
@@ -2051,10 +2034,13 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
               headVAsPi.codomain.env.extend(argV),
             );
           } on StateError catch (_) {
-            // The closure env depth doesn't match the TBound refs.
-            // Use the current elaboration env which has the
-            // function params pushed at the right depth.
-            builtV = eval(headVAsPi.codomain.body, state.ctx.env.extend(argV));
+            // The codomain eval failed — the VPi was built at a
+            // different env depth.  Strip bodyIsNormal and retry.
+            final stripped = _stripBodyIsNormal(headVAsPi) as VPi;
+            builtV = eval(
+              stripped.codomain.body,
+              stripped.codomain.env.extend(argV),
+            );
           }
         }
 
@@ -2667,69 +2653,6 @@ Value _stripBodyIsNormal(Value v) => switch (v) {
   _ => v,
 };
 
-/// Rebuild a VPi from [typeTerm] by evaluating it in an env padded
-/// with dummy binders matching the Pi depth.  Fixes TBound index
-/// mismatches from terms built by `_dataSignatureTerm` or
-/// `_buildFunType` where indices assume a specific scope depth.
-Value _rebuildVPiForShim(Term typeTerm, Env shimEnv, Value oldVPi) {
-  var piCount = 0;
-  var cur = typeTerm;
-  while (cur is TPi) {
-    piCount++;
-    cur = (cur as TPi).codomain;
-  }
-  var paddedEnv = shimEnv;
-  for (var i = 0; i < piCount; i++) {
-    paddedEnv = paddedEnv.extend(const VType(_l0));
-  }
-  try {
-    final rebuilt = eval(typeTerm, paddedEnv);
-    if (rebuilt is VPi) return _stripBodyIsNormal(rebuilt);
-    throw StateError(
-      '_rebuildVPiForShim: eval returned ${rebuilt.runtimeType}',
-    );
-  } on StateError catch (e) {
-    throw StateError('_rebuildVPiForShim failed at piCount=$piCount: $e');
-  }
-}
-
-/// Step a VPi through one application: evaluate the codomain with
-/// [argV] substituted for the domain binder.  Returns the resulting
-/// VPi, or null if evaluation fails or produces a non-VPi value.
-VPi? _stepPi(VPi pi, Value argV) {
-  try {
-    final codV = eval(pi.codomain.body, pi.codomain.env.extend(argV));
-    if (codV is VPi) return codV;
-    return null;
-  } on StateError {
-    try {
-      final stripped = _stripBodyIsNormal(pi) as VPi;
-      final codV = eval(
-        stripped.codomain.body,
-        stripped.codomain.env.extend(argV),
-      );
-      if (codV is VPi) return codV;
-      return null;
-    } on StateError {
-      return null;
-    }
-  }
-}
-
-/// Compute the result type of applying a function of type [pi] to
-/// [args].  Returns the final codomain (possibly non-VPi for the
-/// last step), or null if any step fails.
-Value? _applyPiToArgs(VPi pi, List<Value> args) {
-  var cur = pi as Value;
-  for (final arg in args) {
-    if (cur is! VPi) return null;
-    final next = _stepPi(cur, arg);
-    if (next == null) return null;
-    cur = next;
-  }
-  return cur;
-}
-
 /// Build an `_ElabState` approximating the current [topEnv] + [locals]
 /// for the `_elabExpr` shim. Each local binder is pushed into [Ctx]
 /// with a placeholder [VType(0)] type, the shim discards any [Value]
@@ -2776,15 +2699,12 @@ _ElabState _shimState(TopEnv topEnv, _LocalScope locals, {MetaContext? metas}) {
     if (b.term == const TType(_l0) && typeV is VPi) {
       // Mutual-pre-binding sentinel: stub as NTop neutral.
       valueV = VNeutral(NTop(b.name));
-      // Rebuild the VPi with padded env so codomain eval works.
-      typeV = _rebuildVPiForShim(b.type, env, typeV);
+      // The VPi closures were created during `_buildFunType` at a
+      // higher env depth (function params pushed).  Strip
+      // `bodyIsNormal` so the codomain re-evaluates correctly.
+      typeV = _stripBodyIsNormal(typeV);
     } else {
       valueV = eval(b.term, env);
-      if (typeV is VPi) {
-        // Non-sentinel VPi types may also have depth-dependent
-        // TBound refs (e.g. _dataSignatureTerm).  Rebuild them.
-        typeV = _rebuildVPiForShim(b.type, env, typeV);
-      }
     }
     entries[b.name] = TopBindingEntry(
       typeV,
@@ -6057,6 +5977,7 @@ bool _valueContainsNVar(Value v) {
   if (v is VData) return v.args.any(_valueContainsNVar);
   if (v is VConstr) return v.args.any(_valueContainsNVar);
   if (v is VPi) return _valueContainsNVar(v.domain);
-  if (v is VFun || v is VLam) return true;
+  if (v is VFun) return v.spine.any(_valueContainsNVar);
+  if (v is VLam) return true;
   return false;
 }
