@@ -1,0 +1,2 @@
+// Domain package for Vec — re-exports vec.doxa.
+import "../vec.doxa"

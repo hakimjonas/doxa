@@ -1,0 +1,2 @@
+// Domain package for Typeclass — re-exports typeclasses.doxa.
+import "../typeclasses.doxa"

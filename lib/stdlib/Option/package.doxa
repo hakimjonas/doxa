@@ -1,0 +1,2 @@
+// Domain package for Option — re-exports option.doxa.
+import "../option.doxa"

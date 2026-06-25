@@ -1,0 +1,2 @@
+// Domain package for List — re-exports list.doxa.
+import "../list.doxa"

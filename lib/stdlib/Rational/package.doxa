@@ -1,0 +1,2 @@
+// Domain package for Rational — re-exports rational.doxa.
+import "../rational.doxa"

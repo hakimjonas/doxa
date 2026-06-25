@@ -1,0 +1,2 @@
+// Domain package for Eq — re-exports eq.doxa.
+import "../eq.doxa"

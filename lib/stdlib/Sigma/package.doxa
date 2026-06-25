@@ -1,0 +1,2 @@
+// Domain package for Sigma — re-exports sigma.doxa.
+import "../sigma.doxa"

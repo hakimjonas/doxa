@@ -1,0 +1,2 @@
+// Domain package for Bool — re-exports bool.doxa.
+import "../bool.doxa"

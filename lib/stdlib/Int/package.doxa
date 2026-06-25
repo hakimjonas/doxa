@@ -1,0 +1,2 @@
+// Int domain package — re-exports int.doxa.
+import "../int.doxa"

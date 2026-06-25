@@ -1,0 +1,2 @@
+// Domain package for Nat — re-exports nat.doxa.
+import "../nat.doxa"
