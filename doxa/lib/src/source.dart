@@ -106,10 +106,11 @@ final class SourceFile {
     final prefix = '${pos.line} | ';
     final gutter = '  | ';
     final col = pos.column - 1; // 0-based column for caret positioning
+    final maxCaretLen = line.length > col ? line.length - col : 1;
     final spanLen =
         span.start == span.end
             ? 1
-            : (span.end - span.start).clamp(1, line.length - col);
+            : (span.end - span.start).clamp(1, maxCaretLen);
 
     final buf = StringBuffer();
     // Location header
