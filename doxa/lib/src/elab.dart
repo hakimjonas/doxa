@@ -1768,7 +1768,7 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       );
       return (TTop(flat), topEntry.type);
 
-    case SPiKind(:final param, :final domain, :final codomain):
+    case SPiKind(:final param, :final domain, :final codomain, :final icit):
       // Pi-type elaboration. Sort computation follows `_piSort` in
       // eval.dart (SPEC §8.2 PTS rules). We infer both sides and
       // compute the Pi's sort when both sides inferred cleanly,
@@ -1781,7 +1781,7 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
         codomain,
       );
       final resultV = _computePiSort(domSort, codSort) ?? _vType0;
-      return (TPi(domT, codT, name: param), resultV);
+      return (TPi(domT, codT, name: param, icit: icit), resultV);
 
     case SLetKind(
       :final param,
@@ -1876,7 +1876,7 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       );
       return (TLet(domainTerm, boundTerm, bodyTerm, name: param), bodyV);
 
-    case SLamKind(:final param, :final domain, :final body):
+    case SLamKind(:final param, :final domain, :final body, :final icit):
       // Lambda elaboration in infer mode. An unannotated lambda
       // (`(x) => body`) cannot synthesize its domain here; it only
       // elaborates in check mode against an explicit Pi (see `_checkExpr`
@@ -1908,11 +1908,12 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       final (bodyT, bodyV) = _inferExpr(pushed, body);
       final bodyTypeT = quote(pushed.ctx.level, bodyV);
       return (
-        TLam(domT, bodyT, name: param),
+        TLam(domT, bodyT, name: param, icit: icit),
         VPi(
           domV,
           Closure(state.ctx.env, bodyTypeT, bodyIsNormal: true),
           name: param,
+          icit: icit,
         ),
       );
 
@@ -2035,12 +2036,10 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
             );
           } on StateError catch (_) {
             // The codomain eval failed — the VPi was built at a
-            // different env depth.  Strip bodyIsNormal and retry.
-            final stripped = _stripBodyIsNormal(headVAsPi) as VPi;
-            builtV = eval(
-              stripped.codomain.body,
-              stripped.codomain.env.extend(argV),
-            );
+            // different env depth.  Use the current elaboration env
+            // which has the function params pushed at the right depth.
+            final strippedV = _stripBodyIsNormal(headVAsPi) as VPi;
+            builtV = eval(strippedV.codomain.body, state.ctx.env.extend(argV));
           }
         }
 
@@ -2208,7 +2207,14 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
   }
 
   // 1. Implicit-Pi auto-λ.
-  if (expected is VPi && expected.icit == Icit.implicit) {
+  //    Introduces an implicit λ when the expression is not already an
+  //    implicit lambda written by the user.  If the user wrote
+  //    `{x: A} => body` and the expected type is `{x: A} -> B`, the
+  //    SLamKind check (case 2 below) will handle it directly.
+  if (expected is VPi &&
+      expected.icit == Icit.implicit &&
+      !(expr.kind is SLamKind &&
+          (expr.kind as SLamKind).icit == Icit.implicit)) {
     final name = expected.name ?? '_';
     // Domain term for the introduced TLam: quote expected.domain at
     // the outer level so it's a well-scoped Term relative to the
@@ -2225,9 +2231,13 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
     return TLam(domTerm, bodyT, name: expected.name, icit: Icit.implicit);
   }
 
-  // 2. SLamKind against explicit Pi.
+  // 2. SLamKind against explicit or implicit Pi.
+  //    When the expected Pi is implicit but the lambda is explicit, or
+  //    vice versa, the icit mismatch is handled by the auto-λ case (1)
+  //    or falls through to infer-then-conv below.  Here we match the
+  //    common case where both sides agree.
   final kind = expr.kind;
-  if (kind is SLamKind && expected is VPi && expected.icit == Icit.explicit) {
+  if (kind is SLamKind && expected is VPi) {
     // The domain term for the introduced TLam. When the lambda carries
     // an annotation, infer it and unify with expected.domain (sort-check
     // is subsumed by the conv, a non-sort domain would still mismatch
@@ -2270,7 +2280,7 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
     );
     final pushed = state.push(kind.param, expected.domain);
     final bodyT = _checkExpr(pushed, kind.body, opened);
-    return TLam(domT, bodyT, name: kind.param, icit: Icit.explicit);
+    return TLam(domT, bodyT, name: kind.param, icit: kind.icit);
   }
 
   // 3. SMatchKind without explicit `returning` motive: pass

@@ -31,6 +31,7 @@ library;
 import 'package:rumil/rumil.dart';
 
 import 'surface.dart';
+import 'term.dart' show Icit;
 
 /// Parse a Doxa program from source text.
 ///
@@ -253,7 +254,7 @@ Parser<ParseError, SExpr> _spanned(Parser<ParseError, SExprKind> p) =>
 /// means `_binder | _appOrArrow` backtracks cleanly when the `(ident : ty)`
 /// header fails to match, no `attempt` wrapper needed.
 final Parser<ParseError, SExpr> _expr = defer(
-  () => _matchExpr | _binder | _appOrArrow,
+  () => _matchExpr | _binder | _implicitBinder | _appOrArrow,
 );
 
 /// A single `val` binding inside a block: `'val' ident (':' type)? '=' expr`.
@@ -534,6 +535,45 @@ final Parser<ParseError, SExpr> _binder = position<ParseError>().flatMap(
             ),
       ),
 );
+
+/// `{x : T} -> body` or `{x : T} => body` — implicit binder.
+final Parser<ParseError, SExpr> _implicitBinder = position<ParseError>()
+    .flatMap(
+      (start) => _sym('{')
+          .skipThen(_ident)
+          .flatMap(
+            (name) => _sym(':')
+                .skipThen(_expr)
+                .flatMap(
+                  (domain) => _sym('}').skipThen(
+                    (_sym('=>').as<String>('=>') | _sym('->').as<String>('->'))
+                        .flatMap(
+                          (arrow) =>
+                              _expr.zip(position<ParseError>()).map((pair) {
+                                final body = pair.$1;
+                                final end = pair.$2;
+                                final span = DoxaSpan(start, end);
+                                final kind =
+                                    arrow == '=>'
+                                        ? SLamKind(
+                                          name,
+                                          domain,
+                                          body,
+                                          icit: Icit.implicit,
+                                        )
+                                        : SPiKind(
+                                          name,
+                                          domain,
+                                          body,
+                                          icit: Icit.implicit,
+                                        );
+                                return SExpr(kind, span);
+                              }),
+                        ),
+                  ),
+                ),
+          ),
+    );
 
 /// `app ('->' expr)?`, application, optionally followed by a
 /// non-dependent arrow.

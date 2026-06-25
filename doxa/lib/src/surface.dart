@@ -16,6 +16,8 @@
 /// comparisons of AST shape work via `.kind` and ignore spans.
 library;
 
+import 'term.dart' show Icit;
+
 // ---------------------------------------------------------------------------
 // Spans
 // ---------------------------------------------------------------------------
@@ -210,21 +212,31 @@ final class SLamKind extends SExprKind {
   /// The body.
   final SExpr body;
 
+  /// Whether the binder is implicit (default explicit).
+  final Icit icit;
+
   /// Creates a lambda.
-  const SLamKind(this.param, this.domain, this.body);
+  const SLamKind(
+    this.param,
+    this.domain,
+    this.body, {
+    this.icit = Icit.explicit,
+  });
 
   @override
   bool operator ==(Object other) =>
       other is SLamKind &&
       other.param == param &&
       other.domain == domain &&
-      other.body == body;
+      other.body == body &&
+      other.icit == icit;
 
   @override
-  int get hashCode => Object.hash('SLamKind', param, domain, body);
+  int get hashCode => Object.hash('SLamKind', param, domain, body, icit);
 
   @override
-  String toString() => 'SLamKind($param, $domain, $body)';
+  String toString() =>
+      'SLamKind($param, $domain, $body${icit == Icit.implicit ? ", implicit" : ""})';
 }
 
 /// A local let-binding: `let x: T = e1 in e2` or `let x = e1 in e2`
@@ -291,21 +303,31 @@ final class SPiKind extends SExprKind {
   /// The codomain. Uses [param] as a free variable if this is dependent.
   final SExpr codomain;
 
+  /// Whether the binder is implicit (default explicit).
+  final Icit icit;
+
   /// Creates a Pi type.
-  const SPiKind(this.param, this.domain, this.codomain);
+  const SPiKind(
+    this.param,
+    this.domain,
+    this.codomain, {
+    this.icit = Icit.explicit,
+  });
 
   @override
   bool operator ==(Object other) =>
       other is SPiKind &&
       other.param == param &&
       other.domain == domain &&
-      other.codomain == codomain;
+      other.codomain == codomain &&
+      other.icit == icit;
 
   @override
-  int get hashCode => Object.hash('SPiKind', param, domain, codomain);
+  int get hashCode => Object.hash('SPiKind', param, domain, codomain, icit);
 
   @override
-  String toString() => 'SPiKind($param, $domain, $codomain)';
+  String toString() =>
+      'SPiKind($param, $domain, $codomain${icit == Icit.implicit ? ", implicit" : ""})';
 }
 
 /// A pattern-match expression.
