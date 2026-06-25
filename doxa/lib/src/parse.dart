@@ -515,8 +515,12 @@ final Parser<ParseError, SExpr> _binder = position<ParseError>().flatMap(
             .optional
             .flatMap(
               (domain) => _sym(')').skipThen(
+                // Both `->` and `=>` produce an SLamKind when the domain
+                // is null (unannotated `(x) -> body` or `(x) => body`).
+                // For annotated binders, `=>` is a lambda and `->` is a Pi.
                 (domain == null
-                        ? _sym('=>').as<String>('=>')
+                        ? (_sym('->').as<String>('->') |
+                            _sym('=>').as<String>('=>'))
                         : (_sym('=>').as<String>('=>') |
                             _sym('->').as<String>('->')))
                     .flatMap(
@@ -525,7 +529,7 @@ final Parser<ParseError, SExpr> _binder = position<ParseError>().flatMap(
                         final end = pair.$2;
                         final span = DoxaSpan(start, end);
                         final kind =
-                            arrow == '=>'
+                            domain == null || arrow == '=>'
                                 ? SLamKind(name, domain, body)
                                 : SPiKind(name, domain!, body);
                         return SExpr(kind, span);

@@ -786,8 +786,10 @@ class _Formatter {
       if (domain != null) {
         parts.add(_Doc.txt(': '));
         parts.add(_visit(domain));
+        parts.add(_Doc.txt(') => '));
+      } else {
+        parts.add(_Doc.txt(') -> '));
       }
-      parts.add(_Doc.txt(') => '));
     }
     parts.add(_visit(body));
     return _Doc.catAll(parts);
