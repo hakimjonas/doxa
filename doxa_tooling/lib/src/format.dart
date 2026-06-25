@@ -23,6 +23,148 @@ bool isFormatted(String source) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Simple pretty-printer document type (Wadler-style)
+// ---------------------------------------------------------------------------
+
+/// Tag for [_Doc] variants.
+enum _DocKind { nil, text, line, nest, group, cat }
+
+/// A document that can be rendered flat or with line breaks.
+class _Doc {
+  final _DocKind kind;
+  final String? text;
+  final int? nest;
+  final _Doc? a, b;
+
+  const _Doc._(this.kind, {this.text, this.nest, this.a, this.b});
+
+  static const _Doc nil = _Doc._(_DocKind.nil);
+  static _Doc txt(String s) => _Doc._(_DocKind.text, text: s);
+  static const _Doc line = _Doc._(_DocKind.line);
+  static _Doc nst(int n, _Doc d) => _Doc._(_DocKind.nest, nest: n, a: d);
+  static _Doc grp(_Doc d) => _Doc._(_DocKind.group, a: d);
+  static _Doc cat(_Doc a, _Doc b) => _Doc._(_DocKind.cat, a: a, b: b);
+
+  /// Chain multiple docs.
+  static _Doc catAll(List<_Doc> docs) {
+    if (docs.isEmpty) return _Doc.nil;
+    var result = docs[0];
+    for (var i = 1; i < docs.length; i++) {
+      result = _Doc.cat(result, docs[i]);
+    }
+    return result;
+  }
+
+  static _Doc get space => _Doc.txt(' ');
+
+  /// Prepend a space before [d] if [d] is non-empty.
+  static _Doc sp(_Doc d) =>
+      d.kind == _DocKind.nil ? d : _Doc.cat(_Doc.space, d);
+
+  static _Doc sep(List<_Doc> docs) {
+    if (docs.isEmpty) return _Doc.nil;
+    var result = docs[0];
+    for (var i = 1; i < docs.length; i++) {
+      result = _Doc.cat(result, _Doc.cat(_Doc.line, docs[i]));
+    }
+    return result;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Rendering: Wadler-style with width tracking
+// ---------------------------------------------------------------------------
+
+bool _isFlat(_DocKind k) =>
+    k == _DocKind.nil || k == _DocKind.text || k == _DocKind.line;
+
+/// Width of [doc] in flat mode (lines count as 1 char for space).
+int _docFlatWidth(_Doc doc) {
+  switch (doc.kind) {
+    case _DocKind.nil:
+      return 0;
+    case _DocKind.text:
+      return doc.text!.length;
+    case _DocKind.line:
+      return 1; // space in flat mode
+    case _DocKind.nest:
+      return _docFlatWidth(doc.a!);
+    case _DocKind.group:
+      return _docFlatWidth(doc.a!); // always check flat first
+    case _DocKind.cat:
+      return _docFlatWidth(doc.a!) + _docFlatWidth(doc.b!);
+  }
+}
+
+/// Check if [doc] fits within [remainingWidth] columns in flat mode.
+bool _fitsDoc(_Doc doc, int remainingWidth) {
+  if (remainingWidth < 0) return false;
+  switch (doc.kind) {
+    case _DocKind.nil:
+      return true;
+    case _DocKind.text:
+      return doc.text!.length <= remainingWidth;
+    case _DocKind.line:
+      return true; // line in flat mode = space
+    case _DocKind.nest:
+      return _fitsDoc(doc.a!, remainingWidth);
+    case _DocKind.group:
+      return _fitsDoc(doc.a!, remainingWidth);
+    case _DocKind.cat:
+      return _fitsDoc(doc.a!, remainingWidth) &&
+          _fitsDoc(doc.b!, remainingWidth - _docFlatWidth(doc.a!));
+  }
+}
+
+/// Render [doc] to a string, breaking groups when they exceed the width.
+/// The outer level starts in broken mode (no enclosing group chooses flat).
+String _renderDoc(_Doc doc) {
+  final buf = StringBuffer();
+  _renderDocInner(doc, buf, 0, 0, false);
+  return buf.toString();
+}
+
+void _renderDocInner(
+  _Doc doc,
+  StringBuffer buf,
+  int col,
+  int indent,
+  bool flat,
+) {
+  switch (doc.kind) {
+    case _DocKind.nil:
+      return;
+    case _DocKind.text:
+      buf.write(doc.text);
+    case _DocKind.line:
+      if (flat) {
+        buf.write(' ');
+      } else {
+        buf.write('\n');
+        buf.write(' ' * indent);
+      }
+    case _DocKind.nest:
+      _renderDocInner(doc.a!, buf, col, indent + doc.nest!, flat);
+    case _DocKind.group:
+      final flatWidth = _docFlatWidth(doc.a!);
+      if (flat && col + flatWidth <= 100) {
+        _renderDocInner(doc.a!, buf, col, indent, true);
+      } else {
+        _renderDocInner(doc.a!, buf, col, indent, false);
+      }
+    case _DocKind.cat:
+      final before = buf.length;
+      _renderDocInner(doc.a!, buf, col, indent, flat);
+      final consumed = buf.length - before;
+      _renderDocInner(doc.b!, buf, col + consumed, indent, flat);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Formatter
+// ---------------------------------------------------------------------------
+
 class _Formatter {
   final String source;
   final StringBuffer _buf = StringBuffer();
@@ -42,6 +184,7 @@ class _Formatter {
     _buf.clear();
     _indent = 0;
     _atLineStart = true;
+    _currentCol = 0;
     _commentIx = 0;
 
     final result = parseProgram(source);
@@ -63,6 +206,33 @@ class _Formatter {
     // Ensure exactly one trailing newline.
     out = out.trimRight() + '\n';
     return out;
+  }
+
+  // -------------------------------------------------------------------------
+  // Doc helpers
+  // -------------------------------------------------------------------------
+
+  /// Render a Doc to the output buffer, tracking position for width checks.
+  void _writeDoc(_Doc doc) {
+    final rendered = _renderDocAt(doc, _currentCol);
+    _buf.write(rendered);
+    // Update column tracking based on last line in rendered output.
+    final lastNl = rendered.lastIndexOf('\n');
+    _atLineStart = lastNl >= 0;
+    _currentCol =
+        lastNl >= 0
+            ? rendered.length - lastNl - 1
+            : _currentCol + rendered.length;
+  }
+
+  /// Current column on the output line (0-based).  Updated by [_writeDoc].
+  int _currentCol = 0;
+
+  /// Render [doc] assuming the current column is [startCol].
+  String _renderDocAt(_Doc doc, int startCol) {
+    final buf = StringBuffer();
+    _renderDocInner(doc, buf, startCol, 0, false);
+    return buf.toString();
   }
 
   // -------------------------------------------------------------------------
@@ -115,11 +285,13 @@ class _Formatter {
   void _write(String text) {
     _buf.write(text);
     _atLineStart = false;
+    _currentCol += text.length;
   }
 
   void _newline() {
     _buf.write('\n');
     _atLineStart = true;
+    _currentCol = 0;
     _writeIndent();
   }
 
@@ -127,6 +299,7 @@ class _Formatter {
     if (_atLineStart && _indent > 0) {
       final spaces = ' ' * (_indent * _indentSize);
       _buf.write(spaces);
+      _currentCol += spaces.length;
     }
   }
 
@@ -137,6 +310,7 @@ class _Formatter {
   void _space() {
     if (!_atLineStart) {
       _buf.write(' ');
+      _currentCol += 1;
     }
   }
 
@@ -223,7 +397,7 @@ class _Formatter {
   void _visitValDecl(SValKind k) {
     if (k.body.kind is SByKind) {
       _write('theorem ${k.name} : ');
-      _visit(k.body);
+      _writeDoc(_visit(k.body));
       return;
     }
     if (k.isOpaque) {
@@ -233,16 +407,16 @@ class _Formatter {
     if (k.type != null) {
       _space();
       _write(': ');
-      _visit(k.type!);
+      _writeDoc(_visit(k.type!));
     }
     _space();
     _write('= ');
-    _visit(k.body);
+    _writeDoc(_visit(k.body));
   }
 
   void _visitTypeAlias(STypeAliasKind k) {
     _write('type ${k.name} = ');
-    _visit(k.body);
+    _writeDoc(_visit(k.body));
   }
 
   void _visitData(SDataKind k) {
@@ -250,7 +424,7 @@ class _Formatter {
     _visitTypeParamList(k.typeParams);
     _space();
     _write(': ');
-    _visit(k.signature);
+    _writeDoc(_visit(k.signature));
     _space();
     _write('{');
     _indentBy(1);
@@ -258,7 +432,7 @@ class _Formatter {
     for (var i = 0; i < k.ctors.length; i++) {
       final ctor = k.ctors[i];
       _write('${ctor.name} : ');
-      _visit(ctor.type);
+      _writeDoc(_visit(ctor.type));
       _write(';');
       if (i < k.ctors.length - 1) _newline();
     }
@@ -284,7 +458,7 @@ class _Formatter {
     _visitTypeParamList(k.typeParams);
     _space();
     _write(': ');
-    _visit(k.signature);
+    _writeDoc(_visit(k.signature));
     _space();
     _write('{');
     _indentBy(1);
@@ -292,7 +466,7 @@ class _Formatter {
     for (var i = 0; i < k.ctors.length; i++) {
       final ctor = k.ctors[i];
       _write('${ctor.name} : ');
-      _visit(ctor.type);
+      _writeDoc(_visit(ctor.type));
       _write(';');
       if (i < k.ctors.length - 1) _newline();
     }
@@ -314,14 +488,12 @@ class _Formatter {
       final pname = k.params[i].$1;
       final ptype = k.params[i].$2;
       _write('$pname: ');
-      _visit(ptype);
+      _writeDoc(_visit(ptype));
     }
     _write(')');
     _space();
     _write(': ');
 
-    // The parser may have consumed `termination_by (args)` as part of
-    // the return-type expression. Extract it and format it separately.
     var returnType = k.returnType;
     List<String>? extractedTby;
     if (k.terminationBy == null) {
@@ -331,7 +503,7 @@ class _Formatter {
         returnType = ext.realRet;
       }
     }
-    _visit(returnType);
+    _writeDoc(_visit(returnType));
 
     if (k.structAnn != null) {
       _space();
@@ -356,7 +528,7 @@ class _Formatter {
     } else {
       _space();
       _write('= ');
-      _visit(k.body);
+      _writeDoc(_visit(k.body));
     }
   }
 
@@ -371,29 +543,29 @@ class _Formatter {
           final n = p.$1;
           final t = p.$2;
           _write('($n: ');
-          _visit(t);
+          _writeDoc(_visit(t));
           _write(')');
         }
         _write(': ');
-        _visit(_extractPiReturnType(let.domain!));
+        _writeDoc(_visit(_extractPiReturnType(let.domain!)));
         _space();
         _write('= ');
-        _visit(_innermostLambdaBody(let.bound));
+        _writeDoc(_visit(_innermostLambdaBody(let.bound)));
       } else {
         _write('val ${let.param}');
         if (let.domain != null) {
           _write(': ');
-          _visit(let.domain!);
+          _writeDoc(_visit(let.domain!));
         }
         _space();
         _write('= ');
-        _visit(let.bound);
+        _writeDoc(_visit(let.bound));
       }
       _write(';');
       _newline();
       cur = let.body;
     }
-    _visit(cur);
+    _writeDoc(_visit(cur));
   }
 
   List<(String, SExpr)> _extractLambdaParams(SExpr expr) {
@@ -440,7 +612,7 @@ class _Formatter {
     _visitTypeParamList(k.typeParams);
     if (k.superclass != null) {
       _write(': ');
-      _visit(k.superclass!);
+      _writeDoc(_visit(k.superclass!));
     }
     _space();
     _write('{');
@@ -465,15 +637,15 @@ class _Formatter {
       final n = params[i].$1;
       final t = params[i].$2;
       _write('$n: ');
-      _visit(t);
+      _writeDoc(_visit(t));
     }
     _write(')');
     _write(': ');
-    _visit(retType);
+    _writeDoc(_visit(retType));
     if (m.defaultBody != null) {
       _space();
       _write('= ');
-      _visit(m.defaultBody!);
+      _writeDoc(_visit(m.defaultBody!));
     }
   }
 
@@ -492,16 +664,15 @@ class _Formatter {
 
   void _visitImpl(SImplKind k) {
     _write('impl ');
-    // Format typeclass reference with brackets: impl ClassName[Arg]
     final ref = k.typeclassRef;
     if (ref.kind is SAppKind) {
       final app = ref.kind as SAppKind;
-      _visit(app.fn);
+      _writeDoc(_visit(app.fn));
       _write('[');
-      _visit(app.arg);
+      _writeDoc(_visit(app.arg));
       _write(']');
     } else {
-      _visit(ref);
+      _writeDoc(_visit(ref));
     }
     _space();
     _write('{');
@@ -518,279 +689,299 @@ class _Formatter {
   }
 
   // -------------------------------------------------------------------------
-  // Expression formatting
+  // Expression formatting (returns Doc)
   // -------------------------------------------------------------------------
 
-  void _visit(SExpr expr) {
-    switch (expr.kind) {
-      case SIdentKind(:final name):
-        _write(name);
-      case STypeKind(:final level):
-        if (level == null) {
-          _write('Type');
-        } else {
-          _write('Type $level');
-        }
-      case SPropKind():
-        _write('Prop');
-      case SSPropKind():
-        _write('SProp');
-      case SAppKind(:final fn, :final arg):
-        _visitApp(fn, arg);
-      case SLamKind(:final param, :final domain, :final body, :final icit):
-        _visitLam(param, domain, body, isImplicit: icit == Icit.implicit);
-      case SPiKind(:final param, :final domain, :final codomain, :final icit):
-        _visitPi(param, domain, codomain, isImplicit: icit == Icit.implicit);
-      case SMatchKind(:final scrutinee, :final motive, :final cases):
-        _visitMatch(scrutinee, motive, cases);
-      case SLetKind(
+  _Doc _visit(SExpr expr) {
+    return switch (expr.kind) {
+      SIdentKind(:final name) => _Doc.txt(name),
+      STypeKind(:final level) =>
+        level == null ? _Doc.txt('Type') : _Doc.txt('Type $level'),
+      SPropKind() => _Doc.txt('Prop'),
+      SSPropKind() => _Doc.txt('SProp'),
+      SAppKind(:final fn, :final arg) => _visitApp(fn, arg),
+      SLamKind(:final param, :final domain, :final body, :final icit) =>
+        _visitLam(param, domain, body, isImplicit: icit == Icit.implicit),
+      SPiKind(:final param, :final domain, :final codomain, :final icit) =>
+        _visitPi(param, domain, codomain, isImplicit: icit == Icit.implicit),
+      SMatchKind(:final scrutinee, :final motive, :final cases) => _visitMatch(
+        scrutinee,
+        motive,
+        cases,
+      ),
+      SLetKind(
         :final param,
         :final domain,
         :final bound,
         :final body,
         :final isRec,
-      ):
-        _visitBlock(param, domain, bound, body, isRec);
-      case SDotKind(:final qualifier, :final name):
-        _visit(qualifier);
-        _write('.$name');
-      case SQuotKind(:final carrier, :final relation):
-        _write('Quot(');
-        _visit(carrier);
-        _write(', ');
-        _visit(relation);
-        _write(')');
-      case SQuotMkKind(:final arg):
-        _write('Quot.mk(');
-        _visit(arg);
-        _write(')');
-      case SQuotLiftKind(:final fn, :final proof):
-        _write('Quot.lift(');
-        _visit(fn);
-        _write(', ');
-        _visit(proof);
-        _write(')');
-      case SIntersectionKind(:final constraints):
-        for (var i = 0; i < constraints.length; i++) {
-          if (i > 0) _write(' & ');
-          _visit(constraints[i]);
-        }
-      case SByKind(:final steps):
-        _visitBy(steps);
-    }
+      ) =>
+        _visitBlock(param, domain, bound, body, isRec),
+      SDotKind(:final qualifier, :final name) => _Doc.cat(
+        _visit(qualifier),
+        _Doc.txt('.$name'),
+      ),
+      SQuotKind(:final carrier, :final relation) => _Doc.catAll([
+        _Doc.txt('Quot('),
+        _visit(carrier),
+        _Doc.txt(', '),
+        _visit(relation),
+        _Doc.txt(')'),
+      ]),
+      SQuotMkKind(:final arg) => _Doc.catAll([
+        _Doc.txt('Quot.mk('),
+        _visit(arg),
+        _Doc.txt(')'),
+      ]),
+      SQuotLiftKind(:final fn, :final proof) => _Doc.catAll([
+        _Doc.txt('Quot.lift('),
+        _visit(fn),
+        _Doc.txt(', '),
+        _visit(proof),
+        _Doc.txt(')'),
+      ]),
+      SIntersectionKind(:final constraints) => _Doc.catAll([
+        for (var i = 0; i < constraints.length; i++) ...[
+          if (i > 0) _Doc.txt(' & '),
+          _visit(constraints[i]),
+        ],
+      ]),
+      SByKind(:final steps) => _visitBy(steps),
+    };
   }
 
-  void _visitApp(SExpr fn, SExpr arg) {
-    _visit(fn);
-    _space();
+  _Doc _visitApp(SExpr fn, SExpr arg) {
+    final fnDoc = _visit(fn);
+    final argDoc = _visit(arg);
     final needsParens =
         arg.kind is SLamKind ||
         (arg.kind is SPiKind && (arg.kind as SPiKind).param != null) ||
         arg.kind is SAppKind ||
         arg.kind is SLetKind;
-    if (needsParens) {
-      _write('(');
-      _visit(arg);
-      _write(')');
-    } else {
-      _visit(arg);
-    }
+    final wrappedArg =
+        needsParens
+            ? _Doc.catAll([_Doc.txt('('), argDoc, _Doc.txt(')')])
+            : argDoc;
+    // Inline application: no grouping. Long chains are handled by
+    // strategic groups at enclosing boundaries (= body, -> codomain).
+    return _Doc.catAll([fnDoc, _Doc.space, wrappedArg]);
   }
 
-  void _visitLam(
+  _Doc _visitLam(
     String param,
     SExpr? domain,
     SExpr body, {
     bool isImplicit = false,
   }) {
+    final parts = <_Doc>[];
     if (isImplicit) {
-      _write('{$param');
+      parts.add(_Doc.txt('{$param'));
       if (domain != null) {
-        _write(': ');
-        _visit(domain);
+        parts.add(_Doc.txt(': '));
+        parts.add(_visit(domain));
       }
-      _write('} -> ');
+      parts.add(_Doc.txt('} -> '));
     } else {
-      _write('($param');
+      parts.add(_Doc.txt('($param'));
       if (domain != null) {
-        _write(': ');
-        _visit(domain);
+        parts.add(_Doc.txt(': '));
+        parts.add(_visit(domain));
       }
-      _write(') => ');
+      parts.add(_Doc.txt(') => '));
     }
-    _visit(body);
+    parts.add(_visit(body));
+    return _Doc.catAll(parts);
   }
 
-  void _visitPi(
+  _Doc _visitPi(
     String? param,
     SExpr domain,
     SExpr codomain, {
     bool isImplicit = false,
   }) {
     if (param == null) {
-      final domainParens = domain.kind is SPiKind;
-      if (domainParens) {
-        _write('(');
-        _visit(domain);
-        _write(')');
-      } else {
-        _visit(domain);
-      }
-      _space();
-      _write('-> ');
-      _visit(codomain);
-    } else {
-      _write('($param: ');
-      _visit(domain);
-      _write(') -> ');
-      _visit(codomain);
+      // Non-dependent arrow
+      final domainDoc = _visit(domain);
+      final domainWrapped =
+          domain.kind is SPiKind
+              ? _Doc.catAll([_Doc.txt('('), domainDoc, _Doc.txt(')')])
+              : domainDoc;
+      return _Doc.grp(
+        _Doc.catAll([
+          domainWrapped,
+          _Doc.space,
+          _Doc.txt('-> '),
+          _Doc.nst(_indentSize, _visit(codomain)),
+        ]),
+      );
     }
+    final open = isImplicit ? _Doc.txt('{$param: ') : _Doc.txt('($param: ');
+    final close = isImplicit ? _Doc.txt('} -> ') : _Doc.txt(') -> ');
+    return _Doc.grp(
+      _Doc.catAll([
+        open,
+        _visit(domain),
+        close,
+        _Doc.nst(_indentSize, _visit(codomain)),
+      ]),
+    );
   }
 
-  void _visitMatch(SExpr scrutinee, SExpr? motive, List<SMatchCaseArm> cases) {
-    _write('match ');
-    _visit(scrutinee);
-    if (motive != null) {
-      _space();
-      _write('returning ');
-      _visit(motive);
-    }
-    _space();
-    _write('{');
-    _indentBy(1);
-    _newline();
+  _Doc _visitMatch(SExpr scrutinee, SExpr? motive, List<SMatchCaseArm> cases) {
+    final caseDocs = <_Doc>[];
     for (var i = 0; i < cases.length; i++) {
       final arm = cases[i];
       switch (arm) {
         case SMatchCase(:final ctor, :final binders, :final body):
-          _write('case $ctor');
-          for (final b in binders) {
-            _space();
-            _write(b);
-          }
-          _space();
-          _write('=> ');
-          _visit(body);
+          caseDocs.add(
+            _Doc.catAll([
+              _Doc.txt('case $ctor'),
+              for (final b in binders) _Doc.cat(_Doc.space, _Doc.txt(b)),
+              _Doc.txt(' => '),
+              _visit(body),
+            ]),
+          );
         case SWildcardCase(:final body):
-          _write('case _ => ');
-          _visit(body);
+          caseDocs.add(_Doc.catAll([_Doc.txt('case _ => '), _visit(body)]));
       }
-      if (i < cases.length - 1) _newline();
     }
-    _indentBy(-1);
-    _newline();
-    _write('}');
+    return _Doc.catAll([
+      _Doc.txt('match '),
+      _visit(scrutinee),
+      if (motive != null) ...[
+        _Doc.space,
+        _Doc.txt('returning '),
+        _visit(motive),
+      ],
+      _Doc.txt(' {'),
+      _Doc.nst(
+        _indentSize,
+        _Doc.catAll([
+          _Doc.line,
+          _Doc.catAll([
+            for (var i = 0; i < caseDocs.length; i++) ...[
+              if (i > 0) _Doc.line,
+              caseDocs[i],
+            ],
+          ]),
+        ]),
+      ),
+      _Doc.line,
+      _Doc.txt('}'),
+    ]);
   }
 
-  void _visitBlock(
+  _Doc _visitBlock(
     String param,
     SExpr? domain,
     SExpr bound,
     SExpr body,
     bool isRec,
   ) {
-    _write('{');
-    _indentBy(1);
-    _newline();
-    _visitSLetChainFromLet(param, domain, bound, body, isRec);
-    _indentBy(-1);
-    _newline();
-    _write('}');
+    return _Doc.catAll([
+      _Doc.txt('{'),
+      _Doc.nst(
+        _indentSize,
+        _Doc.catAll([
+          _Doc.line,
+          _visitSLetChainDocFromLet(param, domain, bound, body, isRec),
+          _Doc.line,
+        ]),
+      ),
+      _Doc.txt('}'),
+    ]);
   }
 
-  void _visitSLetChainFromLet(
+  _Doc _visitSLetChainDocFromLet(
     String param,
     SExpr? domain,
     SExpr bound,
     SExpr body,
     bool isRec,
   ) {
+    final bindParts = <_Doc>[];
     if (isRec) {
-      _write('val rec $param');
-      final params = _extractLambdaParams(bound);
-      for (final p in params) {
-        final n = p.$1;
-        final t = p.$2;
-        _write('($n: ');
-        _visit(t);
-        _write(')');
+      bindParts.add(_Doc.txt('val rec $param'));
+      for (final p in _extractLambdaParams(bound)) {
+        bindParts.add(_Doc.txt('(${p.$1}: '));
+        bindParts.add(_visit(p.$2));
+        bindParts.add(_Doc.txt(')'));
       }
-      _write(': ');
-      _visit(_extractPiReturnType(domain!));
-      _space();
-      _write('= ');
-      _visit(_innermostLambdaBody(bound));
+      bindParts.add(_Doc.txt(': '));
+      bindParts.add(_visit(_extractPiReturnType(domain!)));
+      bindParts.add(_Doc.space);
+      bindParts.add(_Doc.txt('= '));
+      bindParts.add(_visit(_innermostLambdaBody(bound)));
     } else {
-      _write('val $param');
+      bindParts.add(_Doc.txt('val $param'));
       if (domain != null) {
-        _write(': ');
-        _visit(domain);
+        bindParts.add(_Doc.txt(': '));
+        bindParts.add(_visit(domain));
       }
-      _space();
-      _write('= ');
-      _visit(bound);
+      bindParts.add(_Doc.space);
+      bindParts.add(_Doc.txt('= '));
+      bindParts.add(_visit(bound));
     }
-    _write(';');
-    _newline();
-
-    if (body.kind is SLetKind) {
-      final next = body.kind as SLetKind;
-      _visitSLetChainFromLet(
-        next.param,
-        next.domain,
-        next.bound,
-        next.body,
-        next.isRec,
-      );
-    } else {
-      _visit(body);
-    }
+    final bodyDoc =
+        body.kind is SLetKind
+            ? _visitSLetChainDocFromLet(
+              (body.kind as SLetKind).param,
+              (body.kind as SLetKind).domain,
+              (body.kind as SLetKind).bound,
+              (body.kind as SLetKind).body,
+              (body.kind as SLetKind).isRec,
+            )
+            : _visit(body);
+    return _Doc.catAll([
+      _Doc.catAll(bindParts),
+      _Doc.txt(';'),
+      _Doc.line,
+      bodyDoc,
+    ]);
   }
 
-  void _visitBy(List<List<STacticStep>> steps) {
-    _write('by {');
-    _indentBy(1);
-    _newline();
-    for (var i = 0; i < steps.length; i++) {
-      final alt = steps[i];
-      for (var j = 0; j < alt.length; j++) {
-        if (j > 0) _write('; ');
-        _visitTacticStep(alt[j]);
-      }
-      if (i < steps.length - 1) {
-        _write(' |');
-        _newline();
-      }
-    }
-    _indentBy(-1);
-    _newline();
-    _write('}');
+  _Doc _visitBy(List<List<STacticStep>> steps) {
+    final parts = <_Doc>[
+      _Doc.txt('by {'),
+      _Doc.nst(
+        _indentSize,
+        _Doc.catAll([
+          _Doc.line,
+          for (var i = 0; i < steps.length; i++) ...[
+            if (i > 0) ...[_Doc.txt(' |'), _Doc.line],
+            for (var j = 0; j < steps[i].length; j++) ...[
+              if (j > 0) _Doc.txt('; '),
+              _visitTacticStep(steps[i][j]),
+            ],
+          ],
+          _Doc.line,
+        ]),
+      ),
+      _Doc.txt('}'),
+    ];
+    return _Doc.catAll(parts);
   }
 
-  void _visitTacticStep(STacticStep step) {
-    switch (step) {
-      case STacticIntro(:final name):
-        _write('intro');
-        if (name != null) {
-          _space();
-          _write(name);
-        }
-      case STacticExact(:final expr):
-        _write('exact ');
-        _visit(expr);
-      case STacticApply(:final expr):
-        _write('apply ');
-        _visit(expr);
-      case STacticRefl():
-        _write('refl');
-      case STacticRewrite(:final expr):
-        _write('rewrite ');
-        _visit(expr);
-      case STacticInduction(:final name):
-        _write('induction $name');
-      case STacticTrivial():
-        _write('trivial');
-    }
+  _Doc _visitTacticStep(STacticStep step) {
+    return switch (step) {
+      STacticIntro(:final name) =>
+        name == null ? _Doc.txt('intro') : _Doc.txt('intro $name'),
+      STacticExact(:final expr) => _Doc.catAll([
+        _Doc.txt('exact '),
+        _visit(expr),
+      ]),
+      STacticApply(:final expr) => _Doc.catAll([
+        _Doc.txt('apply '),
+        _visit(expr),
+      ]),
+      STacticRefl() => _Doc.txt('refl'),
+      STacticRewrite(:final expr) => _Doc.catAll([
+        _Doc.txt('rewrite '),
+        _visit(expr),
+      ]),
+      STacticInduction(:final name) => _Doc.txt('induction $name'),
+      STacticTrivial() => _Doc.txt('trivial'),
+    };
   }
 
   // -------------------------------------------------------------------------
@@ -807,7 +998,7 @@ class _Formatter {
       _write(pname);
       if (pkind != null) {
         _write(': ');
-        _visit(pkind);
+        _writeDoc(_visit(pkind));
       }
     }
     _write(']');
@@ -815,7 +1006,6 @@ class _Formatter {
 
   void _visitFunTypeParams(List<SFunTypeParam> params) {
     if (params.isEmpty) return;
-    // Group consecutive params by icity.
     var i = 0;
     while (i < params.length) {
       final icity = params[i].isImplicit;
@@ -832,13 +1022,13 @@ class _Formatter {
         _write(p.name);
         if (p.kind != null) {
           _write(': ');
-          _visit(p.kind!);
+          _writeDoc(_visit(p.kind!));
         } else if (p.constraints.isNotEmpty) {
           _write(': ');
-          _visit(p.constraints.first);
+          _writeDoc(_visit(p.constraints.first));
           for (var j = 1; j < p.constraints.length; j++) {
             _write(' & ');
-            _visit(p.constraints[j]);
+            _writeDoc(_visit(p.constraints[j]));
           }
         }
         i++;
@@ -851,10 +1041,6 @@ class _Formatter {
     }
   }
 
-  /// Extract `termination_by (args)` suffix from the return-type
-  /// expression. The parser cannot distinguish
-  /// `fun f(): T termination_by (x)` from `App(App(T, term_by), x)`,
-  /// so we walk the return-type AST to detect it.
   ({List<String>? tby, SExpr realRet}) _extractTerminationBy(SExpr returnType) {
     final chain = <SAppKind>[];
     SExpr? cur = returnType;
