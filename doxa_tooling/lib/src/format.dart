@@ -3,6 +3,7 @@ library;
 
 import 'package:doxa/src/parse.dart' show parseProgram;
 import 'package:doxa/src/surface.dart';
+import 'package:doxa/src/term.dart' show Icit;
 import 'package:doxa_tooling/src/tokenize.dart' show tokenizeDoxaSpans;
 import 'package:rumil/rumil.dart';
 import 'package:rumil_tokens/rumil_tokens.dart' show Comment;
@@ -536,10 +537,10 @@ class _Formatter {
         _write('SProp');
       case SAppKind(:final fn, :final arg):
         _visitApp(fn, arg);
-      case SLamKind(:final param, :final domain, :final body):
-        _visitLam(param, domain, body);
-      case SPiKind(:final param, :final domain, :final codomain):
-        _visitPi(param, domain, codomain);
+      case SLamKind(:final param, :final domain, :final body, :final icit):
+        _visitLam(param, domain, body, isImplicit: icit == Icit.implicit);
+      case SPiKind(:final param, :final domain, :final codomain, :final icit):
+        _visitPi(param, domain, codomain, isImplicit: icit == Icit.implicit);
       case SMatchKind(:final scrutinee, :final motive, :final cases):
         _visitMatch(scrutinee, motive, cases);
       case SLetKind(
@@ -596,17 +597,36 @@ class _Formatter {
     }
   }
 
-  void _visitLam(String param, SExpr? domain, SExpr body) {
-    _write('($param');
-    if (domain != null) {
-      _write(': ');
-      _visit(domain);
+  void _visitLam(
+    String param,
+    SExpr? domain,
+    SExpr body, {
+    bool isImplicit = false,
+  }) {
+    if (isImplicit) {
+      _write('{$param');
+      if (domain != null) {
+        _write(': ');
+        _visit(domain);
+      }
+      _write('} -> ');
+    } else {
+      _write('($param');
+      if (domain != null) {
+        _write(': ');
+        _visit(domain);
+      }
+      _write(') => ');
     }
-    _write(') => ');
     _visit(body);
   }
 
-  void _visitPi(String? param, SExpr domain, SExpr codomain) {
+  void _visitPi(
+    String? param,
+    SExpr domain,
+    SExpr codomain, {
+    bool isImplicit = false,
+  }) {
     if (param == null) {
       final domainParens = domain.kind is SPiKind;
       if (domainParens) {
