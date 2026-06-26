@@ -26,7 +26,7 @@ types of all binders in the context.
 
 ## Current code
 
-In `doxa/lib/src/elab.dart`, `_elabMatch` (line ~2798) builds the arm
+In `doxa/lib/src/elab.dart`, `_elabMatch` (line ~2807) builds the arm
 state by pushing arm binders onto the original state.  The original
 binders (`n`, `h`) remain in the context with their original, unrefined
 types.
@@ -36,39 +36,63 @@ The arm body is checked against a refined expected type (computed via
 
 ## Required changes
 
-### 1. Ctx-level substitution (`doxa/lib/src/ctx.dart` or `elab.dart`)
+### 1. Ctx-level substitution (`doxa/lib/src/elab.dart`)
 
 Add a function that substitutes a de Bruijn variable in ALL binder
 types within a `Ctx`:
 
 ```dart
-Ctx substCtx(Ctx ctx, int level, Value replacement)
+Ctx substNVarInCtx(Ctx ctx, int scrutLevel, Value replacement)
 ```
 
-This walks the Ctx's binder list and replaces `NVar(level)` with
-`replacement` in each binder's type, using `substNVar` (which already
-exists in `eval.dart` and handles VFuns/VData/VPi/neutral chains).
+The Ctx chain is immutable (`CCons` fields are `final`), so this walks
+the chain and creates new `CCons` nodes for binders whose types
+changed; unchanged nodes can be shared.  Uses `substNVar` from
+`eval.dart` (line ~7872) which already handles VFuns/VData/VPi/neutral
+chains.
+
+Place this in `elab.dart` (not `ctx.dart`) since it depends on
+`substNVar` from `eval.dart` and is only called from `_elabMatch`.
 
 ### 2. Match-arm context refinement (`elab.dart` in `_elabMatch`)
 
-After computing `armExpected` (the refined expected type for the arm),
-also refine all binder types in `armState.ctx` that reference the
-scrutinee variable.  Specifically:
+After building `armState` (lines ~3010-3030) but before elaborating
+the arm body, refine all existing binder types that reference the
+scrutinee variable.  The arm state's `Ctx` has arm binders pushed on
+top of the original context; existing binders (`h`, etc.) are deeper
+but their stored type values still reference the scrutinee at the
+**original** level (pre-arm-binder-push).  Walk the Ctx chain and
+substitute at that original level.
 
 ```dart
-// At the point where armState is built (lines ~2994-3008),
+// At the point where armState is built (around lines 3010-3030),
 // before elaborating the arm body:
+final scrutLevel = (scrutineeValue.neutral as NVar).level;  // original level
 final refinedCtx = substNVarInCtx(armState.ctx, scrutLevel, ctorResultV);
-armState = _ElabState(... ctx: refinedCtx, ...);
+// Rebuild armState with refinedCtx.  The value/env chain stays the same.
+armState = _ElabState(
+  topEnv: armState.topEnv,
+  ctx: refinedCtx,
+  names: armState.names,
+);
 ```
 
 This ensures that when the arm body elaborates and looks up `h`'s
 type via `state.lookupLocal("h")`, it gets the refined type
 `Eq Bool (even (succ k)) true_` instead of `Eq Bool (even n) true_`.
 
-The substitution level (`scrutLevel`) is the de Bruijn level of the
-scrutinee variable.  The replacement (`ctorResultV`) is the
-constructor value (e.g. `VConstr("Nat", "succ", [VNeutral(NVar(k_level))])`).
+The `scrutLevel` is the scrutinee's level in the ORIGINAL context
+(before arm binders were pushed).  The `ctorResultV` uses NVars at
+the ARM context's levels — this is fine because the substituted
+types will be evaluated in the arm's env where those levels resolve
+correctly.
+
+**Ctx immutability**: `CCons` is immutable, so `substNVarInCtx`
+creates a new CCons for each binder whose type changed.  The
+`_ElabState` must be rebuilt to point at the new Ctx; the
+`value` and `env` fields of each CCons stay unchanged (arm binders
+already have their values, and the env chain is parallel to the
+original Ctx).
 
 ### 3. Avoid over-substitution
 
@@ -94,7 +118,8 @@ n h0`) should instead be `Nat.ind ... k hsk` (or removed entirely
 in favour of match).  At minimum, the `hsk` parameter in the outer
 step lambda should be usable in the inner proof.
 
-A minimal test:
+A minimal test that the type-check succeeds (even if the term uses
+the refined hypothesis in a way that matches the new type):
 
 ```doxa
 val h_refined : (n: Nat) -> (h: Eq Bool (even n) true_) ->
@@ -102,10 +127,23 @@ val h_refined : (n: Nat) -> (h: Eq Bool (even n) true_) ->
     case zero => Eq Bool (even zero) true_
     case succ k => Eq Bool (even (succ k)) true_
   } = (n: Nat) => (h: Eq Bool (even n) true_) => match n {
-    case zero => h
-    case succ k => h   // currently fails: h's type is not refined
+    case zero => h   // after refinement, h: Eq Bool (even zero) true_ ✓
+    case succ k => h // after refinement, h: Eq Bool (even (succ k)) true_ ✓
   }
 ```
+
+**Caveat**: after refinement, `h`'s TYPE changes but `h`'s VALUE still
+refers to the original `n` parameter.  The term `h` is still valid
+because `even n` and `even (succ k)` become definitionally equal once
+`even` is computed (via VFun unfolding) — this works for the base
+case (`even zero` = `true_`) and for the `succ k` case (`even (succ k)`
+unfolds to `not (even k)` which IS NOT the same as `even n` stuck).
+So the `succ k` branch `h` may still fail at the kernel check step
+if `even (succ k) ≠ even n` in the evaluator.  The fix enables the
+*elaboration* of the refined type, but the resulting kernel term must
+still be type-correct.  The `even_implies_double` proof is the proper
+test — it uses `hsk` (already typed at `Eq Bool (even (succ k)) true_`)
+in the inner proof.
 
 ## Files to modify
 
@@ -119,5 +157,7 @@ val h_refined : (n: Nat) -> (h: Eq Bool (even n) true_) ->
 
 - `docs/IMPLEMENT_P0_ROADMAP.md` for context on the `even_implies_double` proof
 - `docs/HANDOVER_SESSION_2024-06-25.md` for detailed session context
-- `doxa/lib/src/eval.dart` `substNVar` (line ~7872) — already handles VFun, VData, VConstr, VPi
-- `doxa/lib/src/eval.dart` `refineMatchArmExpected` (line ~6813) — indexed-family refinement
+- `doxa/lib/src/eval.dart` `substNVar` (line ~7872) — handles VFun, VData, VConstr, VPi, and neutral chains
+- `doxa/lib/src/eval.dart` `refineMatchArmExpected` (line ~6813) — indexed-family refinement (for `Vec`/`Acc` style data types)
+- `doxa/lib/src/ctx.dart` `CCons` (line ~165) — immutable context node; `substNVarInCtx` must reconstruct the chain
+- `doxa/lib/src/value.dart` `VFun` (line ~206) — VFun values in binder types; `substNVar` already handles their spines
