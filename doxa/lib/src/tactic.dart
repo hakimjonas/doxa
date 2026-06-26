@@ -251,7 +251,9 @@ TacticFn Function(Term) tacticApply =
 
 /// `rewrite p`: rewrites the goal using equality proof `p`.
 ///
-/// Expects `p : Eq[A] x y`. Replaces `x` with `y` in the goal type.
+/// Expects `p : Eq[A] x y`.  Builds the term
+/// `Eq.rec A (λ a => G[x:=a]) x y p ?sub` where `G` is the goal type and
+/// `?sub` is a fresh subgoal for the rewritten type `G[x:=y]`.
 TacticFn Function(Term) rewrite =
     (p) => (s) {
       final pType = infer(s.ctx, p);
@@ -262,7 +264,69 @@ TacticFn Function(Term) rewrite =
       if (eqArgs.length != 3) {
         return TacticFail('rewrite: Eq has wrong arity');
       }
-      return TacticFail('rewrite: not yet implemented in this version');
+      final aType = eqArgs[0]; // A : Type
+      final x = eqArgs[1]; // x : A
+      final y = eqArgs[2]; // y : A
+      final level = s.ctx.level;
+
+      // Goal G = s.goalType (a Value).
+      // Build P = λ a => G[x := a].
+      //
+      // When x is an NVar, use substNVar to replace x with a fresh
+      // neutral at the current level.  Quote the result at level+1
+      // so that the fresh neutral becomes TBound(0) (the λ binder).
+      final Value goalWithFresh;
+      final Value motiveBodyV;
+      if (x is VNeutral && x.neutral is NVar) {
+        final scrutLevel = (x.neutral as NVar).level;
+        final freshVar = VNeutral(NVar(level));
+        goalWithFresh = substNVar(s.goalType, scrutLevel, freshVar);
+        motiveBodyV = goalWithFresh;
+      } else {
+        // Non-NVar x: quote goal at level+1 and replace x's term by
+        // TBound(0) using a syntactic walk.
+        final goalTerm = quote(level + 1, s.goalType);
+        final xTerm = quote(level + 1, x);
+        final motiveBody = _replaceTermInTerm(goalTerm, xTerm, TBound(0));
+        final pY = eval(motiveBody, s.ctx.env.extend(y));
+        final subMetaId = s.metas.freshTermMeta(pY, s.ctx);
+        final motive = TLam(quote(level, aType), motiveBody);
+        var proofTerm = TRec('Eq') as Term;
+        for (final arg in [
+          quote(level, aType),
+          motive,
+          quote(level, x),
+          quote(level, y),
+          p,
+          TMeta(subMetaId),
+        ]) {
+          proofTerm = TApp(proofTerm, arg);
+        }
+        return TacticOk(proofTerm, s.metas, subMeta: subMetaId);
+      }
+
+      // Quote the body at level+1 so the fresh neutral → TBound(0).
+      final motiveBody = quote(level + 1, motiveBodyV);
+      final motive = TLam(quote(level, aType), motiveBody);
+
+      // P y — evaluate G[x:=a] with a ↦ y.
+      final pY = eval(motiveBody, s.ctx.env.extend(y));
+      final subMetaId = s.metas.freshTermMeta(pY, s.ctx);
+      final subMeta = TMeta(subMetaId);
+
+      // Eq.rec A P x y p  :  P x → P y
+      var proofTerm = TRec('Eq') as Term;
+      for (final arg in [
+        quote(level, aType),
+        motive,
+        quote(level, x),
+        quote(level, y),
+        p,
+        subMeta,
+      ]) {
+        proofTerm = TApp(proofTerm, arg);
+      }
+      return TacticOk(proofTerm, s.metas, subMeta: subMetaId);
     };
 
 /// `induction x`: produces subgoals per constructor of `x`'s type.
@@ -325,6 +389,155 @@ ConvResult conv(int level, Value a, Value b) {
     return const ConvOk();
   } catch (_) {
     return ConvMismatch();
+  }
+}
+
+/// Walk [t] and replace every `TBound(from)` with `TBound(to)`.
+/// Under binders ([TLam], [TPi], [TLet] body) the target index is
+/// incremented so that binder-local indices are not disturbed.
+Term _replaceBound(Term t, int from, int to) {
+  switch (t) {
+    case TBound(:final index):
+      return TBound(index == from ? to : index);
+    case TApp(:final fn, :final arg):
+      return TApp(_replaceBound(fn, from, to), _replaceBound(arg, from, to));
+    case TLam(:final domain, :final body):
+      return TLam(
+        _replaceBound(domain, from, to),
+        _replaceBound(body, from + 1, to + 1),
+      );
+    case TPi(:final domain, :final codomain):
+      return TPi(
+        _replaceBound(domain, from, to),
+        _replaceBound(codomain, from + 1, to + 1),
+      );
+    case TLet(:final domain, :final bound, :final body, :final name):
+      return TLet(
+        _replaceBound(domain, from, to),
+        _replaceBound(bound, from, to),
+        _replaceBound(body, from + 1, to + 1),
+        name: name,
+      );
+    case TData(:final name, :final args):
+      return TData(name, [for (final a in args) _replaceBound(a, from, to)]);
+    case TConstr(:final dataName, :final ctorName, :final args):
+      return TConstr(dataName, ctorName, [
+        for (final a in args) _replaceBound(a, from, to),
+      ]);
+    case TMatch(:final scrutinee, :final motive, :final cases):
+      return TMatch(
+        _replaceBound(scrutinee, from, to),
+        motive == null ? null : _replaceBound(motive, from, to),
+        [
+          for (final c in cases)
+            TMatchCase(
+              c.ctorName,
+              c.nBinders,
+              _replaceBound(c.body, from + c.nBinders, to + c.nBinders),
+              c.binderNames,
+              span: c.span,
+            ),
+        ],
+      );
+    case TQuot(:final carrier, :final relation):
+      return TQuot(
+        _replaceBound(carrier, from, to),
+        _replaceBound(relation, from, to),
+      );
+    case TQuotMk(:final arg):
+      return TQuotMk(_replaceBound(arg, from, to));
+    case TQuotLift(:final quot, :final fn, :final proof):
+      return TQuotLift(
+        _replaceBound(quot, from, to),
+        _replaceBound(fn, from, to),
+        _replaceBound(proof, from, to),
+      );
+    case TProj(:final expr, :final fieldName):
+      return TProj(_replaceBound(expr, from, to), fieldName);
+    default:
+      return t; // TType, TProp, TSProp, TFree, TTop, TMeta, TRec
+  }
+}
+
+/// Walk [t] and replace every occurrence of the term [from] with [to].
+/// Uses structural equality (Term.==).  This is a simple syntactic
+/// replacement; it does NOT perform capture-avoiding substitution.
+/// Reliable only when [from] is a closed term (no TBound references).
+Term _replaceTermInTerm(Term t, Term from, Term to) {
+  if (t == from) return to;
+  switch (t) {
+    case TApp(:final fn, :final arg):
+      final newFn = _replaceTermInTerm(fn, from, to);
+      final newArg = _replaceTermInTerm(arg, from, to);
+      if (identical(newFn, fn) && identical(newArg, arg)) return t;
+      return TApp(newFn, newArg);
+    case TLam(:final domain, :final body):
+      final newDom = _replaceTermInTerm(domain, from, to);
+      final newBody = _replaceTermInTerm(body, from, to);
+      if (identical(newDom, domain) && identical(newBody, body)) return t;
+      return TLam(newDom, newBody);
+    case TPi(:final domain, :final codomain):
+      final newDom = _replaceTermInTerm(domain, from, to);
+      final newCod = _replaceTermInTerm(codomain, from, to);
+      if (identical(newDom, domain) && identical(newCod, codomain)) return t;
+      return TPi(newDom, newCod);
+    case TLet(:final domain, :final bound, :final body, :final name):
+      return TLet(
+        _replaceTermInTerm(domain, from, to),
+        _replaceTermInTerm(bound, from, to),
+        _replaceTermInTerm(body, from, to),
+        name: name,
+      );
+    case TData(:final name, :final args):
+      final newArgs = <Term>[];
+      var changed = false;
+      for (final a in args) {
+        final na = _replaceTermInTerm(a, from, to);
+        newArgs.add(na);
+        if (!identical(na, a)) changed = true;
+      }
+      return changed ? TData(name, newArgs) : t;
+    case TConstr(:final dataName, :final ctorName, :final args):
+      final newArgs = <Term>[];
+      var changed = false;
+      for (final a in args) {
+        final na = _replaceTermInTerm(a, from, to);
+        newArgs.add(na);
+        if (!identical(na, a)) changed = true;
+      }
+      return changed ? TConstr(dataName, ctorName, newArgs) : t;
+    case TMatch(:final scrutinee, :final motive, :final cases):
+      return TMatch(
+        _replaceTermInTerm(scrutinee, from, to),
+        motive == null ? null : _replaceTermInTerm(motive, from, to),
+        [
+          for (final c in cases)
+            TMatchCase(
+              c.ctorName,
+              c.nBinders,
+              _replaceTermInTerm(c.body, from, to),
+              c.binderNames,
+              span: c.span,
+            ),
+        ],
+      );
+    case TQuot(:final carrier, :final relation):
+      return TQuot(
+        _replaceTermInTerm(carrier, from, to),
+        _replaceTermInTerm(relation, from, to),
+      );
+    case TQuotMk(:final arg):
+      return TQuotMk(_replaceTermInTerm(arg, from, to));
+    case TQuotLift(:final quot, :final fn, :final proof):
+      return TQuotLift(
+        _replaceTermInTerm(quot, from, to),
+        _replaceTermInTerm(fn, from, to),
+        _replaceTermInTerm(proof, from, to),
+      );
+    case TProj(:final expr, :final fieldName):
+      return TProj(_replaceTermInTerm(expr, from, to), fieldName);
+    default:
+      return t;
   }
 }
 
