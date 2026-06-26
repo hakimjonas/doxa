@@ -7937,5 +7937,60 @@ Value substNVar(Value value, int scrutLevel, Value replacement) {
         )
         : value;
   }
+  if (value is VMatch) {
+    final newScrutinee = substNVar(value.scrutinee, scrutLevel, replacement);
+    final newMotive =
+        value.motive == null
+            ? null
+            : substNVar(value.motive!, scrutLevel, replacement);
+    if (identical(newScrutinee, value.scrutinee) &&
+        identical(newMotive, value.motive)) {
+      return value;
+    }
+    // If the scrutinee is now a VConstr, reduce the VMatch by
+    // evaluating the matching arm body.
+    if (newScrutinee is VConstr) {
+      final cases = value.cases;
+      final dataDecl = value.env.lookupData(newScrutinee.dataName);
+      if (dataDecl != null) {
+        final paramCount = dataDecl.params.length;
+        TMatchCase? matched;
+        for (final arm in cases) {
+          if (arm.ctorName == newScrutinee.ctorName) {
+            matched = TMatchCase(
+              arm.ctorName,
+              arm.nBinders,
+              arm.body,
+              arm.binderNames,
+              span: arm.span,
+            );
+            break;
+          }
+        }
+        if (matched == null && cases.any((a) => a.isWildcard)) {
+          for (final arm in cases) {
+            if (arm.isWildcard) {
+              matched = TMatchCase(
+                arm.ctorName,
+                arm.nBinders,
+                arm.body,
+                arm.binderNames,
+                span: arm.span,
+              );
+              break;
+            }
+          }
+        }
+        if (matched != null) {
+          var armEnv = value.env;
+          for (var i = 0; i < matched.nBinders; i++) {
+            armEnv = armEnv.extend(newScrutinee.args[paramCount + i]);
+          }
+          return eval(matched.body, armEnv);
+        }
+      }
+    }
+    return VMatch(newScrutinee, newMotive, value.cases, value.env);
+  }
   return value;
 }

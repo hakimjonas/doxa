@@ -172,9 +172,10 @@ and go(n: Nat, h0: Eq Bool (even n) true_) : Eq Nat n (mult two (half n)) = Nat.
       ((m: Nat) => (ihm: Eq Bool (even (succ m)) true_ -> Eq Nat (succ m) (mult two (half (succ m)))) => (hssm: Eq Bool (even (succ (succ m))) true_) => {
         val even_m_true : Eq Bool (even m) true_ = trans_e Bool (even m) (even (succ (succ m))) true_ (sym_e Bool (even (succ (succ m))) (even m) (even_succ_succ_eq_even m)) hssm;
         val rec_m : Eq Nat m (mult two (half m)) = go m even_m_true;
-        trans_e Nat (succ (succ m)) (succ (succ (mult two (half m)))) (mult two (half (succ (succ m)))) (cong ((x: Nat) => succ (succ x)) rec_m) (sym_e Nat (mult two (half (succ (succ m)))) (succ (succ (mult two (half m)))) (mult_two_succ (half m)))
+        trans_e Nat (succ (succ m)) (succ (succ (mult two (half m)))) (mult two (half (succ (succ m)))) (cong_e Nat Nat ((x: Nat) => succ (succ x)) m (mult two (half m)) rec_m) (sym_e Nat (mult two (half (succ (succ m)))) (succ (succ (mult two (half m)))) (mult_two_succ (half m)))
       })
-    n h0)
+      k hsk)
+  n h0
 
 // --- Theorem: n^2 = 2*m^2 implies n = 0 ---------------------------------
 //

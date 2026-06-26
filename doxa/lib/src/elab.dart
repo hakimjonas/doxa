@@ -2804,6 +2804,53 @@ Term _elabExpr(
 /// The resulting TMatch has `motive = null` when the user omitted
 /// `returning`, and the kernel's post-elab check applies the
 /// constant-motive-from-expected rule.
+
+/// Substitute [scrutLevel] with [replacement] in all binder types within
+/// [ctx]. Walks the immutable CCons chain and creates new nodes for
+/// binders whose types changed; unchanged nodes are shared.
+Ctx substNVarInCtx(Ctx ctx, int scrutLevel, Value replacement) {
+  switch (ctx) {
+    case CNil():
+      return ctx;
+    case CCons(
+      :final type,
+      :final value,
+      :final env,
+      :final level,
+      :final rest,
+    ):
+      final newType = substNVar(type, scrutLevel, replacement);
+      final newRest = substNVarInCtx(rest, scrutLevel, replacement);
+      if (identical(newType, type) && identical(newRest, rest)) {
+        return ctx;
+      }
+      return CCons(newType, value, env, level, newRest);
+  }
+}
+
+/// Walk [ctx] and re-evaluate each binder type at [armLevel] in [armEnv].
+/// This reduces stuck VMatch values whose scrutinee became a VConstr
+/// after hypothesis refinement substitution.
+Ctx _normalizeChangedCtx(Ctx ctx, int armLevel, Env armEnv) {
+  switch (ctx) {
+    case CNil():
+      return ctx;
+    case CCons(
+      :final type,
+      :final value,
+      :final env,
+      :final level,
+      :final rest,
+    ):
+      final newRest = _normalizeChangedCtx(rest, armLevel, armEnv);
+      final newType = eval(quote(armLevel, type), armEnv);
+      if (identical(newType, type) && identical(newRest, rest)) {
+        return ctx;
+      }
+      return CCons(newType, value, env, level, newRest);
+  }
+}
+
 Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
   final match = expr.kind as SMatchKind;
   final (scrutineeT, scrutineeV) = _inferExpr(state, match.scrutinee);
@@ -3016,6 +3063,47 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
           }
         }
 
+        // Refine existing binder types that reference the scrutinee
+        // variable. When the scrutinee is a neutral NVar, substitute it
+        // with the constructor result value in all binder types so that
+        // hypothesis types (e.g. `h: Eq Bool (even n) true_`) are refined
+        // per arm (e.g. to `Eq Bool (even (succ k)) true_` in the succ arm).
+        //
+        // We eval scrutineeT (not scrutineeV from _inferExpr) because
+        // _inferExpr returns the TYPE for local variables, not the
+        // binder value. Evaluating the term in the state env gives us
+        // the actual binder value (VNeutral(NVar(level))).
+        if (scrutineeData != null) {
+          final scrutineeValue = eval(scrutineeT, state.ctx.env);
+          if (scrutineeValue is VNeutral && scrutineeValue.neutral is NVar) {
+            final scrutLevel = (scrutineeValue.neutral as NVar).level;
+            final ctorArgs = <Value>[
+              for (var k = 0; k < ctor.args.length; k++)
+                VNeutral(NVar(armState.ctx.level - ctor.args.length + k)),
+            ];
+            final ctorResultV = VConstr(
+              scrutineeData.name,
+              ctor.name,
+              ctorArgs,
+            );
+            final substitutedCtx = substNVarInCtx(
+              armState.ctx,
+              scrutLevel,
+              ctorResultV,
+            );
+            // Re-evaluate changed binder types by quoting at the arm
+            // context level and evaluating in the arm env. This reduces
+            // stuck VMatch values whose scrutinee became a VConstr.
+            final armLevel = armState.ctx.level;
+            final armEnv = armState.ctx.env;
+            armState = _ElabState(
+              armState.topEnv,
+              _normalizeChangedCtx(substitutedCtx, armLevel, armEnv),
+              armState.names,
+            );
+          }
+        }
+
         // Elaborate the arm body. When the match has an expected type we
         // elaborate the body in CHECK mode against the arm's result
         // type, propagating the expected type into leaf positions
@@ -3058,12 +3146,13 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
                 ctorArgs,
               );
               final rawV = substNVar(expected, scrutLevel, ctorResultV);
-              // Normalize stuck function applications
-              // (e.g. half (VConstr zero)) when safe.
-              armExpected =
-                  _valueContainsNVar(rawV)
-                      ? rawV
-                      : eval(quote(0, rawV), state.ctx.env);
+              // Normalize stuck function applications by quoting at the
+              // arm context level and evaluating in the arm env. This
+              // handles NVars from both the original and arm contexts.
+              armExpected = eval(
+                quote(armState.ctx.level, rawV),
+                armState.ctx.env,
+              );
             } else {
               armExpected = expected;
             }
