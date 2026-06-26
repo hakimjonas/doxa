@@ -1446,7 +1446,7 @@ TacticResult _runTacticSteps(
         currentEst,
       ),
       STacticInduction(:final name) => (
-        _runInduction(name, currentTstate),
+        _runInduction(name, currentTstate, currentEst),
         currentEst,
       ),
       STacticTrivial() => (_runTrivial(currentTstate), currentEst),
@@ -1538,8 +1538,13 @@ TacticResult _runRewrite(SExpr expr, TacticState tstate, _ElabState est) {
   return rewrite(term)(tstate);
 }
 
-TacticResult _runInduction(String name, TacticState tstate) =>
-    induction(name)(tstate);
+TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
+  final binderIdx = est.names.indexOf(name);
+  if (binderIdx < 0) {
+    return TacticFail('induction: variable "$name" not in scope');
+  }
+  return inductionAt(binderIdx)(tstate);
+}
 
 TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
 

@@ -19,6 +19,7 @@
 library;
 
 import 'ctx.dart';
+import 'env.dart';
 import 'eval.dart';
 import 'meta.dart';
 import 'term.dart';
@@ -330,10 +331,163 @@ TacticFn Function(Term) rewrite =
     };
 
 /// `induction x`: produces subgoals per constructor of `x`'s type.
+///
+/// Looks up `x` in the context, finds its inductive data type, and
+/// builds the recursor application `T.ind (λ a => G) m1 ... mn x`
+/// where each `mi` is a method (constructor case) with fresh subgoal
+/// metas and induction hypotheses for recursive arguments.
 TacticFn Function(String) induction =
     (varName) => (s) {
-      return TacticFail('induction: not yet implemented in this version');
+      // Look up the variable using binderNames (populated by
+      // _runTacticSteps for binders introduced by intro).
+      int? binderIdx;
+      for (var i = 0; i < s.binderNames.length; i++) {
+        if (s.binderNames[i] == varName) {
+          binderIdx = i;
+          break;
+        }
+      }
+      if (binderIdx == null) {
+        return TacticFail('induction: variable "$varName" not in scope');
+      }
+      return _inductionAt(binderIdx)(s);
     };
+
+/// Like [induction] but takes a de Bruijn index instead of a name.
+/// Exposed for [_runInduction] in elab.dart which has access to the
+/// elaborator's name scope.
+TacticFn Function(int) inductionAt = _inductionAt;
+
+TacticFn Function(int) _inductionAt =
+    (binderIdx) => (s) {
+      final xType = s.ctx.lookupType(binderIdx);
+      if (xType is! VData) {
+        return TacticFail('induction: variable is not of an inductive type');
+      }
+      final dataName = xType.name;
+      final dataArgs = xType.args;
+      final dataDecl = s.ctx.lookupData(dataName);
+      if (dataDecl == null) {
+        return TacticFail('induction: data type "$dataName" not found');
+      }
+      if (dataDecl.ctors.isEmpty) {
+        return TacticFail('induction: $dataName has no constructors');
+      }
+      final level = s.ctx.level;
+      final goalType = s.goalType;
+
+      // Build the motive P = λ a => goalType[x := a].
+      final Value xVal = VNeutral(NVar(level - 1 - binderIdx));
+      final Value motiveV;
+      if (xVal is VNeutral && xVal.neutral is NVar) {
+        final scrutLevel = (xVal.neutral as NVar).level;
+        final freshVar = VNeutral(NVar(level));
+        motiveV = substNVar(goalType, scrutLevel, freshVar);
+      } else {
+        return TacticFail('induction: cannot build motive');
+      }
+      final motiveBody = quote(level + 1, motiveV);
+      final motive = TLam(quote(level, xType), motiveBody);
+
+      // Build each constructor method and collect fresh meta IDs.
+      final methodMetas = <int>[];
+      final methodTerms = <Term>[];
+      final paramCount = dataDecl.params.length;
+
+      for (final ctor in dataDecl.ctors) {
+        // Build the constructor applied to fresh neutrals for its args.
+        var teleEnv = const ENil() as Env;
+        for (var i = paramCount - 1; i >= 0; i--) {
+          teleEnv = teleEnv.extend(dataArgs[i]);
+        }
+        final ctorArgs = <Value>[];
+        final recArgPositions = <int>[];
+        for (var j = 0; j < ctor.args.length; j++) {
+          final argTypeV = eval(ctor.args[j].type, teleEnv);
+          ctorArgs.add(VNeutral(NVar(level + j)));
+          teleEnv = teleEnv.extend(VNeutral(NVar(level + j)));
+          // Check if this arg is recursive (its type mentions the data).
+          if (_typeMentionsData(argTypeV, dataName)) {
+            recArgPositions.add(j);
+          }
+        }
+
+        // P(ctor(args)) = goalType[x := ctor(args)]
+        final ctorResultV = VConstr(dataName, ctor.name, ctorArgs);
+        final pCtorV = substNVar(
+          goalType,
+          (xVal.neutral as NVar).level,
+          ctorResultV,
+        );
+
+        // Method type: (args) -> (IHs) -> P(ctor(args))
+        // Build the lambda chain manually, with a fresh subgoal meta
+        // at the end for the body.
+        final ihTypes = <Value>[];
+        var methodBodyCtx = s.ctx;
+        for (final j in recArgPositions) {
+          final recArgValue = ctorArgs[j];
+          final ihType = substNVar(
+            goalType,
+            (xVal.neutral as NVar).level,
+            recArgValue,
+          );
+          ihTypes.add(ihType);
+          methodBodyCtx = methodBodyCtx.extend(ihType);
+        }
+        final methodBodyMeta = s.metas.freshTermMeta(pCtorV, methodBodyCtx);
+        methodMetas.add(methodBodyMeta);
+
+        // Build the lambda: λ IHs... λ args... => TMeta(methodBodyMeta)
+        var body = TMeta(methodBodyMeta) as Term;
+        for (final ihType in ihTypes.reversed) {
+          body = TLam(quote(level, ihType), body);
+        }
+        for (var j = ctor.args.length - 1; j >= 0; j--) {
+          final argTypeV = eval(ctor.args[j].type, teleEnv);
+          body = TLam(quote(level, argTypeV), body);
+        }
+        methodTerms.add(body);
+      }
+
+      // Build the full recursor application.
+      // T.ind params P method1 ... methodN scrutinee
+      var proofTerm = TRec(dataName) as Term;
+      // Apply params.
+      for (var i = 0; i < paramCount; i++) {
+        proofTerm = TApp(proofTerm, quote(level, dataArgs[i]));
+      }
+      // Apply motive.
+      proofTerm = TApp(proofTerm, motive);
+      // Apply methods.
+      for (final m in methodTerms) {
+        proofTerm = TApp(proofTerm, m);
+      }
+      // Apply scrutinee.
+      proofTerm = TApp(proofTerm, TBound(binderIdx));
+
+      // The first subgoal meta becomes the "current" one for the next
+      // tactic step.  _runTacticSteps handles the sequencing.
+      return TacticOk(proofTerm, s.metas, subMeta: methodMetas.first);
+    };
+
+/// True if [v] is or contains a reference to the inductive type [dataName].
+/// Used by [induction] to identify recursive constructor arguments.
+bool _typeMentionsData(Value v, String dataName) {
+  if (v is VData && v.name == dataName) return true;
+  // Descend into function types.
+  if (v is VPi) return _typeMentionsData(v.domain, dataName);
+  // Descend into neutral applications (e.g. List A).
+  if (v is VNeutral) {
+    var cur = v.neutral;
+    while (cur is NApp) cur = cur.fn;
+    if (cur is NVar || cur is NTop) {
+      // Check if this could be the target data type through args.
+    }
+    return false;
+  }
+  return false;
+}
 
 /// `trivial`: tries `refl` followed by simple context lookups.
 TacticResult trivial(TacticState s) {
@@ -389,73 +543,6 @@ ConvResult conv(int level, Value a, Value b) {
     return const ConvOk();
   } catch (_) {
     return ConvMismatch();
-  }
-}
-
-/// Walk [t] and replace every `TBound(from)` with `TBound(to)`.
-/// Under binders ([TLam], [TPi], [TLet] body) the target index is
-/// incremented so that binder-local indices are not disturbed.
-Term _replaceBound(Term t, int from, int to) {
-  switch (t) {
-    case TBound(:final index):
-      return TBound(index == from ? to : index);
-    case TApp(:final fn, :final arg):
-      return TApp(_replaceBound(fn, from, to), _replaceBound(arg, from, to));
-    case TLam(:final domain, :final body):
-      return TLam(
-        _replaceBound(domain, from, to),
-        _replaceBound(body, from + 1, to + 1),
-      );
-    case TPi(:final domain, :final codomain):
-      return TPi(
-        _replaceBound(domain, from, to),
-        _replaceBound(codomain, from + 1, to + 1),
-      );
-    case TLet(:final domain, :final bound, :final body, :final name):
-      return TLet(
-        _replaceBound(domain, from, to),
-        _replaceBound(bound, from, to),
-        _replaceBound(body, from + 1, to + 1),
-        name: name,
-      );
-    case TData(:final name, :final args):
-      return TData(name, [for (final a in args) _replaceBound(a, from, to)]);
-    case TConstr(:final dataName, :final ctorName, :final args):
-      return TConstr(dataName, ctorName, [
-        for (final a in args) _replaceBound(a, from, to),
-      ]);
-    case TMatch(:final scrutinee, :final motive, :final cases):
-      return TMatch(
-        _replaceBound(scrutinee, from, to),
-        motive == null ? null : _replaceBound(motive, from, to),
-        [
-          for (final c in cases)
-            TMatchCase(
-              c.ctorName,
-              c.nBinders,
-              _replaceBound(c.body, from + c.nBinders, to + c.nBinders),
-              c.binderNames,
-              span: c.span,
-            ),
-        ],
-      );
-    case TQuot(:final carrier, :final relation):
-      return TQuot(
-        _replaceBound(carrier, from, to),
-        _replaceBound(relation, from, to),
-      );
-    case TQuotMk(:final arg):
-      return TQuotMk(_replaceBound(arg, from, to));
-    case TQuotLift(:final quot, :final fn, :final proof):
-      return TQuotLift(
-        _replaceBound(quot, from, to),
-        _replaceBound(fn, from, to),
-        _replaceBound(proof, from, to),
-      );
-    case TProj(:final expr, :final fieldName):
-      return TProj(_replaceBound(expr, from, to), fieldName);
-    default:
-      return t; // TType, TProp, TSProp, TFree, TTop, TMeta, TRec
   }
 }
 

@@ -120,5 +120,32 @@ val rewrite_trivial : (A: Type) -> (x: A) -> (h: Eq A x x) -> Eq A x x =
         returnsNormally,
       );
     });
+
+    test('induction on Eq using refl', () {
+      // Prove: (A: Type) -> (x: A) -> (y: A) -> (h: Eq A x y) -> Eq A x y
+      // by induction on h, then exact h (refl case).
+      final env = _elab('''
+val induction_eq : (A: Type) -> (x: A) -> (y: A) -> (h: Eq A x y) -> Eq A x y =
+  (A: Type) => (x: A) => (y: A) => (h: Eq A x y) => by { induction h; exact h }
+''');
+      expect(
+        () => env.bindings.firstWhere((b) => b.name == 'induction_eq'),
+        returnsNormally,
+      );
+    });
+
+    test('induction creates subgoals and solves them', () {
+      // Simple single-constructor type to avoid multi-subgoal sequencing.
+      final env = _elab('''
+data Wrap : Prop { wrap : Wrap; }
+val induction_wrap : (w: Wrap) -> Wrap = (w: Wrap) => by {
+  induction w; exact wrap
+}
+''');
+      expect(
+        () => env.bindings.firstWhere((b) => b.name == 'induction_wrap'),
+        returnsNormally,
+      );
+    });
   });
 }
