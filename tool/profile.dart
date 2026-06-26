@@ -43,10 +43,7 @@ void main() {
     final rd = [...dataDecls, ...p.dataDecls];
     bindings = [
       ...bindings,
-      ...checkDeclResult(
-        TopEnv(bindings, rd, const {}, namespaceBindings),
-        p,
-      ),
+      ...checkDeclResult(TopEnv(bindings, rd, const {}, namespaceBindings), p),
     ];
     dataDecls = rd;
     namespaceBindings = mergeNamespace(namespaceBindings, p.namespaceBindings);
@@ -66,19 +63,24 @@ void main() {
   SProgram stdlibProg = _parseProg(src);
   for (var i = 0; i < 3; i++) {
     importedPaths.clear();
-    sw.reset(); sw.start();
+    sw.reset();
+    sw.start();
     final prog = _parseProg(src);
-    sw.stop(); totalParse += sw.elapsedMicroseconds;
+    sw.stop();
+    totalParse += sw.elapsedMicroseconds;
 
     var b = bindings.toList(), d = dataDecls.toList(), ns = namespaceBindings;
     var elabUs = 0, checkUs = 0;
 
     for (final decl in prog.decls) {
-      sw.reset(); sw.start();
+      sw.reset();
+      sw.start();
       final produced = elabDecl(TopEnv(b, d, const {}, ns), decl);
-      sw.stop(); elabUs += sw.elapsedMicroseconds;
+      sw.stop();
+      elabUs += sw.elapsedMicroseconds;
 
-      sw.reset(); sw.start();
+      sw.reset();
+      sw.start();
       final rd = [...d, ...produced.dataDecls];
       final checkBindings =
           decl.kind is SImportKind ? [...b, ...produced.bindings] : b;
@@ -86,7 +88,8 @@ void main() {
         TopEnv(checkBindings, rd, const {}, ns),
         produced,
       );
-      sw.stop(); checkUs += sw.elapsedMicroseconds;
+      sw.stop();
+      checkUs += sw.elapsedMicroseconds;
       b = [...b, ...finalized];
       d = rd;
       ns = mergeNamespace(ns, produced.namespaceBindings);
@@ -98,34 +101,44 @@ void main() {
   // Average
   final n = 3;
   print('=== stdlib/proofs (average of $n runs) ===');
-  print('parse:  ${(totalParse~/n/1000).toStringAsFixed(2)}ms');
-  print('elab:   ${(totalElab~/n/1000).toStringAsFixed(2)}ms');
-  print('check:  ${(totalCheck~/n/1000).toStringAsFixed(2)}ms');
-  print('total:  ${((totalParse+totalElab+totalCheck)~/n/1000).toStringAsFixed(2)}ms');
+  print('parse:  ${(totalParse ~/ n / 1000).toStringAsFixed(2)}ms');
+  print('elab:   ${(totalElab ~/ n / 1000).toStringAsFixed(2)}ms');
+  print('check:  ${(totalCheck ~/ n / 1000).toStringAsFixed(2)}ms');
+  print(
+    'total:  ${((totalParse + totalElab + totalCheck) ~/ n / 1000).toStringAsFixed(2)}ms',
+  );
   print('decls:  ${stdlibProg.decls.length}');
 
   // Church depth 500
   print('');
   final churchSrc = _churchChain(500);
   final churchProg = _parseProg(churchSrc);
-  totalParse = 0; totalElab = 0; totalCheck = 0;
+  totalParse = 0;
+  totalElab = 0;
+  totalCheck = 0;
 
   for (var i = 0; i < 3; i++) {
-    sw.reset(); sw.start();
+    sw.reset();
+    sw.start();
     final prog = _parseProg(churchSrc);
-    sw.stop(); totalParse += sw.elapsedMicroseconds;
+    sw.stop();
+    totalParse += sw.elapsedMicroseconds;
 
     var b = bindings.toList(), d = dataDecls.toList(), ns = namespaceBindings;
     var elabUs = 0, checkUs = 0;
     for (final decl in prog.decls) {
-      sw.reset(); sw.start();
+      sw.reset();
+      sw.start();
       final produced = elabDecl(TopEnv(b, d, const {}, ns), decl);
-      sw.stop(); elabUs += sw.elapsedMicroseconds;
+      sw.stop();
+      elabUs += sw.elapsedMicroseconds;
 
-      sw.reset(); sw.start();
+      sw.reset();
+      sw.start();
       final rd = [...d, ...produced.dataDecls];
       final finalized = checkDeclResult(TopEnv(b, rd, const {}, ns), produced);
-      sw.stop(); checkUs += sw.elapsedMicroseconds;
+      sw.stop();
+      checkUs += sw.elapsedMicroseconds;
       b = [...b, ...finalized];
       d = rd;
       ns = mergeNamespace(ns, produced.namespaceBindings);
@@ -135,10 +148,12 @@ void main() {
   }
 
   print('=== church_depth_500 (average of $n runs) ===');
-  print('parse:  ${(totalParse~/n/1000).toStringAsFixed(2)}ms');
-  print('elab:   ${(totalElab~/n/1000).toStringAsFixed(2)}ms');
-  print('check:  ${(totalCheck~/n/1000).toStringAsFixed(2)}ms');
-  print('total:  ${((totalParse+totalElab+totalCheck)~/n/1000).toStringAsFixed(2)}ms');
+  print('parse:  ${(totalParse ~/ n / 1000).toStringAsFixed(2)}ms');
+  print('elab:   ${(totalElab ~/ n / 1000).toStringAsFixed(2)}ms');
+  print('check:  ${(totalCheck ~/ n / 1000).toStringAsFixed(2)}ms');
+  print(
+    'total:  ${((totalParse + totalElab + totalCheck) ~/ n / 1000).toStringAsFixed(2)}ms',
+  );
   print('decls:  ${churchProg.decls.length}');
 }
 
@@ -149,8 +164,12 @@ SProgram _parseProg(String src) {
   throw StateError('parse failed');
 }
 
-void _check(String src, List<TopBinding> bindings, List<DataDecl> dataDecls,
-    Map<String, Set<String>> namespaceBindings) {
+void _check(
+  String src,
+  List<TopBinding> bindings,
+  List<DataDecl> dataDecls,
+  Map<String, Set<String>> namespaceBindings,
+) {
   final prog = _parseProg(src);
   var b = bindings.toList(), d = dataDecls.toList(), ns = namespaceBindings;
   for (final decl in prog.decls) {

@@ -38,7 +38,10 @@ void main(List<String> args) {
   var repeat = 3;
   var warmup = 1;
   var output = 'table'; // table | json
-  final depths = <int>[100, 500]; // depth 1000+ overflows the elaborator stack (known)
+  final depths = <int>[
+    100,
+    500,
+  ]; // depth 1000+ overflows the elaborator stack (known)
   final workloads = <Workload>[];
 
   for (final a in args) {
@@ -52,9 +55,7 @@ void main(List<String> args) {
       output = a.substring('--output='.length);
     } else if (a.startsWith('--depth=')) {
       depths.clear();
-      depths.addAll(
-        a.substring('--depth='.length).split(',').map(int.parse),
-      );
+      depths.addAll(a.substring('--depth='.length).split(',').map(int.parse));
     } else if (!a.startsWith('--')) {
       depths.clear();
       depths.addAll(args.where((a) => !a.startsWith('--')).map(int.parse));
@@ -65,27 +66,34 @@ void main(List<String> args) {
   // ---- Real workloads ----
   final stdlibDir = Directory('lib/stdlib');
   if (stdlibDir.existsSync()) {
-    for (final f in stdlibDir.listSync().whereType<File>().toList()..sort(
-      (a, b) => a.path.compareTo(b.path),
-    )) {
+    for (final f
+        in stdlibDir.listSync().whereType<File>().toList()
+          ..sort((a, b) => a.path.compareTo(b.path))) {
       if (!f.path.endsWith('.doxa')) continue;
       // The prelude is already seeded — re-checking it duplicates Eq.
       if (f.path.endsWith('prelude.doxa')) continue;
       final name = f.uri.pathSegments.last.replaceAll('.doxa', '');
-      workloads.add(Workload('stdlib/$name', _read(f), 'stdlib file',
-          path: f.path));
+      workloads.add(
+        Workload('stdlib/$name', _read(f), 'stdlib file', path: f.path),
+      );
     }
   } else {
     // Sub-package layout — try relative to doxa_tooling.
     final alt = Directory('../lib/stdlib');
     if (alt.existsSync()) {
-      for (final f in alt.listSync().whereType<File>().toList()..sort(
-        (a, b) => a.path.compareTo(b.path),
-      )) {
+      for (final f
+          in alt.listSync().whereType<File>().toList()
+            ..sort((a, b) => a.path.compareTo(b.path))) {
         if (!f.path.endsWith('.doxa')) continue;
         final name = f.uri.pathSegments.last.replaceAll('.doxa', '');
-        workloads.add(Workload('stdlib/$name', _readFull(f.path), 'stdlib file',
-            path: f.path));
+        workloads.add(
+          Workload(
+            'stdlib/$name',
+            _readFull(f.path),
+            'stdlib file',
+            path: f.path,
+          ),
+        );
       }
     }
   }
@@ -93,8 +101,14 @@ void main(List<String> args) {
   // example/proofs.doxa
   final example = File('example/proofs.doxa');
   if (example.existsSync()) {
-    workloads.add(Workload('example/proofs', _read(example), 'example file',
-        path: example.path));
+    workloads.add(
+      Workload(
+        'example/proofs',
+        _read(example),
+        'example file',
+        path: example.path,
+      ),
+    );
   }
 
   // ---- Scaled stdlib (synthetic) ----
@@ -111,13 +125,16 @@ void main(List<String> args) {
   // which produces a β-reduction chain proportional to the depth.
   for (final depth in depths) {
     final program = _churchDepthProgram(depth);
-    workloads.add(Workload('church_depth_$depth', program, 'β-reduction stress'));
+    workloads.add(
+      Workload('church_depth_$depth', program, 'β-reduction stress'),
+    );
   }
 
   // ---- Filter ----
   if (filter.isNotEmpty) {
-    workloads.removeWhere((w) =>
-        !w.name.toLowerCase().contains(filter.toLowerCase()));
+    workloads.removeWhere(
+      (w) => !w.name.toLowerCase().contains(filter.toLowerCase()),
+    );
   }
 
   if (workloads.isEmpty) {
@@ -152,9 +169,7 @@ void main(List<String> args) {
   // ---- Output ----
   switch (output) {
     case 'json':
-      stdout.writeln(jsonEncode([
-        for (final r in results) r.toJson(),
-      ]));
+      stdout.writeln(jsonEncode([for (final r in results) r.toJson()]));
     case 'table':
       _printTable(results);
   }
@@ -221,10 +236,12 @@ final class BenchResult {
   sw.stop();
   final parseUs = sw.elapsedMicroseconds;
   if (program == null) {
-    final srcPreview = w.source.length > 100
-        ? '${w.source.substring(0, 100)}...'
-        : w.source;
-    if (!silent) stderr.writeln('  ${w.name}: PARSE ERROR. source(len=${w.source.length}): $srcPreview');
+    final srcPreview =
+        w.source.length > 100 ? '${w.source.substring(0, 100)}...' : w.source;
+    if (!silent)
+      stderr.writeln(
+        '  ${w.name}: PARSE ERROR. source(len=${w.source.length}): $srcPreview',
+      );
     return (const BenchTiming(-1, -1, -1), -1.0);
   }
 
@@ -261,7 +278,10 @@ final class BenchResult {
         produced.namespaceBindings,
       );
     } on StackOverflowError {
-      if (!silent) stderr.writeln('  ${w.name}: STACK OVERFLOW (elaborator recursion, known limitation)');
+      if (!silent)
+        stderr.writeln(
+          '  ${w.name}: STACK OVERFLOW (elaborator recursion, known limitation)',
+        );
       return (const BenchTiming(-3, -3, -3), -3.0);
     } on Exception catch (e) {
       if (!silent) stderr.writeln('  ${w.name}: CHECK ERROR: $e');
@@ -295,17 +315,22 @@ void _printTable(List<BenchResult> results) {
     byCategory.putIfAbsent(r.workload.category, () => []).add(r);
   }
 
-  stdout.writeln('| Workload | Source | Parse (us) | Elab+Check (us) | Total (ms) |');
-  stdout.writeln('|----------|--------|------------|------------------|------------|');
+  stdout.writeln(
+    '| Workload | Source | Parse (us) | Elab+Check (us) | Total (ms) |',
+  );
+  stdout.writeln(
+    '|----------|--------|------------|------------------|------------|',
+  );
 
   for (final entry in byCategory.entries) {
     final cat = entry.key;
 
     for (final r in entry.value) {
       final bytes = r.workload.source.length;
-      final srcCol = bytes >= 1024
-          ? '${(bytes / 1024).toStringAsFixed(1)} KB'
-          : '$bytes B';
+      final srcCol =
+          bytes >= 1024
+              ? '${(bytes / 1024).toStringAsFixed(1)} KB'
+              : '$bytes B';
       stdout.writeln(
         '| ${r.workload.name} | $srcCol | ${r.timing.parseUs} | ${r.timing.elabUs} | ${r.totalMs.toStringAsFixed(3)} |',
       );
@@ -315,10 +340,15 @@ void _printTable(List<BenchResult> results) {
   // Summary
   final allOk = results.where((r) => r.totalMs >= 0);
   if (allOk.isNotEmpty) {
-    final avgMs = allOk.map((r) => r.totalMs).reduce((a, b) => a + b) / allOk.length;
-    final totalBytes = results.map((r) => r.workload.source.length).reduce((a, b) => a + b);
+    final avgMs =
+        allOk.map((r) => r.totalMs).reduce((a, b) => a + b) / allOk.length;
+    final totalBytes = results
+        .map((r) => r.workload.source.length)
+        .reduce((a, b) => a + b);
     stdout.writeln();
-    stdout.writeln('| **Total (all workloads)** | ${(totalBytes / 1024).toStringAsFixed(1)} KB | — | — | **${avgMs.toStringAsFixed(2)}** |');
+    stdout.writeln(
+      '| **Total (all workloads)** | ${(totalBytes / 1024).toStringAsFixed(1)} KB | — | — | **${avgMs.toStringAsFixed(2)}** |',
+    );
   }
 }
 
