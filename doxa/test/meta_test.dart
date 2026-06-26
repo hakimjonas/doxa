@@ -30,9 +30,9 @@ void main() {
       expect(prettyTerm(const TMeta(42)), '?42');
     });
 
-    test('pretty renders TApp(TMeta, x) as ?0 x', () {
+    test('pretty renders TApp(TMeta, x) as ?0 … (meta spine truncated)', () {
       const t = TApp(TMeta(0), TType(LLevel(0)));
-      expect(prettyTerm(t), '?0 Type');
+      expect(prettyTerm(t), '?0 …');
     });
   });
 

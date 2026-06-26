@@ -248,10 +248,30 @@ class _Printer {
   }
 
   String _app(Term fn, Term arg, int prec, {required int depth}) {
+    // When the head of the application chain is a TMeta (unsolved meta),
+    // truncate the spine: render `?id …` instead of expanding every
+    // argument.  Meta spines in error messages are overwhelmingly
+    // large `Eq.rec` chains that obscure the actual problem.
+    if (_isMetaHead(fn)) {
+      final fnStr = term(fn, _precAppFn, depth: depth - 1);
+      final s = '$fnStr …';
+      return prec >= _precAppArg ? '($s)' : s;
+    }
     final fnStr = term(fn, _precAppFn, depth: depth - 1);
     final argStr = term(arg, _precAppArg, depth: depth - 1);
     final s = '$fnStr $argStr';
     return prec >= _precAppArg ? '($s)' : s;
+  }
+
+  /// True if [t] is or will resolve to a [TMeta] through a chain of
+  /// [TApp] wrappers (a meta spine).  Used by [_app] to decide whether
+  /// to truncate the argument list.
+  bool _isMetaHead(Term t) {
+    var cur = t;
+    while (cur is TApp) {
+      cur = cur.fn;
+    }
+    return cur is TMeta;
   }
 
   String _lam(
