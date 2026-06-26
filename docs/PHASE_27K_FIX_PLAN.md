@@ -2,61 +2,126 @@
 
 ## Current State
 
-- 452 kernel tests pass
-- 519 tooling tests pass
-- Only case_study.doxa fails: `expected ?l ?d ?m, found Lt ?d ?e`
-- Walked many failed fix attempts (ELevel env, typeTerm re-eval, ENil eval, topBindings threading)
+- 456 kernel tests pass
+- 520 tooling tests pass
+- `mult_2_inj`, `square_double`, and the `sqrt2` theorem are BLOCKED by this bug
+- Crash: `Env.lookup(-2) on depth -4` in `_tryUnify` at `eval.dart:5175`
+- Any proof using `trans_e`/`sym_e`/`succ_inj` (all of which use `Eq.rec`) in a context that triggers `_tryUnify` crashes
+- The existing `mult_two_succ` proof (which uses `trans_e` chains) type-checks because it doesn't trigger `_tryUnify`. But using `mult_two_succ` to prove `mult_2_inj` requires `succ_inj` (to strip `succ` wrappers), which triggers the bug.
 
 ## Root Cause
 
-The recursor type `synthRecursorType` for a data type like `Lt` synthesizes the method handler types with TBound indices relative to the **full recursor Pi chain** (12 binders: motive + 2 methods + method_args + 2 indices + scrutinee). But when the **checker** processes a handler lambda (e.g., the lt_trans handler with 7 binders: a, m, k, p1, p2, ih1, ih2), it only opens the **method's own VPi chain** (7 binders). The handler body's expected return type contains `TBound(motiveDepth)` which references the motive at depth 8 from the method's innermost — beyond the 7-binder depth. This NVar at the wrong absolute level collides with the checker's live binder levels.
+The crash occurs in `_tryUnify` (eval.dart:5166-5205). When `subtype` compares two types and encounters unsolved metas, `_tryUnify` walks the VPi chain of the meta's `typeExpected` by evaluating codomain closures:
 
-## The Correct Fix
+```dart
+for (var i = 0; i < vars.length; i++) {
+  if (typeCursor is! VPi) return null;
+  domainTerms.add(quote(i, typeCursor.domain));
+  typeCursor = eval(
+    typeCursor.codomain.body,
+    typeCursor.codomain.env.extend(VNeutral(NVar(i))),
+  );
+}
+```
 
-The method handler's expected return type should be computed **directly from the MOTIVE** at the checker's live depth, not from the pre-synthesized recursor VPi chain. This is what Coq's kernel does and is the principled CIC approach.
+The crash is `Env.lookup(-2) on depth -4` — the `typeCursor.codomain.env` has depth -4 (negative!), and extending with `NVar(i)` still leaves it at negative depth. When `eval` tries to evaluate `typeCursor.codomain.body`, TBound references resolve via `env.lookup(index)` which fails because the env is too shallow.
+
+**Why the env depth is wrong**: The VPi chain comes from `synthRecursorType` (called when inferring the type of `Eq.rec`/`Nat.ind`/etc.). `synthRecursorType` builds the recursor type inside-out, starting from the innermost binder. The TBound indices in the method handler types are relative to the **full recursor Pi chain** (motive + indices + methods + scrutinee). But when `_tryUnify` evaluates the codomain of a VPi from this chain, the env depth at that point doesn't match the depth the TBound indices expect, because `_tryUnify` evaluates at a specific point in the live context which may have fewer binders than the full recursor chain.
+
+**Why this only triggers in some cases**: The `_tryUnify` path is only reached when the elaborator's meta-solver needs to solve metas. Most existing proofs don't trigger this path because their types are fully determined without meta-solving. But `mult_2_inj` uses `succ_inj` which creates an `Eq.rec` application, and the type checking of this application triggers meta-solving (because `succ_inj`'s return type involves a `cong_e` which involves `Eq.rec`), which calls `_tryUnify`, which crashes when it encounters the malformed VPi chain from `synthRecursorType`.
+
+## The Fix
+
+The fix is in `_tryUnify` at `eval.dart:5166-5205`. When the codomain evaluation fails due to depth mismatch, `_tryUnify` should return `null` (graceful fallback) instead of crashing. The caller (`subtype`) will then fall back to the conv-level TypeMismatch path, which correctly handles the type comparison without needing to solve metas.
 
 ### Implementation
 
-**In `eval.dart` `_Infer` SApp processing (around line 1900-2100, the TApp infer path):**
+**File**: `doxa/lib/src/eval.dart`, function `_tryUnify`
 
-When checking a recursor application's handler arguments, the `_TInfer` for TApp processes args sequentially. After the motive is processed (arg 0), track the **motive value**. When a handler argument follows, and the recursor is known:
-
-1. Store the motive value from the first recursor argument
-2. For each handler argument, compute the expected return type by evaluating:
-   ```
-   motiveResultIndices (ctor params args)
-   ```
-   Where `motive` is the stored value, `resultIndices` are the ctor's result indices, and the ctor instance is built from the handler's parameters.
-3. Evaluate this **in the checker's live Ctx** (at the current checker depth), producing NVars at correct levels.
-4. Use the result as the expected type for the handler body.
-
-### Detection
-
-Detect that the function being applied is a recursor by checking `fn is VRec` or `fn is TRec`. The VRec/IOr handler is on the infer path — in `_Infer` for `TApp`:
+**Lines 5172-5178** (inside `isCanonicalSpine`):
 
 ```dart
-case TApp(:final fn, :final arg):
-    // ... infer fn type -> VPi or VRec with VPi chain
-    // ... check arg against first VPi domain
-    // ... after first arg: if function is VRec, track motive
-    // ... for handler args: compute expected return type from motive
+// Before:
+typeCursor = eval(
+  typeCursor.codomain.body,
+  typeCursor.codomain.env.extend(VNeutral(NVar(i))),
+);
+
+// After:
+try {
+  typeCursor = eval(
+    typeCursor.codomain.body,
+    typeCursor.codomain.env.extend(VNeutral(NVar(i))),
+  );
+} catch (_) {
+  return null; // codomain env depth mismatch — fall back to conv
+}
 ```
 
-### Simplification
+**Lines 5188-5191** (inside the `else`/`reversed` branch):
 
-If this is too complex, a simpler alternative: **after opening the method VPi for the handler body** (in `_Check` TLam vs VPi path), when the expected codomain has been opened for the last handler binder, the remaining codomain should be the handler's return type. At this point, extract the `TBound` term for this return type, and **re-evaluate it at the checker's current depth**:
+Apply the same try-catch guard:
 
 ```dart
-// In _Check's TLam-VPi opening (eval.dart ~2720):
-final opened = eval(expected.codomain.body, expected.codomain.env.extend(fresh));
-// If this is the LAST binder opening (handler body follows):
-// Re-evaluate the return type at the checker's Ctx to fix NVar levels
-final adjusted = eval(quote(ctx.level, opened), ctx.env);
-// Use adjusted as the expected type for the handler body
+try {
+  tc = eval(tc.codomain.body, tc.codomain.env.extend(VNeutral(NVar(i))));
+} catch (_) {
+  return null;
+}
 ```
 
-This quote→eval round-trip maps NVars from the closure's level space to the checker's level space.
+### Why this works
 
-## Validation
+`_tryUnify` is called during meta-solving in `subtype`. When it returns `null`, the caller (in `_drive` at line 2363) treats it as an unsolvable meta and falls back to the standard `TypeMismatch` path. The `TypeMismatch` path uses the kernel's `conv` function (with proper depth tracking) to compare the types, which doesn't have the NVar depth issue.
 
-After either fix: `dart test` in both doxa and doxa_tooling should pass 452 + 520 = 972/972.
+This fix is conservative: it only affects the crash case. All existing tests that don't trigger the crash are unaffected.
+
+### Caveat
+
+This fix doesn't correct the underlying `synthRecursorType` issue — it just prevents the crash. Proofs that trigger `_tryUnify` on a recursor type will get a type mismatch error instead of a crash. To fully fix the NVar collision, `synthRecursorType` would need to be changed to build handler return types using the motive at the checker's live depth (the approach described in the original Phase 27k document). That's a larger change and can be deferred.
+
+### Validation
+
+After the fix:
+1. `mult_2_inj` (using `Nat.ind` with `succ_inj`) type-checks instead of crashing
+2. `succ_inj` works correctly in all contexts
+3. All 456 kernel tests + 520 tooling tests pass
+4. `doxa check lib/stdlib/case_study.doxa` passes with `mult_2_inj` added
+
+### Remaining work after this fix
+
+Once the `_tryUnify` crash is fixed, `mult_2_inj` can be proven. The proof structure is:
+
+```doxa
+fun mult_2_inj(a: Nat, b: Nat, h: Eq Nat (mult two a) (mult two b)) : Eq Nat a b = match a {
+  case zero => match b {
+    case zero => refl zero
+    case succ b1 => False.rec ((_: False) => Eq Nat zero (succ b1))
+      (succ_ne_zero (succ (mult two b1))
+        (trans_e Nat (succ (succ (mult two b1))) (mult two (succ b1)) (mult two zero)
+          (sym_e Nat (mult two (succ b1)) (succ (succ (mult two b1))) (mult_two_succ b1))
+          (sym_e Nat (mult two zero) (mult two (succ b1)) h)))
+  }
+  case succ k => match b {
+    case zero => False.rec ((_: False) => Eq Nat (succ k) zero)
+      (succ_ne_zero (succ (mult two k))
+        (trans_e Nat (succ (succ (mult two k))) (mult two (succ k)) zero
+          (sym_e Nat (mult two (succ k)) (succ (succ (mult two k))) (mult_two_succ k))
+          (trans_e Nat (mult two (succ k)) (mult two zero) zero
+            h
+            (refl zero))))
+    case succ b1 =>
+      cong_e Nat Nat ((x: Nat) => succ x) k b1
+        (mult_2_inj k b1
+          (succ_inj (mult two k) (mult two b1)
+            (succ_inj (succ (mult two k)) (succ (mult two b1))
+              (trans_e Nat (succ (succ (mult two k))) (mult two (succ k)) (succ (succ (mult two b1)))
+                (sym_e Nat (mult two (succ k)) (succ (succ (mult two k))) (mult_two_succ k))
+                (trans_e Nat (mult two (succ k)) (mult two (succ b1)) (succ (succ (mult two b1)))
+                  h
+                  (mult_two_succ b1))))))
+  }
+}
+```
+
+After `mult_2_inj`, the `square_double` lemma and the `sqrt2` theorem can be added, completing the case study.
