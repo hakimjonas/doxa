@@ -5172,10 +5172,36 @@ ConvResult? _tryUnify(Value a, Value b, int level, MetaContext metas) {
     for (var i = 0; i < vars.length; i++) {
       if (typeCursor is! VPi) return null;
       domainTerms.add(quote(i, typeCursor.domain));
-      typeCursor = eval(
-        typeCursor.codomain.body,
-        typeCursor.codomain.env.extend(VNeutral(NVar(i))),
-      );
+      // Try the standard env-extend approach first.  If the codomain's
+      // captured env is at a different depth than the current walk
+      // (e.g. from synthRecursorType), re-evaluate the codomain body
+      // quoted at the current depth in a fresh env.
+      final freshNVar = VNeutral(NVar(i));
+      Value? next;
+      try {
+        next = eval(
+          typeCursor.codomain.body,
+          typeCursor.codomain.env.extend(freshNVar),
+        );
+      } catch (_) {
+        // Depth mismatch: re-evaluate codomain body in a fresh env
+        // at depth i+1, using the original dataDecls/topBindings.
+        try {
+          var fallbackEnv =
+              ENil.withRegistries(
+                    dataDecls: typeCursor.codomain.env.dataDecls,
+                    topBindings: typeCursor.codomain.env.topBindings,
+                  )
+                  as Env;
+          for (var j = 0; j < i; j++) {
+            fallbackEnv = fallbackEnv.extend(VNeutral(NVar(j)));
+          }
+          next = eval(typeCursor.codomain.body, fallbackEnv.extend(freshNVar));
+        } catch (_2) {
+          return null;
+        }
+      }
+      typeCursor = next!;
     }
   } else {
     // Reversed spine vars = [n-1, …, 0] (innermost-first).
@@ -5188,7 +5214,28 @@ ConvResult? _tryUnify(Value a, Value b, int level, MetaContext metas) {
     for (var i = 0; i < vars.length; i++) {
       if (tc is! VPi) return null;
       allDomains.add(tc.domain);
-      tc = eval(tc.codomain.body, tc.codomain.env.extend(VNeutral(NVar(i))));
+      final freshNVar = VNeutral(NVar(i));
+      Value? next;
+      try {
+        next = eval(tc.codomain.body, tc.codomain.env.extend(freshNVar));
+      } catch (_) {
+        try {
+          var fallbackEnv =
+              ENil.withRegistries(
+                    dataDecls: tc.codomain.env.dataDecls,
+                    topBindings: tc.codomain.env.topBindings,
+                  )
+                  as Env;
+          for (var j = 0; j < i; j++) {
+            fallbackEnv = fallbackEnv.extend(VNeutral(NVar(j)));
+          }
+          fallbackEnv = fallbackEnv.extend(freshNVar);
+          next = eval(tc.codomain.body, fallbackEnv);
+        } catch (_2) {
+          return null;
+        }
+      }
+      tc = next!;
     }
     for (var i = 0; i < vars.length; i++) {
       domainTerms.add(quote(i, allDomains[vars.length - 1 - i]));
