@@ -3799,6 +3799,47 @@ Object _drive(
             // recursive call's result). Accumulate and look for the
             // next recursive arg.
             ihs.add(value);
+            // For Pi-typed recursive args (e.g. `f : (y: A) -> R y x -> Acc`),
+            // transform the IH into a lambda: (y) -> (r) -> VRec (f y r).
+            // Build a TLam chain, then evaluate to get a single VLam.
+            if (subArgIndex >= 0) {
+              final ctorArgType = ctorDecl.args[subArgIndex].type;
+              if (ctorArgType is TPi) {
+                Term base = ctorArgType;
+                final piChain = <(String?, Term)>[];
+                while (base is TPi) {
+                  piChain.add((base.name, base.domain));
+                  base = base.codomain;
+                }
+                if (piChain.isNotEmpty) {
+                  final nPis = piChain.length;
+                  // Build: VRec (f nvar0 ... nvar_{nPis-1}) at value level
+                  // with NVars at levels 0..nPis-1 so quote(nPis, ...) maps
+                  // them to TBound(nPis-1)..TBound(0) respectively.
+                  Value v = scrutArgs[paramCount + subArgIndex];
+                  for (var i = 0; i < nPis; i++) {
+                    v = apply(v, VNeutral(NVar(i)));
+                  }
+                  Value vBody = apply(VRec(dataDecl, headSpine), v);
+                  // Quote the value at level nPis: NVars become TBounds
+                  // with TBound(0) = innermost = NVar(nPis-1).
+                  Term bodyTerm = quote(nPis, vBody);
+                  // Wrap TLams innermost-first (piChain[nPis-1] innermost)
+                  // so TBound(0) = innermost binder variable.
+                  for (var i = nPis - 1; i >= 0; i--) {
+                    final (name, domain) = piChain[i];
+                    bodyTerm = TLam(domain, bodyTerm, name: name);
+                  }
+                  // Evaluate TLam chain in empty env to get VLam value.
+                  final evalEnv = ENil.withRegistries(
+                    dataDecls: dataDecls ?? const <DataDecl>[],
+                    topBindings:
+                        topBindings ?? const <String, TopBindingEntry>{},
+                  );
+                  ihs[ihs.length - 1] = eval(bodyTerm, evalEnv);
+                }
+              }
+            }
             var nextJ = -1;
             for (var j = subArgIndex + 1; j < ctorDecl.args.length; j++) {
               if (_isRecursiveOccurrence(
@@ -7722,14 +7763,61 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
     // sub-indices come from argType (must be TData(d.name, ...) per
     // positivity). The first `paramCount` entries of its args are the
     // data's params; the remaining `indexCount` are the sub-indices.
-    Term ihType = TBound(motiveDepth);
-    if (argType is TData) {
-      for (var k = 0; k < indexCount; k++) {
-        ihType = TApp(ihType, remapArgType(argType.args[paramCount + k]));
+    //
+    // For Pi-typed recursive args (e.g. `f : (y: A) -> R y x -> Acc A R y`),
+    // unwrap the TPi chain and build a quantified IH:
+    //   (y: A) -> (r: R y x) -> P R y (f y r)
+    if (argType is TPi) {
+      final piChain = <(String?, Term)>[]; // outermost-first
+      Term baseType = argType;
+      while (baseType is TPi) {
+        piChain.add((baseType.name, baseType.domain));
+        baseType = baseType.codomain;
       }
+      if (baseType is TData && baseType.name == d.name) {
+        final nPis = piChain.length;
+        final shiftedMotiveDepth = motiveDepth + nPis;
+        final shiftedArgDepth = argDepth(posIdx) + nPis;
+        // Build body: P <shifted sub-indices> (f var_nPis-1 ... var_0)
+        Term body = TBound(shiftedMotiveDepth);
+        // Sub-indices: shift by nPis via _shiftTBoundPastThreshold.
+        for (var k = 0; k < indexCount; k++) {
+          final subIdx = baseType.args[paramCount + k];
+          final shifted = _shiftTBoundPastThreshold(
+            subIdx,
+            threshold: 0,
+            shiftBy: nPis,
+          );
+          body = TApp(body, shifted);
+        }
+        // appliedF = f applied to Pi binder variables (innermost-first:
+        // outermost binder at TBound(nPis-1), innermost at TBound(0)).
+        Term appliedF = TBound(shiftedArgDepth);
+        for (var i = 0; i < nPis; i++) {
+          appliedF = TApp(appliedF, TBound(nPis - 1 - i));
+        }
+        body = TApp(body, appliedF);
+        // Wrap with TPis innermost-first (piChain[0] = outermost).
+        Term result = body;
+        for (var i = 0; i < nPis; i++) {
+          final (name, domain) = piChain[i];
+          result = TPi(remapArgType(domain), result, name: name);
+        }
+        return result;
+      }
+      // Fall through for non-TData TPi recursive args.
     }
-    ihType = TApp(ihType, TBound(argDepth(posIdx)));
-    return ihType;
+    // Default: direct application to the recursive arg (TData or non-TPi).
+    {
+      Term ihType = TBound(motiveDepth);
+      if (argType is TData) {
+        for (var k = 0; k < indexCount; k++) {
+          ihType = TApp(ihType, remapArgType(argType.args[paramCount + k]));
+        }
+      }
+      ihType = TApp(ihType, TBound(argDepth(posIdx)));
+      return ihType;
+    }
   }
 
   // Start with `inner`. Wrap IHs innermost-first (m=0 is innermost

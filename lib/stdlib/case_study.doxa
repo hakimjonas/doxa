@@ -266,9 +266,41 @@ and go(n: Nat, h0: Eq Bool (even n) true_) : Eq Nat n (mult two (half n)) = Nat.
       k hsk)
   n h0
 
-// --- Theorem: n^2 = 2*m^2 implies n = 0 ---------------------------------
-//
-// Proved by structural induction on n (avoids the nat_wf mutual-block
-// issue). From sqrt2_parity we get even n = true_. Case analysis on n
-// shows n must be zero, or the parity algebra forces a contradiction.
-// Requires even_implies_double, mult_2_inj, square_double, mult_4_eq.
+// --- lt_succ_t_mult_two_t: succ t < 2*(succ t) -----------------------------
+
+val lt_succ_t_mult_two_t : (t: Nat) -> Lt (succ t) (mult two (succ t)) =
+  Nat.ind ((t: Nat) => Lt (succ t) (mult two (succ t)))
+    (lt_succ (succ zero))
+    ((u: Nat) => (ih: Lt (succ u) (mult two (succ u))) =>
+      { val h_lt_succ_ss : Lt (succ (succ u)) (succ (mult two (succ u))) =
+          lt_succ_mono (succ u) (mult two (succ u)) ih;
+        val h_lt_ss_ssmu : Lt (succ (succ u)) (succ (succ (mult two (succ u)))) =
+          lt_succ_right (succ (succ u)) (succ (mult two (succ u))) h_lt_succ_ss;
+        Eq.rec Nat
+          ((a: Nat) => (b: Nat) => (p: Eq Nat a b) =>
+            Lt (succ (succ u)) a -> Lt (succ (succ u)) b)
+          (succ (succ (mult two (succ u)))) (mult two (succ (succ u)))
+          ((z: Nat) => (h: Lt (succ (succ u)) z) => h)
+          (sym_e Nat (mult two (succ (succ u))) (succ (succ (mult two (succ u))))
+            (mult_two_succ (succ u)))
+          h_lt_ss_ssmu
+      })
+
+// --- lt_t_succ_k: if succ k = 2*t then t < succ k --------------------------
+
+fun lt_t_succ_k(t: Nat, k: Nat, h: Eq Nat (succ k) (mult two t)) : Lt t (succ k) =
+  Nat.ind ((t: Nat) => (k: Nat) -> Eq Nat (succ k) (mult two t) -> Lt t (succ k))
+    ((k: Nat) => (h_zero: Eq Nat (succ k) (mult two zero)) =>
+      False.rec ((_: False) => Lt zero (succ k))
+        (succ_ne_zero k
+          (trans_e Nat (succ k) (mult two zero) zero h_zero (mult_zero two))))
+    ((u: Nat) => (ih: (k: Nat) -> Eq Nat (succ k) (mult two u) -> Lt u (succ k)) =>
+      (k: Nat) => (h_succ_u: Eq Nat (succ k) (mult two (succ u))) =>
+        Eq.rec Nat
+          ((a: Nat) => (b: Nat) => (p: Eq Nat a b) =>
+            Lt (succ u) a -> Lt (succ u) b)
+          (mult two (succ u)) (succ k)
+          ((z: Nat) => (h_l: Lt (succ u) z) => h_l)
+          (sym_e Nat (succ k) (mult two (succ u)) h_succ_u)
+          (lt_succ_t_mult_two_t u))
+    t k h
