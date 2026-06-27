@@ -4220,10 +4220,25 @@ Object _drive(
             // into quote mode in-loop (no Dart recursion).
             stack.add(_QPiBuild(term, nameHint, icit));
             stack.add(_QuoteAt(level + 1));
-            step = _Eval(
-              codomain.body,
-              codomain.env.extend(VNeutral(NVar(level))),
-            );
+            final freshNVar = VNeutral(NVar(level));
+            try {
+              step = _Eval(codomain.body, codomain.env.extend(freshNVar));
+            } catch (_) {
+              try {
+                var fallbackEnv =
+                    ENil.withRegistries(
+                          dataDecls: codomain.env.dataDecls,
+                          topBindings: codomain.env.topBindings,
+                        )
+                        as Env;
+                for (var j = 0; j < level; j++) {
+                  fallbackEnv = fallbackEnv.extend(VNeutral(NVar(j)));
+                }
+                step = _Eval(codomain.body, fallbackEnv.extend(freshNVar));
+              } catch (_2) {
+                rethrow;
+              }
+            }
 
           case _QPiBuild(:final domain, :final nameHint, :final icit):
             step = _YieldT(TPi(domain, term, name: nameHint, icit: icit));
@@ -4245,7 +4260,25 @@ Object _drive(
           ):
             stack.add(_QLamBuild(term, nameHint, icit));
             stack.add(_QuoteAt(level + 1));
-            step = _Eval(body.body, body.env.extend(VNeutral(NVar(level))));
+            final freshNVar = VNeutral(NVar(level));
+            try {
+              step = _Eval(body.body, body.env.extend(freshNVar));
+            } catch (_) {
+              try {
+                var fallbackEnv =
+                    ENil.withRegistries(
+                          dataDecls: body.env.dataDecls,
+                          topBindings: body.env.topBindings,
+                        )
+                        as Env;
+                for (var j = 0; j < level; j++) {
+                  fallbackEnv = fallbackEnv.extend(VNeutral(NVar(j)));
+                }
+                step = _Eval(body.body, fallbackEnv.extend(freshNVar));
+              } catch (_2) {
+                rethrow;
+              }
+            }
 
           case _QLamBuild(:final domain, :final nameHint, :final icit):
             step = _YieldT(TLam(domain, term, name: nameHint, icit: icit));
