@@ -3005,7 +3005,9 @@ Object _drive(
             // the closure expects a fresh neutral at level
             // `codomain.env.depth`, which must equal the current
             // `level` for the body's indices to remain valid.
-            if (codomain.bodyIsNormal && codomain.env.depth == level) {
+            if (codomain.bodyIsNormal &&
+                codomain.env.depth == level &&
+                !_codomainHasBinders(codomain.body)) {
               stack.add(_QPiBuildNormal(codomain.body, name, icit));
               step = _Quote(domain, level);
             } else {
@@ -7211,6 +7213,19 @@ bool _firstOrderUnifiable(Value a, Value b, int outerLevel) {
   // unification handles the refined cases.
   return true;
 }
+
+/// True if [t] contains any TPi or TLam — i.e. nested binders whose
+/// quoting needs env extension from _QPiCod.
+bool _codomainHasBinders(Term t) => switch (t) {
+  TPi() || TLam() => true,
+  TApp(:final fn, :final arg) =>
+    _codomainHasBinders(fn) || _codomainHasBinders(arg),
+  TMatch(:final scrutinee, :final motive, :final cases) =>
+    _codomainHasBinders(scrutinee) ||
+        (motive != null && _codomainHasBinders(motive)) ||
+        cases.any((c) => _codomainHasBinders(c.body)),
+  _ => false,
+};
 
 /// Returns true iff [v] is a VNeutral NVar at a level >= [outerLevel],
 /// i.e. a fresh neutral injected into the telescope env for coverage
