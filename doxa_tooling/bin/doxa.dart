@@ -16,6 +16,7 @@
 /// The `lsp` subcommand starts the Doxa language server over stdio.
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:doxa/src/check.dart';
@@ -39,15 +40,16 @@ import 'package:doxa/src/source.dart' show SourceFile;
 import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
 import 'package:doxa_tooling/src/format.dart' show formatSource, isFormatted;
 import 'package:doxa_tooling/src/lsp/handler.dart';
-import 'package:doxa_tooling/src/lsp/transport.dart';
+import 'package:doxa_tooling/src/lsp/transport.dart'
+    show LspReader, sendLspMessage;
 import 'package:doxa_tooling/src/repl.dart'
     show ReplSession, ReplDeclResult, ReplExprResult, ReplError, ReplMeta;
 import 'package:doxa_tooling/src/web_check.dart';
 import 'package:rumil/rumil.dart';
 
-void main(List<String> args) {
+Future<void> main(List<String> args) async {
   if (args.isNotEmpty && args[0] == 'lsp') {
-    _runLsp();
+    await _runLspAsync();
     return;
   }
   if (args.isNotEmpty && args[0] == 'repl') {
@@ -238,22 +240,42 @@ void _checkFile(File file, {bool json = false}) {
   stdout.writeln('');
 }
 
-/// Run the LSP server.
+/// Run the LSP server with async I/O.
 ///
-/// Reads LSP messages from stdin and sends responses to stdout.
-/// Exits cleanly on `shutdown`/`exit`.
-void _runLsp() {
+/// Uses a stream-based stdin reader to avoid a known Dart runtime
+/// contention issue between synchronous stdin reads and stdout writes
+/// in piped processes.
+Future<void> _runLspAsync() async {
   final handler = LspHandler();
-  while (true) {
-    final message = readLspMessage();
-    if (message == null) break; // EOF
-    final response = handler.handle(message);
-    if (response != null) {
-      final method = message['method'] as String?;
-      if (method == 'exit') break;
-      sendLspMessage(response);
-    }
-  }
+  final reader = LspReader();
+  final done = Completer<void>();
+
+  stdin.listen(
+    (data) {
+      final messages = reader.feed(data);
+      for (final message in messages) {
+        final response = handler.handle(message);
+        if (response != null) {
+          final method = message['method'] as String?;
+          if (method == 'exit') {
+            done.complete();
+            return;
+          }
+          sendLspMessage(response);
+        }
+      }
+      // Flush buffered output after processing each batch.
+      stdout.flush();
+    },
+    onDone: () {
+      if (!done.isCompleted) done.complete();
+    },
+    onError: (e) {
+      if (!done.isCompleted) done.complete();
+    },
+  );
+
+  await done.future;
 }
 
 /// Run the REPL.

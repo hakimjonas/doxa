@@ -243,7 +243,19 @@ CheckOutput checkSourceOutput(
 Env _buildFullEnv(List<TopBinding> bindings, List<DataDecl> dataDecls) {
   var acc = <String, TopBindingEntry>{};
   for (final b in bindings) {
-    final env = ENil.withRegistries(dataDecls: dataDecls, topBindings: acc);
+    // Pre-seed with a stub so recursive self-references resolve
+    // (same pattern as checkDeclResult for corecursive groups).
+    final stubAcc = {
+      ...acc,
+      b.name: TopBindingEntry(
+        VNeutral(NVar(0)), // placeholder — type doesn't self-reference
+        VNeutral(NTop(b.name)),
+        isOpaque: b.isOpaque,
+        recDecreasingArg: b.recDecreasingArg,
+        recArity: b.recArity,
+      ),
+    };
+    final env = ENil.withRegistries(dataDecls: dataDecls, topBindings: stubAcc);
     final typeV = eval(b.type, env);
     final termV = eval(b.term, env);
     acc = {
@@ -251,6 +263,7 @@ Env _buildFullEnv(List<TopBinding> bindings, List<DataDecl> dataDecls) {
       b.name: TopBindingEntry(
         typeV,
         termV,
+        isOpaque: b.isOpaque,
         recDecreasingArg: b.recDecreasingArg,
         recArity: b.recArity,
       ),

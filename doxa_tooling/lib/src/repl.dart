@@ -982,7 +982,22 @@ final class ReplSession {
   Env _buildFullEnv() {
     var acc = <String, TopBindingEntry>{};
     for (final b in bindings) {
-      final env = ENil.withRegistries(dataDecls: dataDecls, topBindings: acc);
+      // Pre-seed with a stub so recursive self-references resolve
+      // (same pattern as checkDeclResult for corecursive groups).
+      final stubAcc = {
+        ...acc,
+        b.name: TopBindingEntry(
+          VNeutral(NVar(0)), // placeholder
+          VNeutral(NTop(b.name)),
+          isOpaque: b.isOpaque,
+          recDecreasingArg: b.recDecreasingArg,
+          recArity: b.recArity,
+        ),
+      };
+      final env = ENil.withRegistries(
+        dataDecls: dataDecls,
+        topBindings: stubAcc,
+      );
       final typeV = eval(b.type, env);
       final termV = eval(b.term, env);
       acc = {
@@ -990,6 +1005,7 @@ final class ReplSession {
         b.name: TopBindingEntry(
           typeV,
           termV,
+          isOpaque: b.isOpaque,
           recDecreasingArg: b.recDecreasingArg,
           recArity: b.recArity,
         ),

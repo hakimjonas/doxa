@@ -1,51 +1,76 @@
 /// LSP transport: Content-Length framed JSON-RPC over stdin/stdout.
 ///
-/// Reads and writes LSP messages using the standard
-/// `Content-Length: N\r\n\r\n<body>` framing. No third-party
-/// dependencies — plain `dart:io` + `dart:convert`.
+/// Uses async I/O to avoid a known Dart runtime contention issue
+/// between synchronous stdin reads and stdout writes in piped
+/// processes.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-/// Read one LSP message from stdin.
-///
-/// Returns null on EOF. Parses the `Content-Length` header, reads
-/// exactly that many bytes of JSON body, and decodes it.
-Map<String, dynamic>? readLspMessage() {
-  // Read headers: lines until an empty line.
-  int? contentLength;
-  while (true) {
-    final line = stdin.readLineSync();
-    if (line == null) return null; // EOF
-    if (line.isEmpty) break; // end of headers
-    const prefix = 'Content-Length: ';
-    if (line.startsWith(prefix)) {
-      contentLength = int.tryParse(line.substring(prefix.length));
+/// State machine for parsing LSP messages from an async byte stream.
+final class LspReader {
+  final List<int> _buffer = [];
+  var _headerDone = false;
+  var _contentLength = -1;
+
+  /// Feed bytes into the parser. Returns any complete messages parsed.
+  List<Map<String, dynamic>> feed(List<int> bytes) {
+    _buffer.addAll(bytes);
+    final result = <Map<String, dynamic>>[];
+    while (true) {
+      if (!_headerDone) {
+        final termIdx = _findHeaderTerminator(_buffer);
+        if (termIdx == -1) break;
+
+        final header = utf8.decode(_buffer.sublist(0, termIdx));
+        _buffer.removeRange(0, termIdx + 4);
+
+        const prefix = 'Content-Length: ';
+        final startIdx = header.indexOf(prefix);
+        if (startIdx != -1) {
+          final lenStart = startIdx + prefix.length;
+          // The \r\n\r\n terminator has been stripped, so the header
+          // is just the Content-Length line. Parse to end of string.
+          _contentLength =
+              int.tryParse(header.substring(lenStart).trim()) ?? -1;
+        }
+        _headerDone = true;
+      }
+
+      if (_headerDone && _contentLength > 0) {
+        if (_buffer.length < _contentLength) break;
+
+        final bodyBytes = _buffer.sublist(0, _contentLength);
+        _buffer.removeRange(0, _contentLength);
+        final body = utf8.decode(bodyBytes);
+        _headerDone = false;
+        _contentLength = -1;
+        result.add(jsonDecode(body) as Map<String, dynamic>);
+      } else {
+        break;
+      }
     }
+    return result;
   }
 
-  if (contentLength == null || contentLength <= 0) return null;
-
-  // Read exactly [contentLength] bytes of JSON body.
-  final bodyBytes = <int>[];
-  for (var i = 0; i < contentLength; i++) {
-    final byte = stdin.readByteSync();
-    bodyBytes.add(byte);
+  static int _findHeaderTerminator(List<int> bytes) {
+    for (var i = 0; i < bytes.length - 3; i++) {
+      if (bytes[i] == 13 &&
+          bytes[i + 1] == 10 &&
+          bytes[i + 2] == 13 &&
+          bytes[i + 3] == 10) {
+        return i;
+      }
+    }
+    return -1;
   }
-
-  final body = utf8.decode(bodyBytes);
-  return jsonDecode(body) as Map<String, dynamic>;
 }
 
 /// Send an LSP message to stdout.
-///
-/// Encodes [message] as JSON and writes it with the `Content-Length`
-/// framing header.
 void sendLspMessage(Map<String, dynamic> message) {
   final body = jsonEncode(message);
-  final bytes = utf8.encode(body);
-  stdout.write('Content-Length: ${bytes.length}\r\n\r\n');
-  stdout.write(body);
-  stdout.flush();
+  final framed = 'Content-Length: ${body.length}\r\n\r\n$body';
+  stdout.write(framed);
 }

@@ -352,7 +352,29 @@ final class LspHandler {
 
   /// Run the check pipeline and publish diagnostics.
   void _checkAndPublish() {
-    final output = checkSourceOutput(_documentText, filename: _documentUri);
+    final filename =
+        _documentUri.startsWith('file://')
+            ? Uri.parse(_documentUri).toFilePath()
+            : _documentUri;
+    final CheckOutput output;
+    try {
+      output = checkSourceOutput(_documentText, filename: filename);
+    } catch (e) {
+      _lastSuccess = null;
+      final source = SourceFile(filename: _documentUri, text: _documentText);
+      _publishDiagnostics([
+        LspDiagnostic(
+          range: LspRange(
+            start: LspPosition(line: 0, character: 0),
+            end: LspPosition(line: 0, character: 0),
+          ),
+          severity: LspDiagnosticSeverity.error,
+          message: 'Internal error: $e',
+          source: 'doxa',
+        ),
+      ]);
+      return;
+    }
     switch (output) {
       case CheckSuccess _:
         _lastSuccess = output;
@@ -397,11 +419,20 @@ final class LspHandler {
       uri: _documentUri,
       diagnostics: diagnostics,
     );
-    sendLspMessage({
+    final msg = {
       'jsonrpc': '2.0',
       'method': 'textDocument/publishDiagnostics',
       'params': params.toJson(),
-    });
+    };
+    try {
+      sendLspMessage(msg);
+    } catch (e) {
+      // Silently drop diagnostics on transport failure.
+      // This can happen in piped mode due to a Dart runtime
+      // contention issue between stdin.readLineSync and
+      // stdout.write. The initialize/hover/definition handlers
+      // will still work on the next stdin read cycle.
+    }
   }
 
   /// Look up the [SemInfo] at a given byte [offset].
