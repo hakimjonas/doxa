@@ -155,11 +155,15 @@ final class LspCompletionItem {
   /// Documentation string.
   final String? documentation;
 
+  /// Text used to filter against when the user types.
+  final String? filterText;
+
   /// Creates a completion item.
   const LspCompletionItem({
     required this.label,
     this.detail,
     this.documentation,
+    this.filterText,
   });
 
   /// Serialise to a JSON-compatible map.
@@ -167,6 +171,7 @@ final class LspCompletionItem {
     'label': label,
     if (detail != null) 'detail': detail,
     if (documentation != null) 'documentation': documentation,
+    if (filterText != null) 'filterText': filterText,
   };
 }
 
@@ -310,5 +315,118 @@ final class LspCompletionList {
   Map<String, dynamic> toJson() => {
     'isIncomplete': isIncomplete,
     'items': [for (final i in items) i.toJson()],
+  };
+}
+
+/// Symbol kind (mirrors LSP SymbolKind).
+enum LspSymbolKind {
+  file(1),
+  module(2),
+  namespace(3),
+  package(4),
+  class_(5),
+  method(6),
+  property(7),
+  field(8),
+  constructor(9),
+  enum_(10),
+  interface(11),
+  function(12),
+  variable(13),
+  constant(14),
+  string(15),
+  number(16),
+  boolean(17),
+  array(18),
+  object(19),
+  key(20),
+  null_(21),
+  enumMember(22),
+  struct(23),
+  event(24),
+  operator_(25),
+  typeParameter(26);
+
+  final int value;
+  const LspSymbolKind(this.value);
+}
+
+/// A document symbol returned by `textDocument/documentSymbol`.
+final class LspDocumentSymbol {
+  final String name;
+  final String? detail;
+  final LspSymbolKind kind;
+  final LspRange range;
+  final LspRange selectionRange;
+  final List<LspDocumentSymbol>? children;
+
+  const LspDocumentSymbol({
+    required this.name,
+    this.detail,
+    required this.kind,
+    required this.range,
+    required this.selectionRange,
+    this.children,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    if (detail != null) 'detail': detail,
+    'kind': kind.value,
+    'range': range.toJson(),
+    'selectionRange': selectionRange.toJson(),
+    if (children != null) 'children': [for (final c in children!) c.toJson()],
+  };
+}
+
+/// Signature help result for `textDocument/signatureHelp`.
+final class LspSignatureHelp {
+  final List<LspSignatureInformation> signatures;
+  final int? activeSignature;
+  final int? activeParameter;
+
+  const LspSignatureHelp({
+    required this.signatures,
+    this.activeSignature,
+    this.activeParameter,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'signatures': [for (final s in signatures) s.toJson()],
+    if (activeSignature != null) 'activeSignature': activeSignature,
+    if (activeParameter != null) 'activeParameter': activeParameter,
+  };
+}
+
+/// A single signature in a signature help result.
+final class LspSignatureInformation {
+  final String label;
+  final String? documentation;
+  final List<LspParameterInformation>? parameters;
+
+  const LspSignatureInformation({
+    required this.label,
+    this.documentation,
+    this.parameters,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'label': label,
+    if (documentation != null) 'documentation': documentation,
+    if (parameters != null)
+      'parameters': [for (final p in parameters!) p.toJson()],
+  };
+}
+
+/// A parameter in a signature information.
+final class LspParameterInformation {
+  final String label;
+  final String? documentation;
+
+  const LspParameterInformation({required this.label, this.documentation});
+
+  Map<String, dynamic> toJson() => {
+    'label': label,
+    if (documentation != null) 'documentation': documentation,
   };
 }

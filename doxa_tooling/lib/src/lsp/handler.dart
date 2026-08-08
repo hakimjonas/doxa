@@ -69,6 +69,12 @@ final class LspHandler {
       case 'textDocument/rename':
         return _handleRename(id as int, params!);
 
+      case 'textDocument/documentSymbol':
+        return _handleDocumentSymbol(id as int, params!);
+
+      case 'textDocument/signatureHelp':
+        return _handleSignatureHelp(id as int, params!);
+
       case 'shutdown':
         return {'jsonrpc': '2.0', 'id': id, 'result': null};
 
@@ -93,6 +99,10 @@ final class LspHandler {
         'definitionProvider': true,
         'referencesProvider': true,
         'renameProvider': true,
+        'documentSymbolProvider': true,
+        'signatureHelpProvider': <String, dynamic>{
+          'triggerCharacters': ['(', ','],
+        },
         'completionProvider': <String, dynamic>{
           'triggerCharacters': <String>[],
         },
@@ -187,29 +197,44 @@ final class LspHandler {
   /// Handle `textDocument/completion`.
   Map<String, dynamic> _handleCompletion(int id, Map<String, dynamic> params) {
     final offset = _offsetFromParams(params);
-    final names = <String>{};
+    // Extract the word prefix the user has typed up to the cursor.
+    final prefix = _wordPrefixAt(offset);
+    final typeByName = <String, String>{};
+    final defKindByName = <String, String>{};
     if (_lastSuccess != null) {
-      // Collect unique names from SemInfo entries whose occurrence span
-      // is before or at the current offset (approximates "in scope").
+      // Build a type map from SemInfo entries.
       for (final info in _lastSuccess!.semInfo) {
         if (info.span.start <= offset) {
-          names.add(info.name);
+          typeByName[info.name] = info.type;
         }
       }
-      // Also include all declaration names whose span starts at or
-      // before the offset.
+      // Also map declaration kinds to decide symbol kind labels.
       for (final decl in _lastSuccess!.declarations) {
         if (decl.span.start <= offset) {
-          names.add(decl.name);
+          if (decl.type != null) {
+            typeByName.putIfAbsent(decl.name, () => decl.type!);
+          }
+          defKindByName.putIfAbsent(decl.name, () => decl.kind);
         }
       }
     }
-    final items = names.map((n) => LspCompletionItem(label: n)).toList();
+    final items = <LspCompletionItem>[];
+    for (final entry in typeByName.entries) {
+      final name = entry.key;
+      // Filter by prefix if the user has started typing.
+      if (prefix.isNotEmpty && !name.startsWith(prefix)) continue;
+      final type = entry.value;
+      final kindLabel = defKindByName[name];
+      final detail = kindLabel != null ? '$kindLabel :: $type' : type;
+      items.add(
+        LspCompletionItem(label: name, detail: detail, filterText: name),
+      );
+    }
     items.sort((a, b) => a.label.compareTo(b.label));
     return {
       'jsonrpc': '2.0',
       'id': id,
-      'result': LspCompletionList(items: items).toJson(),
+      'result': LspCompletionList(isIncomplete: false, items: items).toJson(),
     };
   }
 
@@ -315,6 +340,183 @@ final class LspHandler {
       return LspWorkspaceEdit(changes: {_documentUri: edits}).toJson();
     });
     return {'jsonrpc': '2.0', 'id': id, if (result != null) 'result': result};
+  }
+
+  /// Handle `textDocument/documentSymbol`.
+  ///
+  /// Returns a flat list of symbols for all top-level declarations.
+  Map<String, dynamic> _handleDocumentSymbol(
+    int id,
+    Map<String, dynamic> params,
+  ) {
+    if (_lastSuccess == null) {
+      return {'jsonrpc': '2.0', 'id': id, 'result': <Map<String, dynamic>>[]};
+    }
+    final symbols = <LspDocumentSymbol>[];
+    for (final decl in _lastSuccess!.declarations) {
+      final pos = _positionAt(decl.span.start);
+      final endPos = _positionAt(decl.span.end);
+      final kind = switch (decl.kind) {
+        'data' => LspSymbolKind.struct,
+        'type' => LspSymbolKind.interface,
+        'fun' => LspSymbolKind.function,
+        'typeclass' => LspSymbolKind.class_,
+        'impl' => LspSymbolKind.class_,
+        _ => LspSymbolKind.variable, // val, import
+      };
+      symbols.add(
+        LspDocumentSymbol(
+          name: decl.name,
+          detail: decl.type,
+          kind: kind,
+          range: LspRange(
+            start: LspPosition(line: pos.line - 1, character: 0),
+            end: LspPosition(line: endPos.line - 1, character: 0),
+          ),
+          selectionRange: LspRange(
+            start: LspPosition(line: pos.line - 1, character: pos.column - 1),
+            end: LspPosition(
+              line: pos.line - 1,
+              character: pos.column - 1 + decl.name.length,
+            ),
+          ),
+        ),
+      );
+    }
+    return {
+      'jsonrpc': '2.0',
+      'id': id,
+      'result': [for (final s in symbols) s.toJson()],
+    };
+  }
+
+  /// Handle `textDocument/signatureHelp`.
+  ///
+  /// When the user types `fun_name(`, inspects the text before the cursor
+  /// to determine which function is being called, looks up its type, and
+  /// extracts the parameter signature.
+  Map<String, dynamic> _handleSignatureHelp(
+    int id,
+    Map<String, dynamic> params,
+  ) {
+    final offset = _offsetFromParams(params);
+    // Walk back past whitespace / '(' / ',' to find the function name.
+    var pos = offset - 1;
+    while (pos >= 0 && !_isIdentChar(_documentText, pos)) {
+      pos--;
+    }
+    // Now pos is at the last char of the identifier before the cursor.
+    if (pos < 0) {
+      return {'jsonrpc': '2.0', 'id': id, 'result': null};
+    }
+    final nameEnd = pos + 1;
+    var nameStart = pos;
+    while (nameStart >= 0 && _isIdentChar(_documentText, nameStart)) {
+      nameStart--;
+    }
+    nameStart++;
+    if (nameStart >= nameEnd) {
+      return {'jsonrpc': '2.0', 'id': id, 'result': null};
+    }
+    final funcName = _documentText.substring(nameStart, nameEnd);
+    // Count commas between the matching '(' and cursor position.
+    final parenStart = _documentText.lastIndexOf('(', offset);
+    if (parenStart == -1) {
+      return {'jsonrpc': '2.0', 'id': id, 'result': null};
+    }
+    var commas = 0;
+    for (var i = parenStart + 1; i < offset; i++) {
+      if (_documentText[i] == ',') commas++;
+    }
+
+    // Look up the function's type from semInfo or declarations.
+    String? funcType;
+    if (_lastSuccess != null) {
+      for (final info in _lastSuccess!.semInfo) {
+        if (info.name == funcName && info.span.start <= offset) {
+          funcType = info.type;
+          break;
+        }
+      }
+      if (funcType == null) {
+        for (final decl in _lastSuccess!.declarations) {
+          if (decl.name == funcName && decl.span.start <= offset) {
+            funcType = decl.type;
+            break;
+          }
+        }
+      }
+    }
+    if (funcType == null) {
+      return {'jsonrpc': '2.0', 'id': id, 'result': null};
+    }
+
+    // Parse the Pi-type chain to extract parameter labels.
+    final params_ = _parsePiParams(funcType, funcName);
+    final signature = LspSignatureInformation(
+      label: '$funcName${params_.isNotEmpty ? ' ' : ''}${params_.join(' ')}',
+      parameters: [for (final p in params_) LspParameterInformation(label: p)],
+    );
+    return {
+      'jsonrpc': '2.0',
+      'id': id,
+      'result':
+          LspSignatureHelp(
+            signatures: [signature],
+            activeSignature: 0,
+            activeParameter:
+                params_.isNotEmpty ? commas.clamp(0, params_.length - 1) : 0,
+          ).toJson(),
+    };
+  }
+
+  /// Extract the word prefix before [offset] (identifier characters only).
+  String _wordPrefixAt(int offset) {
+    var start = offset - 1;
+    while (start >= 0 && _isIdentChar(_documentText, start)) {
+      start--;
+    }
+    start++;
+    if (start >= offset) return '';
+    return _documentText.substring(start, offset);
+  }
+
+  /// Whether the character at [pos] in [_documentText] is an identifier
+  /// character (letters, digits, underscores).
+  bool _isIdentChar(String text, int pos) {
+    if (pos < 0 || pos >= text.length) return false;
+    final c = text.codeUnitAt(pos);
+    return (c >= 65 && c <= 90) ||
+        (c >= 97 && c <= 122) ||
+        (c >= 48 && c <= 57) ||
+        c == 95;
+  }
+
+  /// Parse a pretty-printed Pi-type like `(m: Nat) -> (n: Nat) -> Nat`
+  /// into a list of parameter labels `["(m: Nat)", "(n: Nat)"]`.
+  static List<String> _parsePiParams(String type, String funcName) {
+    final params = <String>[];
+    var i = 0;
+    // Skip leading spaces.
+    while (i < type.length && type[i] == ' ') i++;
+    while (i < type.length && type[i] == '(') {
+      final start = i;
+      var depth = 1;
+      i++;
+      while (i < type.length && depth > 0) {
+        if (type[i] == '(') depth++;
+        if (type[i] == ')') depth--;
+        if (depth > 0) i++;
+      }
+      params.add(type.substring(start, i + 1));
+      i++;
+      // Skip ' -> ' separator.
+      while (i < type.length &&
+          (type[i] == ' ' || type[i] == '-' || type[i] == '>')) {
+        i++;
+      }
+    }
+    return params;
   }
 
   /// Find all references to [name] in the current document.
