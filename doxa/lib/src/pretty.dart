@@ -144,7 +144,7 @@ class _Printer {
     ),
     TRec(:final dataName) => '$dataName.rec',
     TTop(:final name) => name,
-    TMeta(:final id) => '?$id',
+    TMeta(:final id) => '_',
     TMatch(:final scrutinee, :final cases) => _match(
       scrutinee,
       cases,

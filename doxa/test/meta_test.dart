@@ -25,14 +25,14 @@ void main() {
       expect(const TMeta(3).toString(), 'TMeta(3)');
     });
 
-    test('pretty renders as ?id', () {
-      expect(prettyTerm(const TMeta(0)), '?0');
-      expect(prettyTerm(const TMeta(42)), '?42');
+    test('pretty renders as _', () {
+      expect(prettyTerm(const TMeta(0)), '_');
+      expect(prettyTerm(const TMeta(42)), '_');
     });
 
-    test('pretty renders TApp(TMeta, x) as ?0 … (meta spine truncated)', () {
+    test('pretty renders TApp(TMeta, x) as _ … (meta spine truncated)', () {
       const t = TApp(TMeta(0), TType(LLevel(0)));
-      expect(prettyTerm(t), '?0 …');
+      expect(prettyTerm(t), '_ …');
     });
   });
 
