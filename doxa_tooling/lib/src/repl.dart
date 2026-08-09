@@ -13,18 +13,18 @@ import 'dart:io' show Directory;
 
 import 'package:rumil/rumil.dart';
 
-import 'package:doxa/src/check.dart';
-import 'package:doxa/src/ctx.dart';
-import 'package:doxa/src/elab.dart';
-import 'package:doxa/src/env.dart';
-import 'package:doxa/src/eval.dart';
-import 'package:doxa/src/meta.dart';
-import 'package:doxa/src/parse.dart';
-import 'package:doxa/src/pretty.dart';
-import 'package:doxa/src/report.dart';
-import 'package:doxa/src/source.dart';
-import 'package:doxa/src/surface.dart';
-import 'package:doxa/src/tactic.dart'
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart'
     show
         TacticState,
         TacticOk,
@@ -42,8 +42,8 @@ import 'package:doxa/src/tactic.dart'
         tacticConstructor,
         tacticCases,
         validateTerm;
-import 'package:doxa/src/term.dart' show TPi, TBound, TData, Term, Icit;
-import 'package:doxa/src/value.dart';
+import 'package:doxa/doxa.dart' show TPi, TBound, TData, Term, Icit;
+import 'package:doxa/doxa.dart';
 
 /// Meta-command mode: which part of the expression to display.
 enum _MetaMode { type, norm }

@@ -26,9 +26,13 @@ export 'src/check.dart';
 export 'src/elab.dart'
     show
         elabDecl,
-        checkDeclResult,
         elabExpr,
+        elabExprInScope,
+        checkDeclResult,
         declNames,
+        ClassInfo,
+        currentImportPath,
+        importedPaths,
         TopBinding,
         TopEnv,
         CorecursiveGroup,
@@ -47,7 +51,16 @@ export 'src/elab.dart'
         CtorMismatchInMatch,
         MatchArmArityMismatch,
         DuplicateMatchCase,
-        NonExhaustiveMatch;
+        NonExhaustiveMatch,
+        CyclicImport,
+        ImportFileNotFound,
+        StructAnnotationNotFound,
+        TerminationByParamNotFound,
+        TacticFailed,
+        TacticIncomplete,
+        NoInstanceFound,
+        OverlappingInstances,
+        SPropFieldNotProofIrrelevant;
 export 'src/parse.dart';
 export 'src/surface.dart';
 export 'src/pretty.dart';
@@ -55,3 +68,4 @@ export 'src/report.dart';
 export 'src/source.dart';
 export 'src/sem_info.dart';
 export 'src/prelude.dart';
+export 'src/tactic.dart' hide conv;

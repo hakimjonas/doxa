@@ -6,8 +6,8 @@
 library;
 
 import '../output.dart';
-import 'package:doxa/src/sem_info.dart';
-import 'package:doxa/src/source.dart';
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart';
 import '../web_check.dart';
 import '../format.dart' show formatSource;
 import 'protocol.dart';

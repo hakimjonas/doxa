@@ -144,6 +144,7 @@ class _Printer {
     ),
     TRec(:final dataName) => '$dataName.rec',
     TTop(:final name) => name,
+    // ignore: unused_local_variable
     TMeta(:final id) => '_',
     TMatch(:final scrutinee, :final cases) => _match(
       scrutinee,

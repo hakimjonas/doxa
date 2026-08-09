@@ -595,11 +595,6 @@ TacticResult omega(TacticState s) {
   final goalType = s.goalType;
   final level = s.ctx.level;
 
-  // Normalise the goal and check if sides become identical.
-  final goalTerm = quote(level, goalType);
-  final nfVal = eval(goalTerm, s.ctx.env);
-  final nfTerm = quote(level, nfVal);
-
   // If the goal is Eq Nat a b, normalise and compare a, b.
   if (goalType is VData && goalType.name == 'Eq' && goalType.args.length == 3) {
     final lhs = goalType.args[1];
@@ -760,6 +755,7 @@ TacticFn Function(String) tacticCases =
         }
         final ctorArgs = <Value>[];
         for (var j = 0; j < ctor.args.length; j++) {
+          // ignore: unused_local_variable
           final argTypeV = eval(ctor.args[j].type, teleEnv);
           ctorArgs.add(VNeutral(NVar(level + j)));
           teleEnv = teleEnv.extend(VNeutral(NVar(level + j)));

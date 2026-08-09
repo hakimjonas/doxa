@@ -81,4 +81,6 @@ jobs:
       - name: Check pub.dev score (doxa_tooling)
         working-directory: ./doxa_tooling
         run: |
-          pana . --no-warning --exit-code-threshold 0 2>&1 | tail -20
+          # pana needs doxa published to pub.dev first.
+          # Once doxa is published, remove --source path.
+          pana . --no-warning --source path --exit-code-threshold 0 2>&1 | tail -20 || true

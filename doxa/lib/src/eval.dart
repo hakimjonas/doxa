@@ -1005,13 +1005,7 @@ final class _QPiBuildNormal extends _Frame {
   final Term codomainTerm;
   final String? nameHint;
   final Icit icit;
-  final int level;
-  const _QPiBuildNormal(
-    this.codomainTerm,
-    this.nameHint,
-    this.icit,
-    this.level,
-  );
+  const _QPiBuildNormal(this.codomainTerm, this.nameHint, this.icit);
 }
 
 /// After quoting a [VMatch]'s scrutinee, schedule motive quoting;
@@ -3029,7 +3023,7 @@ Object _drive(
               // aligned.  _codomainHasBinders rejects the fast path
               // for deeply-nested terms that are perfectly fine,
               // causing O(n^2) behaviour on Lam chains.
-              stack.add(_QPiBuildNormal(codomain.body, name, icit, level));
+              stack.add(_QPiBuildNormal(codomain.body, name, icit));
               step = _Quote(domain, level);
             } else {
               // Schedule "after domain is quoted, open and quote codomain".
@@ -4270,7 +4264,6 @@ Object _drive(
             :final codomainTerm,
             :final nameHint,
             :final icit,
-            :final level,
           ):
             // Domain has just been quoted (term = domain). Reuse the
             // closure's already-normal body directly as the codomain.
@@ -5304,7 +5297,7 @@ ConvResult? _tryUnify(Value a, Value b, int level, MetaContext metas) {
           return null;
         }
       }
-      typeCursor = next!;
+      typeCursor = next;
     }
   } else {
     // Reversed spine vars = [n-1, …, 0] (innermost-first).
@@ -5338,7 +5331,7 @@ ConvResult? _tryUnify(Value a, Value b, int level, MetaContext metas) {
           return null;
         }
       }
-      tc = next!;
+      tc = next;;
     }
     for (var i = 0; i < vars.length; i++) {
       domainTerms.add(quote(i, allDomains[vars.length - 1 - i]));

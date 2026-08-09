@@ -19,10 +19,10 @@ library;
 import 'dart:async';
 import 'dart:io';
 
-import 'package:doxa/src/check.dart';
-import 'package:doxa/src/prelude.dart' show loadPrelude;
-import 'package:doxa/src/source.dart' show AnsiColor;
-import 'package:doxa/src/elab.dart'
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart' show loadPrelude;
+import 'package:doxa/doxa.dart' show AnsiColor;
+import 'package:doxa/doxa.dart'
     show
         currentImportPath,
         importedPaths,
@@ -34,10 +34,10 @@ import 'package:doxa/src/elab.dart'
         UnresolvedName,
         TopEnv,
         mergeNamespace;
-import 'package:doxa/src/parse.dart';
-import 'package:doxa/src/report.dart';
-import 'package:doxa/src/source.dart' show SourceFile;
-import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart' show SourceFile;
+import 'package:doxa/doxa.dart' show SProgram, SImportKind;
 import 'package:doxa_tooling/src/format.dart' show formatSource, isFormatted;
 import 'package:doxa_tooling/src/lsp/handler.dart';
 import 'package:doxa_tooling/src/lsp/transport.dart'

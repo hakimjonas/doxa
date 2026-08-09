@@ -1,9 +1,9 @@
 /// Canonical code formatter for Doxa source files.
 library;
 
-import 'package:doxa/src/parse.dart' show parseProgram;
-import 'package:doxa/src/surface.dart';
-import 'package:doxa/src/term.dart' show Icit;
+import 'package:doxa/doxa.dart' show parseProgram;
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart' show Icit;
 import 'package:rumil/rumil.dart';
 
 /// Format a Doxa source string to canonical style.

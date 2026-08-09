@@ -11,8 +11,8 @@ library;
 import 'package:rumil/rumil.dart';
 import 'package:rumil_tokens/rumil_tokens.dart' show Spanned, Token;
 
-import 'package:doxa/src/parse.dart';
-import 'package:doxa/src/surface.dart';
+import 'package:doxa/doxa.dart';
+import 'package:doxa/doxa.dart';
 import 'syntax.dart';
 import 'tokenize.dart' show tokenizeDoxaSpans;
 

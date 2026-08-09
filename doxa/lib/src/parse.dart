@@ -531,7 +531,7 @@ final Parser<ParseError, SExpr> _binder = position<ParseError>().flatMap(
                         final kind =
                             domain == null || arrow == '=>'
                                 ? SLamKind(name, domain, body)
-                                : SPiKind(name, domain!, body);
+                                : SPiKind(name, domain, body);
                         return SExpr(kind, span);
                       }),
                     ),
