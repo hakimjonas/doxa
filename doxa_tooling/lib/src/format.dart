@@ -4,9 +4,7 @@ library;
 import 'package:doxa/src/parse.dart' show parseProgram;
 import 'package:doxa/src/surface.dart';
 import 'package:doxa/src/term.dart' show Icit;
-import 'package:doxa_tooling/src/tokenize.dart' show tokenizeDoxaSpans;
 import 'package:rumil/rumil.dart';
-import 'package:rumil_tokens/rumil_tokens.dart' show Comment;
 
 /// Format a Doxa source string to canonical style.
 String formatSource(String source) {
@@ -188,6 +186,7 @@ class _Formatter {
     _commentIx = 0;
 
     final result = parseProgram(source);
+
     final program = switch (result) {
       Success<ParseError, SProgram>(:final value) => value,
       Partial<ParseError, SProgram>(:final value) => value,
@@ -239,13 +238,41 @@ class _Formatter {
   // Comment extraction
   // -------------------------------------------------------------------------
 
+  /// Scan [source] for `//` line comments and `/* */` block comments.
+  /// Returns spans as [_CommentInfo] records for later emission.
+  ///
+  /// Uses a simple string scanner instead of the full tokenizer
+  /// because we only need comment boundaries — not token classification.
+  /// This eliminates a redundant tokenizer pass (parseProgram already
+  /// tokenizes internally).
   void _extractComments() {
     _comments.clear();
-    final spans = tokenizeDoxaSpans(source);
-    for (final s in spans) {
-      if (s.token is Comment) {
-        _comments.add(_CommentInfo(s.start, s.end, s.token.text));
+    var i = 0;
+    final len = source.length;
+    while (i < len) {
+      if (source[i] == '/' && i + 1 < len) {
+        if (source[i + 1] == '/') {
+          // Line comment: scan to end of line.
+          final start = i;
+          i += 2;
+          while (i < len && source[i] != '\n') {
+            i++;
+          }
+          _comments.add(_CommentInfo(start, i, source.substring(start, i)));
+          continue;
+        } else if (source[i + 1] == '*') {
+          // Block comment: scan to `*/`.
+          final start = i;
+          i += 2;
+          while (i + 1 < len && !(source[i] == '*' && source[i + 1] == '/')) {
+            i++;
+          }
+          if (i + 1 < len) i += 2;
+          _comments.add(_CommentInfo(start, i, source.substring(start, i)));
+          continue;
+        }
       }
+      i++;
     }
   }
 
