@@ -59,6 +59,8 @@
 ///     reaching either throws [UnexpectedFree].
 library;
 
+import 'dart:math' show max;
+
 import 'check.dart';
 import 'ctx.dart';
 import 'env.dart';
@@ -1001,7 +1003,13 @@ final class _QPiBuildNormal extends _Frame {
   final Term codomainTerm;
   final String? nameHint;
   final Icit icit;
-  const _QPiBuildNormal(this.codomainTerm, this.nameHint, this.icit);
+  final int level;
+  const _QPiBuildNormal(
+    this.codomainTerm,
+    this.nameHint,
+    this.icit,
+    this.level,
+  );
 }
 
 /// After quoting a [VMatch]'s scrutinee, schedule motive quoting;
@@ -1427,7 +1435,14 @@ Object _drive(
   Map<String, TopBindingEntry>? topBindings,
 }) {
   var step = start;
+  var stepCount = 0;
+  const maxSteps = 10000000;
   while (true) {
+    if (++stepCount > maxSteps) {
+      throw StateError(
+        '_drive exceeded $maxSteps steps. Last step: ${step.runtimeType}',
+      );
+    }
     switch (step) {
       // -----------------------------------------------------------------
       // _Eval: evaluate a term in an environment.
@@ -3012,7 +3027,7 @@ Object _drive(
               // aligned.  _codomainHasBinders rejects the fast path
               // for deeply-nested terms that are perfectly fine,
               // causing O(n^2) behaviour on Lam chains.
-              stack.add(_QPiBuildNormal(codomain.body, name, icit));
+              stack.add(_QPiBuildNormal(codomain.body, name, icit, level));
               step = _Quote(domain, level);
             } else {
               // Schedule "after domain is quoted, open and quote codomain".
@@ -4253,6 +4268,7 @@ Object _drive(
             :final codomainTerm,
             :final nameHint,
             :final icit,
+            :final level,
           ):
             // Domain has just been quoted (term = domain). Reuse the
             // closure's already-normal body directly as the codomain.
@@ -4442,6 +4458,11 @@ Object _drive(
             // can skip the open/eval/quote round-trip that would
             // otherwise make the enclosing `infer TLam` chain
             // quadratic.
+            assert(
+              _maxTBoundIndex(term) <= env.depth,
+              '_InferLamHaveBodyTerm: bodyIsNormal term contains '
+              'TBound index exceeding env depth ${env.depth}',
+            );
             step = _YieldV(
               VPi(domV, Closure(env, term, bodyIsNormal: true), name: nameHint),
             );
@@ -8167,4 +8188,51 @@ Value substNVar(Value value, int scrutLevel, Value replacement) {
     return VMatch(newScrutinee, newMotive, value.cases, value.env);
   }
   return value;
+}
+
+/// Return the maximum immediate [TBound] index in [t] at this level.
+///
+/// Used to validate `bodyIsNormal` closures. Only inspects the term
+/// structure at the current binder level — does NOT recurse into
+/// bodies of TLam/TPi/TMatch/TLet (those have their own binder scopes).
+int _maxTBoundIndex(Term t, [int depth = 0]) {
+  var maxIdx = 0;
+  final work = <(Term, int)>[(t, depth)];
+  while (work.isNotEmpty) {
+    final (node, d) = work.removeLast();
+    switch (node) {
+      case TBound(:final index):
+        maxIdx = max(maxIdx, index + d);
+      case TApp(:final fn, :final arg):
+        work.add((fn, d));
+        work.add((arg, d));
+      case TLam(:final domain):
+      case TPi(:final domain):
+        work.add((domain, d));
+      // Do NOT recurse into body — it has its own binder scope.
+      case TMatch(:final scrutinee, :final motive):
+        work.add((scrutinee, d));
+        if (motive != null) work.add((motive, d));
+      // Do NOT recurse into case bodies — they have their own scopes.
+      case TLet(:final domain, :final bound):
+        work.add((domain, d));
+        work.add((bound, d));
+      // Do NOT recurse into body — it has its own binder scope.
+      case TType() ||
+          TProp() ||
+          TSProp() ||
+          TFree() ||
+          TTop() ||
+          TMeta() ||
+          TConstr() ||
+          TData() ||
+          TQuot() ||
+          TQuotMk() ||
+          TQuotLift() ||
+          TProj() ||
+          TRec():
+        break;
+    }
+  }
+  return maxIdx;
 }
