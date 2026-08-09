@@ -900,3 +900,60 @@ Term _replaceTermInTerm(Term t, Term from, Term to) {
       return t;
   }
 }
+
+/// Validate [term] against [ctx] at construction time.
+///
+/// Checks that the term contains no [TFree] (unresolved names) and
+/// no [TBound] indices exceeding the context depth.  Throws
+/// [StateError] on violation.  Called as an assertion before
+/// meta-solving in the REPL proof loop.
+void validateTerm(Term term, Ctx ctx) {
+  _validateTerm(term, ctx, 0);
+}
+
+void _validateTerm(Term t, Ctx ctx, int depth) {
+  switch (t) {
+    case TFree(:final name):
+      throw StateError('validateTerm: unresolved TFree($name)');
+    case TBound(:final index):
+      final maxIdx = ctx.level + depth - 1;
+      if (index > maxIdx) {
+        throw StateError(
+          'validateTerm: TBound($index) exceeds max depth $maxIdx '
+          '(ctx level ${ctx.level}, nest depth $depth)',
+        );
+      }
+    case TApp(:final fn, :final arg):
+      _validateTerm(fn, ctx, depth);
+      _validateTerm(arg, ctx, depth);
+    case TLam(:final domain, :final body):
+      _validateTerm(domain, ctx, depth);
+      _validateTerm(body, ctx, depth + 1);
+    case TPi(:final domain, :final codomain):
+      _validateTerm(domain, ctx, depth);
+      _validateTerm(codomain, ctx, depth + 1);
+    case TMatch(:final scrutinee, :final motive, :final cases):
+      _validateTerm(scrutinee, ctx, depth);
+      if (motive != null) _validateTerm(motive, ctx, depth);
+      for (final c in cases) {
+        _validateTerm(c.body, ctx, depth + c.nBinders);
+      }
+    case TLet(:final domain, :final bound, :final body):
+      _validateTerm(domain, ctx, depth);
+      _validateTerm(bound, ctx, depth);
+      _validateTerm(body, ctx, depth + 1);
+    case TType() ||
+        TProp() ||
+        TSProp() ||
+        TTop() ||
+        TMeta() ||
+        TConstr() ||
+        TData() ||
+        TQuot() ||
+        TQuotMk() ||
+        TQuotLift() ||
+        TProj() ||
+        TRec():
+      break;
+  }
+}

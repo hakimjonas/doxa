@@ -38,7 +38,8 @@ import 'package:doxa/src/tactic.dart'
         auto,
         omega,
         tacticConstructor,
-        tacticCases;
+        tacticCases,
+        validateTerm;
 import 'package:doxa/src/term.dart' show TPi, TBound, TData, Term, Icit;
 import 'package:doxa/src/value.dart';
 
@@ -176,6 +177,15 @@ final class ReplSession {
     this.namespaceBindings = const {},
     _ProofSession? proofState,
   }) : this.proofState = proofState;
+
+  /// Solve the current proof goal with [term], validating it first.
+  void _solveMeta(_ProofSession ps, Term term) {
+    assert(() {
+      validateTerm(term, ps.ctx);
+      return true;
+    }());
+    ps.metas.solve(ps.currentGoalMeta, term);
+  }
 
   /// Process a single line of REPL input.
   ///
@@ -644,7 +654,7 @@ final class ReplSession {
     final result = intro(tstate, name: name);
     return switch (result) {
       TacticOk(:final term, :final subMeta) => () {
-        ps.metas.solve(ps.currentGoalMeta, term);
+        _solveMeta(ps, term);
         ps.undoStack.add(snap);
         if (subMeta != null) {
           ps.currentGoalMeta = subMeta;
@@ -889,7 +899,7 @@ final class ReplSession {
     return switch (result) {
       TacticOk(:final subMeta) => () {
         ps.undoStack.add(snap);
-        ps.metas.solve(ps.currentGoalMeta, result.term);
+        _solveMeta(ps, result.term);
         if (subMeta != null) {
           ps.currentGoalMeta = subMeta;
         }
@@ -928,7 +938,7 @@ final class ReplSession {
     return switch (result) {
       TacticOk() => () {
         ps.undoStack.add(snap);
-        ps.metas.solve(ps.currentGoalMeta, result.term);
+        _solveMeta(ps, result.term);
         final output = StringBuffer();
         output.writeln('Auto succeeded.');
         final allSolved = () {
@@ -969,7 +979,7 @@ final class ReplSession {
     return switch (result) {
       TacticOk() => () {
         ps.undoStack.add(snap);
-        ps.metas.solve(ps.currentGoalMeta, result.term);
+        _solveMeta(ps, result.term);
         final output = StringBuffer();
         output.writeln('Omega succeeded.');
         final allSolved = () {
@@ -1009,7 +1019,7 @@ final class ReplSession {
     return switch (result) {
       TacticOk(:final subMeta) => () {
         ps.undoStack.add(snap);
-        ps.metas.solve(ps.currentGoalMeta, result.term);
+        _solveMeta(ps, result.term);
         if (subMeta != null) {
           ps.currentGoalMeta = subMeta;
         }
@@ -1050,7 +1060,7 @@ final class ReplSession {
     return switch (result) {
       TacticOk(:final subMeta) => () {
         ps.undoStack.add(snap);
-        ps.metas.solve(ps.currentGoalMeta, result.term);
+        _solveMeta(ps, result.term);
         if (subMeta != null) {
           ps.currentGoalMeta = subMeta;
         }
@@ -1130,7 +1140,7 @@ final class ReplSession {
     return switch (result) {
       TacticOk(:final subMeta) => () {
         ps.undoStack.add(snap);
-        ps.metas.solve(ps.currentGoalMeta, result.term);
+        _solveMeta(ps, result.term);
         if (subMeta != null) {
           ps.currentGoalMeta = subMeta;
         }
@@ -1174,7 +1184,7 @@ final class ReplSession {
     return switch (result) {
       TacticOk(:final subMeta) => () {
         ps.undoStack.add(snap);
-        ps.metas.solve(ps.currentGoalMeta, result.term);
+        _solveMeta(ps, result.term);
         if (subMeta != null) {
           ps.currentGoalMeta = subMeta;
         }
@@ -1347,6 +1357,18 @@ final class ReplSession {
         ),
       };
     }
+    // Verify no stub entries remain.
+    assert(() {
+      for (final entry in acc.entries) {
+        final v = entry.value.value;
+        if (v is VNeutral && v.neutral is NTop) {
+          throw StateError(
+            '_buildFullEnv: stub left behind for "${entry.key}"',
+          );
+        }
+      }
+      return true;
+    }());
     return ENil.withRegistries(dataDecls: dataDecls, topBindings: acc);
   }
 

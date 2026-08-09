@@ -269,6 +269,20 @@ Env _buildFullEnv(List<TopBinding> bindings, List<DataDecl> dataDecls) {
       ),
     };
   }
+  // Verify no stub entries remain — every binding should have been
+  // fully evaluated (stubs are VNeutral(NTop(name)) placeholders).
+  assert(() {
+    for (final entry in acc.entries) {
+      final v = entry.value.value;
+      if (v is VNeutral && v.neutral is NTop) {
+        throw StateError(
+          '_buildFullEnv: stub left behind for "${entry.key}" — '
+          'binding was pre-seeded but never evaluated',
+        );
+      }
+    }
+    return true;
+  }());
   return ENil.withRegistries(dataDecls: dataDecls, topBindings: acc);
 }
 
