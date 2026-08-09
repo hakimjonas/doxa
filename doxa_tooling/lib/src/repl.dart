@@ -33,7 +33,10 @@ import 'package:doxa/src/tactic.dart'
         tacticApply,
         trivial,
         rewrite,
-        induction;
+        induction,
+        simpl,
+        tacticConstructor,
+        tacticCases;
 import 'package:doxa/src/term.dart' show TPi, TBound, TData, Term, Icit;
 import 'package:doxa/src/value.dart';
 
@@ -599,6 +602,12 @@ final class ReplSession {
         return _stepRewrite(ps, tacticArg);
       case 'induction':
         return _stepInduction(ps, tacticArg);
+      case 'simpl':
+        return _stepSimpl(ps);
+      case 'constructor':
+        return _stepConstructor(ps);
+      case 'cases':
+        return _stepCases(ps, tacticArg);
       default:
         return (ReplError('unknown tactic: $tacticName'), this);
     }
@@ -844,6 +853,121 @@ final class ReplSession {
           return true;
         }();
         if (allSolved) {
+          output.writeln('Goal solved. Use :qed to commit.');
+        } else {
+          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
+        }
+        return (ReplMeta(output.toString().trimRight()), this);
+      }(),
+      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+    };
+  }
+
+  /// Handle `:step simpl`.
+  ///
+  /// Normalises the goal type, replacing it with its normal form.
+  ReplStep _stepSimpl(_ProofSession ps) {
+    final snap = _ProofSnapshot(
+      ps.metas.snapshot(),
+      ps.currentGoalMeta,
+      ps.ctx,
+      List.unmodifiable(ps.binderNames),
+    );
+    final tstate = TacticState(
+      ps.metas,
+      ps.ctx,
+      ps.currentGoalMeta,
+      ps.binderNames,
+    );
+    final result = simpl(tstate);
+    return switch (result) {
+      TacticOk(:final subMeta) => () {
+        ps.undoStack.add(snap);
+        ps.metas.solve(ps.currentGoalMeta, result.term);
+        if (subMeta != null) {
+          ps.currentGoalMeta = subMeta;
+        }
+        final output = StringBuffer();
+        if (subMeta == null) {
+          output.writeln('Goal solved (already in normal form).');
+        } else {
+          output.writeln('Simplified.');
+          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
+        }
+        return (ReplMeta(output.toString().trimRight()), this);
+      }(),
+      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+    };
+  }
+
+  /// Handle `:step constructor`.
+  ///
+  /// Applies the first matching constructor of the goal's type.
+  ReplStep _stepConstructor(_ProofSession ps) {
+    final snap = _ProofSnapshot(
+      ps.metas.snapshot(),
+      ps.currentGoalMeta,
+      ps.ctx,
+      List.unmodifiable(ps.binderNames),
+    );
+    final tstate = TacticState(
+      ps.metas,
+      ps.ctx,
+      ps.currentGoalMeta,
+      ps.binderNames,
+    );
+    final result = tacticConstructor(tstate);
+    return switch (result) {
+      TacticOk(:final subMeta) => () {
+        ps.undoStack.add(snap);
+        ps.metas.solve(ps.currentGoalMeta, result.term);
+        if (subMeta != null) {
+          ps.currentGoalMeta = subMeta;
+        }
+        final output = StringBuffer();
+        output.writeln('Constructor applied.');
+        if (subMeta == null) {
+          output.writeln('Goal solved. Use :qed to commit.');
+        } else {
+          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
+        }
+        return (ReplMeta(output.toString().trimRight()), this);
+      }(),
+      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+    };
+  }
+
+  /// Handle `:step cases <var>`.
+  ///
+  /// Performs case analysis on the named variable.
+  ReplStep _stepCases(_ProofSession ps, String arg) {
+    if (arg.isEmpty) {
+      return (const ReplError(':step cases requires a variable name.'), this);
+    }
+    final snap = _ProofSnapshot(
+      ps.metas.snapshot(),
+      ps.currentGoalMeta,
+      ps.ctx,
+      List.unmodifiable(ps.binderNames),
+    );
+    final tstate = TacticState(
+      ps.metas,
+      ps.ctx,
+      ps.currentGoalMeta,
+      ps.binderNames,
+    );
+    final resultFn = tacticCases(arg);
+    final result = resultFn(tstate);
+    return switch (result) {
+      TacticOk(:final subMeta) => () {
+        ps.undoStack.add(snap);
+        ps.metas.solve(ps.currentGoalMeta, result.term);
+        if (subMeta != null) {
+          ps.currentGoalMeta = subMeta;
+        }
+        final output = StringBuffer();
+        output.writeln('Case analysis applied.');
+        if (subMeta == null) {
           output.writeln('Goal solved. Use :qed to commit.');
         } else {
           output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));

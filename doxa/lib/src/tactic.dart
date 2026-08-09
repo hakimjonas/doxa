@@ -517,6 +517,162 @@ TacticResult trivial(TacticState s) {
   return TacticFail('trivial: no trivial proof found');
 }
 
+/// `simpl`: normalise the goal via `nf()` (eval then quote).
+///
+/// Replaces the goal with its normal form.  If the normal form differs
+/// from the original, a new subgoal is created for it; otherwise a
+/// `refl`-style proof closes the goal.
+TacticResult simpl(TacticState s) {
+  final goalType = s.goalType;
+  final level = s.ctx.level;
+  final origTerm = quote(level, goalType);
+  final nfValue = eval(origTerm, s.ctx.env);
+  final nfTerm = quote(level, nfValue);
+  if (origTerm == nfTerm) {
+    // Already in normal form — close via refl if Eq, else fail.
+    return refl(s);
+  }
+  final subMetaId = s.metas.freshTermMeta(eval(nfTerm, s.ctx.env), s.ctx);
+  s.metas.solve(s.currentMeta, TMeta(subMetaId));
+  return TacticOk(TMeta(subMetaId), s.metas, subMeta: subMetaId);
+}
+
+/// `constructor`: apply the first matching constructor of the goal's
+/// inductive type.
+TacticResult tacticConstructor(TacticState s) {
+  final goalType = s.goalType;
+  if (goalType is! VData) {
+    return TacticFail('constructor: goal is not an inductive type');
+  }
+  final dataName = goalType.name;
+  final dataDecl = s.ctx.lookupData(dataName);
+  if (dataDecl == null) {
+    return TacticFail('constructor: data type "$dataName" not found');
+  }
+  final level = s.ctx.level;
+  final dataArgs = goalType.args;
+
+  for (final ctor in dataDecl.ctors) {
+    // Build fresh metas for each constructor argument.
+    var teleEnv = const ENil() as Env;
+    final paramCount = dataDecl.params.length;
+    for (var i = paramCount - 1; i >= 0; i--) {
+      teleEnv = teleEnv.extend(dataArgs[i]);
+    }
+    final argMetas = <int>[];
+    var ctorTerm = TConstr(dataName, ctor.name, <Term>[]) as Term;
+    final argTerms = <Term>[];
+    for (var j = 0; j < ctor.args.length; j++) {
+      final argTypeV = eval(ctor.args[j].type, teleEnv);
+      final argMetaId = s.metas.freshTermMeta(argTypeV, s.ctx);
+      argMetas.add(argMetaId);
+      final argTerm = TMeta(argMetaId);
+      argTerms.add(argTerm);
+      teleEnv = teleEnv.extend(VNeutral(NVar(level + j)));
+    }
+    ctorTerm = TConstr(dataName, ctor.name, argTerms);
+
+    // Check if ctor term matches goal type.
+    try {
+      final ctorType = infer(s.ctx, ctorTerm);
+      if (conv(s.ctx.level, ctorType, goalType, s: s) is ConvOk) {
+        s.metas.solve(s.currentMeta, ctorTerm);
+        // Return the first subgoal meta as current.
+        final subMeta = argMetas.isNotEmpty ? argMetas.first : null;
+        return TacticOk(ctorTerm, s.metas, subMeta: subMeta);
+      }
+    } catch (_) {}
+  }
+  return TacticFail('constructor: no constructor matches the goal');
+}
+
+/// `cases x`: destruct variable `x` into one subgoal per constructor.
+///
+/// Like [induction] but without induction hypotheses.  For each
+/// constructor of `x`'s type, creates a subgoal for the goal with `x`
+/// replaced by that constructor applied to fresh neutrals.
+TacticFn Function(String) tacticCases =
+    (varName) => (s) {
+      int? binderIdx;
+      for (var i = 0; i < s.binderNames.length; i++) {
+        if (s.binderNames[i] == varName) {
+          binderIdx = i;
+          break;
+        }
+      }
+      if (binderIdx == null) {
+        return TacticFail('cases: variable "$varName" not in scope');
+      }
+      final xType = s.ctx.lookupType(binderIdx);
+      if (xType is! VData) {
+        return TacticFail('cases: variable is not of an inductive type');
+      }
+      final dataName = xType.name;
+      final dataArgs = xType.args;
+      final dataDecl = s.ctx.lookupData(dataName);
+      if (dataDecl == null) {
+        return TacticFail('cases: data type "$dataName" not found');
+      }
+      final level = s.ctx.level;
+      final goalType = s.goalType;
+      final paramCount = dataDecl.params.length;
+
+      // Build motive: P = λ a => goalType[x := a]
+      final xVal = VNeutral(NVar(level - 1 - binderIdx));
+      if (xVal.neutral is! NVar) {
+        return TacticFail('cases: cannot build motive');
+      }
+      final scrutLevel = (xVal.neutral as NVar).level;
+      final freshVar = VNeutral(NVar(level));
+      final motiveV = substNVar(goalType, scrutLevel, freshVar);
+      final motiveBody = quote(level + 1, motiveV);
+      final motive = TLam(quote(level, xType), motiveBody);
+
+      final methodMetas = <int>[];
+      final methodTerms = <Term>[];
+
+      for (final ctor in dataDecl.ctors) {
+        var teleEnv = const ENil() as Env;
+        for (var i = paramCount - 1; i >= 0; i--) {
+          teleEnv = teleEnv.extend(dataArgs[i]);
+        }
+        final ctorArgs = <Value>[];
+        for (var j = 0; j < ctor.args.length; j++) {
+          final argTypeV = eval(ctor.args[j].type, teleEnv);
+          ctorArgs.add(VNeutral(NVar(level + j)));
+          teleEnv = teleEnv.extend(VNeutral(NVar(level + j)));
+        }
+        final ctorResultV = VConstr(dataName, ctor.name, ctorArgs);
+        final pCtorV = substNVar(goalType, scrutLevel, ctorResultV);
+        final methodBodyMeta = s.metas.freshTermMeta(pCtorV, s.ctx);
+        methodMetas.add(methodBodyMeta);
+
+        var body = TMeta(methodBodyMeta) as Term;
+        for (var j = ctor.args.length - 1; j >= 0; j--) {
+          final argTypeV = eval(ctor.args[j].type, teleEnv);
+          body = TLam(quote(level, argTypeV), body);
+        }
+        methodTerms.add(body);
+      }
+
+      // Build the full recursor application.
+      var proofTerm = TRec(dataName) as Term;
+      for (var i = 0; i < paramCount; i++) {
+        proofTerm = TApp(proofTerm, quote(level, dataArgs[i]));
+      }
+      proofTerm = TApp(proofTerm, motive);
+      for (final m in methodTerms) {
+        proofTerm = TApp(proofTerm, m);
+      }
+      proofTerm = TApp(proofTerm, TBound(binderIdx));
+
+      return TacticOk(
+        proofTerm,
+        s.metas,
+        subMeta: methodMetas.isNotEmpty ? methodMetas.first : null,
+      );
+    };
+
 // ---------------------------------------------------------------------------
 // Conversion check — delegates to kernel
 // ---------------------------------------------------------------------------
@@ -620,20 +776,5 @@ Term _replaceTermInTerm(Term t, Term from, Term to) {
       return TProj(_replaceTermInTerm(expr, from, to), fieldName);
     default:
       return t;
-  }
-}
-
-/// Internal conversion driver. Throws on mismatch.
-void _driveConvert(int level, Value a, Value b) {
-  // Use the kernel's quote + term equality as a simple conversion check.
-  // For a full implementation we'd use the kernel's _Conv driver, but
-  // this is sufficient for initial tactic needs.
-  final termA = quote(level, a);
-  final termB = quote(level, b);
-  if (termA != termB) {
-    // Fall back to evaluate-and-compare for non-identity cases.
-    // WHNF comparison through the real kernel would be better, but for
-    // initial tactics this catches the common cases (refl on identical terms).
-    throw Exception('conversion mismatch');
   }
 }
