@@ -21,6 +21,7 @@ library;
 import 'ctx.dart';
 import 'env.dart';
 import 'eval.dart';
+import 'eval.dart' as kernel_eval;
 import 'meta.dart';
 import 'term.dart';
 import 'value.dart';
@@ -173,7 +174,7 @@ TacticFn Function(Term) exact =
       final goalType = s.goalType;
       try {
         final inferredType = infer(s.ctx, term);
-        if (conv(s.ctx.level, inferredType, goalType) is ConvOk) {
+        if (conv(s.ctx.level, inferredType, goalType, s: s) is ConvOk) {
           s.metas.solve(s.currentMeta, term);
           return TacticOk(term, s.metas);
         }
@@ -201,7 +202,7 @@ TacticResult refl(TacticState s) {
   // For refl we need x and y to be convertible.
   final x = args[1];
   final y = args[2];
-  if (conv(s.ctx.level, x, y) is! ConvOk) {
+  if (conv(s.ctx.level, x, y, s: s) is! ConvOk) {
     return TacticFail(
       'refl: the two sides of the equality are not definitionally equal',
     );
@@ -212,7 +213,7 @@ TacticResult refl(TacticState s) {
   final reflTerm = TConstr('Eq', 'refl', [aTerm, xTerm]);
   try {
     final inferred = infer(s.ctx, reflTerm);
-    if (conv(s.ctx.level, inferred, goalType) is ConvOk) {
+    if (conv(s.ctx.level, inferred, goalType, s: s) is ConvOk) {
       return TacticOk(reflTerm, s.metas);
     }
   } catch (_) {}
@@ -243,7 +244,7 @@ TacticFn Function(Term) tacticApply =
       }
       final goalType = s.goalType;
       final resultType = infer(s.ctx, result);
-      if (conv(s.ctx.level, resultType, goalType) is ConvOk) {
+      if (conv(s.ctx.level, resultType, goalType, s: s) is ConvOk) {
         s.metas.solve(s.currentMeta, result);
         return TacticOk(result, s.metas);
       }
@@ -500,11 +501,11 @@ TacticResult trivial(TacticState s) {
   while (currentCtx is CCons) {
     final c = currentCtx;
     try {
-      if (conv(s.ctx.level, c.type, s.goalType) is ConvOk) {
+      if (conv(s.ctx.level, c.type, s.goalType, s: s) is ConvOk) {
         final term = TBound(idx);
         try {
           final inferred = infer(s.ctx, term);
-          if (conv(s.ctx.level, inferred, s.goalType) is ConvOk) {
+          if (conv(s.ctx.level, inferred, s.goalType, s: s) is ConvOk) {
             return TacticOk(term, s.metas);
           }
         } catch (_) {}
@@ -517,33 +518,27 @@ TacticResult trivial(TacticState s) {
 }
 
 // ---------------------------------------------------------------------------
-// Conversion check helper (shallow)
+// Conversion check — delegates to kernel
 // ---------------------------------------------------------------------------
 
-/// Result of a conversion check.
-sealed class ConvResult {
-  const ConvResult();
-}
-
-final class ConvOk extends ConvResult {
-  const ConvOk();
-}
-
-final class ConvMismatch extends ConvResult {
-  const ConvMismatch();
-}
-
-/// Check convertibility of two values at [level].
+/// Check convertibility of two values at [level], using the kernel's
+/// full conversion checker (WHNF normalisation, eta, proof irrelevance).
 ///
-/// This is a lightweight wrapper around the kernel's conversion checker.
-/// Returns [ConvOk] if convertible, [ConvMismatch] otherwise.
-ConvResult conv(int level, Value a, Value b) {
-  try {
-    _driveConvert(level, a, b);
-    return const ConvOk();
-  } catch (_) {
-    return ConvMismatch();
-  }
+/// Extracts [dataDecls] and [topBindings] from [s] so the kernel can
+/// look up top-level definitions and inductive types.
+kernel_eval.ConvResult conv(
+  int level,
+  Value a,
+  Value b, {
+  required TacticState s,
+}) {
+  return kernel_eval.conv(
+    level,
+    a,
+    b,
+    dataDecls: s.ctx.env.dataDecls,
+    topBindings: s.ctx.env.topBindings,
+  );
 }
 
 /// Walk [t] and replace every occurrence of the term [from] with [to].

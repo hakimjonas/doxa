@@ -31,7 +31,9 @@ import 'package:doxa/src/tactic.dart'
         exact,
         refl,
         tacticApply,
-        trivial;
+        trivial,
+        rewrite,
+        induction;
 import 'package:doxa/src/term.dart' show TPi, TBound, TData, Term, Icit;
 import 'package:doxa/src/value.dart';
 
@@ -594,12 +596,9 @@ final class ReplSession {
       case 'trivial':
         return _stepTrivial(ps);
       case 'rewrite':
-        return (ReplMeta('rewrite: not yet implemented in this version'), this);
+        return _stepRewrite(ps, tacticArg);
       case 'induction':
-        return (
-          ReplMeta('induction: not yet implemented in this version'),
-          this,
-        );
+        return _stepInduction(ps, tacticArg);
       default:
         return (ReplError('unknown tactic: $tacticName'), this);
     }
@@ -845,6 +844,130 @@ final class ReplSession {
           return true;
         }();
         if (allSolved) {
+          output.writeln('Goal solved. Use :qed to commit.');
+        } else {
+          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
+        }
+        return (ReplMeta(output.toString().trimRight()), this);
+      }(),
+      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+    };
+  }
+
+  /// Handle `:step rewrite <proof>`.
+  ///
+  /// Parses and elaborates the argument as an equality proof term,
+  /// then applies the rewrite tactic.
+  ReplStep _stepRewrite(_ProofSession ps, String arg) {
+    if (arg.isEmpty) {
+      return (const ReplError(':step rewrite requires an expression.'), this);
+    }
+
+    // Parse and elaborate the expression (must be an equality proof).
+    final exprResult = parseExpr(arg);
+    SExpr expr;
+    if (exprResult is Success<ParseError, SExpr>) {
+      expr = exprResult.value;
+    } else if (exprResult is Partial<ParseError, SExpr>) {
+      expr = exprResult.value;
+    } else {
+      return (
+        ReplError(
+          _formatParseFailure(exprResult as Failure<ParseError, dynamic>),
+        ),
+        this,
+      );
+    }
+
+    Term proofTerm;
+    try {
+      proofTerm = elabExprInScope(
+        ps.topEnv,
+        ps.binderNames,
+        expr,
+        metas: ps.metas,
+      );
+    } catch (_) {
+      if (expr.kind case SIdentKind(:final name)) {
+        final idx = ps.binderNames.indexOf(name);
+        if (idx >= 0) {
+          proofTerm = TBound(idx);
+        } else {
+          return (ReplMeta('rewrite: unresolved name "$name"'), this);
+        }
+      } else {
+        return (ReplMeta('rewrite: could not elaborate expression'), this);
+      }
+    }
+
+    final snap = _ProofSnapshot(
+      ps.metas.snapshot(),
+      ps.currentGoalMeta,
+      ps.ctx,
+      List.unmodifiable(ps.binderNames),
+    );
+
+    final tstate = TacticState(
+      ps.metas,
+      ps.ctx,
+      ps.currentGoalMeta,
+      ps.binderNames,
+    );
+    final result = rewrite(proofTerm)(tstate);
+    return switch (result) {
+      TacticOk(:final subMeta) => () {
+        ps.undoStack.add(snap);
+        ps.metas.solve(ps.currentGoalMeta, result.term);
+        if (subMeta != null) {
+          ps.currentGoalMeta = subMeta;
+        }
+        final output = StringBuffer();
+        if (subMeta == null) {
+          output.writeln('Goal solved. Use :qed to commit.');
+        } else {
+          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
+        }
+        return (ReplMeta(output.toString().trimRight()), this);
+      }(),
+      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+    };
+  }
+
+  /// Handle `:step induction <var>`.
+  ///
+  /// Performs induction on the named variable in the context.
+  ReplStep _stepInduction(_ProofSession ps, String arg) {
+    if (arg.isEmpty) {
+      return (
+        const ReplError(':step induction requires a variable name.'),
+        this,
+      );
+    }
+
+    final snap = _ProofSnapshot(
+      ps.metas.snapshot(),
+      ps.currentGoalMeta,
+      ps.ctx,
+      List.unmodifiable(ps.binderNames),
+    );
+
+    final tstate = TacticState(
+      ps.metas,
+      ps.ctx,
+      ps.currentGoalMeta,
+      ps.binderNames,
+    );
+    final result = induction(arg)(tstate);
+    return switch (result) {
+      TacticOk(:final subMeta) => () {
+        ps.undoStack.add(snap);
+        ps.metas.solve(ps.currentGoalMeta, result.term);
+        if (subMeta != null) {
+          ps.currentGoalMeta = subMeta;
+        }
+        final output = StringBuffer();
+        output.writeln('Induction applied.');
+        if (subMeta == null) {
           output.writeln('Goal solved. Use :qed to commit.');
         } else {
           output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
