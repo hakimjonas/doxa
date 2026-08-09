@@ -31,7 +31,13 @@ The REPL provides interactive exploration and step-by-step proof construction:
 
 ```shell
 dart run doxa repl       # interactive proof mode
+dart run doxa lsp        # language server for VS Code / Vim / Emacs
+doxa fmt myfile.doxa     # format to canonical style
 ```
+
+The LSP provides diagnostics, hover, go-to-definition, completion (with types
+and frequency ranking), document symbols, signature help, code lens (inline
+declaration types), and format-on-save.
 
 ---
 
@@ -323,17 +329,22 @@ idProof : (A: Type) -> A -> A
 | `:goal` (in proof)    | Show current goal and context |
 | `:step intro [name]`  | Introduce a Pi binder |
 | `:step exact e`       | Provide an explicit proof term |
-| `:step apply f`       | Apply a lemma (conclusion must match exactly) |
+| `:step apply f`       | Apply a lemma, creating subgoals for arguments |
 | `:step refl`          | Close `Eq[A] x x` goals |
+| `:step rewrite p`     | Rewrite using an equality proof `p` |
+| `:step induction v`   | Inductive case split on variable `v` |
+| `:step constructor`   | Apply the first matching constructor |
+| `:step cases v`       | Case analysis on variable `v` (no IHs) |
+| `:step simpl`         | Normalise the goal |
 | `:step trivial`       | Try refl, then context lookup |
+| `:step auto [depth]`  | Depth-bounded proof search (default depth 5) |
+| `:step omega`         | Arithmetic solver for `Nat` goals |
 | `:undo`               | Revert the last step |
 | `:print`              | Show the proof term so far |
 | `:abort`              | Abandon the proof |
 | `:qed`                | Commit the proof and add it to scope |
-
-The file-based syntax `by { intro x; exact x }` is always available.
-For induction proofs and rewriting, use the file-based `Nat.ind` /
-`Eq.rec` style (see the [proof guide](proof-guide.md)).
+| `:browse`             | List all names in scope with types |
+| `:search <pattern>`   | Search scope by name or type substring |
 
 ---
 

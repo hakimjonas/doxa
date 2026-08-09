@@ -24,6 +24,9 @@ final class LspHandler {
   /// The last successful check result, used for semantic queries.
   CheckSuccess? _lastSuccess;
 
+  /// Per-name reference frequency for completion ranking.
+  Map<String, int> _freq = <String, int>{};
+
   /// Creates an LSP handler with no open document.
   LspHandler();
 
@@ -136,6 +139,7 @@ final class LspHandler {
     final textDocument = params['textDocument'] as Map<String, dynamic>;
     _documentUri = textDocument['uri'] as String;
     _documentText = textDocument['text'] as String;
+    _freq = <String, int>{};
     _checkAndPublish();
   }
 
@@ -146,6 +150,7 @@ final class LspHandler {
       final change = contentChanges.last as Map<String, dynamic>;
       _documentText = change['text'] as String;
     }
+    _freq = <String, int>{};
     _checkAndPublish();
   }
 
@@ -239,7 +244,13 @@ final class LspHandler {
         LspCompletionItem(label: name, detail: detail, filterText: name),
       );
     }
-    items.sort((a, b) => a.label.compareTo(b.label));
+    // Sort by frequency desc, then alphabetically.
+    items.sort((a, b) {
+      final fa = _freq[a.label] ?? 0;
+      final fb = _freq[b.label] ?? 0;
+      if (fa != fb) return fb.compareTo(fa);
+      return a.label.compareTo(b.label);
+    });
     return {
       'jsonrpc': '2.0',
       'id': id,
@@ -647,6 +658,11 @@ final class LspHandler {
     switch (output) {
       case CheckSuccess _:
         _lastSuccess = output;
+        // Build frequency map from SemInfo references.
+        _freq = <String, int>{};
+        for (final info in output.semInfo) {
+          _freq[info.name] = (_freq[info.name] ?? 0) + 1;
+        }
         // Publish empty diagnostics on success.
         _publishDiagnostics(<LspDiagnostic>[]);
       case final CheckFailure failure:
