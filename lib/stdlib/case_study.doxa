@@ -15,8 +15,7 @@ fun even(n: Nat) : Bool = match n {
     case true_ => false_
     case false_ => true_
   }
-}
-// Small concrete parity facts
+}// Small concrete parity facts
 
 val even_0 : Eq Bool (even zero) true_ = refl true_
 
@@ -102,13 +101,12 @@ data Lt : Nat -> Nat -> Prop {
 fun nat_wf(n: Nat) : Acc Nat ((x: Nat) => (y: Nat) => Lt x y) n = match n {
   case zero => acc_intro ((x: Nat) => (y: Nat) => Lt x y) zero ((y: Nat) => (h: Lt y zero) => False.rec ((_: False) => Acc Nat ((x: Nat) => (y: Nat) => Lt x y) y) (Lt.rec ((a: Nat) => (b: Nat) => (_: Lt a b) => Eq Nat b zero -> False) y zero ((n: Nat) => (eq: Eq Nat (succ n) zero) => succ_ne_zero n eq) ((n: Nat) => (m: Nat) => (k: Nat) => (_: Lt n m) => (_: Lt m k) => (ih1: Eq Nat m zero -> False) => (ih2: Eq Nat k zero -> False) => (eq: Eq Nat k zero) => ih2 eq) h (refl zero)))
   case succ k => acc_intro ((x: Nat) => (y: Nat) => Lt x y) (succ k) ((y: Nat) => (h: Lt y (succ k)) => nat_wf_help k y h)
-} and nat_wf_help(k: Nat, y: Nat, h: Lt y (succ k)) : Acc Nat ((x: Nat) => (y: Nat) => Lt x y) y {struct h} = match h {
+}and nat_wf_help(k: Nat, y: Nat, h: Lt y (succ k)) : Acc Nat ((x: Nat) => (y: Nat) => Lt x y) y {struct h} = match h {
   case lt_succ y_ => nat_wf y_
   case lt_trans y_ m _ p1 p2 => match nat_wf_help k m p2 {
     case acc_intro _ _ f => f y_ p1
   }
-}
-// --- Algebraic lemmas ----------------------------------------------------
+}// --- Algebraic lemmas ----------------------------------------------------
 
 fun half(n: Nat) : Nat = match n {
   case zero => zero
@@ -125,296 +123,77 @@ val lt_succ_right : (n: Nat) -> (m: Nat) -> Lt n m -> Lt n (succ m) = (n: Nat) =
 val mult_4_eq : (n: Nat) -> Eq Nat (mult four n) (mult two (mult two n)) = (n: Nat) => mult_assoc two two n
 // --- mult_two_succ: mult two (succ n) = succ (succ (mult two n)) ------------
 
-val mult_two_succ : (n: Nat) -> Eq Nat (mult two (succ n)) (succ (succ (mult two n))) = (n: Nat) =>
-  trans_e Nat (mult two (succ n))
-    (plus (succ n) (succ n))
-    (succ (succ (mult two n)))
-    (mult_2 (succ n))
-    (trans_e Nat (plus (succ n) (succ n))
-      (succ (plus (succ n) n))
-      (succ (succ (mult two n)))
-      (plus_succ (succ n) n)
-      (trans_e Nat (succ (plus (succ n) n))
-        (succ (plus n (succ n)))
-        (succ (succ (mult two n)))
-        (cong ((x: Nat) => succ x) (plus_comm (succ n) n))
-        (trans_e Nat (succ (plus n (succ n)))
-          (succ (succ (plus n n)))
-          (succ (succ (mult two n)))
-          (cong ((x: Nat) => succ x) (plus_succ n n))
-          (cong ((x: Nat) => succ x) (cong ((x: Nat) => succ x) (sym_e Nat (mult two n) (plus n n) (mult_2 n)))))))
-
+val mult_two_succ : (n: Nat) -> Eq Nat (mult two (succ n)) (succ (succ (mult two n))) = (n: Nat) => trans_e Nat (mult two (succ n)) (plus (succ n) (succ n)) (succ (succ (mult two n))) (mult_2 (succ n)) (trans_e Nat (plus (succ n) (succ n)) (succ (plus (succ n) n)) (succ (succ (mult two n))) (plus_succ (succ n) n) (trans_e Nat (succ (plus (succ n) n)) (succ (plus n (succ n))) (succ (succ (mult two n))) (cong ((x: Nat) => succ x) (plus_comm (succ n) n)) (trans_e Nat (succ (plus n (succ n))) (succ (succ (plus n n))) (succ (succ (mult two n))) (cong ((x: Nat) => succ x) (plus_succ n n)) (cong ((x: Nat) => succ x) (cong ((x: Nat) => succ x) (sym_e Nat (mult two n) (plus n n) (mult_2 n)))))))
 // --- mult_2_inj: mult two is injective -----------------------------------
 
-val mult_2_inj : (a: Nat) -> (b: Nat) -> (h: Eq Nat (mult two a) (mult two b)) -> Eq Nat a b =
-  (a: Nat) => Nat.ind
-    ((x: Nat) => (b: Nat) -> (h: Eq Nat (mult two x) (mult two b)) -> Eq Nat x b)
-    ((b: Nat) => (h: Eq Nat (mult two zero) (mult two b)) =>
-      Nat.ind
-        ((x: Nat) => Eq Nat (mult two zero) (mult two x) -> Eq Nat zero x)
-        ((h0: Eq Nat (mult two zero) (mult two zero)) => refl zero)
-        ((x: Nat) => (_: Eq Nat (mult two zero) (mult two x) -> Eq Nat zero x) =>
-          (h_sx: Eq Nat (mult two zero) (mult two (succ x))) =>
-            False.rec ((_: False) => Eq Nat zero (succ x))
-              (succ_ne_zero (succ (mult two x))
-                (trans_e Nat (succ (succ (mult two x))) (mult two (succ x)) (mult two zero)
-                  (sym_e Nat (mult two (succ x)) (succ (succ (mult two x))) (mult_two_succ x))
-                  (sym_e Nat (mult two zero) (mult two (succ x)) h_sx))))
-        b
-        h)
-    ((k: Nat) => (ih: (b: Nat) -> (h: Eq Nat (mult two k) (mult two b)) -> Eq Nat k b) =>
-      (b: Nat) => (h: Eq Nat (mult two (succ k)) (mult two b)) =>
-        Nat.ind
-          ((x: Nat) => Eq Nat (mult two (succ k)) (mult two x) -> Eq Nat (succ k) x)
-          ((h0: Eq Nat (mult two (succ k)) (mult two zero)) =>
-            False.rec ((_: False) => Eq Nat (succ k) zero)
-              (succ_ne_zero (succ (mult two k))
-                (trans_e Nat (succ (succ (mult two k))) (mult two (succ k)) zero
-                  (sym_e Nat (mult two (succ k)) (succ (succ (mult two k))) (mult_two_succ k))
-                  (trans_e Nat (mult two (succ k)) (mult two zero) zero
-                    h0
-                    (mult_zero two)))))
-          ((x: Nat) => (_: Eq Nat (mult two (succ k)) (mult two x) -> Eq Nat (succ k) x) =>
-            (h_sx: Eq Nat (mult two (succ k)) (mult two (succ x))) =>
-              cong_e Nat Nat ((y: Nat) => succ y) k x
-                (ih x
-                  (succ_inj (mult two k) (mult two x)
-                    (succ_inj (succ (mult two k)) (succ (mult two x))
-                      (trans_e Nat (succ (succ (mult two k))) (mult two (succ k)) (succ (succ (mult two x)))
-                        (sym_e Nat (mult two (succ k)) (succ (succ (mult two k))) (mult_two_succ k))
-                        (trans_e Nat (mult two (succ k)) (mult two (succ x)) (succ (succ (mult two x)))
-                          h_sx
-                          (mult_two_succ x)))))))
-          b
-          h)
-    a
-
+val mult_2_inj : (a: Nat) -> (b: Nat) -> (h: Eq Nat (mult two a) (mult two b)) -> Eq Nat a b = (a: Nat) => Nat.ind ((x: Nat) => (b: Nat) -> (h: Eq Nat (mult two x) (mult two b)) -> Eq Nat x b) ((b: Nat) => (h: Eq Nat (mult two zero) (mult two b)) => Nat.ind ((x: Nat) => Eq Nat (mult two zero) (mult two x) -> Eq Nat zero x) ((h0: Eq Nat (mult two zero) (mult two zero)) => refl zero) ((x: Nat) => (_: Eq Nat (mult two zero) (mult two x) -> Eq Nat zero x) => (h_sx: Eq Nat (mult two zero) (mult two (succ x))) => False.rec ((_: False) => Eq Nat zero (succ x)) (succ_ne_zero (succ (mult two x)) (trans_e Nat (succ (succ (mult two x))) (mult two (succ x)) (mult two zero) (sym_e Nat (mult two (succ x)) (succ (succ (mult two x))) (mult_two_succ x)) (sym_e Nat (mult two zero) (mult two (succ x)) h_sx)))) b h) ((k: Nat) => (ih: (b: Nat) -> (h: Eq Nat (mult two k) (mult two b)) -> Eq Nat k b) => (b: Nat) => (h: Eq Nat (mult two (succ k)) (mult two b)) => Nat.ind ((x: Nat) => Eq Nat (mult two (succ k)) (mult two x) -> Eq Nat (succ k) x) ((h0: Eq Nat (mult two (succ k)) (mult two zero)) => False.rec ((_: False) => Eq Nat (succ k) zero) (succ_ne_zero (succ (mult two k)) (trans_e Nat (succ (succ (mult two k))) (mult two (succ k)) zero (sym_e Nat (mult two (succ k)) (succ (succ (mult two k))) (mult_two_succ k)) (trans_e Nat (mult two (succ k)) (mult two zero) zero h0 (mult_zero two))))) ((x: Nat) => (_: Eq Nat (mult two (succ k)) (mult two x) -> Eq Nat (succ k) x) => (h_sx: Eq Nat (mult two (succ k)) (mult two (succ x))) => cong_e Nat Nat ((y: Nat) => succ y) k x (ih x (succ_inj (mult two k) (mult two x) (succ_inj (succ (mult two k)) (succ (mult two x)) (trans_e Nat (succ (succ (mult two k))) (mult two (succ k)) (succ (succ (mult two x))) (sym_e Nat (mult two (succ k)) (succ (succ (mult two k))) (mult_two_succ k)) (trans_e Nat (mult two (succ k)) (mult two (succ x)) (succ (succ (mult two x))) h_sx (mult_two_succ x))))))) b h) a
 // --- square_double: (2n)² = 4·n² -----------------------------------------
 
-val square_double : (n: Nat) -> Eq Nat (square (mult two n)) (mult four (square n)) =
-  (n: Nat) =>
-    trans_e Nat
-      (square (mult two n))
-      (mult (mult two n) (mult two n))
-      (mult four (square n))
-      (refl (mult (mult two n) (mult two n)))
-      (trans_e Nat
-        (mult (mult two n) (mult two n))
-        (mult two (mult n (mult two n)))
-        (mult four (square n))
-        (mult_assoc two n (mult two n))
-        (trans_e Nat
-          (mult two (mult n (mult two n)))
-          (mult two (mult (mult two n) n))
-          (mult four (square n))
-          (cong_e Nat Nat (mult two) (mult n (mult two n)) (mult (mult two n) n) (mult_comm n (mult two n)))
-          (trans_e Nat
-            (mult two (mult (mult two n) n))
-            (mult two (mult two (mult n n)))
-            (mult four (square n))
-            (cong_e Nat Nat (mult two) (mult (mult two n) n) (mult two (mult n n)) (mult_assoc two n n))
-            (trans_e Nat
-              (mult two (mult two (mult n n)))
-              (mult (mult two two) (mult n n))
-              (mult four (square n))
-              (sym_e Nat (mult (mult two two) (mult n n)) (mult two (mult two (mult n n))) (mult_assoc two two (mult n n)))
-              (trans_e Nat
-                (mult (mult two two) (mult n n))
-                (mult four (mult n n))
-                (mult four (square n))
-                (cong_e Nat Nat ((x: Nat) => mult x (mult n n)) (mult two two) four
-                  (trans_e Nat (mult two two) (plus two two) four (mult_2 two) (refl four)))
-                (refl (mult four (mult n n))))))))
-
+val square_double : (n: Nat) -> Eq Nat (square (mult two n)) (mult four (square n)) = (n: Nat) => trans_e Nat (square (mult two n)) (mult (mult two n) (mult two n)) (mult four (square n)) (refl (mult (mult two n) (mult two n))) (trans_e Nat (mult (mult two n) (mult two n)) (mult two (mult n (mult two n))) (mult four (square n)) (mult_assoc two n (mult two n)) (trans_e Nat (mult two (mult n (mult two n))) (mult two (mult (mult two n) n)) (mult four (square n)) (cong_e Nat Nat (mult two) (mult n (mult two n)) (mult (mult two n) n) (mult_comm n (mult two n))) (trans_e Nat (mult two (mult (mult two n) n)) (mult two (mult two (mult n n))) (mult four (square n)) (cong_e Nat Nat (mult two) (mult (mult two n) n) (mult two (mult n n)) (mult_assoc two n n)) (trans_e Nat (mult two (mult two (mult n n))) (mult (mult two two) (mult n n)) (mult four (square n)) (sym_e Nat (mult (mult two two) (mult n n)) (mult two (mult two (mult n n))) (mult_assoc two two (mult n n))) (trans_e Nat (mult (mult two two) (mult n n)) (mult four (mult n n)) (mult four (square n)) (cong_e Nat Nat ((x: Nat) => mult x (mult n n)) (mult two two) four (trans_e Nat (mult two two) (plus two two) four (mult_2 two) (refl four))) (refl (mult four (mult n n))))))))
 // lt_succ_mono: Lt a b → Lt (succ a) (succ b)
+
 fun lt_succ_mono(a: Nat, b: Nat, h: Lt a b) : Lt (succ a) (succ b) {struct h} = match h {
   case lt_succ n => lt_succ (succ n)
-  case lt_trans n m k p1 p2 =>
-    lt_trans (succ n) (succ m) (succ k) (lt_succ_mono n m p1) (lt_succ_mono m k p2)
+  case lt_trans n m k p1 p2 => lt_trans (succ n) (succ m) (succ k) (lt_succ_mono n m p1) (lt_succ_mono m k p2)
 }
 
-fun even_implies_double(n: Nat, h: Eq Bool (even n) true_) : Eq Nat n (mult two (half n)) = go n h
-and go(n: Nat, h0: Eq Bool (even n) true_) : Eq Nat n (mult two (half n)) = Nat.ind ((m: Nat) => Eq Bool (even m) true_ -> Eq Nat m (mult two (half m)))
-  ((hz: Eq Bool (even zero) true_) => trans_e Nat zero (mult two zero) (mult two (half zero)) (sym_e Nat (mult two zero) zero (trans_e Nat (mult two zero) (plus zero zero) zero (mult_2 zero) (plus_zero zero))) (refl (mult two (half zero))))
-  ((k: Nat) => (ih: Eq Bool (even k) true_ -> Eq Nat k (mult two (half k))) => (hsk: Eq Bool (even (succ k)) true_) =>
-    Nat.ind ((j: Nat) => Eq Bool (even (succ j)) true_ -> Eq Nat (succ j) (mult two (half (succ j))))
-      ((hsz: Eq Bool (even (succ zero)) true_) =>
-        False.rec ((_: False) => Eq Nat (succ zero) (mult two (half (succ zero)))) (true_ne_false (cong_e Bool Bool parity_flip_b (even (succ zero)) true_ hsz)))
-      ((m: Nat) => (ihm: Eq Bool (even (succ m)) true_ -> Eq Nat (succ m) (mult two (half (succ m)))) => (hssm: Eq Bool (even (succ (succ m))) true_) => {
-        val even_m_true : Eq Bool (even m) true_ = trans_e Bool (even m) (even (succ (succ m))) true_ (sym_e Bool (even (succ (succ m))) (even m) (even_succ_succ_eq_even m)) hssm;
-        val rec_m : Eq Nat m (mult two (half m)) = go m even_m_true;
-        trans_e Nat (succ (succ m)) (succ (succ (mult two (half m)))) (mult two (half (succ (succ m)))) (cong_e Nat Nat ((x: Nat) => succ (succ x)) m (mult two (half m)) rec_m) (sym_e Nat (mult two (half (succ (succ m)))) (succ (succ (mult two (half m)))) (mult_two_succ (half m)))
-      })
-      k hsk)
-  n h0
+fun even_implies_double(n: Nat, h: Eq Bool (even n) true_) : Eq Nat n (mult two (half n)) = go n h and go(n: Nat, h0: Eq Bool (even n) true_) : Eq Nat n (mult two (half n)) = Nat.ind ((m: Nat) => Eq Bool (even m) true_ -> Eq Nat m (mult two (half m))) ((hz: Eq Bool (even zero) true_) => trans_e Nat zero (mult two zero) (mult two (half zero)) (sym_e Nat (mult two zero) zero (trans_e Nat (mult two zero) (plus zero zero) zero (mult_2 zero) (plus_zero zero))) (refl (mult two (half zero)))) ((k: Nat) => (ih: Eq Bool (even k) true_ -> Eq Nat k (mult two (half k))) => (hsk: Eq Bool (even (succ k)) true_) => Nat.ind ((j: Nat) => Eq Bool (even (succ j)) true_ -> Eq Nat (succ j) (mult two (half (succ j)))) ((hsz: Eq Bool (even (succ zero)) true_) => False.rec ((_: False) => Eq Nat (succ zero) (mult two (half (succ zero)))) (true_ne_false (cong_e Bool Bool parity_flip_b (even (succ zero)) true_ hsz))) ((m: Nat) => (ihm: Eq Bool (even (succ m)) true_ -> Eq Nat (succ m) (mult two (half (succ m)))) => (hssm: Eq Bool (even (succ (succ m))) true_) => {
+  val even_m_true: Eq Bool (even m) true_ = trans_e Bool (even m) (even (succ (succ m))) true_ (sym_e Bool (even (succ (succ m))) (even m) (even_succ_succ_eq_even m)) hssm;
+  val rec_m: Eq Nat m (mult two (half m)) = go m even_m_true;
+  trans_e Nat (succ (succ m)) (succ (succ (mult two (half m)))) (mult two (half (succ (succ m)))) (cong_e Nat Nat ((x: Nat) => succ (succ x)) m (mult two (half m)) rec_m) (sym_e Nat (mult two (half (succ (succ m)))) (succ (succ (mult two (half m)))) (mult_two_succ (half m)))
+  }) k hsk) n h0// --- lt_succ_t_mult_two_t: succ t < 2*(succ t) -----------------------------
 
-// --- lt_succ_t_mult_two_t: succ t < 2*(succ t) -----------------------------
+val lt_succ_t_mult_two_t : (t: Nat) -> Lt (succ t) (mult two (succ t)) = Nat.ind ((t: Nat) => Lt (succ t) (mult two (succ t))) (lt_succ (succ zero)) ((u: Nat) => (ih: Lt (succ u) (mult two (succ u))) => {
+  val h_lt_succ_ss: Lt (succ (succ u)) (succ (mult two (succ u))) = lt_succ_mono (succ u) (mult two (succ u)) ih;
+  val h_lt_ss_ssmu: Lt (succ (succ u)) (succ (succ (mult two (succ u)))) = lt_succ_right (succ (succ u)) (succ (mult two (succ u))) h_lt_succ_ss;
+  Eq.rec Nat ((a: Nat) => (b: Nat) => (p: Eq Nat a b) => Lt (succ (succ u)) a -> Lt (succ (succ u)) b) (succ (succ (mult two (succ u)))) (mult two (succ (succ u))) ((z: Nat) => (h: Lt (succ (succ u)) z) => h) (sym_e Nat (mult two (succ (succ u))) (succ (succ (mult two (succ u)))) (mult_two_succ (succ u))) h_lt_ss_ssmu
+  })// --- lt_t_succ_k: if succ k = 2*t then t < succ k --------------------------
 
-val lt_succ_t_mult_two_t : (t: Nat) -> Lt (succ t) (mult two (succ t)) =
-  Nat.ind ((t: Nat) => Lt (succ t) (mult two (succ t)))
-    (lt_succ (succ zero))
-    ((u: Nat) => (ih: Lt (succ u) (mult two (succ u))) =>
-      { val h_lt_succ_ss : Lt (succ (succ u)) (succ (mult two (succ u))) =
-          lt_succ_mono (succ u) (mult two (succ u)) ih;
-        val h_lt_ss_ssmu : Lt (succ (succ u)) (succ (succ (mult two (succ u)))) =
-          lt_succ_right (succ (succ u)) (succ (mult two (succ u))) h_lt_succ_ss;
-        Eq.rec Nat
-          ((a: Nat) => (b: Nat) => (p: Eq Nat a b) =>
-            Lt (succ (succ u)) a -> Lt (succ (succ u)) b)
-          (succ (succ (mult two (succ u)))) (mult two (succ (succ u)))
-          ((z: Nat) => (h: Lt (succ (succ u)) z) => h)
-          (sym_e Nat (mult two (succ (succ u))) (succ (succ (mult two (succ u))))
-            (mult_two_succ (succ u)))
-          h_lt_ss_ssmu
-      })
-
-// --- lt_t_succ_k: if succ k = 2*t then t < succ k --------------------------
-
-fun lt_t_succ_k(t: Nat, k: Nat, h: Eq Nat (succ k) (mult two t)) : Lt t (succ k) =
-  Nat.ind ((t: Nat) => (k: Nat) -> Eq Nat (succ k) (mult two t) -> Lt t (succ k))
-    ((k: Nat) => (h_zero: Eq Nat (succ k) (mult two zero)) =>
-      False.rec ((_: False) => Lt zero (succ k))
-        (succ_ne_zero k
-          (trans_e Nat (succ k) (mult two zero) zero h_zero (mult_zero two))))
-    ((u: Nat) => (ih: (k: Nat) -> Eq Nat (succ k) (mult two u) -> Lt u (succ k)) =>
-      (k: Nat) => (h_succ_u: Eq Nat (succ k) (mult two (succ u))) =>
-        Eq.rec Nat
-          ((a: Nat) => (b: Nat) => (p: Eq Nat a b) =>
-            Lt (succ u) a -> Lt (succ u) b)
-          (mult two (succ u)) (succ k)
-          ((z: Nat) => (h_l: Lt (succ u) z) => h_l)
-          (sym_e Nat (succ k) (mult two (succ u)) h_succ_u)
-          (lt_succ_t_mult_two_t u))
-    t k h
-
+fun lt_t_succ_k(t: Nat, k: Nat, h: Eq Nat (succ k) (mult two t)) : Lt t (succ k) = Nat.ind ((t: Nat) => (k: Nat) -> Eq Nat (succ k) (mult two t) -> Lt t (succ k)) ((k: Nat) => (h_zero: Eq Nat (succ k) (mult two zero)) => False.rec ((_: False) => Lt zero (succ k)) (succ_ne_zero k (trans_e Nat (succ k) (mult two zero) zero h_zero (mult_zero two)))) ((u: Nat) => (ih: (k: Nat) -> Eq Nat (succ k) (mult two u) -> Lt u (succ k)) => (k: Nat) => (h_succ_u: Eq Nat (succ k) (mult two (succ u))) => Eq.rec Nat ((a: Nat) => (b: Nat) => (p: Eq Nat a b) => Lt (succ u) a -> Lt (succ u) b) (mult two (succ u)) (succ k) ((z: Nat) => (h_l: Lt (succ u) z) => h_l) (sym_e Nat (succ k) (mult two (succ u)) h_succ_u) (lt_succ_t_mult_two_t u)) t k h
 // --- Strong induction on Nat via Lt ----------------------------------------
 
-fun strong_ind_impl(n: Nat, P: Nat -> Prop,
-  step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n) : P n termination_by (n) =
-  match n {
-    case zero =>
-      step zero
-        (Nat.ind ((m: Nat) => (k: Nat) -> Lt k m -> P k)
-          ((k: Nat) => (h: Lt k zero) =>
-            False.rec ((_: False) => P k)
-              (Lt.rec ((a: Nat) => (b: Nat) => (_: Lt a b) => Eq Nat b zero -> False)
-                k zero
-                ((n_: Nat) => (eq: Eq Nat (succ n_) zero) => succ_ne_zero n_ eq)
-                ((a: Nat) => (b: Nat) => (c: Nat) => (_: Lt a b) => (_: Lt b c) =>
-                  (_: Eq Nat b zero -> False) => (ih2: Eq Nat c zero -> False) =>
-                  (eq: Eq Nat c zero) => ih2 eq)
-                h (refl zero)))
-          ((n_: Nat) => (ih: (j: Nat) -> Lt j n_ -> P j) =>
-            (k: Nat) => (h: Lt k (succ n_)) =>
-              strong_ind_impl_help P step k (succ n_) h)
-          zero)
-    case succ n_ =>
-      step (succ n_) ((k: Nat) => (h: Lt k (succ n_)) =>
-        strong_ind_impl_help P step k (succ n_) h)
-  }
+fun strong_ind_impl(n: Nat, P: Nat -> Prop, step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n) : P n termination_by (n) = match n {
+  case zero => step zero (Nat.ind ((m: Nat) => (k: Nat) -> Lt k m -> P k) ((k: Nat) => (h: Lt k zero) => False.rec ((_: False) => P k) (Lt.rec ((a: Nat) => (b: Nat) => (_: Lt a b) => Eq Nat b zero -> False) k zero ((n_: Nat) => (eq: Eq Nat (succ n_) zero) => succ_ne_zero n_ eq) ((a: Nat) => (b: Nat) => (c: Nat) => (_: Lt a b) => (_: Lt b c) => (_: Eq Nat b zero -> False) => (ih2: Eq Nat c zero -> False) => (eq: Eq Nat c zero) => ih2 eq) h (refl zero))) ((n_: Nat) => (ih: (j: Nat) -> Lt j n_ -> P j) => (k: Nat) => (h: Lt k (succ n_)) => strong_ind_impl_help P step k (succ n_) h) zero)
+  case succ n_ => step (succ n_) ((k: Nat) => (h: Lt k (succ n_)) => strong_ind_impl_help P step k (succ n_) h)
+}and strong_ind_impl_help(P: Nat -> Prop, step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n, k: Nat, n: Nat, h: Lt k n) : P k {struct h} = match h {
+  case lt_succ k_ => strong_ind_impl k_ P step
+  case lt_trans a b c p q => strong_ind_impl_help P step a b p
+}
 
-and strong_ind_impl_help(P: Nat -> Prop,
-  step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n,
-  k: Nat, n: Nat, h: Lt k n) : P k {struct h} =
-  match h {
-    case lt_succ k_ => strong_ind_impl k_ P step
-    case lt_trans a b c p q => strong_ind_impl_help P step a b p
-  }
-
-val strong_ind : (P: Nat -> Prop) ->
-  ((n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n) ->
-  (n: Nat) -> P n =
-  (P: Nat -> Prop) => (step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n) =>
-    (n: Nat) => strong_ind_impl n P step
-
+val strong_ind : (P: Nat -> Prop) -> ((n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n) -> (n: Nat) -> P n = (P: Nat -> Prop) => (step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n) => (n: Nat) => strong_ind_impl n P step
 // --- sqrt2: √2 is irrational -------------------------------------------------
 
-val sqrt2 : (n: Nat) -> (m: Nat) ->
-  Eq Nat (square n) (mult two (square m)) -> Eq Nat n zero =
-  (n: Nat) => (m: Nat) => (h: Eq Nat (square n) (mult two (square m))) =>
-    strong_ind ((x: Nat) => (m: Nat) -> Eq Nat (square x) (mult two (square m)) -> Eq Nat x zero)
-      ((x: Nat) => (ih: (k: Nat) -> Lt k x ->
-                         (m: Nat) -> Eq Nat (square k) (mult two (square m)) -> Eq Nat k zero) =>
-        (m: Nat) => (h_x: Eq Nat (square x) (mult two (square m))) => {
-          val h_even : Eq Bool (even x) true_ = sqrt2_parity x m h_x;
-          val h_double : Eq Nat x (mult two (half x)) = even_implies_double x h_even;
-          val t = half x;
-          val u = half m;
-
-          // Descent algebra: square t = 2 * square u
-          val h_sq_2t : Eq Nat (square (mult two t)) (mult two (square m)) =
-            trans_e Nat (square (mult two t)) (square x) (mult two (square m))
-              (cong_e Nat Nat square (mult two t) x (sym_e Nat x (mult two t) h_double))
-              h_x;
-          val h_4t2_2m2 : Eq Nat (mult four (square t)) (mult two (square m)) =
-            trans_e Nat (mult four (square t)) (square (mult two t)) (mult two (square m))
-              (sym_e Nat (square (mult two t)) (mult four (square t)) (square_double t))
-              h_sq_2t;
-          val h_2_2t2_2m2 : Eq Nat (mult two (mult two (square t))) (mult two (square m)) =
-            trans_e Nat (mult two (mult two (square t))) (mult four (square t)) (mult two (square m))
-              (sym_e Nat (mult four (square t)) (mult two (mult two (square t))) (mult_4_eq (square t)))
-              h_4t2_2m2;
-          val h_2t2_m2 : Eq Nat (mult two (square t)) (square m) =
-            mult_2_inj (mult two (square t)) (square m) h_2_2t2_2m2;
-          val h_m_sq_even : Eq Bool (even (square m)) true_ =
-            trans_e Bool (even (square m)) (even (mult two (square t))) true_
-              (cong_e Nat Bool even (square m) (mult two (square t))
-                (sym_e Nat (mult two (square t)) (square m) h_2t2_m2))
-              (trans_e Bool (even (mult two (square t))) (even (plus (square t) (square t))) true_
-                (cong_e Nat Bool even (mult two (square t)) (plus (square t) (square t)) (mult_2 (square t)))
-                (even_double (square t)));
-          val h_m_even : Eq Bool (even m) true_ = even_square_implies_even m h_m_sq_even;
-          val h_m_double : Eq Nat m (mult two u) = even_implies_double m h_m_even;
-          val h_2t2_sq2u : Eq Nat (mult two (square t)) (square (mult two u)) =
-            trans_e Nat (mult two (square t)) (square m) (square (mult two u))
-              h_2t2_m2
-              (cong_e Nat Nat square m (mult two u) h_m_double);
-          val h_2t2_4u2 : Eq Nat (mult two (square t)) (mult four (square u)) =
-            trans_e Nat (mult two (square t)) (square (mult two u)) (mult four (square u))
-              h_2t2_sq2u (square_double u);
-          val h_2t2_2_2u2 : Eq Nat (mult two (square t)) (mult two (mult two (square u))) =
-            trans_e Nat (mult two (square t)) (mult four (square u)) (mult two (mult two (square u)))
-              h_2t2_4u2 (mult_4_eq (square u));
-          val h_t2_2u2 : Eq Nat (square t) (mult two (square u)) =
-            mult_2_inj (square t) (mult two (square u)) h_2t2_2_2u2;
-
-          // Case analysis on t
-          Nat.ind ((t0: Nat) => Eq Nat x (mult two t0) -> Eq Nat x zero)
-            // t = 0: x = 2*0 = 0
-            ((h0: Eq Nat x (mult two zero)) =>
-              trans_e Nat x (mult two zero) zero h0 (mult_zero two))
-            // t = succ v: descent
-            ((v: Nat) => (_: Eq Nat x (mult two v) -> Eq Nat x zero) =>
-              (h_sv: Eq Nat x (mult two (succ v))) => {
-                val k = succ (mult two v);
-                val h_succ_k_2t : Eq Nat (succ k) (mult two (succ v)) =
-                  sym_e Nat (mult two (succ v)) (succ k) (mult_two_succ v);
-                val h_lt_succ_k : Lt (succ v) (succ k) =
-                  lt_t_succ_k (succ v) k h_succ_k_2t;
-                val h_n_eq_succ_k : Eq Nat x (succ k) =
-                  trans_e Nat x (mult two (succ v)) (succ k) h_sv
-                    (sym_e Nat (succ k) (mult two (succ v)) h_succ_k_2t);
-                val h_lt : Lt (succ v) x =
-                  Eq.rec Nat
-                    ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => Lt (succ v) a -> Lt (succ v) b)
-                    (succ k) x ((z: Nat) => (lt: Lt (succ v) z) => lt)
-                    (sym_e Nat x (succ k) h_n_eq_succ_k) h_lt_succ_k;
-                // Transport h_t2_2u2: square t = 2*(square u)  ->  square (succ v) = 2*(square u)
-                val h_mult_two_t_eq : Eq Nat (mult two t) (mult two (succ v)) =
-                  trans_e Nat (mult two t) x (mult two (succ v))
-                    (sym_e Nat x (mult two t) h_double) h_sv;
-                val h_t_eq_sv : Eq Nat t (succ v) =
-                  mult_2_inj t (succ v) h_mult_two_t_eq;
-                val h_sq_sv_2u2 : Eq Nat (square (succ v)) (mult two (square u)) =
-                  trans_e Nat (square (succ v)) (square t) (mult two (square u))
-                    (cong_e Nat Nat square (succ v) t (sym_e Nat t (succ v) h_t_eq_sv))
-                    h_t2_2u2;
-                // Apply strong IH
-                val h_t_zero : Eq Nat (succ v) zero =
-                  ih (succ v) h_lt u h_sq_sv_2u2;
-                False.rec ((_: False) => Eq Nat x zero) (succ_ne_zero v h_t_zero)
-              })
-            t h_double
-        })
-      n
-      m h
+val sqrt2 : (n: Nat) -> (m: Nat) -> Eq Nat (square n) (mult two (square m)) -> Eq Nat n zero = (n: Nat) => (m: Nat) => (h: Eq Nat (square n) (mult two (square m))) => strong_ind ((x: Nat) => (m: Nat) -> Eq Nat (square x) (mult two (square m)) -> Eq Nat x zero) ((x: Nat) => (ih: (k: Nat) -> Lt k x -> (m: Nat) -> Eq Nat (square k) (mult two (square m)) -> Eq Nat k zero) => (m: Nat) => (h_x: Eq Nat (square x) (mult two (square m))) => {
+  val h_even: Eq Bool (even x) true_ = sqrt2_parity x m h_x;
+  val h_double: Eq Nat x (mult two (half x)) = even_implies_double x h_even;
+  val t = half x;
+  val u = half m;
+  val h_sq_2t: Eq Nat (square (mult two t)) (mult two (square m)) = trans_e Nat (square (mult two t)) (square x) (mult two (square m)) (cong_e Nat Nat square (mult two t) x (sym_e Nat x (mult two t) h_double)) h_x;
+  val h_4t2_2m2: Eq Nat (mult four (square t)) (mult two (square m)) = trans_e Nat (mult four (square t)) (square (mult two t)) (mult two (square m)) (sym_e Nat (square (mult two t)) (mult four (square t)) (square_double t)) h_sq_2t;
+  val h_2_2t2_2m2: Eq Nat (mult two (mult two (square t))) (mult two (square m)) = trans_e Nat (mult two (mult two (square t))) (mult four (square t)) (mult two (square m)) (sym_e Nat (mult four (square t)) (mult two (mult two (square t))) (mult_4_eq (square t))) h_4t2_2m2;
+  val h_2t2_m2: Eq Nat (mult two (square t)) (square m) = mult_2_inj (mult two (square t)) (square m) h_2_2t2_2m2;
+  val h_m_sq_even: Eq Bool (even (square m)) true_ = trans_e Bool (even (square m)) (even (mult two (square t))) true_ (cong_e Nat Bool even (square m) (mult two (square t)) (sym_e Nat (mult two (square t)) (square m) h_2t2_m2)) (trans_e Bool (even (mult two (square t))) (even (plus (square t) (square t))) true_ (cong_e Nat Bool even (mult two (square t)) (plus (square t) (square t)) (mult_2 (square t))) (even_double (square t)));
+  val h_m_even: Eq Bool (even m) true_ = even_square_implies_even m h_m_sq_even;
+  val h_m_double: Eq Nat m (mult two u) = even_implies_double m h_m_even;
+  val h_2t2_sq2u: Eq Nat (mult two (square t)) (square (mult two u)) = trans_e Nat (mult two (square t)) (square m) (square (mult two u)) h_2t2_m2 (cong_e Nat Nat square m (mult two u) h_m_double);
+  val h_2t2_4u2: Eq Nat (mult two (square t)) (mult four (square u)) = trans_e Nat (mult two (square t)) (square (mult two u)) (mult four (square u)) h_2t2_sq2u (square_double u);
+  val h_2t2_2_2u2: Eq Nat (mult two (square t)) (mult two (mult two (square u))) = trans_e Nat (mult two (square t)) (mult four (square u)) (mult two (mult two (square u))) h_2t2_4u2 (mult_4_eq (square u));
+  val h_t2_2u2: Eq Nat (square t) (mult two (square u)) = mult_2_inj (square t) (mult two (square u)) h_2t2_2_2u2;
+  Nat.ind ((t0: Nat) => Eq Nat x (mult two t0) -> Eq Nat x zero) ((h0: Eq Nat x (mult two zero)) => trans_e Nat x (mult two zero) zero h0 (mult_zero two)) ((v: Nat) => (_: Eq Nat x (mult two v) -> Eq Nat x zero) => (h_sv: Eq Nat x (mult two (succ v))) => {
+    val k = succ (mult two v);
+    val h_succ_k_2t: Eq Nat (succ k) (mult two (succ v)) = sym_e Nat (mult two (succ v)) (succ k) (mult_two_succ v);
+    val h_lt_succ_k: Lt (succ v) (succ k) = lt_t_succ_k (succ v) k h_succ_k_2t;
+    val h_n_eq_succ_k: Eq Nat x (succ k) = trans_e Nat x (mult two (succ v)) (succ k) h_sv (sym_e Nat (succ k) (mult two (succ v)) h_succ_k_2t);
+    val h_lt: Lt (succ v) x = Eq.rec Nat ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => Lt (succ v) a -> Lt (succ v) b) (succ k) x ((z: Nat) => (lt: Lt (succ v) z) => lt) (sym_e Nat x (succ k) h_n_eq_succ_k) h_lt_succ_k;
+    val h_mult_two_t_eq: Eq Nat (mult two t) (mult two (succ v)) = trans_e Nat (mult two t) x (mult two (succ v)) (sym_e Nat x (mult two t) h_double) h_sv;
+    val h_t_eq_sv: Eq Nat t (succ v) = mult_2_inj t (succ v) h_mult_two_t_eq;
+    val h_sq_sv_2u2: Eq Nat (square (succ v)) (mult two (square u)) = trans_e Nat (square (succ v)) (square t) (mult two (square u)) (cong_e Nat Nat square (succ v) t (sym_e Nat t (succ v) h_t_eq_sv)) h_t2_2u2;
+    val h_t_zero: Eq Nat (succ v) zero = ih (succ v) h_lt u h_sq_sv_2u2;
+    False.rec ((_: False) => Eq Nat x zero) (succ_ne_zero v h_t_zero)
+    }) t h_double
+  }) n m h// Descent algebra: square t = 2 * square u
+// Case analysis on t
+// t = 0: x = 2*0 = 0
+// t = succ v: descent
+// Transport h_t2_2u2: square t = 2*(square u)  ->  square (succ v) = 2*(square u)
+// Apply strong IH
