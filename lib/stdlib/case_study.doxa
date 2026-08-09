@@ -91,7 +91,6 @@ val even_square_implies_even : (n: Nat) -> Eq Bool (even (square n)) true_ -> Eq
 
 val sqrt2_parity : (n: Nat) -> (m: Nat) -> Eq Nat (square n) (mult two (square m)) -> Eq Bool (even n) true_ = (n: Nat) => (m: Nat) => (h_eq: Eq Nat (square n) (mult two (square m))) => trans_e Bool (even n) (even (square n)) true_ (sym_e Bool (even (square n)) (even n) (even_square_eq n)) (trans_e Bool (even (square n)) (even (mult two (square m))) true_ (cong_e Nat Bool even (square n) (mult two (square m)) h_eq) (trans_e Bool (even (mult two (square m))) (even (plus (square m) (square m))) true_ (cong_e Nat Bool even (mult two (square m)) (plus (square m) (square m)) (mult_2 (square m))) (even_double (square m))))
 // --- Lt and well-founded recursion ----------------------------------------
-
 // nat_wf: every Nat is accessible under Lt (well-foundedness).
 
 fun nat_wf(n: Nat) : Acc Nat ((x: Nat) => (y: Nat) => Lt x y) n = match n {
@@ -183,9 +182,17 @@ val sqrt2 : (n: Nat) -> (m: Nat) -> Eq Nat (square n) (mult two (square m)) -> E
 // t = succ v: descent
 // Transport h_t2_2u2: square t = 2*(square u)  ->  square (succ v) = 2*(square u)
 // Apply strong IH
-
 // --- gcd correctness --------------------------------------------------------
-
 // gcd_zero: gcd 0 n = n (definitional via match m { case zero => n }).
 
 val gcd_zero : (n: Nat) -> Eq Nat (gcd zero n) n = (n: Nat) => refl n
+// --- Prime number lemmas -----------------------------------------------------
+// prime_two: 2 is prime (no divisors between 2 and 1).
+
+val prime_two : Eq Bool (prime (succ (succ zero))) true_ = refl true_
+// not_prime_zero: 0 is not prime (trial division fails immediately).
+
+val not_prime_zero : Eq Bool (prime zero) false_ = refl false_
+// not_prime_one: 1 is not prime (divisible only by itself).
+
+val not_prime_one : Eq Bool (prime (succ zero)) false_ = refl false_

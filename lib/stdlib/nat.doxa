@@ -117,4 +117,10 @@ fun prime_acc(k: Nat, n: Nat) : Bool = match k {
   }
 }
 
-val prime : (n: Nat) -> Bool = (n: Nat) => prime_acc n n
+val prime : (n: Nat) -> Bool = (n: Nat) => match n {
+  case zero => false_
+  case succ n_ => match n_ {
+    case zero => false_
+    case succ n__ => prime_acc n n
+  }
+}
