@@ -5,19 +5,40 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Doxa — Browser Demo</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+  body { font-family: system-ui, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; }
   h1 { font-size: 1.5rem; }
-  textarea { width: 100%; height: 240px; font-family: monospace; font-size: 0.9rem; margin: 0.5rem 0; }
+  textarea { width: 100%; height: 260px; font-family: monospace; font-size: 0.9rem; margin: 0.5rem 0; tab-size: 2; }
   button { font-size: 1rem; padding: 0.4rem 1rem; }
-  pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; white-space: pre-wrap; }
+  pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; white-space: pre-wrap; margin: 0.5rem 0; }
   .success { color: green; }
   .error { color: red; }
+
+  .decl-list { margin: 1rem 0; }
+  .decl-item { margin: 0.15rem 0; font-family: monospace; font-size: 0.9rem; }
+  .decl-item summary { cursor: pointer; padding: 0.15rem 0; }
+  .decl-item summary:hover { background: #f0f0f0; }
+  .decl-detail { margin: 0.2rem 0 0.2rem 1.5rem; color: #555; font-size: 0.85rem; }
+  .decl-name { font-weight: bold; }
+  .kind-tag { font-size: 0.75rem; color: #888; margin-left: 0.5rem; text-transform: uppercase; }
+  .nf-tag { color: #2a7; }
+  .nf-term { margin-left: 1.5rem; font-family: monospace; font-size: 0.8rem; color: #444; white-space: pre-wrap; }
+
+  .errors { margin: 1rem 0; }
+  .err-item { background: #fff0f0; border-left: 3px solid #c00; padding: 0.5rem; margin: 0.3rem 0; }
+  .err-pos { color: #888; font-size: 0.8rem; }
+  .err-msg { color: #c00; font-family: monospace; white-space: pre-wrap; }
+
+  .filter-bar { margin: 0.5rem 0; }
+  .filter-bar input { font-size: 0.9rem; padding: 0.2rem 0.5rem; width: 200px; }
+  .filter-bar label { font-size: 0.85rem; color: #666; margin-right: 0.5rem; }
+
+  .loading { color: #888; font-style: italic; }
 </style>
 </head>
 <body>
 
 <h1>Doxa Proof Checker</h1>
-<p>Paste Doxa source below and click <em>Check</em>. The prelude (<code>Eq</code>) is loaded automatically.</p>
+<p>Paste Doxa source below and click <em>Check</em>. The prelude (<code>Eq</code>, <code>Acc</code>) is loaded automatically.</p>
 
 <textarea id="source" spellcheck="false">data Nat : Type {
   zero : Nat;
@@ -33,32 +54,139 @@ val zero_plus_n : (n: Nat) -> Eq[Nat] (plus zero n) n =
   (n: Nat) => refl n
 </textarea>
 
-<p><button id="check-btn">Check</button></p>
+<p>
+  <button id="check-btn">Check</button>
+  <span id="status" class="loading"></span>
+</p>
 
-<pre id="output"></pre>
+<div class="filter-bar" id="filter-bar" style="display:none">
+  <label>Filter:</label>
+  <input id="filter" type="text" placeholder="name or type substring" autocomplete="off">
+</div>
+
+<div id="declarations"></div>
+<div id="errors"></div>
 
 <script type="module">
   import { doxaCheck } from './doxa_check.mjs';
 
   const sourceEl = document.getElementById('source');
-  const outputEl = document.getElementById('output');
+  const statusEl = document.getElementById('status');
+  const declsEl = document.getElementById('declarations');
+  const errorsEl = document.getElementById('errors');
+  const filterBar = document.getElementById('filter-bar');
+  const filterInput = document.getElementById('filter');
   const btn = document.getElementById('check-btn');
 
+  let allDecls = [];
+  let allErrors = [];
+
+  function kindTag(kind) {
+    const tags = { data: 'data', type: 'type', val: 'val', fun: 'fun', import: 'import', typeclass: 'typeclass', impl: 'impl' };
+    return tags[kind] || kind;
+  }
+
+  function renderDecl(decl) {
+    const details = document.createElement('details');
+    details.className = 'decl-item';
+    details.open = false;
+
+    const summary = document.createElement('summary');
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'decl-name';
+    nameSpan.textContent = decl.name;
+
+    const tag = document.createElement('span');
+    tag.className = 'kind-tag';
+    tag.textContent = kindTag(decl.kind);
+
+    summary.appendChild(nameSpan);
+    summary.appendChild(tag);
+    details.appendChild(summary);
+
+    const typeDiv = document.createElement('div');
+    typeDiv.className = 'decl-detail';
+    typeDiv.textContent = decl.type || '(no type)';
+    details.appendChild(typeDiv);
+
+    if (decl.normalForm) {
+      const nfSpan = document.createElement('span');
+      nfSpan.className = 'nf-tag';
+      nfSpan.textContent = ' ≡ ';
+      const nfTerm = document.createElement('span');
+      nfTerm.className = 'nf-term';
+      nfTerm.textContent = decl.normalForm;
+      details.appendChild(nfSpan);
+      details.appendChild(nfTerm);
+    }
+
+    return details;
+  }
+
+  function renderErrors(errs) {
+    const div = document.createElement('div');
+    div.className = 'errors';
+    for (const e of errs) {
+      const item = document.createElement('div');
+      item.className = 'err-item';
+      const pos = document.createElement('div');
+      pos.className = 'err-pos';
+      pos.textContent = `line ${e.line}, column ${e.column}`;
+      const msg = document.createElement('div');
+      msg.className = 'err-msg';
+      msg.textContent = e.message;
+      item.appendChild(pos);
+      item.appendChild(msg);
+      div.appendChild(item);
+    }
+    return div;
+  }
+
+  function applyFilter(text) {
+    const q = text.toLowerCase();
+    for (const child of Array.from(declsEl.children)) {
+      if (!child.classList.contains('decl-item')) continue;
+      const name = child.querySelector('.decl-name')?.textContent?.toLowerCase() || '';
+      const type = child.querySelector('.decl-detail')?.textContent?.toLowerCase() || '';
+      child.style.display = (!q || name.includes(q) || type.includes(q)) ? '' : 'none';
+    }
+  }
+
+  filterInput.addEventListener('input', () => applyFilter(filterInput.value));
+
   btn.addEventListener('click', () => {
+    statusEl.textContent = '  checking...';
+    statusEl.className = 'loading';
+    declsEl.innerHTML = '';
+    errorsEl.innerHTML = '';
+    filterBar.style.display = 'none';
+    allDecls = [];
+    allErrors = [];
+
     try {
       const json = doxaCheck(sourceEl.value);
       const result = JSON.parse(json);
       if (result.status === 'success') {
-        outputEl.className = 'success';
-        outputEl.textContent =
-          'OK: ' + result.count + ' ' + (result.count === 1 ? 'declaration' : 'declarations') + ' checked';
+        statusEl.textContent = `  ✓ ${result.count} declarations checked`;
+        statusEl.className = 'success';
+        allDecls = result.declarations || [];
+        for (const decl of allDecls) {
+          declsEl.appendChild(renderDecl(decl));
+        }
+        if (allDecls.length > 0) {
+          filterBar.style.display = '';
+          filterInput.value = '';
+        }
       } else {
-        outputEl.className = 'error';
-        outputEl.textContent = result.message;
+        statusEl.textContent = `  ✗ ${(result.errors || []).length} error(s)`;
+        statusEl.className = 'error';
+        allErrors = result.errors || [];
+        errorsEl.appendChild(renderErrors(allErrors));
       }
     } catch (e) {
-      outputEl.className = 'error';
-      outputEl.textContent = 'Error: ' + e.message;
+      statusEl.textContent = '  ✗ runtime error';
+      statusEl.className = 'error';
+      errorsEl.textContent = 'Error: ' + e.message;
     }
   });
 </script>
