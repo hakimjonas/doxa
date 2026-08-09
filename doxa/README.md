@@ -56,11 +56,11 @@ doxa fmt myfile.doxa     # format to canonical style
 Or install from the bundled `.vsix` (after you run `npm install && vsce package`
 in the `vscode/` directory).
 
-### JetBrains (IntelliJ, CLion, etc.)
+### JetBrains (IntelliJ, CLion, RustRover, etc.)
 
-Install the [LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij)
-plugin and configure a Raw Command server for `.doxa` files running
-`doxa lsp`. See [`contrib/jetbrains/README.md`](contrib/jetbrains/README.md).
+[Doxa JetBrains](https://github.com/hakimjonas/doxa-jetbrains) is a
+dedicated extension providing syntax highlighting, diagnostics, hover,
+completion, formatting, and code lens — all powered by `doxa lsp`.
 
 ### WASM browser demo
 
@@ -150,7 +150,7 @@ vscode/                        # VS Code extension
 ├── syntaxes/                  # TextMate grammar
 └── icons/                     # δ file icon
 
-contrib/jetbrains/             # JetBrains LSP4IJ config
+contrib/                       # IDE configs (JetBrains → own repo)
 tool/                          # Benchmarking and profiling tools
 docs/                          # Design docs and plans
 ```
