@@ -430,3 +430,37 @@ final class LspParameterInformation {
     if (documentation != null) 'documentation': documentation,
   };
 }
+
+/// A code lens showing a declaration's type inline in the editor.
+final class LspCodeLens {
+  final LspRange range;
+  final LspCommand? command;
+  final Map<String, dynamic>? data;
+
+  const LspCodeLens({required this.range, this.command, this.data});
+
+  Map<String, dynamic> toJson() => {
+    'range': range.toJson(),
+    if (command != null) 'command': command!.toJson(),
+    if (data != null) 'data': data,
+  };
+}
+
+/// A command to execute for a code lens.
+final class LspCommand {
+  final String title;
+  final String command;
+  final List<dynamic>? arguments;
+
+  const LspCommand({
+    required this.title,
+    required this.command,
+    this.arguments,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'title': title,
+    'command': command,
+    if (arguments != null) 'arguments': arguments,
+  };
+}

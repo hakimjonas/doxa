@@ -9,6 +9,7 @@ import '../output.dart';
 import 'package:doxa/src/sem_info.dart';
 import 'package:doxa/src/source.dart';
 import '../web_check.dart';
+import '../format.dart' show formatSource;
 import 'protocol.dart';
 import 'transport.dart';
 
@@ -75,6 +76,12 @@ final class LspHandler {
       case 'textDocument/signatureHelp':
         return _handleSignatureHelp(id as int, params!);
 
+      case 'textDocument/codeLens':
+        return _handleCodeLens(id as int, params!);
+
+      case 'textDocument/formatting':
+        return _handleFormatting(id as int, params!);
+
       case 'shutdown':
         return {'jsonrpc': '2.0', 'id': id, 'result': null};
 
@@ -100,6 +107,8 @@ final class LspHandler {
         'referencesProvider': true,
         'renameProvider': true,
         'documentSymbolProvider': true,
+        'codeLensProvider': <String, dynamic>{'resolveProvider': false},
+        'documentFormattingProvider': true,
         'signatureHelpProvider': <String, dynamic>{
           'triggerCharacters': ['(', ','],
         },
@@ -468,6 +477,64 @@ final class LspHandler {
                 params_.isNotEmpty ? commas.clamp(0, params_.length - 1) : 0,
           ).toJson(),
     };
+  }
+
+  /// Handle `textDocument/codeLens`.
+  ///
+  /// Returns one code lens per top-level declaration showing its type.
+  Map<String, dynamic> _handleCodeLens(int id, Map<String, dynamic> params) {
+    if (_lastSuccess == null) {
+      return {'jsonrpc': '2.0', 'id': id, 'result': <Map<String, dynamic>>[]};
+    }
+    final lenses = <LspCodeLens>[];
+    for (final decl in _lastSuccess!.declarations) {
+      final pos = _positionAt(decl.span.start);
+      final typeStr = decl.type ?? decl.kind;
+      lenses.add(
+        LspCodeLens(
+          range: LspRange(
+            start: LspPosition(line: pos.line - 1, character: pos.column - 1),
+            end: LspPosition(line: pos.line - 1, character: pos.column - 1),
+          ),
+          command: LspCommand(title: typeStr, command: ''),
+        ),
+      );
+    }
+    return {
+      'jsonrpc': '2.0',
+      'id': id,
+      'result': [for (final l in lenses) l.toJson()],
+    };
+  }
+
+  /// Handle `textDocument/formatting`.
+  ///
+  /// Delegates to the formatter library and returns a single text edit
+  /// replacing the whole document.
+  Map<String, dynamic> _handleFormatting(int id, Map<String, dynamic> params) {
+    try {
+      final formatted = formatSource(_documentText);
+      final edit = LspTextEdit(
+        range: LspRange(
+          start: const LspPosition(line: 0, character: 0),
+          end: _endPosition(),
+        ),
+        newText: formatted,
+      );
+      return {
+        'jsonrpc': '2.0',
+        'id': id,
+        'result': [edit.toJson()],
+      };
+    } catch (e) {
+      return {'jsonrpc': '2.0', 'id': id, 'result': <Map<String, dynamic>>[]};
+    }
+  }
+
+  /// The position at the very end of the document.
+  LspPosition _endPosition() {
+    final lines = _documentText.split('\n');
+    return LspPosition(line: lines.length - 1, character: lines.last.length);
   }
 
   /// Extract the word prefix before [offset] (identifier characters only).
