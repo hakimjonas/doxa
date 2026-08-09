@@ -1,0 +1,15 @@
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+
+data Bool : Type { true_ : Bool; false_ : Bool; }
+
+data Eq[A: Type] : A -> A -> Prop { refl : (x: A) => Eq[A] x x }
+
+fun plus(n: Nat, m: Nat) : Nat = match n {
+  case zero => m
+  case succ n_ => succ (plus n_ m)
+}
+
+val plus_comm : (n: Nat) -> (m: Nat) -> Eq Nat (plus n m) (plus m n) = Nat.ind ((x: Nat) => (y: Nat) -> Eq Nat (plus x y) (plus y x)) ((m: Nat) => refl m) ((n: Nat) => (_: (y: Nat) -> Eq Nat (plus n y) (plus y n)) => (m: Nat) => match m {
+  case zero => refl (plus n zero)
+  case succ m_ => refl (plus n (succ m_))
+})

@@ -1,38 +1,18 @@
 # Doxa — JetBrains IDE Support
 
-Doxa supports any LSP-compatible editor.  JetBrains IDEs
-(IntelliJ IDEA, CLion, PyCharm, etc.) connect via the
-[LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij) plugin.
+Doxa uses [LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij)
+for JetBrains IDE integration.  LSP4IJ is the community-standard LSP
+bridge for IntelliJ-based editors.  A dedicated Doxa plugin that
+bundles LSP support directly is planned once the
+`com.intellij.platform.lsp` module ships in Community Edition
+(currently unavailable as of IntelliJ 2024.3 CE).
 
 ## Setup
 
 1. Install the **LSP4IJ** plugin from the JetBrains Marketplace
    (`Settings → Plugins → Marketplace → search "LSP4IJ"`).
 
-2. Open `Settings → Languages & Frameworks → Language Servers`.
-
-3. Add a new **Raw Command** server definition:
-
-   | Field | Value |
-   |-------|-------|
-   | **Server ID** | `doxa` |
-   | **Extension** | `doxa` |
-   | **Command** | `doxa lsp` |
-
-4. Associate `.doxa` files: check that `.doxa` is registered
-   under the **File type** mapping for the Doxa language.
-
-## Features
-
-Once connected, you get diagnostics (error squiggles), hover
-(type display), go-to-definition, completion (with types
-and frequency ranking), document symbols, code lens (inline
-declaration types), and format-on-save — all via standard LSP.
-
-## Manual configuration file
-
-If the UI path doesn't work or you prefer file-based config,
-create `~/.config/lsp4ij/servers/doxa.json` with:
+2. Create `~/.config/lsp4ij/servers/doxa.json`:
 
 ```json
 {
@@ -47,11 +27,24 @@ create `~/.config/lsp4ij/servers/doxa.json` with:
 }
 ```
 
-Restart the IDE after adding this file.
+3. Restart your IDE.
+
+4. Open any `.doxa` file.  You get diagnostics, hover,
+   completion (with types and frequency ranking), go-to-definition,
+   formatting, code lens, and signature help — all via the Doxa
+   language server.
+
+Alternatively, configure via the GUI:
+`Settings → Languages & Frameworks → Language Servers → Raw Command`.
+
+| Field | Value |
+|-------|-------|
+| Server ID | `doxa` |
+| Extension | `doxa` |
+| Command | `doxa lsp` |
 
 ## Troubleshooting
 
-- Make sure `doxa` is on your `PATH`.
+- Ensure `doxa` is on your `PATH`.  Verify with `doxa --help`.
 - Check LSP4IJ logs: `Help → Show Log in Finder/Explorer → lsp4ij.log`.
-- Verify the server starts: run `doxa lsp` manually in a terminal
-  (it should block waiting for stdin — press Ctrl+D to exit).
+- Test the server manually: `doxa lsp` blocks waiting for stdin.
