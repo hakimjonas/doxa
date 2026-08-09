@@ -1,12 +1,11 @@
 // Rejected (DuplicateMatchCase): the `zero` constructor arm appears
 // twice in a match; the second is unreachable.
-
 data Nat : Type {
   zero : Nat;
   succ : Nat -> Nat;
 }
 
-fun bad(n: Nat): Nat = match n {
+fun bad(n: Nat) : Nat = match n {
   case zero => zero
   case succ _ => zero
   case zero => zero

@@ -1,5 +1,4 @@
 // Rejected (TypeMismatch, universe-level): the Pi `(A: Type 0) -> A -> A`
 // has type `Type 1`, so declaring it at `Type 0` needs `Type 1 <= Type 0`,
 // the wrong direction of cumulativity (it only goes up the tower).
-
-val wrong: Type 0 = (A: Type 0) -> A -> A
+val wrong : Type 0 = (A: Type 0) -> A -> A

@@ -1,10 +1,9 @@
 // Rejected (NonStructuralRecursion): `loop n` recurses on the same
 // argument `n` rather than a strict sub-term, so it never terminates
 // (SPEC §8.6).
-
 data Nat : Type {
   zero : Nat;
   succ : Nat -> Nat;
 }
 
-fun loop(n: Nat): Nat = loop n
+fun loop(n: Nat) : Nat = loop n

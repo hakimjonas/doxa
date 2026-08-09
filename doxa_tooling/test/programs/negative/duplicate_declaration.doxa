@@ -1,6 +1,6 @@
 // Expects: DuplicateDeclaration.
 //
 // `x` is declared twice at the top level.
-
 val x = Type
+
 val x = Type

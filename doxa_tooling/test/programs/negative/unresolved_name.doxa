@@ -1,5 +1,4 @@
 // Expects: UnresolvedName.
 //
 // `nonexistent` isn't bound.
-
 val x = nonexistent
