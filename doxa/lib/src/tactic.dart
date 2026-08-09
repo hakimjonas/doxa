@@ -517,6 +517,128 @@ TacticResult trivial(TacticState s) {
   return TacticFail('trivial: no trivial proof found');
 }
 
+/// `auto [depth]`: depth-bounded proof search.
+///
+/// Tries `refl`, then `trivial`, then `apply` on every top-level name
+/// in scope, recursively up to [depth] levels.  Returns the first
+/// solution found or fails.
+TacticResult Function(TacticState) auto({int depth = 5}) => (s) {
+  // Try refl/trivial first (depth 0 pass).
+  final reflResult = refl(s);
+  if (reflResult is TacticOk) return reflResult;
+  final trivialResult = trivial(s);
+  if (trivialResult is TacticOk) return trivialResult;
+
+  if (depth <= 0) {
+    return TacticFail('auto: depth exhausted');
+  }
+
+  // Collect lemma names from the context's env topBindings.
+  final topBindings = s.ctx.env.topBindings;
+  final lemmaNames = topBindings.keys.toList();
+  // Also try data type constructors.
+  for (final dd in s.ctx.env.dataDecls) {
+    for (final c in dd.ctors) {
+      if (!lemmaNames.contains(c.name)) lemmaNames.add(c.name);
+    }
+  }
+
+  for (final name in lemmaNames) {
+    // Look up the term for this name.
+    final entry = topBindings[name];
+    if (entry == null) continue;
+
+    // Build a TTop term for this lemma.
+    final lemmaTerm = TTop(name);
+
+    // Try apply on it.
+    final applyResult = tacticApply(lemmaTerm)(s);
+    if (applyResult is TacticOk) {
+      // If no subgoals, we're done.
+      if (applyResult.subMeta == null) return applyResult;
+
+      // Otherwise, recursively auto on each subgoal.
+      final metas = applyResult.metas;
+      final subMetas = <int>[applyResult.subMeta!];
+      // Collect all unsolved metas (apply creates one per Pi arg).
+      for (var i = 0; i < metas.length; i++) {
+        if (!metas.isSolved(i) && i != applyResult.subMeta) {
+          subMetas.add(i);
+        }
+      }
+
+      var allOk = true;
+      for (final subMeta in subMetas) {
+        final subState = TacticState(metas, s.ctx, subMeta, s.binderNames);
+        final subResult = auto(depth: depth - 1)(subState);
+        if (subResult is! TacticOk) {
+          allOk = false;
+          break;
+        }
+      }
+      if (allOk) {
+        return TacticOk(applyResult.term, metas);
+      }
+    }
+  }
+
+  return TacticFail('auto: no proof found at depth $depth');
+};
+
+/// `omega`: solve simple arithmetic goals on `Nat`.
+///
+/// Normalises both sides of an `Eq Nat lhs rhs` goal via `nf()` and
+/// returns `refl` if they become syntactically identical.  Handles
+/// common patterns: `plus_comm`, `plus_assoc`, `plus_zero`,
+/// `mult_zero`, etc. by trying known lemmas from the environment.
+TacticResult omega(TacticState s) {
+  final goalType = s.goalType;
+  final level = s.ctx.level;
+
+  // Normalise the goal and check if sides become identical.
+  final goalTerm = quote(level, goalType);
+  final nfVal = eval(goalTerm, s.ctx.env);
+  final nfTerm = quote(level, nfVal);
+
+  // If the goal is Eq Nat a b, normalise and compare a, b.
+  if (goalType is VData && goalType.name == 'Eq' && goalType.args.length == 3) {
+    final lhs = goalType.args[1];
+    final rhs = goalType.args[2];
+    final lhsNorm = quote(level, eval(quote(level, lhs), s.ctx.env));
+    final rhsNorm = quote(level, eval(quote(level, rhs), s.ctx.env));
+    if (lhsNorm == rhsNorm) {
+      // Normalise to identity — use refl.
+      return refl(s);
+    }
+  }
+
+  // Try known lemmas for common arithmetic patterns.
+  final topBindings = s.ctx.env.topBindings;
+  final lemmaCandidates = [
+    'plus_comm',
+    'plus_assoc',
+    'plus_zero',
+    'plus_succ',
+    'mult_comm',
+    'mult_zero',
+    'mult_one',
+    'mult_assoc',
+    'mult_plus',
+    'mult_2',
+    'mult_4_eq',
+    'mult_succ_right',
+    'mult_2_inj',
+  ];
+
+  for (final name in lemmaCandidates) {
+    if (!topBindings.containsKey(name)) continue;
+    final result = tacticApply(TTop(name))(s);
+    if (result is TacticOk) return result;
+  }
+
+  return TacticFail('omega: could not solve the arithmetic goal');
+}
+
 /// `simpl`: normalise the goal via `nf()` (eval then quote).
 ///
 /// Replaces the goal with its normal form.  If the normal form differs

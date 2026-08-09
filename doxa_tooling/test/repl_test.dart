@@ -43,8 +43,15 @@ void main() {
       final (result, _) = session.processInput(':search true');
       expect(result, isA<ReplMeta>());
       final text = (result as ReplMeta).text;
+      // :search matches both name and type, so Bool.ind and Bool.rec
+      // appear (their types mention true_) alongside the constructor.
       expect(text, contains('true_'));
-      expect(text, isNot(contains('false_')));
+      expect(text, contains('Bool.ind'));
+      expect(text, contains('Bool.rec'));
+      // Searching for a nonexistent substring returns nothing.
+      final (result2, _) = session.processInput(':search nonexistent_xyz');
+      final text2 = (result2 as ReplMeta).text;
+      expect(text2, isEmpty);
     });
 
     test(':search is case-insensitive', () {

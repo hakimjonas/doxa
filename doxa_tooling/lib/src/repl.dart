@@ -35,6 +35,8 @@ import 'package:doxa/src/tactic.dart'
         rewrite,
         induction,
         simpl,
+        auto,
+        omega,
         tacticConstructor,
         tacticCases;
 import 'package:doxa/src/term.dart' show TPi, TBound, TData, Term, Icit;
@@ -604,6 +606,10 @@ final class ReplSession {
         return _stepInduction(ps, tacticArg);
       case 'simpl':
         return _stepSimpl(ps);
+      case 'auto':
+        return _stepAuto(ps, tacticArg);
+      case 'omega':
+        return _stepOmega(ps);
       case 'constructor':
         return _stepConstructor(ps);
       case 'cases':
@@ -892,6 +898,89 @@ final class ReplSession {
           output.writeln('Goal solved (already in normal form).');
         } else {
           output.writeln('Simplified.');
+          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
+        }
+        return (ReplMeta(output.toString().trimRight()), this);
+      }(),
+      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+    };
+  }
+
+  /// Handle `:step auto [depth]`.
+  ///
+  /// Depth-bounded proof search.  Parses an optional depth argument
+  /// (default 5), then runs the auto tactic.
+  ReplStep _stepAuto(_ProofSession ps, String arg) {
+    final depth = int.tryParse(arg.trim()) ?? 5;
+    final snap = _ProofSnapshot(
+      ps.metas.snapshot(),
+      ps.currentGoalMeta,
+      ps.ctx,
+      List.unmodifiable(ps.binderNames),
+    );
+    final tstate = TacticState(
+      ps.metas,
+      ps.ctx,
+      ps.currentGoalMeta,
+      ps.binderNames,
+    );
+    final result = auto(depth: depth)(tstate);
+    return switch (result) {
+      TacticOk() => () {
+        ps.undoStack.add(snap);
+        ps.metas.solve(ps.currentGoalMeta, result.term);
+        final output = StringBuffer();
+        output.writeln('Auto succeeded.');
+        final allSolved = () {
+          for (var i = 0; i < ps.metas.length; i++) {
+            if (!ps.metas.isSolved(i)) return false;
+          }
+          return true;
+        }();
+        if (allSolved) {
+          output.writeln('Goal solved. Use :qed to commit.');
+        } else {
+          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
+        }
+        return (ReplMeta(output.toString().trimRight()), this);
+      }(),
+      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+    };
+  }
+
+  /// Handle `:step omega`.
+  ///
+  /// Attempts to solve arithmetic goals on Nat via normalisation and
+  /// known lemma application.
+  ReplStep _stepOmega(_ProofSession ps) {
+    final snap = _ProofSnapshot(
+      ps.metas.snapshot(),
+      ps.currentGoalMeta,
+      ps.ctx,
+      List.unmodifiable(ps.binderNames),
+    );
+    final tstate = TacticState(
+      ps.metas,
+      ps.ctx,
+      ps.currentGoalMeta,
+      ps.binderNames,
+    );
+    final result = omega(tstate);
+    return switch (result) {
+      TacticOk() => () {
+        ps.undoStack.add(snap);
+        ps.metas.solve(ps.currentGoalMeta, result.term);
+        final output = StringBuffer();
+        output.writeln('Omega succeeded.');
+        final allSolved = () {
+          for (var i = 0; i < ps.metas.length; i++) {
+            if (!ps.metas.isSolved(i)) return false;
+          }
+          return true;
+        }();
+        if (allSolved) {
+          output.writeln('Goal solved. Use :qed to commit.');
+        } else {
           output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
         }
         return (ReplMeta(output.toString().trimRight()), this);
@@ -1328,11 +1417,13 @@ final class ReplSession {
     // Sort alphabetically by name.
     lines.sort((a, b) => a.$1.compareTo(b.$1));
 
-    // Apply filter if provided.
+    // Apply filter if provided (matches name or type, case-insensitive).
     final filterLower = filter?.toLowerCase();
     final result = StringBuffer();
     for (final entry in lines) {
-      if (filterLower == null || entry.$1.toLowerCase().contains(filterLower)) {
+      if (filterLower == null ||
+          entry.$1.toLowerCase().contains(filterLower) ||
+          entry.$2.toLowerCase().contains(filterLower)) {
         result.writeln(entry.$2);
       }
     }
