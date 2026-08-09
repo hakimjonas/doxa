@@ -1,7 +1,6 @@
-// Case study: foundations for proving sqrt(2) is irrational.
-// Defines evenness, square, and basic parity lemmas.
-// The full proof requires induction and rewriting tactics
-// that will be added in a future phase.
+// Case study: sqrt(2) is irrational.
+// Full proof via parity theory, well-founded induction, and
+// equational reasoning on Nat — no coprimality required.
 import "bool.doxa"
 
 import "nat.doxa"

@@ -27,7 +27,11 @@
         "extensions": [
           ".doxa"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/doxa-icon.svg",
+          "dark": "./icons/doxa-icon.svg"
+        }
       }
     ],
     "grammars": [
