@@ -8,6 +8,12 @@ data Nat : Type {
   zero : Nat;
   succ : Nat -> Nat;
 }
+// Strict less-than: Lt a b means a < b.
+
+data Lt : Nat -> Nat -> Prop {
+  lt_succ : (n: Nat) -> Lt n (succ n);
+  lt_trans : (n: Nat) -> (m: Nat) -> (k: Nat) -> Lt n m -> Lt m k -> Lt n k;
+}
 
 fun plus(m: Nat, n: Nat) : Nat = match m {
   case zero => n

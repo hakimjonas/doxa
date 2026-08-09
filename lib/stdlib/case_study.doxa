@@ -92,10 +92,6 @@ val even_square_implies_even : (n: Nat) -> Eq Bool (even (square n)) true_ -> Eq
 val sqrt2_parity : (n: Nat) -> (m: Nat) -> Eq Nat (square n) (mult two (square m)) -> Eq Bool (even n) true_ = (n: Nat) => (m: Nat) => (h_eq: Eq Nat (square n) (mult two (square m))) => trans_e Bool (even n) (even (square n)) true_ (sym_e Bool (even (square n)) (even n) (even_square_eq n)) (trans_e Bool (even (square n)) (even (mult two (square m))) true_ (cong_e Nat Bool even (square n) (mult two (square m)) h_eq) (trans_e Bool (even (mult two (square m))) (even (plus (square m) (square m))) true_ (cong_e Nat Bool even (mult two (square m)) (plus (square m) (square m)) (mult_2 (square m))) (even_double (square m))))
 // --- Lt and well-founded recursion ----------------------------------------
 
-data Lt : Nat -> Nat -> Prop {
-  lt_succ : (n: Nat) -> Lt n (succ n);
-  lt_trans : (n: Nat) -> (m: Nat) -> (k: Nat) -> Lt n m -> Lt m k -> Lt n k;
-}
 // nat_wf: every Nat is accessible under Lt (well-foundedness).
 
 fun nat_wf(n: Nat) : Acc Nat ((x: Nat) => (y: Nat) => Lt x y) n = match n {
@@ -151,16 +147,6 @@ val lt_succ_t_mult_two_t : (t: Nat) -> Lt (succ t) (mult two (succ t)) = Nat.ind
 
 fun lt_t_succ_k(t: Nat, k: Nat, h: Eq Nat (succ k) (mult two t)) : Lt t (succ k) = Nat.ind ((t: Nat) => (k: Nat) -> Eq Nat (succ k) (mult two t) -> Lt t (succ k)) ((k: Nat) => (h_zero: Eq Nat (succ k) (mult two zero)) => False.rec ((_: False) => Lt zero (succ k)) (succ_ne_zero k (trans_e Nat (succ k) (mult two zero) zero h_zero (mult_zero two)))) ((u: Nat) => (ih: (k: Nat) -> Eq Nat (succ k) (mult two u) -> Lt u (succ k)) => (k: Nat) => (h_succ_u: Eq Nat (succ k) (mult two (succ u))) => Eq.rec Nat ((a: Nat) => (b: Nat) => (p: Eq Nat a b) => Lt (succ u) a -> Lt (succ u) b) (mult two (succ u)) (succ k) ((z: Nat) => (h_l: Lt (succ u) z) => h_l) (sym_e Nat (succ k) (mult two (succ u)) h_succ_u) (lt_succ_t_mult_two_t u)) t k h
 // --- Strong induction on Nat via Lt ----------------------------------------
-
-fun strong_ind_impl(n: Nat, P: Nat -> Prop, step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n) : P n termination_by (n) = match n {
-  case zero => step zero (Nat.ind ((m: Nat) => (k: Nat) -> Lt k m -> P k) ((k: Nat) => (h: Lt k zero) => False.rec ((_: False) => P k) (Lt.rec ((a: Nat) => (b: Nat) => (_: Lt a b) => Eq Nat b zero -> False) k zero ((n_: Nat) => (eq: Eq Nat (succ n_) zero) => succ_ne_zero n_ eq) ((a: Nat) => (b: Nat) => (c: Nat) => (_: Lt a b) => (_: Lt b c) => (_: Eq Nat b zero -> False) => (ih2: Eq Nat c zero -> False) => (eq: Eq Nat c zero) => ih2 eq) h (refl zero))) ((n_: Nat) => (ih: (j: Nat) -> Lt j n_ -> P j) => (k: Nat) => (h: Lt k (succ n_)) => strong_ind_impl_help P step k (succ n_) h) zero)
-  case succ n_ => step (succ n_) ((k: Nat) => (h: Lt k (succ n_)) => strong_ind_impl_help P step k (succ n_) h)
-}and strong_ind_impl_help(P: Nat -> Prop, step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n, k: Nat, n: Nat, h: Lt k n) : P k {struct h} = match h {
-  case lt_succ k_ => strong_ind_impl k_ P step
-  case lt_trans a b c p q => strong_ind_impl_help P step a b p
-}
-
-val strong_ind : (P: Nat -> Prop) -> ((n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n) -> (n: Nat) -> P n = (P: Nat -> Prop) => (step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n) => (n: Nat) => strong_ind_impl n P step
 // --- sqrt2: √2 is irrational -------------------------------------------------
 
 val sqrt2 : (n: Nat) -> (m: Nat) -> Eq Nat (square n) (mult two (square m)) -> Eq Nat n zero = (n: Nat) => (m: Nat) => (h: Eq Nat (square n) (mult two (square m))) => strong_ind ((x: Nat) => (m: Nat) -> Eq Nat (square x) (mult two (square m)) -> Eq Nat x zero) ((x: Nat) => (ih: (k: Nat) -> Lt k x -> (m: Nat) -> Eq Nat (square k) (mult two (square m)) -> Eq Nat k zero) => (m: Nat) => (h_x: Eq Nat (square x) (mult two (square m))) => {
