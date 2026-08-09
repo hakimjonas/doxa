@@ -123,4 +123,11 @@ val prime : (n: Nat) -> Bool = (n: Nat) => match n {
     case zero => false_
     case succ n__ => prime_acc n n
   }
+}// --- Fuel-based fixpoint combinator -------------------------------------------
+// fix_by_fuel T fuel step base: iterate [step] up to [fuel] times on [base].
+// Structurally recursive on fuel — always terminates.
+
+fun fix_by_fuel(fuel: Nat, T: Type, step: (fuel: Nat) -> (self: T) -> T, base: T) : T = match fuel {
+  case zero => base
+  case succ f => step fuel (fix_by_fuel f T step base)
 }
