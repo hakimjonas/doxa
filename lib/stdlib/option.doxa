@@ -10,8 +10,7 @@ data Option[A: Type] : Type {
 fun map{A: Type, B: Type}(opt: Option A, f: A -> B) : Option B = match opt {
   case none => none
   case some x => some (f x)
-}
-// `getOrElse`: extract the contained value or return a default.
+}// `getOrElse`: extract the contained value or return a default.
 
 fun getOrElse{A: Type}(opt: Option A, default: A) : A = match opt {
   case none => default

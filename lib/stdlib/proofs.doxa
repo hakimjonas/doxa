@@ -119,6 +119,9 @@ val true_ne_false : Eq Bool true_ false_ -> False = (p: Eq Bool true_ false_) =>
 // and dependent motives to cohere, beyond merely computing with the type.
 
 val vlength_index : (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) n = (A: Type) => (n: Nat) => (v: Vec A n) => Vec.ind A ((m: Nat) => (w: Vec A m) => Eq Nat (vlength w) m) n (refl zero) ((k: Nat) => (x: A) => (rest: Vec A k) => (ih: Eq Nat (vlength rest) k) => cong ((j: Nat) => succ j) ih) v
-
 // succ_inj: succ is injective
-val succ_inj : (a: Nat) -> (b: Nat) -> Eq Nat (succ a) (succ b) -> Eq Nat a b = (a: Nat) => (b: Nat) => (p: Eq Nat (succ a) (succ b)) => cong_e Nat Nat ((n: Nat) => match n { case zero => zero case succ n_ => n_ }) (succ a) (succ b) p
+
+val succ_inj : (a: Nat) -> (b: Nat) -> Eq Nat (succ a) (succ b) -> Eq Nat a b = (a: Nat) => (b: Nat) => (p: Eq Nat (succ a) (succ b)) => cong_e Nat Nat ((n: Nat) => match n {
+  case zero => zero
+  case succ n_ => n_
+}) (succ a) (succ b) p

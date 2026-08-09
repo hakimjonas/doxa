@@ -26,8 +26,7 @@ import "../lib/stdlib/vec.doxa"
 
 fun cong{A: Type, B: Type, x: A, y: A}(f: A -> B, p: Eq A x y) : Eq B (f x) (f y) = match p {
   case refl a => refl (f a)
-}
-// --- Values (inferred constructor type arguments) --------------------------
+}// --- Values (inferred constructor type arguments) --------------------------
 
 val one : Nat = succ zero
 

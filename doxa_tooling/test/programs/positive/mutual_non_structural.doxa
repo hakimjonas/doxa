@@ -2,7 +2,6 @@
 // original `n` (unguarded), but `isOdd` calls `isEven m` passing the
 // sub-term `m` (guarded). The cycle has a guarded edge, so the block
 // is structurally sound under SPEC §8.6 cycle-aware analysis.
-
 data Nat : Type {
   zero : Nat;
   succ : Nat -> Nat;
@@ -13,11 +12,10 @@ data Bool : Type {
   f_ : Bool;
 }
 
-fun isEven(n: Nat): Bool = match n {
+fun isEven(n: Nat) : Bool = match n {
   case zero => t_
   case succ m => isOdd n
-}
-and isOdd(n: Nat): Bool = match n {
+}and isOdd(n: Nat) : Bool = match n {
   case zero => f_
   case succ m => isEven m
 }

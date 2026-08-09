@@ -23,4 +23,3 @@ data Exists[A: Type] : (A -> Prop) -> Prop {
 data Not[A: Prop] : Prop {
   not_intro : (A -> False) -> Not A;
 }
-

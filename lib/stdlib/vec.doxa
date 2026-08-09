@@ -17,21 +17,18 @@ data Vec[A: Type] : Nat -> Type {
 
 fun vhead{A: Type, n: Nat}(v: Vec A (succ n)) : A = match v {
   case vcons _ x _ => x
-}
-// Tail of a non-empty vector. Returns a `Vec[A] n`, the inner rest
+}// Tail of a non-empty vector. Returns a `Vec[A] n`, the inner rest
 // binder has type `Vec[A] m` where m refines to n via scrutinee
 // index unification.
 
 fun vtail{A: Type, n: Nat}(v: Vec A (succ n)) : Vec A n = match v {
   case vcons _ _ rest => rest
-}
-// Length of a vector.
+}// Length of a vector.
 
 fun vlength{A: Type, n: Nat}(v: Vec A n) : Nat = match v {
   case vnil => zero
   case vcons _ _ rest => succ (vlength rest)
-}
-// Append vectors. Length sums: `Vec[A] n ++ Vec[A] m : Vec[A]
+}// Append vectors. Length sums: `Vec[A] n ++ Vec[A] m : Vec[A]
 // (plus n m)`.
 
 fun vappend{A: Type, n: Nat, m: Nat}(xs: Vec A n, ys: Vec A m) : Vec A (plus n m) = match xs {

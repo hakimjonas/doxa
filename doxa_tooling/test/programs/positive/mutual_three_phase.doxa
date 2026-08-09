@@ -15,10 +15,10 @@ data Phase : Type {
 fun a(n: Nat) : Phase = match n {
   case zero => pA
   case succ m => b m
-} and b(n: Nat) : Phase = match n {
+}and b(n: Nat) : Phase = match n {
   case zero => pB
   case succ m => c m
-} and c(n: Nat) : Phase = match n {
+}and c(n: Nat) : Phase = match n {
   case zero => pC
   case succ m => a m
 }

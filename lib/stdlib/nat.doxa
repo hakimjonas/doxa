@@ -17,8 +17,7 @@ fun plus(m: Nat, n: Nat) : Nat = match m {
 fun mult(m: Nat, n: Nat) : Nat = match m {
   case zero => zero
   case succ m_ => plus n (mult m_ n)
-}
-// `pow exp base`: exp^base. Note the arg order, `exp` is the
+}// `pow exp base`: exp^base. Note the arg order, `exp` is the
 // decreasing argument, and the decreasing arg must be the first
 // explicit value parameter. Without per-argument `{struct}`
 // annotations (Coq's shape), users match on the first arg or
@@ -27,8 +26,7 @@ fun mult(m: Nat, n: Nat) : Nat = match m {
 fun pow(exp: Nat, base: Nat) : Nat = match exp {
   case zero => succ zero
   case succ e_ => mult base (pow e_ base)
-}
-// Non-strict "less-or-equal": leq m n = true_ iff m ≤ n.
+}// Non-strict "less-or-equal": leq m n = true_ iff m ≤ n.
 
 fun leq(m: Nat, n: Nat) : Bool = match m {
   case zero => true_
