@@ -58,7 +58,7 @@ jobs:
 
       - name: doxa type-check (stdlib)
         run: |
-          for f in $(find lib/stdlib -name '*.doxa' -type f ! -name 'prelude.doxa'); do
+          for f in $(find lib/stdlib -name '*.doxa' -type f ! -name 'prelude.doxa' ! -name 'package.doxa'); do
             /tmp/doxa check "$f" || exit 1
           done
 
