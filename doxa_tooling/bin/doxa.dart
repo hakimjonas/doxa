@@ -428,12 +428,16 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
           armSpan,
         _ => decl.span,
       };
-      diagnostics.add(reportCheckError(source, e, reportSpan, color: color));
+      final reportSource = importState.sourceFileFor(reportSpan) ?? source;
+      diagnostics.add(
+        reportCheckError(reportSource, e, reportSpan, color: color),
+      );
       for (final n in declNames(decl)) {
         poisonedNames.add(n);
       }
     } on ElabError catch (e) {
-      final msg = reportElabError(source, e, color: color);
+      final reportSource = importState.sourceFileFor(e.span) ?? source;
+      final msg = reportElabError(reportSource, e, color: color);
       // Annotate unresolved-name errors that reference a poisoned
       // (previously failed) declaration.
       if (e is UnresolvedName && poisonedNames.contains(e.name)) {

@@ -163,8 +163,9 @@ CheckOutput checkSourceOutput(
           armSpan,
         _ => decl.span,
       };
-      final message = reportCheckError(source, e, reportSpan);
-      final pos = source.positionAt(reportSpan.start);
+      final reportSource = importState.sourceFileFor(reportSpan) ?? source;
+      final message = reportCheckError(reportSource, e, reportSpan);
+      final pos = reportSource.positionAt(reportSpan.start);
       final (expected, actual) = switch (e) {
         TypeMismatch(:final got, :final expected, level: final level) => (
           _prettyValueAt(expected, level),
@@ -185,8 +186,9 @@ CheckOutput checkSourceOutput(
         poisonedNames.add(n);
       }
     } on ElabError catch (e) {
-      final message = reportElabError(source, e);
-      final pos = source.positionAt(e.span.start);
+      final reportSource = importState.sourceFileFor(e.span) ?? source;
+      final message = reportElabError(reportSource, e);
+      final pos = reportSource.positionAt(e.span.start);
       errors.add({
         'kind': _elabErrorKind(e),
         'line': pos.line,
