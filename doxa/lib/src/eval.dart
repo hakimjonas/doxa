@@ -3837,7 +3837,7 @@ Object _drive(
                   for (var i = 0; i < nPis; i++) {
                     v = apply(v, VNeutral(NVar(i)));
                   }
-                  Value vBody = apply(VRec(dataDecl, headSpine), v);
+                  final Value vBody = apply(VRec(dataDecl, headSpine), v);
                   // Quote the value at level nPis: NVars become TBounds
                   // with TBound(0) = innermost = NVar(nPis-1).
                   Term bodyTerm = quote(nPis, vBody);
@@ -4252,7 +4252,7 @@ Object _drive(
                   fallbackEnv = fallbackEnv.extend(VNeutral(NVar(j)));
                 }
                 step = _Eval(codomain.body, fallbackEnv.extend(freshNVar));
-              } catch (_2) {
+              } catch (x2) {
                 rethrow;
               }
             }
@@ -4292,7 +4292,7 @@ Object _drive(
                   fallbackEnv = fallbackEnv.extend(VNeutral(NVar(j)));
                 }
                 step = _Eval(body.body, fallbackEnv.extend(freshNVar));
-              } catch (_2) {
+              } catch (x2) {
                 rethrow;
               }
             }
@@ -5293,7 +5293,7 @@ ConvResult? _tryUnify(Value a, Value b, int level, MetaContext metas) {
             fallbackEnv = fallbackEnv.extend(VNeutral(NVar(j)));
           }
           next = eval(typeCursor.codomain.body, fallbackEnv.extend(freshNVar));
-        } catch (_2) {
+        } catch (x2) {
           return null;
         }
       }
@@ -5327,11 +5327,11 @@ ConvResult? _tryUnify(Value a, Value b, int level, MetaContext metas) {
           }
           fallbackEnv = fallbackEnv.extend(freshNVar);
           next = eval(tc.codomain.body, fallbackEnv);
-        } catch (_2) {
+        } catch (x2) {
           return null;
         }
       }
-      tc = next;;
+      tc = next;
     }
     for (var i = 0; i < vars.length; i++) {
       domainTerms.add(quote(i, allDomains[vars.length - 1 - i]));

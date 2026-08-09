@@ -1120,7 +1120,7 @@ List<SCtorDecl> _desugarProduct(
   String dataName,
   List<(String, SExpr?)> tps,
 ) {
-  final span = DoxaSpan.synthetic;
+  const span = DoxaSpan.synthetic;
   // Build result type: DataName applied to type params.
   SExpr resultType = SExpr(SIdentKind(dataName), span);
   for (final tp in tps) {
@@ -1217,20 +1217,20 @@ final Parser<ParseError, SDecl> _dataDecl = position<ParseError>().flatMap(
 final Parser<ParseError, STacticStep> _tacticStep =
     _keyword(
       'intro',
-    ).skipThen(_ident.optional).map<STacticStep>((name) => STacticIntro(name)) |
+    ).skipThen(_ident.optional).map<STacticStep>(STacticIntro.new) |
     _keyword(
       'exact',
-    ).skipThen(defer(() => _expr)).map<STacticStep>((e) => STacticExact(e)) |
+    ).skipThen(defer(() => _expr)).map<STacticStep>(STacticExact.new) |
     _keyword(
       'apply',
-    ).skipThen(defer(() => _expr)).map<STacticStep>((e) => STacticApply(e)) |
+    ).skipThen(defer(() => _expr)).map<STacticStep>(STacticApply.new) |
     _keyword('refl').map<STacticStep>((_) => const STacticRefl()) |
     _keyword(
       'rewrite',
-    ).skipThen(defer(() => _expr)).map<STacticStep>((e) => STacticRewrite(e)) |
+    ).skipThen(defer(() => _expr)).map<STacticStep>(STacticRewrite.new) |
     _keyword(
       'induction',
-    ).skipThen(_ident).map<STacticStep>((name) => STacticInduction(name)) |
+    ).skipThen(_ident).map<STacticStep>(STacticInduction.new) |
     _keyword('trivial').map<STacticStep>((_) => const STacticTrivial());
 
 /// A sequence of tactic steps separated by `;`: `step; step; ...`.
@@ -1295,7 +1295,7 @@ final Parser<ParseError, SClassMethod> _classMethod = position<ParseError>()
 
 SExpr _buildMethodPi(String name, List<(String, SExpr)> params, SExpr retType) {
   var ty = retType;
-  final span = DoxaSpan.synthetic;
+  const span = DoxaSpan.synthetic;
   for (final p in params.reversed) {
     ty = SExpr(SPiKind(p.$1, p.$2, ty), span);
   }

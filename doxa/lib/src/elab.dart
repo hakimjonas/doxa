@@ -151,6 +151,7 @@ final class StructAnnotationNotFound extends ElabError {
       'named $paramName';
 }
 
+/// The member.
 final class TerminationByParamNotFound extends ElabError {
   /// The function name.
   final String funName;
@@ -650,6 +651,7 @@ final class ClassInfo {
     this.instances = const [],
   });
 
+  /// The member.
   ClassInfo withInstance(InstanceInfo info) => ClassInfo(
     className: className,
     typeParams: typeParams,
@@ -1308,6 +1310,7 @@ TopEnv elabProgram(SProgram program) =>
       );
     });
 
+/// The member.
 Map<String, Set<String>> mergeNamespace(
   Map<String, Set<String>> a,
   Map<String, Set<String>> b,
@@ -1829,8 +1832,8 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
         final piV = eval(piTerm, state.ctx.env);
 
         // Extract params and inner body from the lambda chain bound.
-        List<SExpr> paramDomains = [];
-        List<String> paramNames = [];
+        final List<SExpr> paramDomains = [];
+        final List<String> paramNames = [];
         SExpr innerBody = bound;
         var extracting = true;
         while (extracting) {
@@ -1861,7 +1864,7 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
         final boundV = eval(funcBody, state.ctx.env);
         // Build TLet with isRec: the body elaborates under pushWith
         // so TBound(0) resolves to the VFun at eval time.
-        final decreasingArg = 0;
+        const decreasingArg = 0;
         final arity = paramNames.length;
         final (bodyTerm, bodyV) = _inferExpr(
           state.pushWith(param, piV, boundV),
@@ -2007,7 +2010,7 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
                     ? (switch (state.ctx.env
                         .lookupTop((headV.neutral as NTop).name)
                         ?.type) {
-                      VPi pi => pi,
+                      final VPi pi => pi,
                       _ => null,
                     })
                     : null);
@@ -2123,7 +2126,7 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       final (fnT, fnV) = _inferExpr(state, fn);
       final (proofT, proofV) = _inferExpr(state, proof);
       // We need the quotient to apply the lift to. Create a placeholder.
-      return (TQuotLift(TType(_l0), fnT, proofT), _vType0);
+      return (TQuotLift(const TType(_l0), fnT, proofT), _vType0);
 
     case SIntersectionKind(:final constraints):
       throw UnresolvedName(
@@ -3523,7 +3526,7 @@ SExpr _buildMethodPiType(
   SExpr retType,
 ) {
   var ty = retType;
-  final span = DoxaSpan.synthetic;
+  const span = DoxaSpan.synthetic;
   for (final p in params.reversed) {
     ty = SExpr(SPiKind(p.$1, p.$2, ty), span);
   }
@@ -3589,7 +3592,7 @@ DeclResult _elabTypeclass(
   }
 
   final ctorDecl = SCtorDecl('mk_$name', ctorType, DoxaSpan.synthetic);
-  final signature = SExpr(STypeKind(null), DoxaSpan.synthetic);
+  const signature = SExpr(STypeKind(null), DoxaSpan.synthetic);
   final sDataKind = SDataKind(name, typeParams, signature, [ctorDecl]);
 
   // Elaborate the data declaration.
@@ -3709,7 +3712,7 @@ DeclResult _elabImpl(
     case _:
       break;
   }
-  Term implTerm = TConstr(className, 'mk_$className', [
+  final Term implTerm = TConstr(className, 'mk_$className', [
     ...typeArgTerms,
     ...methodTerms,
   ]);
@@ -3999,7 +4002,7 @@ TopBinding _elabFun(
   // from `fun f(...): T termination_by (x) = body` because `_expr`
   // greedily consumes `termination_by (args)` as application arguments.
   // We walk the return-type AST and extract the suffix before elaboration.
-  var extractedTby = <SFunBlockMember, ({List<String> tby, SExpr realRet})>{};
+  final extractedTby = <SFunBlockMember, ({List<String> tby, SExpr realRet})>{};
   for (final m in members) {
     final extracted = _extractTerminationBy(m.fun.returnType);
     if (extracted.tby != null) {

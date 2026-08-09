@@ -320,23 +320,38 @@ final class VMatch extends Value {
 
 /// A quotient type value: `Quot(A, R)`.
 final class VQuot extends Value {
+  /// The member.
   final Value carrier;
+
+  /// The member.
   final Value relation;
+
+  /// The member.
   const VQuot(this.carrier, this.relation);
 }
 
 /// A quotient element value: `Quot.mk(a)`.
 final class VQuotMk extends Value {
+  /// The member.
   final Value arg;
+
+  /// The member.
   const VQuotMk(this.arg);
 }
 
 /// A stuck quotient lift (waiting for the quot argument to become VQuotMk).
 /// Once the quot is canonical, ι-reduction fires: lift(mk(a), f, proof) → f(a).
 final class VQuotLift extends Value {
+  /// The member.
   final Value quot;
+
+  /// The member.
   final Value fn;
+
+  /// The member.
   final Value proof;
+
+  /// The member.
   const VQuotLift(this.quot, this.fn, this.proof);
 }
 

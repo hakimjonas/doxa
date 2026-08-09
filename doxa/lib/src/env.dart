@@ -212,6 +212,7 @@ final class ELevel extends Env {
   @override
   final Map<String, TopBindingEntry> topBindings;
 
+  /// The member.
   const ELevel(
     this.depth, {
     this.dataDecls = const <DataDecl>[],

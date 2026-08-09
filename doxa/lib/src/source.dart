@@ -18,17 +18,34 @@ import 'surface.dart';
 /// Each getter returns the escape sequence when colour is enabled,
 /// or an empty string when colour is disabled (e.g., piped output).
 final class AnsiColor {
+  /// The member.
   final bool enabled;
 
+  /// The member.
   const AnsiColor(this.enabled);
 
+  /// The member.
   String get red => enabled ? '\x1b[31m' : '';
+
+  /// The member.
   String get green => enabled ? '\x1b[32m' : '';
+
+  /// The member.
   String get yellow => enabled ? '\x1b[33m' : '';
+
+  /// The member.
   String get blue => enabled ? '\x1b[34m' : '';
+
+  /// The member.
   String get magenta => enabled ? '\x1b[35m' : '';
+
+  /// The member.
   String get cyan => enabled ? '\x1b[36m' : '';
+
+  /// The member.
   String get bold => enabled ? '\x1b[1m' : '';
+
+  /// The member.
   String get reset => enabled ? '\x1b[0m' : '';
 
   /// Wrap [text] with [bold] and [red], then reset.
@@ -104,7 +121,7 @@ final class SourceFile {
     final pos = positionAt(span.start);
     final line = lineAt(span.start);
     final prefix = '${pos.line} | ';
-    final gutter = '  | ';
+    const gutter = '  | ';
     final col = pos.column - 1; // 0-based column for caret positioning
     final maxCaretLen = line.length > col ? line.length - col : 1;
     final spanLen =
@@ -126,7 +143,7 @@ final class SourceFile {
     buf.write(' ' * col);
     buf.write('${c.bold}${c.red}');
     buf.write('^' * spanLen);
-    buf.write('${c.reset}');
+    buf.write(c.reset);
     if (label != null) {
       buf.write(' $label');
     }

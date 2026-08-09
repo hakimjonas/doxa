@@ -33,10 +33,16 @@ data Acc[A: Type] : (A -> A -> Prop) -> A -> Prop {
 
 /// The cached result of loading the prelude.
 final class PreludeData {
+  /// The member.
   final List<TopBinding> bindings;
+
+  /// The member.
   final List<DataDecl> dataDecls;
+
+  /// The member.
   final Map<String, Set<String>> namespaceBindings;
 
+  /// The member.
   const PreludeData(this.bindings, this.dataDecls, this.namespaceBindings);
 }
 

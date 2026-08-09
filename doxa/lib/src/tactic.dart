@@ -144,7 +144,7 @@ TacticFn alt(TacticFn t1, TacticFn t2) => (s) {
 TacticResult intro(TacticState s, {String? name}) {
   final goalType = s.goalType;
   if (goalType is! VPi) {
-    return TacticFail('intro: goal is not a function type');
+    return const TacticFail('intro: goal is not a function type');
   }
   final pi = goalType;
   final freshName = name ?? pi.name ?? 'h';
@@ -179,7 +179,7 @@ TacticFn Function(Term) exact =
           return TacticOk(term, s.metas);
         }
       } catch (_) {}
-      return TacticFail('exact: type mismatch');
+      return const TacticFail('exact: type mismatch');
     };
 
 /// `refl`: closes `Eq[A] x x` goals using the `refl` constructor.
@@ -189,7 +189,7 @@ TacticResult refl(TacticState s) {
   final goalType = s.goalType;
   // Goal must be VData("Eq", [A, x, y]) where x == y.
   if (goalType is! VData) {
-    return TacticFail('refl: goal is not an equality type');
+    return const TacticFail('refl: goal is not an equality type');
   }
   final data = goalType;
   if (data.name != 'Eq') {
@@ -203,7 +203,7 @@ TacticResult refl(TacticState s) {
   final x = args[1];
   final y = args[2];
   if (conv(s.ctx.level, x, y, s: s) is! ConvOk) {
-    return TacticFail(
+    return const TacticFail(
       'refl: the two sides of the equality are not definitionally equal',
     );
   }
@@ -217,7 +217,7 @@ TacticResult refl(TacticState s) {
       return TacticOk(reflTerm, s.metas);
     }
   } catch (_) {}
-  return TacticFail('refl: type mismatch after constructing refl');
+  return const TacticFail('refl: type mismatch after constructing refl');
 }
 
 /// `apply f`: applies lemma `f`, creating subgoals for each argument.
@@ -248,7 +248,7 @@ TacticFn Function(Term) tacticApply =
         s.metas.solve(s.currentMeta, result);
         return TacticOk(result, s.metas);
       }
-      return TacticFail('apply: type mismatch');
+      return const TacticFail('apply: type mismatch');
     };
 
 /// `rewrite p`: rewrites the goal using equality proof `p`.
@@ -260,11 +260,11 @@ TacticFn Function(Term) rewrite =
     (p) => (s) {
       final pType = infer(s.ctx, p);
       if (pType is! VData || pType.name != 'Eq') {
-        return TacticFail('rewrite: proof is not an equality');
+        return const TacticFail('rewrite: proof is not an equality');
       }
       final eqArgs = pType.args;
       if (eqArgs.length != 3) {
-        return TacticFail('rewrite: Eq has wrong arity');
+        return const TacticFail('rewrite: Eq has wrong arity');
       }
       final aType = eqArgs[0]; // A : Type
       final x = eqArgs[1]; // x : A
@@ -289,11 +289,11 @@ TacticFn Function(Term) rewrite =
         // TBound(0) using a syntactic walk.
         final goalTerm = quote(level + 1, s.goalType);
         final xTerm = quote(level + 1, x);
-        final motiveBody = _replaceTermInTerm(goalTerm, xTerm, TBound(0));
+        final motiveBody = _replaceTermInTerm(goalTerm, xTerm, const TBound(0));
         final pY = eval(motiveBody, s.ctx.env.extend(y));
         final subMetaId = s.metas.freshTermMeta(pY, s.ctx);
         final motive = TLam(quote(level, aType), motiveBody);
-        var proofTerm = TRec('Eq') as Term;
+        var proofTerm = const TRec('Eq') as Term;
         for (final arg in [
           quote(level, aType),
           motive,
@@ -317,7 +317,7 @@ TacticFn Function(Term) rewrite =
       final subMeta = TMeta(subMetaId);
 
       // Eq.rec A P x y p  :  P x → P y
-      var proofTerm = TRec('Eq') as Term;
+      var proofTerm = const TRec('Eq') as Term;
       for (final arg in [
         quote(level, aType),
         motive,
@@ -363,7 +363,9 @@ TacticFn Function(int) _inductionAt =
     (binderIdx) => (s) {
       final xType = s.ctx.lookupType(binderIdx);
       if (xType is! VData) {
-        return TacticFail('induction: variable is not of an inductive type');
+        return const TacticFail(
+          'induction: variable is not of an inductive type',
+        );
       }
       final dataName = xType.name;
       final dataArgs = xType.args;
@@ -385,7 +387,7 @@ TacticFn Function(int) _inductionAt =
         final freshVar = VNeutral(NVar(level));
         motiveV = substNVar(goalType, scrutLevel, freshVar);
       } else {
-        return TacticFail('induction: cannot build motive');
+        return const TacticFail('induction: cannot build motive');
       }
       final motiveBody = quote(level + 1, motiveV);
       final motive = TLam(quote(level, xType), motiveBody);
@@ -481,7 +483,9 @@ bool _typeMentionsData(Value v, String dataName) {
   // Descend into neutral applications (e.g. List A).
   if (v is VNeutral) {
     var cur = v.neutral;
-    while (cur is NApp) cur = cur.fn;
+    while (cur is NApp) {
+      cur = cur.fn;
+    }
     if (cur is NVar || cur is NTop) {
       // Check if this could be the target data type through args.
     }
@@ -514,7 +518,7 @@ TacticResult trivial(TacticState s) {
     currentCtx = c.rest;
     idx++;
   }
-  return TacticFail('trivial: no trivial proof found');
+  return const TacticFail('trivial: no trivial proof found');
 }
 
 /// `auto [depth]`: depth-bounded proof search.
@@ -530,7 +534,7 @@ TacticResult Function(TacticState) auto({int depth = 5}) => (s) {
   if (trivialResult is TacticOk) return trivialResult;
 
   if (depth <= 0) {
-    return TacticFail('auto: depth exhausted');
+    return const TacticFail('auto: depth exhausted');
   }
 
   // Collect lemma names from the context's env topBindings.
@@ -631,7 +635,7 @@ TacticResult omega(TacticState s) {
     if (result is TacticOk) return result;
   }
 
-  return TacticFail('omega: could not solve the arithmetic goal');
+  return const TacticFail('omega: could not solve the arithmetic goal');
 }
 
 /// `simpl`: normalise the goal via `nf()` (eval then quote).
@@ -659,7 +663,7 @@ TacticResult simpl(TacticState s) {
 TacticResult tacticConstructor(TacticState s) {
   final goalType = s.goalType;
   if (goalType is! VData) {
-    return TacticFail('constructor: goal is not an inductive type');
+    return const TacticFail('constructor: goal is not an inductive type');
   }
   final dataName = goalType.name;
   final dataDecl = s.ctx.lookupData(dataName);
@@ -700,7 +704,7 @@ TacticResult tacticConstructor(TacticState s) {
       }
     } catch (_) {}
   }
-  return TacticFail('constructor: no constructor matches the goal');
+  return const TacticFail('constructor: no constructor matches the goal');
 }
 
 /// `cases x`: destruct variable `x` into one subgoal per constructor.
@@ -722,7 +726,7 @@ TacticFn Function(String) tacticCases =
       }
       final xType = s.ctx.lookupType(binderIdx);
       if (xType is! VData) {
-        return TacticFail('cases: variable is not of an inductive type');
+        return const TacticFail('cases: variable is not of an inductive type');
       }
       final dataName = xType.name;
       final dataArgs = xType.args;
@@ -737,7 +741,7 @@ TacticFn Function(String) tacticCases =
       // Build motive: P = λ a => goalType[x := a]
       final xVal = VNeutral(NVar(level - 1 - binderIdx));
       if (xVal.neutral is! NVar) {
-        return TacticFail('cases: cannot build motive');
+        return const TacticFail('cases: cannot build motive');
       }
       final scrutLevel = (xVal.neutral as NVar).level;
       final freshVar = VNeutral(NVar(level));
@@ -805,15 +809,13 @@ kernel_eval.ConvResult conv(
   Value a,
   Value b, {
   required TacticState s,
-}) {
-  return kernel_eval.conv(
-    level,
-    a,
-    b,
-    dataDecls: s.ctx.env.dataDecls,
-    topBindings: s.ctx.env.topBindings,
-  );
-}
+}) => kernel_eval.conv(
+  level,
+  a,
+  b,
+  dataDecls: s.ctx.env.dataDecls,
+  topBindings: s.ctx.env.topBindings,
+);
 
 /// Walk [t] and replace every occurrence of the term [from] with [to].
 /// Uses structural equality (Term.==).  This is a simple syntactic
