@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, doxa-extended]
+    branches: ['**']
   pull_request:
-    branches: [main, doxa-extended]
+    branches: ['**']
 
 jobs:
   test:
@@ -43,26 +43,42 @@ jobs:
         working-directory: ./doxa_tooling
         run: dart test
 
-      - name: Format check
+      - name: Format check (Dart)
         run: dart format --set-exit-if-changed doxa/ doxa_tooling/
 
       - name: Build doxa CLI
         working-directory: ./doxa_tooling
         run: dart compile exe bin/doxa.dart -o /tmp/doxa
 
-      - name: Check all .doxa files are formatted
+      - name: doxa fmt --check (all .doxa files)
         run: |
-          for f in lib/stdlib/*.doxa example/*.doxa doxa_tooling/test/programs/positive/*.doxa; do
-            /tmp/doxa fmt --check "$f"
+          for f in $(find lib/stdlib example doxa_tooling/test/programs -name '*.doxa' -type f); do
+            /tmp/doxa fmt --check "$f" || exit 1
           done
 
-      - name: Type-check all .doxa files
+      - name: doxa type-check (stdlib)
         run: |
-          for f in lib/stdlib/*.doxa; do
-            if [ "$(basename "$f")" != "prelude.doxa" ]; then
-              /tmp/doxa check "$f"
-            fi
+          for f in $(find lib/stdlib -name '*.doxa' -type f ! -name 'prelude.doxa'); do
+            /tmp/doxa check "$f" || exit 1
           done
+
+      - name: doxa type-check (examples)
+        run: |
           for f in example/*.doxa; do
-            /tmp/doxa check "$f"
+            /tmp/doxa check "$f" || exit 1
           done
+
+      - name: Build WASM
+        working-directory: ./doxa_tooling
+        run: dart compile wasm web/doxa_check.dart -o web/doxa_check.wasm
+
+      - name: Check pub.dev score (doxa)
+        working-directory: ./doxa
+        run: |
+          dart pub global activate pana
+          pana . --no-warning --exit-code-threshold 0 2>&1 | tail -20
+
+      - name: Check pub.dev score (doxa_tooling)
+        working-directory: ./doxa_tooling
+        run: |
+          pana . --no-warning --exit-code-threshold 0 2>&1 | tail -20

@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') == false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Get version from tag or commit
+        id: version
+        run: |
+          if [ "${{ startsWith(github.ref, 'refs/tags/v') }}" = "true" ]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=$(grep '^version:' doxa/pubspec.yaml | head -1 | sed 's/version: //')" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: Doxa v${{ steps.version.outputs.VERSION }}
+          body: |
+            Doxa ${{ steps.version.outputs.VERSION }} — a dependently typed proof checker.
+
+            See [CHANGELOG.md](CHANGELOG.md) for details.
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

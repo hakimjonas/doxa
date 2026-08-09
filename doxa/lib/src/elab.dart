@@ -37,7 +37,7 @@ import 'pretty.dart';
 import 'registry.dart';
 import 'sem_info.dart';
 import 'surface.dart';
-import 'tactic.dart' hide conv, ConvResult, ConvOk, ConvMismatch;
+import 'tactic.dart' hide conv;
 import 'term.dart';
 import 'value.dart';
 
