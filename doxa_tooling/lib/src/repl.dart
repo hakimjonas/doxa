@@ -9,6 +9,8 @@
 /// state changes (a declaration is added) and the same session otherwise.
 library;
 
+import 'dart:io' show Directory;
+
 import 'package:rumil/rumil.dart';
 
 import 'package:doxa/src/check.dart';
@@ -382,11 +384,20 @@ final class ReplSession {
   /// session with the declaration accumulated.
   ReplStep _processDecl(SDecl decl, String input) {
     final topEnv = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
+    // Set current import path to CWD so relative imports resolve.
+    final prevPath = currentImportPath;
+    currentImportPath = '${Directory.current.path}/repl.doxa';
     try {
       final produced = elabDecl(topEnv, decl);
       final runningData = [...dataDecls, ...produced.dataDecls];
+      // For imports, include the import's own bindings so checkDeclResult
+      // can verify cross-references within the imported module.
+      final checkBindings =
+          decl.kind is SImportKind
+              ? [...bindings, ...produced.bindings]
+              : bindings;
       final runningEnv = TopEnv(
-        bindings,
+        checkBindings,
         runningData,
         const {},
         namespaceBindings,
@@ -422,10 +433,8 @@ final class ReplSession {
         );
       }
       return (const ReplDeclResult(name: '', type: ''), newSession);
-    } on DoxaCheckError catch (e) {
-      return (ReplError(_formatCheckError(input, decl.span, e)), this);
-    } on ElabError catch (e) {
-      return (ReplError(_formatElabError(input, e)), this);
+    } finally {
+      currentImportPath = prevPath;
     }
   }
 
