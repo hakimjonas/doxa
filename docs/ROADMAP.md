@@ -190,7 +190,6 @@ tooling layer.
 
 ## Related documents
 
-- [`docs/PHASE_28_IMPLEMENTATION_PLAN.md`](PHASE_28_IMPLEMENTATION_PLAN.md) —
-  recursor index/method ordering (completed)
+- [`docs/RELEASE_0_9_PLAN.md`](RELEASE_0_9_PLAN.md) — current release plan
 - This document supersedes the "Remaining lemmas" sections in
   `lib/stdlib/case_study.doxa` — those are now organised under this roadmap.
