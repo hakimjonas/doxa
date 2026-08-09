@@ -34,4 +34,59 @@ fun leq(m: Nat, n: Nat) : Bool = match m {
     case zero => false_
     case succ n_ => leq m_ n_
   }
+}// Truncated subtraction: sub m n = m - n, or 0 if m < n.
+
+fun sub(m: Nat, n: Nat) : Nat = match m {
+  case zero => zero
+  case succ m_ => match n {
+    case zero => succ m_
+    case succ n_ => sub m_ n_
+  }
+}// Strict less-than: lt m n = true_ iff m < n.
+
+fun lt(m: Nat, n: Nat) : Bool = match n {
+  case zero => false_
+  case succ n_ => leq m n_
+}// Modulo via iterated subtraction: mod_acc k m n keeps subtracting n
+// from m up to k times.  Structurally recursive on k (first arg).
+
+fun mod_acc(k: Nat, m: Nat, n: Nat) : Nat = match k {
+  case zero => m
+  case succ k_ => match lt m n {
+    case true_ => m
+    case false_ => mod_acc k_ (sub m n) n
+  }
+}// mod m n: compute m % n by iterating up to m times (worst case).
+
+val mod : (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => mod_acc m m n
+// Greatest common divisor via Euclid's algorithm.  Structurally
+// recursive on the first argument (k is the iteration bound).
+
+fun gcd_acc(k: Nat, m: Nat, n: Nat) : Nat = match k {
+  case zero => m
+  case succ k_ => match n {
+    case zero => m
+    case succ n_ => gcd_acc k_ n (mod m n)
+  }
 }
+
+val gcd : (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => gcd_acc m m n
+// Divisibility: does d divide n?  True when d > 0 and n % d == 0.
+
+val divides : (d: Nat) -> (n: Nat) -> Bool = (d: Nat) => (n: Nat) => match d {
+  case zero => false_
+  case succ d_ => leq (mod n (succ d_)) zero
+}// Prime: n >= 2 and has no divisor d where 2 <= d < n.
+
+fun prime_acc(k: Nat, n: Nat) : Bool = match k {
+  case zero => true_
+  case succ k_ => match lt (succ (succ k_)) n {
+    case true_ => match divides (succ (succ k_)) n {
+      case true_ => false_
+      case false_ => prime_acc k_ n
+    }
+    case false_ => true_
+  }
+}
+
+val prime : (n: Nat) -> Bool = (n: Nat) => prime_acc n n
