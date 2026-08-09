@@ -71,6 +71,26 @@ fun gcd_acc(k: Nat, m: Nat, n: Nat) : Nat = match k {
 }
 
 val gcd : (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => gcd_acc m m n
+// Integer division: div m n = floor(m / n), 0 if n = 0.
+// Uses iterated subtraction, structurally recursive on k.
+
+fun div_acc(k: Nat, m: Nat, n: Nat) : Nat = match k {
+  case zero => zero
+  case succ k_ => match lt m n {
+    case true_ => zero
+    case false_ => succ (div_acc k_ (sub m n) n)
+  }
+}
+
+val div : (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => match n {
+  case zero => zero
+  case succ n_ => div_acc m m n
+}// Least common multiple: lcm m n = m * n / gcd m n
+
+val lcm : (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => div (mult m n) (gcd m n)
+// Coprime: gcd m n == 1
+
+val coprime : (m: Nat) -> (n: Nat) -> Bool = (m: Nat) => (n: Nat) => leq (gcd m n) (succ zero)
 // Divisibility: does d divide n?  True when d > 0 and n % d == 0.
 
 val divides : (d: Nat) -> (n: Nat) -> Bool = (d: Nat) => (n: Nat) => match d {
