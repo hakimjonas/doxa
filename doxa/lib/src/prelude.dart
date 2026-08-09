@@ -33,10 +33,10 @@ data Acc[A: Type] : (A -> A -> Prop) -> A -> Prop {
 
 /// The cached result of loading the prelude.
 final class PreludeData {
-  /// The member.
+  /// The parsed SProgram.
   final List<TopBinding> bindings;
 
-  /// The member.
+  /// Load the ambient prelude.
   final List<DataDecl> dataDecls;
 
   /// The member.

@@ -56,10 +56,10 @@ sealed class Level {
 
 /// Concrete universe level: `Type 0`, `Type 1`, etc.
 final class LLevel extends Level {
-  /// The member.
+  /// The field.
   final int level;
 
-  /// The member.
+  /// The field.
   const LLevel(this.level);
 
   @override
@@ -74,10 +74,10 @@ final class LLevel extends Level {
 
 /// Level variable (declaration-scoped): bound per top-level declaration.
 final class LVar extends Level {
-  /// The member.
+  /// The field.
   final String name;
 
-  /// The member.
+  /// The field.
   const LVar(this.name);
 
   @override
@@ -92,10 +92,10 @@ final class LVar extends Level {
 
 /// Level successor: `succ(l)` for `Type l : Type (l+1)`.
 final class LSucc extends Level {
-  /// The member.
+  /// The field.
   final Level of;
 
-  /// The member.
+  /// The field.
   const LSucc(this.of);
 
   @override
@@ -110,13 +110,13 @@ final class LSucc extends Level {
 
 /// Maximum of two levels. Used for Pi types and inductive parameters.
 final class LMax extends Level {
-  /// The member.
+  /// The field.
   final Level lhs;
 
-  /// The member.
+  /// The field.
   final Level rhs;
 
-  /// The member.
+  /// The field.
   const LMax(this.lhs, this.rhs);
 
   @override
@@ -135,13 +135,13 @@ final class LMax extends Level {
 /// Used so `(Type u → Prop) : Type 0` not `Type u`. In Doxa, `Prop` is
 /// level 0 for Pi-sort computation.
 final class LImax extends Level {
-  /// The member.
+  /// The field.
   final Level lhs;
 
-  /// The member.
+  /// The field.
   final Level rhs;
 
-  /// The member.
+  /// The field.
   const LImax(this.lhs, this.rhs);
 
   @override
@@ -285,7 +285,7 @@ final class TProj extends Term {
   /// The field name.
   final String fieldName;
 
-  /// The member.
+  /// The field.
   const TProj(this.expr, this.fieldName);
 
   @override
@@ -838,13 +838,13 @@ final class TMatch extends Term {
 /// Quotient type formation: `Quot(A, R)` where A is the carrier and
 /// R: A → A → Prop is the equivalence relation.
 final class TQuot extends Term {
-  /// The member.
+  /// The field.
   final Term carrier;
 
-  /// The member.
+  /// The field.
   final Term relation;
 
-  /// The member.
+  /// The field.
   const TQuot(this.carrier, this.relation);
 
   @override
@@ -860,10 +860,10 @@ final class TQuot extends Term {
 
 /// Inject an element into a quotient: `Quot.mk(a)`.
 final class TQuotMk extends Term {
-  /// The member.
+  /// The field.
   final Term arg;
 
-  /// The member.
+  /// The field.
   const TQuotMk(this.arg);
 
   @override
@@ -879,16 +879,16 @@ final class TQuotMk extends Term {
 /// Eliminate from a quotient: `Quot.lift(quot, f, proof)`.
 /// f: A → B, proof: (x y: A) → R x y → Eq B (f x) (f y)
 final class TQuotLift extends Term {
-  /// The member.
+  /// The field.
   final Term quot;
 
-  /// The member.
+  /// The field.
   final Term fn;
 
-  /// The member.
+  /// The field.
   final Term proof;
 
-  /// The member.
+  /// The field.
   const TQuotLift(this.quot, this.fn, this.proof);
 
   @override

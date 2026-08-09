@@ -376,13 +376,13 @@ final class SMatchKind extends SExprKind {
 
 /// Quotient type formation: `Quot(A, R)`.
 final class SQuotKind extends SExprKind {
-  /// The member.
+  /// The field.
   final SExpr carrier;
 
-  /// The member.
+  /// The field.
   final SExpr relation;
 
-  /// The member.
+  /// The field.
   const SQuotKind(this.carrier, this.relation);
   @override
   bool operator ==(Object other) =>
@@ -397,10 +397,10 @@ final class SQuotKind extends SExprKind {
 
 /// Quotient injection: `Quot.mk(a)`.
 final class SQuotMkKind extends SExprKind {
-  /// The member.
+  /// The field.
   final SExpr arg;
 
-  /// The member.
+  /// The field.
   const SQuotMkKind(this.arg);
   @override
   bool operator ==(Object other) => other is SQuotMkKind && other.arg == arg;
@@ -412,13 +412,13 @@ final class SQuotMkKind extends SExprKind {
 
 /// Quotient elimination: `Quot.lift(fn, proof)` (or with explicit quot).
 final class SQuotLiftKind extends SExprKind {
-  /// The member.
+  /// The field.
   final SExpr fn;
 
-  /// The member.
+  /// The field.
   final SExpr proof;
 
-  /// The member.
+  /// The field.
   const SQuotLiftKind(this.fn, this.proof);
   @override
   bool operator ==(Object other) =>
@@ -1084,10 +1084,10 @@ sealed class STacticStep {
 
 /// `intro name?`: introduces a Pi binder (optionally naming it).
 final class STacticIntro extends STacticStep {
-  /// The member.
+  /// The field.
   final String? name;
 
-  /// The member.
+  /// The field.
   const STacticIntro(this.name);
   @override
   String toString() => 'STacticIntro(${name ?? "_"})';
@@ -1095,10 +1095,10 @@ final class STacticIntro extends STacticStep {
 
 /// `exact expr`: provides an explicit proof term.
 final class STacticExact extends STacticStep {
-  /// The member.
+  /// The field.
   final SExpr expr;
 
-  /// The member.
+  /// The field.
   const STacticExact(this.expr);
   @override
   String toString() => 'STacticExact($expr)';
@@ -1106,10 +1106,10 @@ final class STacticExact extends STacticStep {
 
 /// `apply expr`: applies a lemma, creating subgoals for its arguments.
 final class STacticApply extends STacticStep {
-  /// The member.
+  /// The field.
   final SExpr expr;
 
-  /// The member.
+  /// The field.
   const STacticApply(this.expr);
   @override
   String toString() => 'STacticApply($expr)';
@@ -1117,7 +1117,7 @@ final class STacticApply extends STacticStep {
 
 /// `refl`: closes `Eq A x x` goals using reflexivity.
 final class STacticRefl extends STacticStep {
-  /// The member.
+  /// The field.
   const STacticRefl();
   @override
   String toString() => 'STacticRefl';
@@ -1125,10 +1125,10 @@ final class STacticRefl extends STacticStep {
 
 /// `rewrite expr`: rewrites the goal using an equality proof.
 final class STacticRewrite extends STacticStep {
-  /// The member.
+  /// The field.
   final SExpr expr;
 
-  /// The member.
+  /// The field.
   const STacticRewrite(this.expr);
   @override
   String toString() => 'STacticRewrite($expr)';
@@ -1136,10 +1136,10 @@ final class STacticRewrite extends STacticStep {
 
 /// `induction name`: performs case analysis on a variable.
 final class STacticInduction extends STacticStep {
-  /// The member.
+  /// The field.
   final String name;
 
-  /// The member.
+  /// The field.
   const STacticInduction(this.name);
   @override
   String toString() => 'STacticInduction($name)';
@@ -1147,7 +1147,7 @@ final class STacticInduction extends STacticStep {
 
 /// `trivial`: tries `refl` and simple context lookups.
 final class STacticTrivial extends STacticStep {
-  /// The member.
+  /// The field.
   const STacticTrivial();
   @override
   String toString() => 'STacticTrivial';

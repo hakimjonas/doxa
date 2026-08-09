@@ -339,7 +339,7 @@ final class PropEliminationIntoType extends DoxaCheckError {
 
 /// A term expected to be a quotient type but the inferred type was not a VQuot.
 final class NotAQuotient extends DoxaCheckError {
-  /// The member.
+  /// Creates a type mismatch.
   final Value actual;
 
   /// The member.

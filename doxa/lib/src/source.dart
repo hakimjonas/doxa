@@ -21,13 +21,13 @@ final class AnsiColor {
   /// The member.
   final bool enabled;
 
-  /// The member.
+  /// Whether ANSI colour is enabled.
   const AnsiColor(this.enabled);
 
-  /// The member.
+  /// Green text.
   String get red => enabled ? '\x1b[31m' : '';
 
-  /// The member.
+  /// Bold text.
   String get green => enabled ? '\x1b[32m' : '';
 
   /// The member.
