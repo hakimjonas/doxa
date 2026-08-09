@@ -36,6 +36,7 @@ import 'parse.dart' show parseProgram;
 import 'pretty.dart';
 import 'registry.dart';
 import 'sem_info.dart';
+import 'source.dart';
 import 'surface.dart';
 import 'tactic.dart' hide conv;
 import 'term.dart';
@@ -677,23 +678,70 @@ final class InstanceInfo {
 // Import state
 // ---------------------------------------------------------------------------
 
-/// The absolute path of the file currently being elaborated, used to
-/// resolve relative import paths. Set by the pipeline before elaboration.
-String? currentImportPath;
+/// Encapsulates all mutable state for import resolution within a
+/// single pipeline run.  Replaces the three module-level globals
+/// (`currentImportPath`, `importedPaths`, `_importStack`) so that
+/// import resolution is self-contained and re-entrant.
+final class ImportState {
+  /// The absolute path of the file currently being elaborated, used to
+  /// resolve relative import paths.  Set by the pipeline before
+  /// elaboration.
+  String? currentImportPath;
 
-/// Stack of import paths currently being processed, for cycle detection.
-final _importStack = <String>[];
+  /// Set of paths that have already been fully imported in the current
+  /// pipeline run.  Makes repeated imports of the same file
+  /// idempotent.  Reset per top-level file by the pipeline.
+  final Set<String> importedPaths = {};
 
-/// Set of paths that have already been fully imported in the current
-/// pipeline run. Used to make repeated imports of the same file
-/// idempotent. Reset before processing each new top-level file.
-final importedPaths = <String>{};
+  /// Stack of import paths currently being processed, for cycle
+  /// detection.
+  final List<String> importStack = [];
 
-/// Resolve an import path relative to the current file's directory.
-String _resolveImportPath(String importPath, String currentFile) {
-  final current = Uri.file(currentFile);
-  final resolved = current.resolve(importPath);
-  return resolved.toFilePath();
+  /// Map from resolved file path to [SourceFile], populated during
+  /// import processing so error-reporting code can find the correct
+  /// source text for a span that originated in an imported file.
+  final Map<String, SourceFile> sourceFiles = {};
+
+  /// Map from a [DoxaSpan]'s start offset to the resolved file path
+  /// where that span was created.  Populated when building imported
+  /// bindings.  Used by [sourceFileFor] to route error spans to the
+  /// right [SourceFile].
+  final Map<int, String> spanStartToFile = {};
+
+  /// Restore points before [push]; matches [importStack] depth.
+  final List<String?> _prevPaths = [];
+
+  /// Push [resolvedPath] onto the import stack and set it as the
+  /// current import path.
+  void push(String resolvedPath) {
+    _prevPaths.add(currentImportPath);
+    currentImportPath = resolvedPath;
+    importStack.add(resolvedPath);
+  }
+
+  /// Pop the import stack and restore the previous [currentImportPath].
+  void pop() {
+    currentImportPath = _prevPaths.removeLast();
+    importStack.removeLast();
+  }
+
+  /// Resolve [importPath] relative to [currentImportPath].
+  String resolvePath(String importPath) {
+    final current = Uri.file(currentImportPath!);
+    return current.resolve(importPath).toFilePath();
+  }
+
+  /// Look up the [SourceFile] that a given [span] belongs to, or
+  /// `null` when the span belongs to the top-level file.
+  SourceFile? sourceFileFor(DoxaSpan span) {
+    if (span.isSynthetic) return null;
+    final path = spanStartToFile[span.start];
+    if (path == null) return null;
+    return sourceFiles[path];
+  }
+
+  /// Creates a new, empty import state.
+  ImportState();
 }
 
 /// Derive module prefix from file path: "nat.doxa" → "Nat",
@@ -969,17 +1017,28 @@ final class TopEnv {
   /// `plus` in the `Nat` namespace.
   final Map<String, Set<String>> namespaceBindings;
 
+  /// The import resolution state for the current pipeline run.
+  ///
+  /// Carried on every [TopEnv] so that `_elabDecl` (and transitively
+  /// `_processImport`) can resolve relative paths, detect cycles, and
+  /// enforce import idempotency without reaching for module-level
+  /// mutable globals.  Defaults to a fresh [ImportState] when the
+  /// caller does not provide one (e.g. tests, the prelude).
+  final ImportState importState;
+
   /// Creates a top environment wrapping [bindings] and optional
-  /// inductive [dataDecls], [classRegistry], and [namespaceBindings].
-  const TopEnv(
+  /// inductive [dataDecls], [classRegistry], [namespaceBindings],
+  /// and [importState].
+  TopEnv(
     this.bindings, [
     this.dataDecls = const <DataDecl>[],
     this.classRegistry = const {},
     this.namespaceBindings = const {},
-  ]);
+    ImportState? importStateArg,
+  ]) : importState = importStateArg ?? ImportState();
 
   /// The empty top environment.
-  static const TopEnv empty = TopEnv(<TopBinding>[]);
+  static final empty = TopEnv(<TopBinding>[]);
 
   /// Look up a name qualified by namespace prefix.
   /// Returns true if [name] is registered under [namespace].
@@ -3751,8 +3810,8 @@ DeclResult _elabImpl(
 ///
 /// Loads the imported file, recursively elaborates and type-checks its
 /// declarations, and returns the merged bindings and data decls.
-/// Detects cycles via [_importStack] and rejects duplicates against
-/// the calling [topEnv].
+/// Detects cycles via [ImportState.importStack] and rejects duplicates
+/// against the calling [topEnv].
 DeclResult _processImport(
   TopEnv topEnv,
   String path,
@@ -3760,16 +3819,18 @@ DeclResult _processImport(
   List<String> importedNames = const [],
   String? alias,
 }) {
-  if (currentImportPath == null) {
+  final importState = topEnv.importState;
+
+  if (importState.currentImportPath == null) {
     throw StateError(
       'currentImportPath is not set; cannot resolve import "$path"',
     );
   }
-  final resolvedPath = _resolveImportPath(path, currentImportPath!);
+  final resolvedPath = importState.resolvePath(path);
 
   // Idempotent import: if this file was already imported (by a prior
   // import at the current level), silently return no new bindings.
-  if (importedPaths.contains(resolvedPath)) {
+  if (importState.importedPaths.contains(resolvedPath)) {
     return (
       bindings: const <TopBinding>[],
       dataDecls: const <DataDecl>[],
@@ -3780,7 +3841,7 @@ DeclResult _processImport(
     );
   }
 
-  if (_importStack.contains(resolvedPath)) {
+  if (importState.importStack.contains(resolvedPath)) {
     throw CyclicImport(resolvedPath, span);
   }
 
@@ -3797,9 +3858,14 @@ DeclResult _processImport(
       throw StateError('Failed to parse import: $resolvedPath'),
   };
 
-  _importStack.add(resolvedPath);
-  final prevFilePath = currentImportPath;
-  currentImportPath = resolvedPath;
+  // Record the source file so error-reporting code can look up the
+  // correct SourceFile for spans that originate in this imported file.
+  importState.sourceFiles[resolvedPath] = SourceFile(
+    filename: resolvedPath,
+    text: source,
+  );
+
+  importState.push(resolvedPath);
 
   try {
     var localBindings = const <TopBinding>[];
@@ -3813,22 +3879,21 @@ DeclResult _processImport(
         [...topEnv.dataDecls, ...localDataDecls],
         {...topEnv.classRegistry, ...localClassRegistry},
         mergeNamespace(topEnv.namespaceBindings, localNamespace),
+        importState,
       );
       final produced = _elabDecl(runningEnv, decl);
       final runningData = [...localDataDecls, ...produced.dataDecls];
-      // For import decls inside the imported file, expand the env so
-      // checkDeclResult can verify cross-references within the import.
-      final checkBindings =
-          decl.kind is SImportKind
-              ? [...topEnv.bindings, ...localBindings, ...produced.bindings]
-              : [...topEnv.bindings, ...localBindings];
-      final checkEnv = TopEnv(
-        checkBindings,
-        [...topEnv.dataDecls, ...runningData],
-        {...topEnv.classRegistry, ...localClassRegistry},
-        mergeNamespace(topEnv.namespaceBindings, localNamespace),
+      // Use runningEnv as the check env, extended with produced.
+      final finalized = checkDeclResult(
+        TopEnv(
+          [...runningEnv.bindings, ...produced.bindings],
+          [...runningEnv.dataDecls, ...produced.dataDecls],
+          runningEnv.classRegistry,
+          runningEnv.namespaceBindings,
+          importState,
+        ),
+        produced,
       );
-      final finalized = checkDeclResult(checkEnv, produced);
       localBindings = [...localBindings, ...finalized];
       localDataDecls = runningData;
       localClassRegistry = {...localClassRegistry, ...produced.classRegistry};
@@ -3867,7 +3932,20 @@ DeclResult _processImport(
       }
     }
 
-    importedPaths.add(resolvedPath);
+    importState.importedPaths.add(resolvedPath);
+
+    // Record span-to-file mappings so error-reporting code can route
+    // spans back to the correct SourceFile.
+    for (final b in localBindings) {
+      if (!b.span.isSynthetic) {
+        importState.spanStartToFile[b.span.start] = resolvedPath;
+      }
+    }
+    for (final d in localDataDecls) {
+      if (!d.span.isSynthetic) {
+        importState.spanStartToFile[d.span.start] = resolvedPath;
+      }
+    }
 
     // Build namespace-qualified entries.
     final modPrefix = alias ?? _modulePrefix(path);
@@ -3893,8 +3971,7 @@ DeclResult _processImport(
       namespaceBindings: nsMap,
     );
   } finally {
-    currentImportPath = prevFilePath;
-    _importStack.removeLast();
+    importState.pop();
   }
 }
 

@@ -13,6 +13,7 @@ import 'elab.dart'
         TopEnv,
         TopBinding,
         DataDecl,
+        ImportState,
         checkDeclResult,
         elabDecl,
         mergeNamespace;
@@ -75,13 +76,20 @@ PreludeData loadPrelude() {
   var bindings = const <TopBinding>[];
   var dataDecls = const <DataDecl>[];
   var namespaceBindings = <String, Set<String>>{};
+  final importState = ImportState();
 
   for (final decl in prog.decls) {
-    final env = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
+    final env = TopEnv(
+      bindings,
+      dataDecls,
+      const {},
+      namespaceBindings,
+      importState,
+    );
     final produced = elabDecl(env, decl);
     final runningData = [...dataDecls, ...produced.dataDecls];
     final finalized = checkDeclResult(
-      TopEnv(bindings, runningData, const {}, namespaceBindings),
+      TopEnv(bindings, runningData, const {}, namespaceBindings, importState),
       produced,
     );
     bindings = [...bindings, ...finalized];

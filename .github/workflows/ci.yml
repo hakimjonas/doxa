@@ -58,9 +58,7 @@ jobs:
 
       - name: doxa type-check (stdlib)
         run: |
-          # Int/package.doxa is excluded — match motive inference fails
-          # in import chains (separate bug, tracked for 0.8.x).
-          for f in $(find lib/stdlib -name '*.doxa' -type f ! -name 'prelude.doxa' ! -path '*/Int/package.doxa'); do
+          for f in $(find lib/stdlib -name '*.doxa' -type f ! -name 'prelude.doxa'); do
             /tmp/doxa check "$f" || exit 1
           done
 

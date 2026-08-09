@@ -4,6 +4,7 @@ description: >-
   syntax tree, structured check output, semantic metadata, REPL, and
   LSP language server.
 version: 0.8.0
+license: GPL-3.0-or-later
 repository: https://github.com/hakimjonas/doxa
 homepage: https://github.com/hakimjonas/doxa
 

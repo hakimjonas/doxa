@@ -6,16 +6,15 @@ import 'package:doxa/src/ctx.dart';
 import 'package:doxa/src/elab.dart'
     show
         checkDeclResult,
-        currentImportPath,
+        ImportState,
         elabDecl,
-        importedPaths,
+        mergeNamespace,
         TopEnv,
         TopBinding,
         DataDecl;
 import 'package:doxa/src/env.dart';
 import 'package:doxa/src/eval.dart';
 import 'package:doxa/src/parse.dart';
-import 'package:doxa/src/prelude.dart' show mergeNamespace;
 import 'package:doxa/src/pretty.dart';
 import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
 import 'package:rumil/rumil.dart';
@@ -55,14 +54,15 @@ void main() {
   var totalParse = 0, totalElab = 0, totalCheck = 0, totalNf = 0;
 
   // Warmup
-  currentImportPath = 'lib/stdlib/proofs.doxa';
-  importedPaths.clear();
-  _check(src, bindings, dataDecls, namespaceBindings);
+  final importState = ImportState();
+  importState.currentImportPath = 'lib/stdlib/proofs.doxa';
+  importState.importedPaths.clear();
+  _check(src, bindings, dataDecls, namespaceBindings, importState);
 
   // Timed run
   SProgram stdlibProg = _parseProg(src);
   for (var i = 0; i < 3; i++) {
-    importedPaths.clear();
+    importState.importedPaths.clear();
     sw.reset();
     sw.start();
     final prog = _parseProg(src);
@@ -75,7 +75,7 @@ void main() {
     for (final decl in prog.decls) {
       sw.reset();
       sw.start();
-      final produced = elabDecl(TopEnv(b, d, const {}, ns), decl);
+      final produced = elabDecl(TopEnv(b, d, const {}, ns, importState), decl);
       sw.stop();
       elabUs += sw.elapsedMicroseconds;
 
@@ -85,7 +85,7 @@ void main() {
       final checkBindings =
           decl.kind is SImportKind ? [...b, ...produced.bindings] : b;
       final finalized = checkDeclResult(
-        TopEnv(checkBindings, rd, const {}, ns),
+        TopEnv(checkBindings, rd, const {}, ns, importState),
         produced,
       );
       sw.stop();
@@ -129,14 +129,17 @@ void main() {
     for (final decl in prog.decls) {
       sw.reset();
       sw.start();
-      final produced = elabDecl(TopEnv(b, d, const {}, ns), decl);
+      final produced = elabDecl(TopEnv(b, d, const {}, ns, importState), decl);
       sw.stop();
       elabUs += sw.elapsedMicroseconds;
 
       sw.reset();
       sw.start();
       final rd = [...d, ...produced.dataDecls];
-      final finalized = checkDeclResult(TopEnv(b, rd, const {}, ns), produced);
+      final finalized = checkDeclResult(
+        TopEnv(b, rd, const {}, ns, importState),
+        produced,
+      );
       sw.stop();
       checkUs += sw.elapsedMicroseconds;
       b = [...b, ...finalized];
@@ -169,18 +172,22 @@ void _check(
   List<TopBinding> bindings,
   List<DataDecl> dataDecls,
   Map<String, Set<String>> namespaceBindings,
+  ImportState importState,
 ) {
   final prog = _parseProg(src);
   var b = bindings.toList(), d = dataDecls.toList(), ns = namespaceBindings;
   for (final decl in prog.decls) {
-    final env = TopEnv(b, d, const {}, ns);
+    final env = TopEnv(b, d, const {}, ns, importState);
     final produced = elabDecl(env, decl);
     final rd = [...d, ...produced.dataDecls];
     final checkBindings =
         decl.kind is SImportKind ? [...b, ...produced.bindings] : b;
     b = [
       ...b,
-      ...checkDeclResult(TopEnv(checkBindings, rd, const {}, ns), produced),
+      ...checkDeclResult(
+        TopEnv(checkBindings, rd, const {}, ns, importState),
+        produced,
+      ),
     ];
     d = rd;
     ns = mergeNamespace(ns, produced.namespaceBindings);

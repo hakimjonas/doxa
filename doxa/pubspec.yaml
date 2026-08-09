@@ -4,6 +4,7 @@ description: >-
   Constructions, with an ML-family surface syntax and a stack-safe
   normalization-by-evaluation kernel.
 version: 0.8.0
+license: GPL-3.0-or-later
 repository: https://github.com/hakimjonas/doxa
 homepage: https://github.com/hakimjonas/doxa
 

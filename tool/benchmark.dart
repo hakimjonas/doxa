@@ -23,7 +23,7 @@ import 'package:doxa/src/elab.dart';
 import 'package:doxa/src/env.dart';
 import 'package:doxa/src/eval.dart';
 import 'package:doxa/src/parse.dart';
-import 'package:doxa/src/prelude.dart' show loadPrelude, mergeNamespace;
+import 'package:doxa/src/prelude.dart' show loadPrelude;
 import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
 import 'package:doxa/src/term.dart';
 import 'package:doxa/src/value.dart';
@@ -255,12 +255,19 @@ final class BenchResult {
   var dataDecls = prelude.dataDecls;
   var namespaceBindings = prelude.namespaceBindings;
 
-  currentImportPath = w.path ?? 'bench.doxa';
-  importedPaths.clear();
+  final importState = ImportState();
+  importState.currentImportPath = w.path ?? 'bench.doxa';
+  importState.importedPaths.clear();
 
   for (final decl in program.decls) {
     try {
-      final env = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
+      final env = TopEnv(
+        bindings,
+        dataDecls,
+        const {},
+        namespaceBindings,
+        importState,
+      );
       final produced = elabDecl(env, decl);
       final runningData = [...dataDecls, ...produced.dataDecls];
       final checkBindings =
@@ -268,7 +275,13 @@ final class BenchResult {
               ? [...bindings, ...produced.bindings]
               : bindings;
       final finalized = checkDeclResult(
-        TopEnv(checkBindings, runningData, const {}, namespaceBindings),
+        TopEnv(
+          checkBindings,
+          runningData,
+          const {},
+          namespaceBindings,
+          importState,
+        ),
         produced,
       );
       bindings = [...bindings, ...finalized];

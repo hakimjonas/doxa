@@ -31,8 +31,7 @@ export 'src/elab.dart'
         checkDeclResult,
         declNames,
         ClassInfo,
-        currentImportPath,
-        importedPaths,
+        ImportState,
         TopBinding,
         TopEnv,
         CorecursiveGroup,
@@ -69,3 +68,4 @@ export 'src/source.dart';
 export 'src/sem_info.dart';
 export 'src/prelude.dart';
 export 'src/tactic.dart' hide conv;
+export 'src/import_resolver.dart' show ImportResolver;

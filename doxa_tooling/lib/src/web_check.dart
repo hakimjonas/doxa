@@ -16,19 +16,9 @@ library;
 
 import 'package:rumil/rumil.dart';
 
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'output.dart';
-import 'package:doxa/doxa.dart';
 import 'package:doxa/doxa.dart' show loadPrelude;
 import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
+import 'output.dart';
 
 /// Run the full pipeline and return the structured [CheckOutput].
 CheckOutput checkSourceOutput(
@@ -60,15 +50,47 @@ CheckOutput checkSourceOutput(
   }
 
   final prelude = loadPrelude();
+  final importState = ImportState();
+  importState.currentImportPath = filename;
+  importState.importedPaths.clear();
+
+  // Pre-resolve and process all transitive imports.
+  final resolver = ImportResolver(importState, prelude: prelude);
+  try {
+    resolver.processTransitiveImports(program);
+  } on ElabError catch (e) {
+    final reportSource = importState.sourceFileFor(e.span) ?? source;
+    return CheckFailure(
+      errors: [
+        CheckError(
+          kind: 'elab_error',
+          line: source.positionAt(e.span.start).line,
+          column: source.positionAt(e.span.start).column,
+          message: reportElabError(reportSource, e),
+          span: e.span.isSynthetic ? null : e.span,
+        ),
+      ],
+    );
+  } on DoxaCheckError catch (e) {
+    return CheckFailure(
+      errors: [
+        CheckError(
+          kind: 'check_error',
+          line: 0,
+          column: 0,
+          message: e.toString(),
+        ),
+      ],
+    );
+  }
+
+  var bindings = resolver.bindings;
+  var dataDecls = resolver.dataDecls;
+  var namespaceBindings = resolver.namespaceBindings;
+  var classRegistry = resolver.classRegistry;
   final preludeDeclCount = prelude.bindings.length + prelude.dataDecls.length;
-  var bindings = prelude.bindings;
-  var dataDecls = prelude.dataDecls;
-  var namespaceBindings = prelude.namespaceBindings;
-  var classRegistry = <String, ClassInfo>{};
   final declarations = <DeclInfo>[];
   final allSemInfos = <SemInfo>[];
-  currentImportPath = filename;
-  importedPaths.clear();
 
   // Multi-error accumulator.
   final errors = <Map<String, dynamic>>[];
@@ -92,7 +114,13 @@ CheckOutput checkSourceOutput(
 
     try {
       final produced = elabDecl(
-        TopEnv(bindings, dataDecls, classRegistry, namespaceBindings),
+        TopEnv(
+          bindings,
+          dataDecls,
+          classRegistry,
+          namespaceBindings,
+          importState,
+        ),
         decl,
       );
       final runningData = [...dataDecls, ...produced.dataDecls];
@@ -107,6 +135,7 @@ CheckOutput checkSourceOutput(
           runningData,
           checkClassRegistry,
           namespaceBindings,
+          importState,
         ),
         produced,
       );
@@ -155,8 +184,9 @@ CheckOutput checkSourceOutput(
           armSpan,
         _ => decl.span,
       };
-      final message = reportCheckError(source, e, reportSpan);
-      final pos = source.positionAt(reportSpan.start);
+      final reportSource = importState.sourceFileFor(reportSpan) ?? source;
+      final message = reportCheckError(reportSource, e, reportSpan);
+      final pos = reportSource.positionAt(reportSpan.start);
       final (expected, actual) = switch (e) {
         TypeMismatch(:final got, :final expected, level: final level) => (
           _prettyValueAt(expected, level),
@@ -177,8 +207,9 @@ CheckOutput checkSourceOutput(
         poisonedNames.add(n);
       }
     } on ElabError catch (e) {
-      final message = reportElabError(source, e);
-      final pos = source.positionAt(e.span.start);
+      final reportSource = importState.sourceFileFor(e.span) ?? source;
+      final message = reportElabError(reportSource, e);
+      final pos = reportSource.positionAt(e.span.start);
       errors.add({
         'kind': _elabErrorKind(e),
         'line': pos.line,

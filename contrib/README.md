@@ -58,16 +58,10 @@ Add to `~/.config/nvim/coc-settings.json` or `vimrc`:
 }
 ```
 
-## JetBrains (IntelliJ, CLion, etc.)
+## JetBrains (IntelliJ, CLion, RustRover, etc.)
 
-1. Install the **LSP4IJ** plugin (File → Settings → Plugins → Marketplace)
-2. Go to File → Settings → Languages & Frameworks → Language Servers
-3. Add a new server:
-   - Name: `doxa`
-   - Type: `Custom`
-   - Command: `doxa lsp`
-   - Associated file types: `*.doxa`
-4. Apply the settings. The LSP will start automatically when you open a `.doxa` file.
+[Doxa JetBrains](https://github.com/hakimjonas/doxa-jetbrains) is a
+dedicated extension — no manual LSP configuration needed.
 
 ## Emacs (eglot)
 
