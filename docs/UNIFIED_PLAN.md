@@ -2,34 +2,34 @@
 
 > Generated 2026-08-09. Kernel/Proof work and Tooling work interleaved.
 
-## 1. Error message quality
+## 1. Error message quality ✅
 
-**Kernel:** Surface-level error rendering — meta-variable elision, source spans for
-sub-term mismatches, `diff` path through conversion failures shown as
-surface-level types.
+**Done (`faa9f88`):** Unsolved metas rendered as `_` instead of `?id`.
+Further improvements: surface-level rendering of diff paths, better
+error messages for unsolved implicit arguments.
 
-**Tooling:** LSP diagnostic formatting uses the improved errors
-(`textDocument/publishDiagnostics`). REPL errors use the same path.
+**Status:** First pass done. Room for more refinement.
 
-**Files:** `doxa/lib/src/report.dart`, `doxa/lib/src/diff.dart`, `doxa_tooling/lib/src/lsp/handler.dart`
+## 2. Recursive `val`/`fun` — Already done
 
-**Session estimate:** 1-2
+`val rec` and `fun ... and ...` mutual recursion are both implemented
+(`parse.dart:265`, `elab.dart:1799`, `surface.dart:247`).  `TLet(isRec: true)`
+is the kernel construct.  The ROADMAP target `even_implies_double` is in
+`case_study.doxa` and type-checks.
 
-## 2. Recursive `val`/`fun` + proof state in LSP
+**Status:** Done (from remote branch). Striking from active plan.
 
-**Kernel:** Expose `TLet(isRec: true)` to surface syntax.  Either `val rec` keyword
-or make `fun` implicitly recursive (Fungal-style).  The kernel already has
-the VFun guarded-delta mechanism; the gap is in the elaborator's surface
-desugaring.
+## 2b. Proof state in LSP
 
-**Tooling:** LSP `$/proofState` custom notification — after each `:step` in
-interactive proof mode, push the current goal type, context binders, and
-open subgoal count to the editor.  Enables inline proof-state display.
+**Tooling:** Custom LSP notification `$/doxa/proofState` — after each
+`:step` in interactive proof mode, push current goal type, context
+binders, and open subgoal count to the editor.  Enables inline
+proof-state display in VS Code.
 
-**Files:** `doxa/lib/src/elab.dart`, `doxa_tooling/lib/src/repl.dart`,
-`doxa_tooling/lib/src/lsp/handler.dart`
+**Files:** `doxa_tooling/lib/src/lsp/handler.dart`,
+`doxa_tooling/lib/src/repl.dart`
 
-**Session estimate:** 1-2
+**Session estimate:** 1
 
 ## 3. Stdlib: gcd + primes + playground
 
