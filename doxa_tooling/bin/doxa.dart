@@ -26,6 +26,7 @@ import 'package:doxa/doxa.dart'
     show
         ClassInfo,
         ImportState,
+        ImportResolver,
         elabDecl,
         checkDeclResult,
         declNames,
@@ -364,15 +365,56 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   // redeclaring them.
   final prelude = loadPrelude();
   final preludeDeclCount = prelude.bindings.length + prelude.dataDecls.length;
-  var bindings = prelude.bindings;
-  var dataDecls = prelude.dataDecls;
-  var namespaceBindings = prelude.namespaceBindings;
-  var classRegistry = <String, ClassInfo>{};
 
   // Set up import state so relative imports resolve correctly.
   final importState = ImportState();
   importState.currentImportPath = source.filename;
   importState.importedPaths.clear();
+
+  // Pre-resolve and process all transitive imports.
+  final resolver = ImportResolver(importState, prelude: prelude);
+  try {
+    resolver.processTransitiveImports(program);
+  } on CyclicImport catch (e) {
+    stderrSink.write(
+      reportElabError(
+        source,
+        CyclicImport(e.path, const DoxaSpan(-1, -1)),
+        color: color,
+      ),
+    );
+    stderrSink.writeln();
+    return 1;
+  } on ImportFileNotFound catch (e) {
+    stderrSink.write(
+      reportElabError(
+        source,
+        ImportFileNotFound(e.path, const DoxaSpan(-1, -1)),
+        color: color,
+      ),
+    );
+    stderrSink.writeln();
+    return 1;
+  } on ElabError catch (e) {
+    final reportSource = importState.sourceFileFor(e.span) ?? source;
+    stderrSink.write(reportElabError(reportSource, e, color: color));
+    stderrSink.writeln();
+    return 1;
+  } on DoxaCheckError catch (e) {
+    final reportSource =
+        importState.sourceFileFor(const DoxaSpan(-1, -1)) ?? source;
+    stderrSink.write(
+      reportCheckError(reportSource, e, const DoxaSpan(-1, -1), color: color),
+    );
+    stderrSink.writeln();
+    return 1;
+  }
+
+  // Accumulate from the resolver's pre-processed imports.
+  var bindings = resolver.bindings;
+  var dataDecls = resolver.dataDecls;
+  var namespaceBindings = resolver.namespaceBindings;
+  var classRegistry = resolver.classRegistry;
 
   // Multi-error accumulator.
   final diagnostics = <String>[];
@@ -381,6 +423,35 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   final poisonedNames = <String>{};
 
   for (final decl in program.decls) {
+    // Build alias namespace entries.  Default (non-aliased) namespaces
+    // were already built by ImportResolver.
+    if (decl.kind case SImportKind(
+      :final alias,
+      :final path,
+    ) when alias != null) {
+      importState.push(source.filename);
+      final resolved = importState.resolvePath(path);
+      importState.pop();
+      final defaultPrefix =
+          path.endsWith('.doxa')
+              ? path
+                  .split('/')
+                  .last
+                  .substring(0, path.split('/').last.length - '.doxa'.length)
+              : path.split('/').last;
+      if (defaultPrefix.isNotEmpty) {
+        final df = defaultPrefix[0].toUpperCase() + defaultPrefix.substring(1);
+        final defaultNames = namespaceBindings[df];
+        if (defaultNames != null) {
+          namespaceBindings = mergeNamespace(namespaceBindings, {
+            alias: defaultNames,
+          });
+        }
+      }
+      continue;
+    }
+    if (decl.kind is SImportKind) continue;
+
     final env = TopEnv(
       bindings,
       dataDecls,

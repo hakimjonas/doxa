@@ -50,16 +50,47 @@ CheckOutput checkSourceOutput(
   }
 
   final prelude = loadPrelude();
-  final preludeDeclCount = prelude.bindings.length + prelude.dataDecls.length;
-  var bindings = prelude.bindings;
-  var dataDecls = prelude.dataDecls;
-  var namespaceBindings = prelude.namespaceBindings;
-  var classRegistry = <String, ClassInfo>{};
-  final declarations = <DeclInfo>[];
-  final allSemInfos = <SemInfo>[];
   final importState = ImportState();
   importState.currentImportPath = filename;
   importState.importedPaths.clear();
+
+  // Pre-resolve and process all transitive imports.
+  final resolver = ImportResolver(importState, prelude: prelude);
+  try {
+    resolver.processTransitiveImports(program);
+  } on ElabError catch (e) {
+    final reportSource = importState.sourceFileFor(e.span) ?? source;
+    return CheckFailure(
+      errors: [
+        CheckError(
+          kind: 'elab_error',
+          line: source.positionAt(e.span.start).line,
+          column: source.positionAt(e.span.start).column,
+          message: reportElabError(reportSource, e),
+          span: e.span.isSynthetic ? null : e.span,
+        ),
+      ],
+    );
+  } on DoxaCheckError catch (e) {
+    return CheckFailure(
+      errors: [
+        CheckError(
+          kind: 'check_error',
+          line: 0,
+          column: 0,
+          message: e.toString(),
+        ),
+      ],
+    );
+  }
+
+  var bindings = resolver.bindings;
+  var dataDecls = resolver.dataDecls;
+  var namespaceBindings = resolver.namespaceBindings;
+  var classRegistry = resolver.classRegistry;
+  final preludeDeclCount = prelude.bindings.length + prelude.dataDecls.length;
+  final declarations = <DeclInfo>[];
+  final allSemInfos = <SemInfo>[];
 
   // Multi-error accumulator.
   final errors = <Map<String, dynamic>>[];
