@@ -1,9 +1,34 @@
-# Doxa 0.9.0 Release Plan
+# Doxa Release Plan (0.8.x → 0.9.0)
 
 > Target: first public release with verified theorems, competitive tooling.
-> Revised 2026-08-09: dependency chain gates all correctness work.
+> 2026-08-09: 0.8.1 merged. Fuel-based termination_by computation deferred
+> to 0.8.2.
 
-## Dependency chain — five levels
+## 0.8.1 — Shipped ✓
+
+- ImportResolver: pre-resolution, topological sort, single-pass check.
+- ImportState: eliminated 3 mutable module-level globals, carried on TopEnv.
+- match-motive bug in import chains fixed (Int/package.doxa passes).
+- Error-location routing to correct SourceFile for imported spans.
+- GPL-3.0-or-later license.
+- JetBrains extension moved to `doxa-jetbrains` repo.
+
+## 0.8.2 — Planned: Fuel desugaring
+
+For every `fun f(args): T termination_by (x) = body`, the elaborator
+generates two bindings:
+1. `f_fuel(fuel: Nat, args): T` — structurally recursive on `fuel`,
+   body rewritten to replace self-calls `f(e)` with `f_fuel(fuel-1, e)`
+2. `f(args): T = f_fuel x args` — public wrapper, non-opaque
+
+This makes `termination_by` functions computable (fixes the opaque
+NTop stuck-neutral problem) and bypasses the Prop-into-Type restriction
+on `Lt` (fuel is structural recursion on `Nat` — no `Lt`/`Acc` needed).
+
+After this lands, `*_acc` functions in nat.doxa can be rewritten to use
+clean `termination_by` annotations.
+
+## Dependency chain (0.9.0)
 
 ```
 Level 1: Infrastructure        [DONE ✓]
