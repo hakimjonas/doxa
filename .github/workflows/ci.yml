@@ -58,10 +58,9 @@ jobs:
 
       - name: doxa type-check (stdlib)
         run: |
-          # package.doxa files are re-export wrappers for the module system.
-          # They are not standalone checkable units — the actual declarations
-          # live in the flat stdlib files and are checked above.
-          for f in $(find lib/stdlib -name '*.doxa' -type f ! -name 'prelude.doxa' ! -name 'package.doxa'); do
+          # Int/package.doxa is excluded — match motive inference fails
+          # in import chains (separate bug, tracked for 0.8.x).
+          for f in $(find lib/stdlib -name '*.doxa' -type f ! -name 'prelude.doxa' ! -path '*/Int/package.doxa'); do
             /tmp/doxa check "$f" || exit 1
           done
 

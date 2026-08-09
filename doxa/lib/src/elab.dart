@@ -3718,9 +3718,6 @@ DeclResult _elabImpl(
   ]);
 
   // Generate synthetic name for the instance.
-  final instanceName = '_impl_$className';
-
-  // Determine target type for instance registration.
   final targetType = switch (typeclassRef.kind) {
     SAppKind(:final arg) => switch (arg.kind) {
       SIdentKind(:final name) => name,
@@ -3728,6 +3725,12 @@ DeclResult _elabImpl(
     },
     _ => '',
   };
+  final instanceName =
+      targetType.isNotEmpty
+          ? '_impl_${className}_$targetType'
+          : '_impl_$className';
+
+  // Determine target type for instance registration.
 
   return (
     bindings: [
@@ -3802,12 +3805,13 @@ DeclResult _processImport(
     var localBindings = const <TopBinding>[];
     var localDataDecls = const <DataDecl>[];
     var localNamespace = <String, Set<String>>{};
+    var localClassRegistry = <String, ClassInfo>{};
 
     for (final decl in prog.decls) {
       final runningEnv = TopEnv(
         [...topEnv.bindings, ...localBindings],
         [...topEnv.dataDecls, ...localDataDecls],
-        const {},
+        {...topEnv.classRegistry, ...localClassRegistry},
         mergeNamespace(topEnv.namespaceBindings, localNamespace),
       );
       final produced = _elabDecl(runningEnv, decl);
@@ -3821,12 +3825,13 @@ DeclResult _processImport(
       final checkEnv = TopEnv(
         checkBindings,
         [...topEnv.dataDecls, ...runningData],
-        const {},
+        {...topEnv.classRegistry, ...localClassRegistry},
         mergeNamespace(topEnv.namespaceBindings, localNamespace),
       );
       final finalized = checkDeclResult(checkEnv, produced);
       localBindings = [...localBindings, ...finalized];
       localDataDecls = runningData;
+      localClassRegistry = {...localClassRegistry, ...produced.classRegistry};
       localNamespace = mergeNamespace(
         localNamespace,
         produced.namespaceBindings,
@@ -3884,7 +3889,7 @@ DeclResult _processImport(
       dataDecls: localDataDecls,
       corecursiveGroup: null,
       metas: MetaContext()..semInfos = <SemInfo>[],
-      classRegistry: const {},
+      classRegistry: localClassRegistry,
       namespaceBindings: nsMap,
     );
   } finally {

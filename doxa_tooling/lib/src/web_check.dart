@@ -64,6 +64,7 @@ CheckOutput checkSourceOutput(
   var bindings = prelude.bindings;
   var dataDecls = prelude.dataDecls;
   var namespaceBindings = prelude.namespaceBindings;
+  var classRegistry = <String, ClassInfo>{};
   final declarations = <DeclInfo>[];
   final allSemInfos = <SemInfo>[];
   currentImportPath = filename;
@@ -91,23 +92,27 @@ CheckOutput checkSourceOutput(
 
     try {
       final produced = elabDecl(
-        TopEnv(bindings, dataDecls, const {}, namespaceBindings),
+        TopEnv(bindings, dataDecls, classRegistry, namespaceBindings),
         decl,
       );
       final runningData = [...dataDecls, ...produced.dataDecls];
-      // For import decls, expand the env to include the import's own
-      // bindings so checkDeclResult can verify cross-references within
-      // the imported module.
       final checkBindings =
           decl.kind is SImportKind
               ? [...bindings, ...produced.bindings]
               : bindings;
+      final checkClassRegistry = {...classRegistry, ...produced.classRegistry};
       final finalized = checkDeclResult(
-        TopEnv(checkBindings, runningData, const {}, namespaceBindings),
+        TopEnv(
+          checkBindings,
+          runningData,
+          checkClassRegistry,
+          namespaceBindings,
+        ),
         produced,
       );
       bindings = [...bindings, ...finalized];
       dataDecls = runningData;
+      classRegistry = checkClassRegistry;
       namespaceBindings = mergeNamespace(
         namespaceBindings,
         produced.namespaceBindings,

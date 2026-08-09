@@ -396,12 +396,10 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
           decl.kind is SImportKind
               ? [...bindings, ...produced.bindings]
               : bindings;
-      final runningEnv = TopEnv(
-        checkBindings,
-        runningData,
-        classRegistry,
-        namespaceBindings,
-      );
+      final runningEnv = TopEnv(checkBindings, runningData, {
+        ...classRegistry,
+        ...produced.classRegistry,
+      }, namespaceBindings);
       final finalized = checkDeclResult(runningEnv, produced);
       bindings = [...bindings, ...finalized];
       dataDecls = runningData;
