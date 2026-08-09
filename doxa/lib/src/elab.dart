@@ -3883,20 +3883,17 @@ DeclResult _processImport(
       );
       final produced = _elabDecl(runningEnv, decl);
       final runningData = [...localDataDecls, ...produced.dataDecls];
-      // For import decls inside the imported file, expand the env so
-      // checkDeclResult can verify cross-references within the import.
-      final checkBindings =
-          decl.kind is SImportKind
-              ? [...topEnv.bindings, ...localBindings, ...produced.bindings]
-              : [...topEnv.bindings, ...localBindings];
-      final checkEnv = TopEnv(
-        checkBindings,
-        [...topEnv.dataDecls, ...runningData],
-        {...topEnv.classRegistry, ...localClassRegistry},
-        mergeNamespace(topEnv.namespaceBindings, localNamespace),
-        importState,
+      // Use runningEnv as the check env, extended with produced.
+      final finalized = checkDeclResult(
+        TopEnv(
+          [...runningEnv.bindings, ...produced.bindings],
+          [...runningEnv.dataDecls, ...produced.dataDecls],
+          runningEnv.classRegistry,
+          runningEnv.namespaceBindings,
+          importState,
+        ),
+        produced,
       );
-      final finalized = checkDeclResult(checkEnv, produced);
       localBindings = [...localBindings, ...finalized];
       localDataDecls = runningData;
       localClassRegistry = {...localClassRegistry, ...produced.classRegistry};
