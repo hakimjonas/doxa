@@ -183,3 +183,9 @@ val sqrt2 : (n: Nat) -> (m: Nat) -> Eq Nat (square n) (mult two (square m)) -> E
 // t = succ v: descent
 // Transport h_t2_2u2: square t = 2*(square u)  ->  square (succ v) = 2*(square u)
 // Apply strong IH
+
+// --- gcd correctness --------------------------------------------------------
+
+// gcd_zero: gcd 0 n = n (definitional via match m { case zero => n }).
+
+val gcd_zero : (n: Nat) -> Eq Nat (gcd zero n) n = (n: Nat) => refl n
