@@ -16,19 +16,9 @@ library;
 
 import 'package:rumil/rumil.dart';
 
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'output.dart';
-import 'package:doxa/doxa.dart';
 import 'package:doxa/doxa.dart' show loadPrelude;
 import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
+import 'output.dart';
 
 /// Run the full pipeline and return the structured [CheckOutput].
 CheckOutput checkSourceOutput(

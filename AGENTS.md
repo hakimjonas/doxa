@@ -54,11 +54,32 @@ the kernel's actual behaviour.
 - Do not introduce new lints or warnings. Every `dart analyze` issue is a
   blocker.
 
-## Invariants
+## Pre-commit checklist
 
-- `dart analyze` clean in both packages before completing work
-- `dart format --set-exit-if-changed` clean in both packages
-- `dart test` all pass in both packages before completing work
-- `doxa check lib/stdlib/proofs.doxa` passes
-- `doxa check lib/stdlib/case_study.doxa` passes (when relevant)
-- No kernel or tooling code changes unless explicitly tasked
+Before staging or committing any change, run ALL of these from the
+repository root.  Do NOT commit if any check fails.
+
+```sh
+# 1. Dart static analysis (both packages)
+dart analyze  && (dart analyze)
+
+# 2. Dart formatter (both packages)
+dart format --set-exit-if-changed .  && (dart format --set-exit-if-changed .)
+
+# 3. Doxa checker on key stdlib files
+dart run doxa_tooling/bin/doxa.dart check lib/stdlib/nat.doxa
+dart run doxa_tooling/bin/doxa.dart check lib/stdlib/proofs.doxa
+dart run doxa_tooling/bin/doxa.dart check lib/stdlib/case_study.doxa
+
+# 4. Doxa formatter on ALL stdlib .doxa files
+find lib/stdlib -name '*.doxa' -exec dart run doxa_tooling/bin/doxa.dart fmt --check {} \;
+
+# 5. Kernel tests
+dart test
+
+# 6. Tooling tests
+dart test
+
+# Kernel and tooling directories shown before working-directory prefix.
+# --- doxa/ directory ---
+# --- doxa_tooling/ directory ---
