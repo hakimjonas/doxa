@@ -168,17 +168,25 @@ final class ReplSession {
   /// Accumulated namespace-qualified name index.
   final Map<String, Set<String>> namespaceBindings;
 
+  /// Import resolution state, persisted across REPL declarations.
+  ImportState _importState;
+
+  /// Returns the import state, initializing it lazily when needed.
+  ImportState get importState => _importState;
+
   /// Active proof session, or null when not in proof mode.
   final _ProofSession? proofState;
 
   /// Creates a REPL session, optionally seeded with [seedBindings]
   /// and [seedDataDecls] (e.g. the ambient prelude).
-  const ReplSession({
+  ReplSession({
     this.bindings = const <TopBinding>[],
     this.dataDecls = const <DataDecl>[],
     this.namespaceBindings = const {},
+    ImportState? importState,
     _ProofSession? proofState,
-  }) : this.proofState = proofState;
+  }) : _importState = importState ?? ImportState(),
+       this.proofState = proofState;
 
   /// Solve the current proof goal with [term], validating it first.
   void _solveMeta(_ProofSession ps, Term term) {
@@ -383,10 +391,16 @@ final class ReplSession {
   /// Process [decl] as a declaration: elaborate, check, return a new
   /// session with the declaration accumulated.
   ReplStep _processDecl(SDecl decl, String input) {
-    final topEnv = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
+    final topEnv = TopEnv(
+      bindings,
+      dataDecls,
+      const {},
+      namespaceBindings,
+      importState,
+    );
     // Set current import path to CWD so relative imports resolve.
-    final prevPath = currentImportPath;
-    currentImportPath = '${Directory.current.path}/repl.doxa';
+    final prevPath = importState.currentImportPath;
+    importState.currentImportPath = '${Directory.current.path}/repl.doxa';
     try {
       final produced = elabDecl(topEnv, decl);
       final runningData = [...dataDecls, ...produced.dataDecls];
@@ -401,6 +415,7 @@ final class ReplSession {
         runningData,
         const {},
         namespaceBindings,
+        importState,
       );
       final finalized = checkDeclResult(runningEnv, produced);
 
@@ -414,6 +429,7 @@ final class ReplSession {
         bindings: newBindings,
         dataDecls: newDataDecls,
         namespaceBindings: newNs,
+        importState: importState,
       );
 
       // Return the primary result: the first new binding, or the first
@@ -434,7 +450,7 @@ final class ReplSession {
       }
       return (const ReplDeclResult(name: '', type: ''), newSession);
     } finally {
-      currentImportPath = prevPath;
+      importState.currentImportPath = prevPath;
     }
   }
 

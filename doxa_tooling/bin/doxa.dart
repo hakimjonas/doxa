@@ -24,9 +24,8 @@ import 'package:doxa/doxa.dart' show loadPrelude;
 import 'package:doxa/doxa.dart' show AnsiColor;
 import 'package:doxa/doxa.dart'
     show
-        currentImportPath,
-        importedPaths,
         ClassInfo,
+        ImportState,
         elabDecl,
         checkDeclResult,
         declNames,
@@ -370,9 +369,10 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   var namespaceBindings = prelude.namespaceBindings;
   var classRegistry = <String, ClassInfo>{};
 
-  // Set the current file path so imports can resolve relative paths.
-  currentImportPath = source.filename;
-  importedPaths.clear();
+  // Set up import state so relative imports resolve correctly.
+  final importState = ImportState();
+  importState.currentImportPath = source.filename;
+  importState.importedPaths.clear();
 
   // Multi-error accumulator.
   final diagnostics = <String>[];
@@ -381,7 +381,13 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   final poisonedNames = <String>{};
 
   for (final decl in program.decls) {
-    final env = TopEnv(bindings, dataDecls, classRegistry, namespaceBindings);
+    final env = TopEnv(
+      bindings,
+      dataDecls,
+      classRegistry,
+      namespaceBindings,
+      importState,
+    );
     try {
       final produced = elabDecl(env, decl);
       // For recursive/mutual `fun` paths, `checkDeclResult` pre-scopes
@@ -396,10 +402,13 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
           decl.kind is SImportKind
               ? [...bindings, ...produced.bindings]
               : bindings;
-      final runningEnv = TopEnv(checkBindings, runningData, {
-        ...classRegistry,
-        ...produced.classRegistry,
-      }, namespaceBindings);
+      final runningEnv = TopEnv(
+        checkBindings,
+        runningData,
+        {...classRegistry, ...produced.classRegistry},
+        namespaceBindings,
+        importState,
+      );
       final finalized = checkDeclResult(runningEnv, produced);
       bindings = [...bindings, ...finalized];
       dataDecls = runningData;

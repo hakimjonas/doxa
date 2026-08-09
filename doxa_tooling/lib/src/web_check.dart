@@ -67,8 +67,9 @@ CheckOutput checkSourceOutput(
   var classRegistry = <String, ClassInfo>{};
   final declarations = <DeclInfo>[];
   final allSemInfos = <SemInfo>[];
-  currentImportPath = filename;
-  importedPaths.clear();
+  final importState = ImportState();
+  importState.currentImportPath = filename;
+  importState.importedPaths.clear();
 
   // Multi-error accumulator.
   final errors = <Map<String, dynamic>>[];
@@ -92,7 +93,13 @@ CheckOutput checkSourceOutput(
 
     try {
       final produced = elabDecl(
-        TopEnv(bindings, dataDecls, classRegistry, namespaceBindings),
+        TopEnv(
+          bindings,
+          dataDecls,
+          classRegistry,
+          namespaceBindings,
+          importState,
+        ),
         decl,
       );
       final runningData = [...dataDecls, ...produced.dataDecls];
@@ -107,6 +114,7 @@ CheckOutput checkSourceOutput(
           runningData,
           checkClassRegistry,
           namespaceBindings,
+          importState,
         ),
         produced,
       );
