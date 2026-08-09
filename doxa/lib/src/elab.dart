@@ -1152,6 +1152,29 @@ List<TopBinding> checkDeclResult(TopEnv topEnv, DeclResult result) {
   final metas = result.metas;
   final group = result.corecursiveGroup;
   if (group == null) {
+    // Pre-seed self-referencing bindings (termination_by funs that
+    // reference themselves via TTop).  Without this, checking the
+    // body fails because TTop(name) can't resolve to the binding
+    // being checked.
+    final needsStub = result.bindings.where((b) => b.isOpaque).toList();
+    if (needsStub.isNotEmpty) {
+      final baseCtx = _ctxWithMetas(topEnv.toCtx(), metas);
+      final stubs = <String, TopBindingEntry>{};
+      for (final b in needsStub) {
+        final typeV = eval(b.type, baseCtx.env);
+        stubs[b.name] = TopBindingEntry(
+          typeV,
+          VNeutral(NTop(b.name)),
+          isOpaque: true,
+        );
+      }
+      final ctx = _ctxWithTopBindings(baseCtx, stubs, metas: metas);
+      for (final binding in result.bindings) {
+        final expectedV = eval(binding.type, ctx.env);
+        check(ctx, binding.term, expectedV);
+      }
+      return _finalizeDeclBindings(result.bindings, metas);
+    }
     for (final binding in result.bindings) {
       final ctx = _ctxWithMetas(topEnv.toCtx(), metas);
       check(ctx, binding.term, eval(binding.type, ctx.env));
@@ -4085,6 +4108,17 @@ TopBinding _elabFun(
             )
             : m.fun;
     elaborated.add(_elabFun(scratchEnv, m.span, fun, metas: metas));
+    // Mark termination_by bindings as opaque so checkDeclResult
+    // pre-seeds them as stubs during checking.
+    if (fun.terminationBy != null) {
+      elaborated.last = TopBinding(
+        name: elaborated.last.name,
+        type: elaborated.last.type,
+        term: elaborated.last.term,
+        span: elaborated.last.span,
+        isOpaque: true,
+      );
+    }
   }
 
   // Decide whether the block contains any actual recursion. If
