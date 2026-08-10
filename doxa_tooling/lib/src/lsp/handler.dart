@@ -7,7 +7,6 @@ library;
 
 import '../output.dart';
 import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
 import '../web_check.dart';
 import '../format.dart' show formatSource;
 import 'protocol.dart';
@@ -41,7 +40,7 @@ final class LspHandler {
 
     switch (method) {
       case 'initialize':
-        return _handleInitialize(id as int);
+        return _handleInitialize(id);
 
       case 'textDocument/didOpen':
         _handleDidOpen(params!);
@@ -56,34 +55,34 @@ final class LspHandler {
         return null;
 
       case 'textDocument/hover':
-        return _handleHover(id as int, params!);
+        return _handleHover(id, params!);
 
       case 'textDocument/definition':
-        return _handleDefinition(id as int, params!);
+        return _handleDefinition(id, params!);
 
       case 'textDocument/completion':
-        return _handleCompletion(id as int, params!);
+        return _handleCompletion(id, params!);
 
       case 'textDocument/semanticTokens/full':
-        return _handleSemanticTokens(id as int, params!);
+        return _handleSemanticTokens(id, params!);
 
       case 'textDocument/references':
-        return _handleReferences(id as int, params!);
+        return _handleReferences(id, params!);
 
       case 'textDocument/rename':
-        return _handleRename(id as int, params!);
+        return _handleRename(id, params!);
 
       case 'textDocument/documentSymbol':
-        return _handleDocumentSymbol(id as int, params!);
+        return _handleDocumentSymbol(id, params!);
 
       case 'textDocument/signatureHelp':
-        return _handleSignatureHelp(id as int, params!);
+        return _handleSignatureHelp(id, params!);
 
       case 'textDocument/codeLens':
-        return _handleCodeLens(id as int, params!);
+        return _handleCodeLens(id, params!);
 
       case 'textDocument/formatting':
-        return _handleFormatting(id as int, params!);
+        return _handleFormatting(id, params!);
 
       case 'shutdown':
         return {'jsonrpc': '2.0', 'id': id, 'result': null};
@@ -99,7 +98,7 @@ final class LspHandler {
   }
 
   /// Handle `initialize`.
-  Map<String, dynamic> _handleInitialize(int id) => {
+  Map<String, dynamic> _handleInitialize(Object? id) => {
     'jsonrpc': '2.0',
     'id': id,
     'result': {
@@ -163,7 +162,7 @@ final class LspHandler {
   }
 
   /// Handle `textDocument/hover`.
-  Map<String, dynamic> _handleHover(int id, Map<String, dynamic> params) {
+  Map<String, dynamic> _handleHover(Object? id, Map<String, dynamic> params) {
     final result = _buildResult(id, params, (offset) {
       final info = _infoAt(offset);
       if (info == null) return null;
@@ -185,7 +184,10 @@ final class LspHandler {
   }
 
   /// Handle `textDocument/definition`.
-  Map<String, dynamic> _handleDefinition(int id, Map<String, dynamic> params) {
+  Map<String, dynamic> _handleDefinition(
+    Object? id,
+    Map<String, dynamic> params,
+  ) {
     final result = _buildResult(id, params, (offset) {
       final info = _infoAt(offset);
       if (info?.defSpan == null) return null;
@@ -209,7 +211,10 @@ final class LspHandler {
   }
 
   /// Handle `textDocument/completion`.
-  Map<String, dynamic> _handleCompletion(int id, Map<String, dynamic> params) {
+  Map<String, dynamic> _handleCompletion(
+    Object? id,
+    Map<String, dynamic> params,
+  ) {
     final offset = _offsetFromParams(params);
     // Extract the word prefix the user has typed up to the cursor.
     final prefix = _wordPrefixAt(offset);
@@ -260,7 +265,7 @@ final class LspHandler {
 
   /// Handle `textDocument/semanticTokens/full`.
   Map<String, dynamic> _handleSemanticTokens(
-    int id,
+    Object? id,
     Map<String, dynamic> params,
   ) {
     if (_lastSuccess == null) {
@@ -328,7 +333,10 @@ final class LspHandler {
       };
 
   /// Handle `textDocument/references`.
-  Map<String, dynamic> _handleReferences(int id, Map<String, dynamic> params) {
+  Map<String, dynamic> _handleReferences(
+    Object? id,
+    Map<String, dynamic> params,
+  ) {
     final result = _buildResult(id, params, (offset) {
       final info = _infoAt(offset);
       if (info == null) return null;
@@ -338,7 +346,7 @@ final class LspHandler {
   }
 
   /// Handle `textDocument/rename`.
-  Map<String, dynamic> _handleRename(int id, Map<String, dynamic> params) {
+  Map<String, dynamic> _handleRename(Object? id, Map<String, dynamic> params) {
     final newName = params['newName'] as String?;
     if (newName == null || newName.isEmpty) {
       return {
@@ -366,7 +374,7 @@ final class LspHandler {
   ///
   /// Returns a flat list of symbols for all top-level declarations.
   Map<String, dynamic> _handleDocumentSymbol(
-    int id,
+    Object? id,
     Map<String, dynamic> params,
   ) {
     if (_lastSuccess == null) {
@@ -416,7 +424,7 @@ final class LspHandler {
   /// to determine which function is being called, looks up its type, and
   /// extracts the parameter signature.
   Map<String, dynamic> _handleSignatureHelp(
-    int id,
+    Object? id,
     Map<String, dynamic> params,
   ) {
     final offset = _offsetFromParams(params);
@@ -493,7 +501,10 @@ final class LspHandler {
   /// Handle `textDocument/codeLens`.
   ///
   /// Returns one code lens per top-level declaration showing its type.
-  Map<String, dynamic> _handleCodeLens(int id, Map<String, dynamic> params) {
+  Map<String, dynamic> _handleCodeLens(
+    Object? id,
+    Map<String, dynamic> params,
+  ) {
     if (_lastSuccess == null) {
       return {'jsonrpc': '2.0', 'id': id, 'result': <Map<String, dynamic>>[]};
     }
@@ -522,7 +533,10 @@ final class LspHandler {
   ///
   /// Delegates to the formatter library and returns a single text edit
   /// replacing the whole document.
-  Map<String, dynamic> _handleFormatting(int id, Map<String, dynamic> params) {
+  Map<String, dynamic> _handleFormatting(
+    Object? id,
+    Map<String, dynamic> params,
+  ) {
     try {
       final formatted = formatSource(_documentText);
       final edit = LspTextEdit(
@@ -769,7 +783,7 @@ final class LspHandler {
   /// Build a result by extracting the offset from [params] and applying
   /// [builder], returning null when [builder] returns null.
   T? _buildResult<T>(
-    int id,
+    Object? id,
     Map<String, dynamic> params,
     T? Function(int offset) builder,
   ) {

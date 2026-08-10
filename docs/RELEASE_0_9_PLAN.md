@@ -1,7 +1,7 @@
-# Doxa Release Plan (0.8.x → 0.9.0)
+# Doxa Release Plan (post-0.8.x)
 
-> Target: first public release with verified theorems, competitive tooling.
-> 2026-08-09: 0.8.1 merged. Fuel desugaring in progress on 0.8.2.
+> All feature work ships in 0.8.x. 0.9.x is refinement, bug fixes, and polish.
+> See `docs/RELEASE_0_8_PLAN.md` for the 0.8.x feature roadmap.
 
 ## 0.8.1 — Shipped ✓
 
@@ -44,7 +44,7 @@ by using a different recursor typing for `Acc`.  Changing Doxa's
 recursor synthesis to match would be a kernel-level change with
 implications for all inductive types; this is deferred.
 
-## 0.8.2 — Fuel desugaring (computability)
+## 0.8.2 — Fuel desugaring (computability) ✓
 
 For every `fun f(args): T termination_by (x) = body`, the elaborator
 emits two bindings:
@@ -69,14 +69,19 @@ termination_by (a) = match a { ... }`.
 ### Known limitations
 
 - Mutual blocks (`fun f ... and g ...`) where one member has
-  `termination_by` require the stdlib to restructure the mutual
-  recursion.  `strong_ind_impl` in `proofs.doxa` is affected (it is
-  mutual with `strong_ind_impl_help`).  The helper can be
-  parameterised to receive the induction function explicitly,
-  breaking the mutual dependency.
+  `termination_by` keep existing opaque behaviour.  Single-function
+  `termination_by` is fully desugared.
 
-- `_elabFunBlock` pass-2 guarded loop must skip fuel-generated
-  bindings (they are not block members).  Stub: check `b.name.endsWith('_fuel')`.
+- `strong_ind_impl` in `proofs.doxa` is in a mutual block with
+  `strong_ind_impl_help`.  Restructuring the helper to receive the
+  induction function explicitly would make `strong_ind_impl` a
+  standalone `termination_by` function that fuel desugaring handles
+  directly.  This is blocked by a pre-existing parser edge case
+  (deeply nested Pi types after `{struct}` functions) that needs
+  its own investigation.
+
+- Multi-parameter `termination_by` (lexicographic) is deferred to
+  0.9.0.
 
 ## Dependency chain (0.9.0)
 
