@@ -835,9 +835,13 @@ final Parser<ParseError, SDecl> _valDecl = position<ParseError>().flatMap(
     (isOpaque) => _keyword('val')
         .skipThen(_ident)
         .flatMap(
-          (name) => _sym(':')
-              .skipThen(_expr)
-              .optional
+          (name) => _sym(':').optional
+              .flatMap((colon) {
+                if (colon == null) {
+                  return succeed<ParseError, SExpr?>(null);
+                }
+                return _expr;
+              })
               .flatMap(
                 (type) => _sym('=')
                     .skipThen(_expr.zip(position<ParseError>()))
@@ -1393,9 +1397,19 @@ final Parser<ParseError, SDecl> _decl =
     _typeDecl |
     _funDecl;
 
-/// A program: leading whitespace, declarations, trailing whitespace, eof.
+/// Parse zero or more declarations until EOF, preserving the furthest parse
+/// position from failed declarations. Unlike [_decl.many], when a declaration
+/// fails partway through the [_decl] parser (e.g. due to an invalid character),
+/// the failure's [Location] is kept by the [_or] combinator's position
+/// comparison so diagnostics cite the actual problem rather than the start of
+/// the declaration.
+final Parser<ParseError, List<SDecl>> _programDecls = defer(
+  () => _decl
+      .flatMap((first) => _programDecls.map((rest) => [first, ...rest]))
+      .or(_ws.skipThen(eof()).map((_) => <SDecl>[])),
+);
+
+/// A program: leading whitespace, declarations, eof.
 final Parser<ParseError, SProgram> _program = _ws
-    .skipThen(_decl.many)
-    .thenSkip(_ws)
-    .thenSkip(eof())
+    .skipThen(_programDecls)
     .map(SProgram.new);

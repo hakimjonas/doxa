@@ -50,8 +50,41 @@ String reportParseFailure(
   sb.writeln(
     '  at ${source.filename}:${failure.furthest.line}:${failure.furthest.column}',
   );
+  bool _isDoxaChar(int cp) =>
+      (cp >= 65 && cp <= 90) || // A-Z
+      (cp >= 97 && cp <= 122) || // a-z
+      cp == 95 || // _
+      (cp >= 48 && cp <= 57) || // 0-9
+      cp == 40 ||
+      cp == 41 || // ( )
+      cp == 123 ||
+      cp == 125 || // { }
+      cp == 58 || // :
+      cp == 61 || // =
+      cp == 44 || // ,
+      cp == 46 || // .
+      cp == 45 || // - (for ->)
+      cp == 47 || // / (comments)
+      cp == 32 ||
+      cp == 10 ||
+      cp == 9 ||
+      cp == 13; // whitespace
+
   for (final e in failure.errors) {
-    sb.writeln('  $e');
+    final msg = '$e';
+    sb.writeln('  $msg');
+  }
+  // Inspect the character at the deepest failure position. If it is not
+  // a valid Doxa start character, the error was likely caused by a
+  // stray character the user intended as part of an identifier or
+  // expression. This is position-driven — independent of whatever rumil
+  // error message was produced.
+  final offset = failure.furthest.offset;
+  if (offset < source.text.length) {
+    final ch = source.text[offset];
+    if (!_isDoxaChar(ch.codeUnitAt(0))) {
+      sb.writeln('  note: «$ch» is not a valid character in Doxa');
+    }
   }
   return sb.toString();
 }
