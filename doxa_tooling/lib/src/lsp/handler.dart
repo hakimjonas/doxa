@@ -90,6 +90,20 @@ final class LspHandler {
       case 'textDocument/formatting':
         return _handleFormatting(id, params!);
 
+      case 'textDocument/foldingRange':
+        return _handleFoldingRange(id, params!);
+
+      case '\$/cancelRequest':
+        return null; // Acknowledged; full cancellation support deferred.
+
+      case 'workspace/didChangeConfiguration':
+        return null; // Acknowledged; no configuration to consume yet.
+
+      case 'workspace/didChangeWatchedFiles':
+        // Re-check on external file changes.
+        _checkAndPublish();
+        return null;
+
       case 'shutdown':
         return {'jsonrpc': '2.0', 'id': id, 'result': null};
 
@@ -120,6 +134,7 @@ final class LspHandler {
         'documentSymbolProvider': true,
         'codeLensProvider': <String, dynamic>{'resolveProvider': false},
         'documentFormattingProvider': true,
+        'foldingRangeProvider': true,
         'signatureHelpProvider': <String, dynamic>{
           'triggerCharacters': ['(', ','],
         },
@@ -139,6 +154,7 @@ final class LspHandler {
         },
       },
       'serverInfo': {'name': 'doxa-lsp', 'version': '0.8.2'},
+      'positionEncoding': 'utf-16',
     },
   };
 
@@ -601,6 +617,97 @@ final class LspHandler {
     } catch (e) {
       return {'jsonrpc': '2.0', 'id': id, 'result': <Map<String, dynamic>>[]};
     }
+  }
+
+  /// Handle `textDocument/foldingRange`.
+  ///
+  /// Returns foldable regions: consecutive import lines, data type
+  /// definitions, function bodies, and match arms.
+  Map<String, dynamic> _handleFoldingRange(
+    Object? id,
+    Map<String, dynamic> params,
+  ) {
+    final folds = <LspFoldingRange>[];
+    final lines = _documentText.split('\n');
+    var i = 0;
+    var importStart = -1;
+
+    while (i < lines.length) {
+      final trimmed = lines[i].trimLeft();
+
+      // Consecutive import declarations.
+      if (trimmed.startsWith('import ')) {
+        if (importStart < 0) importStart = i;
+        i++;
+        continue;
+      }
+      if (importStart >= 0 && i - importStart >= 2) {
+        folds.add(
+          LspFoldingRange(
+            startLine: importStart,
+            endLine: i - 1,
+            kind: 'imports',
+          ),
+        );
+      }
+      importStart = -1;
+
+      // Multi-line declarations: data, fun, typeclass, impl, match.
+      if (trimmed.startsWith('data ') ||
+          trimmed.startsWith('fun ') ||
+          trimmed.startsWith('typeclass ') ||
+          trimmed.startsWith('impl ') ||
+          trimmed.startsWith('match ') ||
+          trimmed.startsWith('val ') && trimmed.contains('={')) {
+        final startLine = i;
+        // Find the matching closing brace.
+        var depth = 0;
+        var started = false;
+        while (i < lines.length) {
+          for (var j = 0; j < lines[i].length; j++) {
+            if (lines[i][j] == '{') {
+              depth++;
+              started = true;
+            } else if (lines[i][j] == '}') {
+              depth--;
+            }
+          }
+          i++;
+          if (started && depth == 0) break;
+        }
+        if (i - startLine >= 2) {
+          folds.add(
+            LspFoldingRange(startLine: startLine, endLine: i - 1, kind: 'region'),
+          );
+        }
+        continue;
+      }
+
+      // Block comments spanning multiple lines.
+      if (trimmed.contains('/*') && !trimmed.contains('*/')) {
+        final startLine = i;
+        while (i < lines.length && !lines[i].contains('*/')) i++;
+        if (i < lines.length) i++;
+        if (i - startLine >= 2) {
+          folds.add(
+            LspFoldingRange(
+              startLine: startLine,
+              endLine: i - 1,
+              kind: 'comment',
+            ),
+          );
+        }
+        continue;
+      }
+
+      i++;
+    }
+
+    return {
+      'jsonrpc': '2.0',
+      'id': id,
+      'result': [for (final f in folds) f.toJson()],
+    };
   }
 
   /// The position at the very end of the document.

@@ -5,8 +5,7 @@ import com.intellij.ide.util.treeView.smartTree.*
 import com.intellij.lang.PsiStructureViewFactory
 import com.intellij.navigation.ItemPresentation
 import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.fileEditor.FileEditor
-import com.intellij.openapi.project.Project
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.psi.PsiFile
 import javax.swing.Icon
 
@@ -23,38 +22,56 @@ class DoxaStructureViewFactory : PsiStructureViewFactory {
 class DoxaStructureViewModel(
     editor: Editor?,
     file: PsiFile,
-) : StructureViewModelBase(file, editor, DoxaStructureViewElement(file)),
+) : StructureViewModelBase(file, editor, DoxaStructureViewElement(file, null, "")),
     StructureViewModel.ElementInfoProvider {
 
     override fun getSorters() = arrayOf<Sorter>()
     override fun getFilters() = arrayOf<Filter>()
-
     override fun isAlwaysShowsPlus(element: StructureViewTreeElement) = false
-    override fun isAlwaysLeaf(element: StructureViewTreeElement) = false
+    override fun isAlwaysLeaf(element: StructureViewTreeElement) = element is DoxaStructureViewElement && (element as DoxaStructureViewElement).isLeaf
 }
 
-class DoxaStructureViewElement(private val file: PsiFile) : StructureViewTreeElement {
-    private val children: List<DoxaSymbolElement> by lazy { loadSymbols() }
+class DoxaStructureViewElement(
+    private val file: PsiFile,
+    private val parentRange: com.intellij.openapi.util.TextRange?,
+    private val name: String,
+) : StructureViewTreeElement {
 
-    override fun getValue() = file
+    val isLeaf: Boolean get() = name.isNotEmpty()
+
+    private val children: List<DoxaStructureViewElement> by lazy {
+        if (name.isNotEmpty()) {
+            // Named symbols are leaf nodes.
+            emptyList()
+        } else {
+            loadSymbols()
+        }
+    }
+
+    override fun getValue() = this
     override fun getChildren(): Array<TreeElement> = children.toTypedArray()
 
     override fun getPresentation(): ItemPresentation = object : ItemPresentation {
-        override fun getPresentableText() = file.name
+        override fun getPresentableText() = name.ifEmpty { file.name }
         override fun getIcon(unused: Boolean) = null
         override fun getLocationString() = null
     }
 
-    override fun navigate(requestFocus: Boolean) {}
-    override fun canNavigate() = false
-    override fun canNavigateToSource() = false
+    override fun navigate(requestFocus: Boolean) {
+        val offset = parentRange?.startOffset ?: 0
+        OpenFileDescriptor(file.project, file.virtualFile, offset).navigate(requestFocus)
+    }
 
-    private fun loadSymbols(): List<DoxaSymbolElement> {
+    override fun canNavigate() = true
+    override fun canNavigateToSource() = true
+
+    private fun loadSymbols(): List<DoxaStructureViewElement> {
         val connector = DoxaLspService.getInstance(file.project).connector
         if (!connector.isRunning) return emptyList()
 
         val virtualFile = file.virtualFile ?: return emptyList()
         val uri = virtualFile.url
+        val document = file.viewProvider.document ?: return emptyList()
 
         val params = mapOf("textDocument" to mapOf("uri" to uri))
         return try {
@@ -64,28 +81,31 @@ class DoxaStructureViewElement(private val file: PsiFile) : StructureViewTreeEle
                 val sym = s as? Map<*, *> ?: return@mapNotNull null
                 val name = sym["name"] as? String ?: return@mapNotNull null
                 val detail = sym["detail"] as? String ?: ""
-                DoxaSymbolElement(name, detail)
+                val range = sym["range"] as? Map<*, *>
+                val start = range?.get("start") as? Map<*, *>
+                val line = (start?.get("line") as? Number)?.toInt() ?: 0
+                val char = (start?.get("character") as? Number)?.toInt() ?: 0
+                val offset = offsetFor(document.text, line, char)
+                DoxaStructureViewElement(file, com.intellij.openapi.util.TextRange(offset, offset + name.length), "$name $detail")
             }
         } catch (_: Exception) {
             emptyList()
         }
     }
-}
 
-class DoxaSymbolElement(
-    private val name: String,
-    private val detail: String,
-) : StructureViewTreeElement {
-    override fun getValue() = this
-    override fun getChildren(): Array<TreeElement> = emptyArray()
-
-    override fun getPresentation(): ItemPresentation = object : ItemPresentation {
-        override fun getPresentableText() = name
-        override fun getLocationString() = detail
-        override fun getIcon(unused: Boolean) = null
+    companion object {
+        private fun offsetFor(text: String, line: Int, character: Int): Int {
+            var cl = 0
+            var off = 0
+            while (off < text.length && cl < line) {
+                if (text[off] == '\n') cl++
+                else if (text[off] == '\r') {
+                    if (off + 1 < text.length && text[off + 1] == '\n') off++
+                    cl++
+                }
+                off++
+            }
+            return (off + character).coerceIn(0, text.length)
+        }
     }
-
-    override fun navigate(requestFocus: Boolean) {}
-    override fun canNavigate() = false
-    override fun canNavigateToSource() = false
 }

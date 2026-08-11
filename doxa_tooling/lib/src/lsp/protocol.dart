@@ -480,3 +480,35 @@ final class LspCommand {
     if (arguments != null) 'arguments': arguments,
   };
 }
+
+/// A folding range as defined by LSP.
+final class LspFoldingRange {
+  /// Start line (0-based).
+  final int startLine;
+
+  /// End line (0-based).
+  final int endLine;
+
+  /// Optional kind: `"comment"`, `"imports"`, or `"region"`.
+  final String? kind;
+
+  /// Whether the end character is exclusive.
+  final int? startCharacter;
+  final int? endCharacter;
+
+  const LspFoldingRange({
+    required this.startLine,
+    required this.endLine,
+    this.kind,
+    this.startCharacter,
+    this.endCharacter,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'startLine': startLine,
+    'endLine': endLine,
+    if (kind != null) 'startCharacter': startCharacter,
+    if (endCharacter != null) 'endCharacter': endCharacter,
+    if (kind != null) 'kind': kind,
+  };
+}
