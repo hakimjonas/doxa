@@ -21,6 +21,10 @@
         extensions="doxa"
         implementationClass="doxa.lang.DoxaFileType"/>
 
+    <lang.parserDefinition
+        language="Doxa"
+        implementationClass="doxa.lang.DoxaParserDefinition"/>
+
     <applicationService
         serviceImplementation="doxa.lang.DoxaSettings"/>
 
