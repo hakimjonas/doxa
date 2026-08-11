@@ -44,8 +44,7 @@ class DoxaExternalAnnotator : ExternalAnnotator<PsiFile, DoxaExternalAnnotator.A
         val connector = DoxaLspService.getInstance(file.project).connector
         if (!connector.isRunning) return AnnotatorResult(emptyList(), emptyList())
 
-        connector.didChange(uri, text)
-
+        // Register listeners FIRST, then trigger didChange so we don't miss fast responses.
         val diags = mutableListOf<Diag>()
         connector.onNotification("textDocument/publishDiagnostics") { params ->
             val diagUri = params["uri"] as? String
@@ -74,17 +73,19 @@ class DoxaExternalAnnotator : ExternalAnnotator<PsiFile, DoxaExternalAnnotator.A
             }
         }
 
-        // Fetch semantic tokens for syntax highlighting.
+        // Now trigger the server to re-check.
+        connector.didChange(uri, text)
+
+        // Fetch semantic tokens.
         val highlights = mutableListOf<TokenHighlight>()
         try {
             val legend = (connector.serverCapabilities?.get("semanticTokensProvider") as? Map<*, *>)
                 ?.get("legend") as? Map<*, *>
             val tokenTypes = legend?.get("tokenTypes") as? List<*> ?: emptyList<Any>()
 
-            val semParams = mapOf(
+            val semResponse = connector.sendRequestBlocking("textDocument/semanticTokens/full", mapOf(
                 "textDocument" to mapOf("uri" to uri),
-            )
-            val semResponse = connector.sendRequestBlocking("textDocument/semanticTokens/full", semParams)
+            ))
             val data = semResponse["data"] as? List<*> ?: emptyList<Any>()
             if (data.isNotEmpty()) {
                 var prevLine = 0
@@ -97,12 +98,10 @@ class DoxaExternalAnnotator : ExternalAnnotator<PsiFile, DoxaExternalAnnotator.A
                     val typeIdx = (data[idx++] as? Number)?.toInt() ?: 0
                     val modBits = (data[idx++] as? Number)?.toInt() ?: 0
 
-                    val line = if (dLine == 0) prevLine + dLine else prevLine + dLine
-                    val char = if (dChar == 0 && dLine == 0) prevChar + dChar else dChar
-
+                    val line = prevLine + dLine
+                    val char = if (dLine == 0) prevChar + dChar else dChar
                     val startOffset = offsetFor(text, line, char)
                     val endOffset = (startOffset + length).coerceAtMost(text.length)
-
                     val tokenType = if (typeIdx in tokenTypes.indices) tokenTypes[typeIdx] as? String ?: "" else ""
 
                     if (length > 0 && tokenType.isNotEmpty()) {
@@ -114,7 +113,6 @@ class DoxaExternalAnnotator : ExternalAnnotator<PsiFile, DoxaExternalAnnotator.A
                             )
                         )
                     }
-
                     prevLine = line
                     prevChar = char
                 }
@@ -122,6 +120,7 @@ class DoxaExternalAnnotator : ExternalAnnotator<PsiFile, DoxaExternalAnnotator.A
         } catch (_: Exception) {
         }
 
+        // Brief wait for async diagnostics to arrive.
         Thread.sleep(300)
         return AnnotatorResult(diagnostics = diags, highlights = highlights)
     }
