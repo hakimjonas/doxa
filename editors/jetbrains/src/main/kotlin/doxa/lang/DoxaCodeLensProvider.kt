@@ -14,10 +14,8 @@ class DoxaCodeLensProvider : CodeVisionProvider<Void> {
     override val defaultAnchor = CodeVisionAnchorKind.Top
     override val relativeOrderings = emptyList<CodeVisionRelativeOrdering>()
 
-    override fun precomputeOnUiThread(editor: Editor): Void {
-        @Suppress("UNCHECKED_CAST")
-        return Unit as Void
-    }
+    @Suppress("UNCHECKED_CAST")
+    override fun precomputeOnUiThread(editor: Editor): Void = null as Void
 
     override fun computeForEditor(editor: Editor, uiData: Void): List<Pair<TextRange, CodeVisionEntry>> {
         val project = editor.project ?: return emptyList()
