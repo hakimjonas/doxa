@@ -28,14 +28,17 @@ class DoxaLspConnector(private val project: Project) {
     fun start() {
         if (isRunning) return
         isRunning = true
+        LOG.info("Starting Doxa language server...")
 
         executor.submit {
             try {
                 val binaryPath = DoxaSettings.instance.binaryPath.ifEmpty { "doxa" }
+                LOG.info("Spawning: $binaryPath lsp")
                 val commandLine = GeneralCommandLine(binaryPath, "lsp")
                     .withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.CONSOLE)
 
                 process = commandLine.createProcess()
+                LOG.info("Server process started, setting up transport")
                 val t = DoxaLspTransport(process!!.inputStream, process!!.outputStream)
                 transport = t
                 t.addListener { message -> handleMessage(message) }
@@ -47,11 +50,13 @@ class DoxaLspConnector(private val project: Project) {
                     "capabilities" to emptyMap<String, Any>(),
                 ))
                 serverCapabilities = (result["capabilities"] as? Map<String, Any?>)
+                LOG.info("Server initialized, caps: ${serverCapabilities?.keys?.joinToString()}")
 
                 sendNotification("initialized", emptyMap<String, Any>())
                 sendNotification("workspace/didChangeConfiguration", mapOf(
                     "settings" to emptyMap<String, Any>(),
                 ))
+                LOG.info("Doxa LSP server ready")
             } catch (e: Exception) {
                 LOG.warn("Failed to start Doxa language server", e)
                 isRunning = false

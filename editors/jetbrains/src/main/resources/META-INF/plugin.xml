@@ -79,13 +79,6 @@
   <extensions defaultExtensionNs="com.intellij">
     <renameHandler
         implementation="doxa.lang.DoxaRenameHandler"/>
-
-    <!-- codeInsight.codeVisionProvider deferred:
-         precomputeOnUiThread returns java.lang.Void which
-         Kotlin cannot safely override without a Java bridge.
-    <codeInsight.codeVisionProvider
-        implementation="doxa.lang.DoxaCodeLensProvider"/>
-    -->
   </extensions>
 
   <projectListeners>

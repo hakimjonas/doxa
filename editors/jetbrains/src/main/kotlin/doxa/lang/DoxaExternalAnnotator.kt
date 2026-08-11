@@ -14,12 +14,18 @@ class DoxaExternalAnnotator : ExternalAnnotator<PsiFile, DoxaExternalAnnotator.A
     data class AnnotatorResult(
         val diagnostics: List<Diag>,
         val highlights: List<TokenHighlight>,
+        val lenses: List<LensData>,
     )
 
     data class Diag(
         val range: TextRange,
         val message: String,
         val severity: Int,
+    )
+
+    data class LensData(
+        val range: TextRange,
+        val text: String,
     )
 
     data class TokenHighlight(
@@ -36,13 +42,13 @@ class DoxaExternalAnnotator : ExternalAnnotator<PsiFile, DoxaExternalAnnotator.A
     }
 
     override fun doAnnotate(file: PsiFile): AnnotatorResult {
-        val virtualFile = file.virtualFile ?: return AnnotatorResult(emptyList(), emptyList())
-        val document = PsiDocumentManager.getInstance(file.project).getDocument(file) ?: return AnnotatorResult(emptyList(), emptyList())
+        val virtualFile = file.virtualFile ?: return AnnotatorResult(emptyList(), emptyList(), emptyList())
+        val document = PsiDocumentManager.getInstance(file.project).getDocument(file) ?: return AnnotatorResult(emptyList(), emptyList(), emptyList())
         val uri = virtualFile.url
         val text = document.text
 
         val connector = DoxaLspService.getInstance(file.project).connector
-        if (!connector.isRunning) return AnnotatorResult(emptyList(), emptyList())
+        if (!connector.isRunning) return AnnotatorResult(emptyList(), emptyList(), emptyList())
 
         // Register listeners FIRST, then trigger didChange so we don't miss fast responses.
         val diags = mutableListOf<Diag>()
@@ -120,9 +126,29 @@ class DoxaExternalAnnotator : ExternalAnnotator<PsiFile, DoxaExternalAnnotator.A
         } catch (_: Exception) {
         }
 
-        // Brief wait for async diagnostics to arrive.
+        // Fetch code lens.
+        val lenses = mutableListOf<LensData>()
+        try {
+            val lensResponse = connector.sendRequestBlocking("textDocument/codeLens", mapOf(
+                "textDocument" to mapOf("uri" to uri),
+            ))
+            val lensData = lensResponse as? List<*> ?: emptyList<Any>()
+            for (l in lensData) {
+                val lens = l as? Map<*, *> ?: continue
+                val range = lens["range"] as? Map<*, *> ?: continue
+                val start = range["start"] as? Map<*, *> ?: continue
+                val line = (start["line"] as? Number)?.toInt() ?: 0
+                val char = (start["character"] as? Number)?.toInt() ?: 0
+                val command = lens["command"] as? Map<*, *>
+                val title = command?.get("title") as? String ?: continue
+                val offset = offsetFor(text, line, char)
+                lenses.add(LensData(range = TextRange(offset, offset), text = title))
+            }
+        } catch (_: Exception) {
+        }
+
         Thread.sleep(300)
-        return AnnotatorResult(diagnostics = diags, highlights = highlights)
+        return AnnotatorResult(diagnostics = diags, highlights = highlights, lenses = lenses)
     }
 
     override fun apply(file: PsiFile, annotationResult: AnnotatorResult, holder: AnnotationHolder) {
@@ -144,6 +170,12 @@ class DoxaExternalAnnotator : ExternalAnnotator<PsiFile, DoxaExternalAnnotator.A
             holder.newSilentAnnotation(HighlightSeverity.INFORMATION)
                 .range(hl.range)
                 .textAttributes(attrKey)
+                .create()
+        }
+
+        for (lens in annotationResult.lenses) {
+            holder.newAnnotation(HighlightSeverity.INFORMATION, lens.text)
+                .range(lens.range)
                 .create()
         }
     }
