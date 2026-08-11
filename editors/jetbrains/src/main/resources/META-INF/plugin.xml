@@ -13,11 +13,8 @@
 
   <depends>com.intellij.modules.platform</depends>
   <depends>com.intellij.modules.lang</depends>
-  <depends>com.intellij.textmate</depends>
 
   <extensions defaultExtensionNs="com.intellij">
-    <additionalTextMateBundle file="textmate/doxa.tmLanguage.json"/>
-
     <fileType
         name="Doxa"
         language="Doxa"
@@ -70,6 +67,9 @@
     <lang.psiStructureViewFactory
         language="Doxa"
         implementationClass="doxa.lang.DoxaStructureViewFactory"/>
+
+    <highlightVisitor
+        implementation="doxa.lang.DoxaHighlightVisitor"/>
   </extensions>
 
   <extensions defaultExtensionNs="com.intellij">
