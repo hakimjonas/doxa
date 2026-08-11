@@ -72,6 +72,14 @@
         implementationClass="doxa.lang.DoxaStructureViewFactory"/>
   </extensions>
 
+  <extensions defaultExtensionNs="com.intellij">
+    <renameHandler
+        implementation="doxa.lang.DoxaRenameHandler"/>
+
+    <codeInsight.codeVisionProvider
+        implementation="doxa.lang.DoxaCodeLensProvider"/>
+  </extensions>
+
   <projectListeners>
     <listener
         class="doxa.lang.DoxaProjectListener"
