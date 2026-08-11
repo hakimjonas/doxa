@@ -21,7 +21,6 @@ class DoxaDocumentationProvider : AbstractDocumentationProvider() {
         connector.ensureFileSent(uri, document.text)
         val offset = element.textOffset
         val position = positionAt(document.text, offset)
-        val position = positionAt(document.text, offset)
 
         val params = mapOf(
             "textDocument" to mapOf("uri" to uri),
