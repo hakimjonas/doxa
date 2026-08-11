@@ -25,6 +25,51 @@ CheckOutput checkSourceOutput(
   String src, {
   String filename = 'playground.doxa',
 }) {
+  return _run(src: src, filename: filename, cachedImports: null);
+}
+
+/// Like [checkSourceOutput] but reuses pre-resolved imports from a
+/// prior successful check.  This avoids re-processing transitive
+/// imports (which costs ~200-500ms) on every keystroke.
+CheckOutput checkSourceWithCache(
+  String src, {
+  required String filename,
+  required CachedImports cache,
+}) {
+  return _run(
+    src: src,
+    filename: filename,
+    cachedImports: cache,
+  );
+}
+
+/// Cached import resolution result.  Covers the prelude and all
+/// transitively-imported stdlib modules — these never change during
+/// editing in a single file.
+final class CachedImports {
+  final List<TopBinding> bindings;
+  final List<DataDecl> dataDecls;
+  final Map<String, Set<String>> namespaceBindings;
+  final Map<String, ClassInfo> classRegistry;
+  final int preludeDeclCount;
+  final ImportState importState;
+
+  const CachedImports({
+    required this.bindings,
+    required this.dataDecls,
+    required this.namespaceBindings,
+    required this.classRegistry,
+    required this.preludeDeclCount,
+    required this.importState,
+  });
+}
+
+/// Unified pipeline runner.
+CheckOutput _run({
+  required String src,
+  required String filename,
+  required CachedImports? cachedImports,
+}) {
   final source = SourceFile(filename: filename, text: src);
   final parseResult = parseProgram(source.text);
   final program = switch (parseResult) {
@@ -49,48 +94,62 @@ CheckOutput checkSourceOutput(
     );
   }
 
-  final prelude = loadPrelude();
-  final importState = ImportState();
-  importState.currentImportPath = filename;
-  importState.importedPaths.clear();
+  final CachedImports cache;
+  if (cachedImports != null) {
+    cache = cachedImports;
+  } else {
+    final prelude = loadPrelude();
+    final importState = ImportState();
+    importState.currentImportPath = filename;
+    importState.importedPaths.clear();
 
-  // Pre-resolve and process all transitive imports.
-  final resolver = ImportResolver(importState, prelude: prelude);
-  try {
-    resolver.processTransitiveImports(program);
-  } on ElabError catch (e) {
-    final reportSource = importState.sourceFileFor(e.span) ?? source;
-    return CheckFailure(
-      errors: [
-        CheckError(
-          kind: 'elab_error',
-          line: source.positionAt(e.span.start).line,
-          column: source.positionAt(e.span.start).column,
-          message: reportElabError(reportSource, e),
-          span: e.span.isSynthetic ? null : e.span,
-        ),
-      ],
-    );
-  } on DoxaCheckError catch (e) {
-    return CheckFailure(
-      errors: [
-        CheckError(
-          kind: 'check_error',
-          line: 0,
-          column: 0,
-          message: e.toString(),
-        ),
-      ],
+    final resolver = ImportResolver(importState, prelude: prelude);
+    try {
+      resolver.processTransitiveImports(program);
+    } on ElabError catch (e) {
+      final reportSource = importState.sourceFileFor(e.span) ?? source;
+      return CheckFailure(
+        errors: [
+          CheckError(
+            kind: 'elab_error',
+            line: source.positionAt(e.span.start).line,
+            column: source.positionAt(e.span.start).column,
+            message: reportElabError(reportSource, e),
+            span: e.span.isSynthetic ? null : e.span,
+          ),
+        ],
+      );
+    } on DoxaCheckError catch (e) {
+      return CheckFailure(
+        errors: [
+          CheckError(
+            kind: 'check_error',
+            line: 0,
+            column: 0,
+            message: e.toString(),
+          ),
+        ],
+      );
+    }
+
+    cache = CachedImports(
+      bindings: resolver.bindings,
+      dataDecls: resolver.dataDecls,
+      namespaceBindings: resolver.namespaceBindings,
+      classRegistry: resolver.classRegistry,
+      preludeDeclCount: prelude.bindings.length + prelude.dataDecls.length,
+      importState: importState,
     );
   }
 
-  var bindings = resolver.bindings;
-  var dataDecls = resolver.dataDecls;
-  var namespaceBindings = resolver.namespaceBindings;
-  var classRegistry = resolver.classRegistry;
-  final preludeDeclCount = prelude.bindings.length + prelude.dataDecls.length;
+  var bindings = cache.bindings;
+  var dataDecls = cache.dataDecls;
+  var namespaceBindings = cache.namespaceBindings;
+  var classRegistry = cache.classRegistry;
+  final importState = cache.importState;
   final declarations = <DeclInfo>[];
   final allSemInfos = <SemInfo>[];
+  final preludeDeclCount = cache.preludeDeclCount;
 
   // Multi-error accumulator.
   final errors = <Map<String, dynamic>>[];
@@ -297,6 +356,7 @@ CheckOutput checkSourceOutput(
     declarations: completedDeclarations,
     count: n,
     semInfo: allSemInfos,
+    imports: cachedImports,
   );
 }
 

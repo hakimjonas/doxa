@@ -29,6 +29,9 @@ final class LspHandler {
   /// Per-name reference frequency for completion ranking.
   Map<String, int> _freq = <String, int>{};
 
+  /// Cached import resolution, reused across edits.
+  CachedImports? _cachedImports;
+
   /// Creates an LSP handler with no open document.
   LspHandler();
 
@@ -145,6 +148,7 @@ final class LspHandler {
     _documentUri = textDocument['uri'] as String;
     _documentText = textDocument['text'] as String;
     _freq = <String, int>{};
+    _cachedImports = null;
     _checkAndPublish();
   }
 
@@ -695,9 +699,18 @@ final class LspHandler {
             : _documentUri;
     final CheckOutput output;
     try {
-      output = checkSourceOutput(_documentText, filename: filename);
+      if (_cachedImports != null) {
+        output = checkSourceWithCache(
+          _documentText,
+          filename: filename,
+          cache: _cachedImports!,
+        );
+      } else {
+        output = checkSourceOutput(_documentText, filename: filename);
+      }
     } catch (e) {
       _lastSuccess = null;
+      _cachedImports = null;
       final source = SourceFile(filename: _documentUri, text: _documentText);
       _publishDiagnostics([
         LspDiagnostic(
@@ -715,6 +728,10 @@ final class LspHandler {
     switch (output) {
       case CheckSuccess _:
         _lastSuccess = output;
+        // Cache import resolution for subsequent edits.
+        if (output.imports != null) {
+          _cachedImports = output.imports as CachedImports?;
+        }
         // Build frequency map from SemInfo references.
         _freq = <String, int>{};
         for (final info in output.semInfo) {
