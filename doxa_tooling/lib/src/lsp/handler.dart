@@ -32,6 +32,20 @@ final class LspHandler {
   /// Cached import resolution, reused across edits.
   CachedImports? _cachedImports;
 
+  /// Request IDs that have been cancelled via $/cancelRequest.
+  final Set<int> _cancelledIds = {};
+
+  /// Checks if [id] has been cancelled.  If so, returns a cancellation
+  /// error response and clears the cancelled flag.
+  Map<String, dynamic>? _checkCancelled(Object? id) {
+    if (id is! int || !_cancelledIds.remove(id)) return null;
+    return {
+      'jsonrpc': '2.0',
+      'id': id,
+      'error': {'code': -32800, 'message': 'Request cancelled'},
+    };
+  }
+
   /// Creates an LSP handler with no open document.
   LspHandler();
 
@@ -43,6 +57,12 @@ final class LspHandler {
     final method = message['method'] as String?;
     final id = message['id'];
     final params = message['params'] as Map<String, dynamic>?;
+
+    // Common cancellation check for all request handlers.
+    if (id != null) {
+      final cancelled = _checkCancelled(id);
+      if (cancelled != null) return cancelled;
+    }
 
     switch (method) {
       case 'initialize':
@@ -93,8 +113,13 @@ final class LspHandler {
       case 'textDocument/foldingRange':
         return _handleFoldingRange(id, params!);
 
+      case 'textDocument/inlayHint':
+        return _handleInlayHint(id, params!);
+
       case '\$/cancelRequest':
-        return null; // Acknowledged; full cancellation support deferred.
+        final cancelId = params?['id'];
+        if (cancelId is int) _cancelledIds.add(cancelId);
+        return null;
 
       case 'workspace/didChangeConfiguration':
         return null; // Acknowledged; no configuration to consume yet.
@@ -135,6 +160,7 @@ final class LspHandler {
         'codeLensProvider': <String, dynamic>{'resolveProvider': false},
         'documentFormattingProvider': true,
         'foldingRangeProvider': true,
+        'inlayHintProvider': true,
         'signatureHelpProvider': <String, dynamic>{
           'triggerCharacters': ['(', ','],
         },
@@ -590,6 +616,38 @@ final class LspHandler {
       'id': id,
       'result': [for (final l in lenses) l.toJson()],
     };
+  }
+
+  /// Handle `textDocument/inlayHint`.
+  ///
+  /// Returns type annotations for declarations that have type
+  /// information available from the last successful check.
+  Map<String, dynamic> _handleInlayHint(
+    Object? id,
+    Map<String, dynamic> params,
+  ) {
+    final hints = <Map<String, dynamic>>[];
+    if (_lastSuccess == null) {
+      return {'jsonrpc': '2.0', 'id': id, 'result': hints};
+    }
+
+    for (final decl in _lastSuccess!.declarations) {
+      final type = decl.type;
+      if (type == null) continue;
+      final pos = _positionAt(decl.span.start);
+      // Show the type as an inlay hint after the declaration name.
+      hints.add({
+        'position': {
+          'line': pos.line - 1,
+          'character': pos.column - 1 + decl.name.length,
+        },
+        'label': ': $type',
+        'paddingLeft': true,
+        'kind': 1, // Type
+      });
+    }
+
+    return {'jsonrpc': '2.0', 'id': id, 'result': hints};
   }
 
   /// Handle `textDocument/formatting`.
