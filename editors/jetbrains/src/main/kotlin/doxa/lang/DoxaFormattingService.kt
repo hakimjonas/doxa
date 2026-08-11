@@ -27,6 +27,8 @@ class DoxaFormattingService : AsyncDocumentFormattingService() {
                 val connector = DoxaLspService.getInstance(project).connector
                 if (!connector.isRunning) return
 
+                connector.ensureFileSent(uri, text)
+
                 val params = mapOf(
                     "textDocument" to mapOf("uri" to uri),
                     "options" to mapOf("tabSize" to 2, "insertSpaces" to true),

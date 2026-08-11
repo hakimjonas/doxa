@@ -26,6 +26,7 @@ class DoxaGotoDeclarationHandler : GotoDeclarationHandler {
         val virtualFile = file.virtualFile ?: return null
         val uri = virtualFile.url
         val document = file.viewProvider.document ?: return null
+        connector.ensureFileSent(uri, document.text)
         val position = DoxaDocumentationProvider.positionAt(document.text, offset)
 
         val params = mapOf(

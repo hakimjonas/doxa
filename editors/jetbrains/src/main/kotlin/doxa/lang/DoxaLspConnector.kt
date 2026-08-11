@@ -121,7 +121,10 @@ class DoxaLspConnector(private val project: Project) {
         transport?.send(message)
     }
 
+    private val openFiles = ConcurrentHashMap<String, Boolean>()
+
     fun didOpen(uri: String, text: String) {
+        openFiles[uri] = true
         sendNotification("textDocument/didOpen", mapOf(
             "textDocument" to mapOf(
                 "uri" to uri,
@@ -133,10 +136,18 @@ class DoxaLspConnector(private val project: Project) {
     }
 
     fun didChange(uri: String, text: String) {
+        openFiles.putIfAbsent(uri, false)
         sendNotification("textDocument/didChange", mapOf(
             "textDocument" to mapOf("uri" to uri, "version" to 1),
             "contentChanges" to listOf(mapOf("text" to text)),
         ))
+    }
+
+    /** Ensure the server knows about this file before querying. */
+    fun ensureFileSent(uri: String, text: String) {
+        if (openFiles.putIfAbsent(uri, true) == null) {
+            didOpen(uri, text)
+        }
     }
 
     fun didClose(uri: String) {

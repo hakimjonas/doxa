@@ -30,6 +30,7 @@ class DoxaCompletionProvider : CompletionProvider<CompletionParameters>() {
         val virtualFile = file.virtualFile ?: return
         val uri = virtualFile.url
         val document = file.viewProvider.document ?: return
+        connector.ensureFileSent(uri, document.text)
         val offset = parameters.offset
         val position = DoxaDocumentationProvider.positionAt(document.text, offset)
 

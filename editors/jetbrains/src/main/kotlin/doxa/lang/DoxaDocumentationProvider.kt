@@ -17,8 +17,10 @@ class DoxaDocumentationProvider : AbstractDocumentationProvider() {
 
         val virtualFile = file.virtualFile ?: return null
         val uri = virtualFile.url
-        val offset = element.textOffset
         val document = file.viewProvider.document ?: return null
+        connector.ensureFileSent(uri, document.text)
+        val offset = element.textOffset
+        val position = positionAt(document.text, offset)
         val position = positionAt(document.text, offset)
 
         val params = mapOf(
