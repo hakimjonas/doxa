@@ -4,7 +4,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManagerListener
 
 class DoxaProjectListener : ProjectManagerListener {
-    override fun projectOpened(project: Project) {
+    override fun projectOpened(project: Project, isNewProject: Boolean) {
         DoxaLspService.getInstance(project).startServer()
     }
 
