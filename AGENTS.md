@@ -34,10 +34,29 @@ Do not guess eliminator arity — check the prelude or existing proofs in `lib/s
 
 | Directory | Purpose |
 |---|---|
-| `doxa/` | Kernel library (18 source files) |
-| `doxa_tooling/` | CLI, REPL, LSP, WASM, formatter |
+| `doxa/` | Kernel library (check, elab, eval, parse, surface, etc.) |
+| `doxa_tooling/` | CLI, REPL, LSP, WASM, formatter, structured output |
 | `lib/stdlib/` | Standard library `.doxa` files |
-| `docs/` | Plans, specs, implementer prompts |
+| `editors/vscode/` | VS Code extension (TypeScript-free JS + TextMate grammar) |
+| `editors/jetbrains/` | JetBrains plugin (Kotlin, builds with Gradle) |
+| `docs/` | Plans, specs, handovers |
+| `tool/` | Benchmarking and profiling harnesses |
+
+### Version
+
+The canonical version lives in `VERSION` at the repository root. All packages
+and editor extensions read from it:
+
+| Location | How version is set |
+|---|---|
+| `doxa/pubspec.yaml` | `version: <VERSION>` |
+| `doxa_tooling/pubspec.yaml` | `version: <VERSION>` |
+| `editors/vscode/package.json` | `"version": "<VERSION>"` |
+| `editors/jetbrains/gradle.properties` | `pluginVersion = <VERSION>` |
+| `doxa_tooling/lib/src/lsp/handler.dart` | `serverInfo.version` |
+
+When bumping the version, update `VERSION` and all of the above. CI verifies
+they stay in sync.
 
 ## Prose and documentation
 
@@ -83,3 +102,22 @@ dart test
 # Kernel and tooling directories shown before working-directory prefix.
 # --- doxa/ directory ---
 # --- doxa_tooling/ directory ---
+```
+
+## Editor extensions
+
+### VS Code (`editors/vscode/`)
+
+```sh
+cd editors/vscode
+npm ci                 # install dependencies
+npm run esbuild        # bundle extension
+npx @vscode/vsce package  # produce .vsix
+```
+
+### JetBrains (`editors/jetbrains/`)
+
+```sh
+cd editors/jetbrains
+./gradlew buildPlugin  # produce .zip artifact (needs JDK 21+)
+```

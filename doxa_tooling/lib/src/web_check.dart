@@ -97,6 +97,36 @@ CheckOutput checkSourceOutput(
   final poisonedNames = <String>{};
 
   for (final decl in program.decls) {
+    if (decl.kind is SImportKind) {
+      final importKind = decl.kind as SImportKind;
+      if (importKind.alias != null) {
+        importState.push(filename);
+        importState.resolvePath(importKind.path);
+        importState.pop();
+        final defaultPrefix =
+            importKind.path.endsWith('.doxa')
+                ? importKind.path
+                    .split('/')
+                    .last
+                    .substring(
+                      0,
+                      importKind.path.split('/').last.length - '.doxa'.length,
+                    )
+                : importKind.path.split('/').last;
+        if (defaultPrefix.isNotEmpty) {
+          final df =
+              defaultPrefix[0].toUpperCase() + defaultPrefix.substring(1);
+          final defaultNames = namespaceBindings[df];
+          if (defaultNames != null) {
+            namespaceBindings = mergeNamespace(namespaceBindings, {
+              importKind.alias!: defaultNames,
+            });
+          }
+        }
+      }
+      continue;
+    }
+
     final String currentKind = switch (decl.kind) {
       SValKind _ => 'val',
       STypeAliasKind _ => 'type',
@@ -104,7 +134,7 @@ CheckOutput checkSourceOutput(
       SFunBlockKind _ => 'fun',
       SDataKind _ => 'data',
       SDataBlockKind _ => 'data',
-      SImportKind _ => 'import',
+      SImportKind _ => '', // unreachable — imports are skipped above
       STypeclassKind _ => 'typeclass',
       SImplKind _ => 'impl',
     };
@@ -124,14 +154,10 @@ CheckOutput checkSourceOutput(
         decl,
       );
       final runningData = [...dataDecls, ...produced.dataDecls];
-      final checkBindings =
-          decl.kind is SImportKind
-              ? [...bindings, ...produced.bindings]
-              : bindings;
       final checkClassRegistry = {...classRegistry, ...produced.classRegistry};
       final finalized = checkDeclResult(
         TopEnv(
-          checkBindings,
+          bindings,
           runningData,
           checkClassRegistry,
           namespaceBindings,

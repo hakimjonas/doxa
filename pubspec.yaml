@@ -1,7 +1,7 @@
 name: doxa_monorepo
 description: Doxa monorepo root — run `tool/` scripts from here.
 publish_to: none
-version: 0.1.0
+version: 0.8.2
 repository: https://github.com/hakimjonas/doxa
 
 environment:

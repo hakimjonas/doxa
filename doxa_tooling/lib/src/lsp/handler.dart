@@ -9,6 +9,9 @@ import '../output.dart';
 import 'package:doxa/doxa.dart';
 import '../web_check.dart';
 import '../format.dart' show formatSource;
+import '../tokenize.dart' show tokenizeDoxaSpans;
+import 'package:rumil_tokens/rumil_tokens.dart'
+    show Keyword, TypeName, Comment, NumberLit, Operator, Punctuation, Spanned, Token;
 import 'protocol.dart';
 import 'transport.dart';
 
@@ -92,8 +95,11 @@ final class LspHandler {
         return {'jsonrpc': '2.0', 'id': id, 'result': null};
 
       default:
-        // Method not supported — return null.
-        return null;
+        return {
+          'jsonrpc': '2.0',
+          'id': id,
+          'error': {'code': -32601, 'message': 'Method not found: $method'},
+        };
     }
   }
 
@@ -129,7 +135,7 @@ final class LspHandler {
           'full': true,
         },
       },
-      'serverInfo': {'name': 'doxa-lsp', 'version': '0.1.0'},
+      'serverInfo': {'name': 'doxa-lsp', 'version': '0.8.2'},
     },
   };
 
@@ -179,7 +185,7 @@ final class LspHandler {
     return {
       'jsonrpc': '2.0',
       'id': id,
-      if (result != null) 'result': result.toJson(),
+      'result': result?.toJson(),
     };
   }
 
@@ -206,7 +212,7 @@ final class LspHandler {
     return {
       'jsonrpc': '2.0',
       'id': id,
-      if (result != null) 'result': result.toJson(),
+      'result': result?.toJson(),
     };
   }
 
@@ -264,48 +270,74 @@ final class LspHandler {
   }
 
   /// Handle `textDocument/semanticTokens/full`.
+  ///
+  /// Produces both syntax-level tokens (keywords, comments, numbers,
+  /// operators) from the Doxa tokenizer and semantic tokens from the
+  /// last type-check result.  All are delta-encoded into a single
+  /// LSP semantic tokens array.
   Map<String, dynamic> _handleSemanticTokens(
     Object? id,
     Map<String, dynamic> params,
   ) {
-    if (_lastSuccess == null) {
-      return {
-        'jsonrpc': '2.0',
-        'id': id,
-        'result': const LspSemanticTokens(data: <int>[]).toJson(),
-      };
+    final tokens = <({int line, int char, int length, int typeIndex, int modifierBits})>[];
+
+    // Syntax tokens from the Doxa tokenizer (always available).
+    for (final spanned in tokenizeDoxaSpans(_documentText)) {
+      final type = _syntaxTokenType(spanned.token);
+      if (type == null) continue;
+      final pos = _positionAt(spanned.start);
+      tokens.add((
+        line: pos.line - 1,
+        char: pos.column - 1,
+        length: spanned.end - spanned.start,
+        typeIndex: type.legendIndex,
+        modifierBits: 0,
+      ));
     }
-    final infos = _lastSuccess!.semInfo;
+
+    // Semantic tokens from the last successful type-check.
+    if (_lastSuccess != null) {
+      for (final info in _lastSuccess!.semInfo) {
+        final span = info.span;
+        if (span.isSynthetic) continue;
+        final length = span.end - span.start;
+        if (length <= 0) continue;
+        final pos = _positionAt(span.start);
+        final type = _semanticTokenType(info.kind);
+        final modifier = _semanticTokenModifier(info.kind);
+        tokens.add((
+          line: pos.line - 1,
+          char: pos.column - 1,
+          length: length,
+          typeIndex: type.legendIndex,
+          modifierBits: modifier?.bit ?? 0,
+        ));
+      }
+    }
+
+    // Sort by (line, char) for correct delta encoding.
+    tokens.sort((a, b) {
+      final c = a.line.compareTo(b.line);
+      return c != 0 ? c : a.char.compareTo(b.char);
+    });
+
+    // Delta-encode.
     final data = <int>[];
     var prevLine = 0;
     var prevChar = 0;
-
-    for (final info in infos) {
-      final span = info.span;
-      if (span.isSynthetic) continue;
-
-      final pos = _positionAt(span.start);
-      final length = span.end - span.start;
-      if (length <= 0) continue;
-
-      final line = pos.line - 1;
-      final char = pos.column - 1;
-
-      // Delta-encode.
-      if (line == prevLine) {
-        data.add(0); // same line
-        data.add(char - prevChar);
+    for (final t in tokens) {
+      if (t.line == prevLine) {
+        data.add(0);
+        data.add(t.char - prevChar);
       } else {
-        data.add(line - prevLine);
-        data.add(char);
+        data.add(t.line - prevLine);
+        data.add(t.char);
       }
-      data.add(length);
-      data.add(_semanticTokenType(info.kind).legendIndex);
-      final modifier = _semanticTokenModifier(info.kind);
-      data.add(modifier?.bit ?? 0);
-
-      prevLine = line;
-      prevChar = char;
+      data.add(t.length);
+      data.add(t.typeIndex);
+      data.add(t.modifierBits);
+      prevLine = t.line;
+      prevChar = t.char;
     }
 
     return {
@@ -314,6 +346,17 @@ final class LspHandler {
       'result': LspSemanticTokens(data: data).toJson(),
     };
   }
+
+  /// Map a syntax [Token] to an [LspSemanticTokenType], or null when the
+  /// token kind does not warrant highlighting (whitespace, identifiers, etc.).
+  LspSemanticTokenType? _syntaxTokenType(Token token) => switch (token) {
+    Keyword _ => LspSemanticTokenType.keyword,
+    Comment _ => LspSemanticTokenType.comment,
+    NumberLit _ => LspSemanticTokenType.number,
+    Operator _ => LspSemanticTokenType.operator_,
+    Punctuation _ => null,
+    _ => null,
+  };
 
   /// Map a [SemInfoKind] to a [LspSemanticTokenType].
   LspSemanticTokenType _semanticTokenType(SemInfoKind kind) => switch (kind) {
@@ -342,7 +385,7 @@ final class LspHandler {
       if (info == null) return null;
       return _referencesFor(info.name);
     });
-    return {'jsonrpc': '2.0', 'id': id, if (result != null) 'result': result};
+    return {'jsonrpc': '2.0', 'id': id, 'result': result};
   }
 
   /// Handle `textDocument/rename`.
@@ -367,7 +410,7 @@ final class LspHandler {
       }
       return LspWorkspaceEdit(changes: {_documentUri: edits}).toJson();
     });
-    return {'jsonrpc': '2.0', 'id': id, if (result != null) 'result': result};
+    return {'jsonrpc': '2.0', 'id': id, 'result': result};
   }
 
   /// Handle `textDocument/documentSymbol`.

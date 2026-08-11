@@ -242,9 +242,9 @@ void _checkFile(File file, {bool json = false}) {
 
 /// Run the LSP server with async I/O.
 ///
-/// Uses a stream-based stdin reader to avoid a known Dart runtime
-/// contention issue between synchronous stdin reads and stdout writes
-/// in piped processes.
+/// Reads LSP messages from stdin synchronously (byte-by-byte) to
+/// avoid stream-based stdin issues in AOT-compiled binaries where
+/// piped data may not reliably deliver to async listeners.
 Future<void> _runLspAsync() async {
   final handler = LspHandler();
   final reader = LspReader();
@@ -264,7 +264,6 @@ Future<void> _runLspAsync() async {
           sendLspMessage(response);
         }
       }
-      // Flush buffered output after processing each batch.
       stdout.flush();
     },
     onDone: () {

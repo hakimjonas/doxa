@@ -58,10 +58,15 @@ Add to `~/.config/nvim/coc-settings.json` or `vimrc`:
 }
 ```
 
-## JetBrains (IntelliJ, CLion, RustRover, etc.)
+## JetBrains (IntelliJ, CLion, RustRover, Community Edition, etc.)
 
-[Doxa JetBrains](https://github.com/hakimjonas/doxa-jetbrains) is a
-dedicated extension — no manual LSP configuration needed.
+The Doxa JetBrains plugin lives in the main repository at
+[`editors/jetbrains/`](../editors/jetbrains/). Build it with
+`./gradlew buildPlugin` (needs JDK 21+) and install from
+`build/distributions/doxa-jetbrains.zip`.
+
+See [`contrib/jetbrains/README.md`](jetbrains/README.md) for setup and
+configuration.
 
 ## Emacs (eglot)
 

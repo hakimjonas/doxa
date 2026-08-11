@@ -257,7 +257,19 @@ enum LspSemanticTokenType {
   modifier,
 
   /// `namespace` (0)
-  namespace;
+  namespace,
+
+  /// `comment` (19)
+  comment,
+
+  /// `number` (21)
+  number,
+
+  /// `string` (18)
+  string,
+
+  /// `operator` (24)
+  operator_;
 
   /// The string representation for the legend.
   String get label => switch (this) {
@@ -272,6 +284,10 @@ enum LspSemanticTokenType {
     LspSemanticTokenType.keyword => 'keyword',
     LspSemanticTokenType.modifier => 'modifier',
     LspSemanticTokenType.namespace => 'namespace',
+    LspSemanticTokenType.comment => 'comment',
+    LspSemanticTokenType.number => 'number',
+    LspSemanticTokenType.string => 'string',
+    LspSemanticTokenType.operator_ => 'operator',
   };
 
   /// The index in the legend array.

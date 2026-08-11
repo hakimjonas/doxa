@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.8.2
+
+### Tooling
+- Fixed false-positive duplicate-declaration errors in LSP/web check due to
+  missing `importedPaths` tracking in `ImportResolver`
+- LSP `serverInfo.version` now reports `0.8.2` instead of stale `0.1.0`
+
+### VSCode extension
+- User-configurable language server path (`doxa.server.path` setting)
+- Scoped file watcher to workspace folders (no more filesystem-wide scanning)
+- ESBuild bundling for reproducible packaging
+- Added `CHANGELOG.md`, `repository`, and `keywords` to extension manifest
+
+### JetBrains plugin
+- Complete rewrite: removed `com.intellij.modules.lsp` dependency, now works in
+  **all JetBrains IDEs** including Community Edition
+- Custom JSON-RPC LSP client with transport, connector, and feature integrations
+- Diagnostics (`ExternalAnnotator`), hover, completion, go-to-definition,
+  formatting, folding, structure view, commenting, bracket matching
+- User-configurable binary path in settings
+- Removed 8.2 MB bundled AOT binary (relies on `doxa` on PATH)
+
+### Repository
+- Canonical version in `VERSION` file at repository root
+- Both editor extensions moved into `editors/` directory in the monorepo
+- CI now builds and tests VSCode and JetBrains extensions alongside Dart packages
+
 ## 0.8.0
 
 First preview release — feature-complete kernel, competitive tooling, one verified case study.

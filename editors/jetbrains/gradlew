@@ -1,0 +1,25 @@
+#!/bin/sh
+
+# Gradle wrapper startup script
+APP_HOME=$(cd "$(dirname "$0")" && pwd -P)
+APP_NAME="Gradle"
+CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
+JAVA_EXE="java"
+
+# Use JAVA_HOME if set
+if [ -n "$JAVA_HOME" ] ; then
+    JAVA_EXE="$JAVA_HOME/bin/java"
+fi
+
+# Fall back to JBR from JetBrains Toolbox
+if [ ! -x "$(command -v $JAVA_EXE)" ]; then
+    JBR_DIR="$HOME/.local/share/JetBrains/Toolbox/apps/intellij-idea/jbr"
+    if [ -x "$JBR_DIR/bin/java" ]; then
+        JAVA_EXE="$JBR_DIR/bin/java"
+    fi
+fi
+
+exec "$JAVA_EXE" \
+    -classpath "$CLASSPATH" \
+    org.gradle.wrapper.GradleWrapperMain \
+    "$@"

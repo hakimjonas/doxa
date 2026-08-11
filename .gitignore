@@ -27,3 +27,14 @@ Thumbs.db
 doc/
 tool/benchmark_aot
 tool/parse_ast_aot
+
+# VSCode extension
+editors/vscode/out/
+editors/vscode/.vsix
+editors/vscode/*.vsix
+editors/vscode/node_modules/
+
+# JetBrains plugin
+editors/jetbrains/.gradle/
+editors/jetbrains/build/
+editors/jetbrains/.intellijPlatform/

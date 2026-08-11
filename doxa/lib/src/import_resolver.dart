@@ -244,6 +244,7 @@ final class ImportResolver {
 
   void _processFile(String path) {
     final info = _files[path]!;
+    importState.importedPaths.add(path);
     importState.push(path);
     try {
       for (final decl in info.program.decls) {
