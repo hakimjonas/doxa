@@ -79,6 +79,13 @@
   <extensions defaultExtensionNs="com.intellij">
     <renameHandler
         implementation="doxa.lang.DoxaRenameHandler"/>
+
+    <codeInsight.daemonBoundCodeVisionProvider
+        implementation="doxa.lang.DoxaCodeLensProvider"/>
+
+    <codeInsight.inlayProvider
+        language="Doxa"
+        implementationClass="doxa.lang.DoxaInlayHintProvider"/>
   </extensions>
 
   <projectListeners>
