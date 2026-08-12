@@ -11,22 +11,28 @@ import java.io.File
 
 class DoxaGotoDeclarationHandler : GotoDeclarationHandler {
 
+    private val LOG = com.intellij.openapi.diagnostic.Logger.getInstance(DoxaGotoDeclarationHandler::class.java)
+
     override fun getGotoDeclarationTargets(
         sourceElement: PsiElement?,
         offset: Int,
         editor: Editor?,
     ): Array<PsiElement>? {
-        if (sourceElement == null) return null
-        val file = sourceElement.containingFile ?: return null
-        if (file.language !is DoxaLanguage) return null
+        LOG.info("getGotoDeclarationTargets: source=$sourceElement, lang=${sourceElement?.language}")
+        if (sourceElement == null) { LOG.info("  null source"); return null }
+        val file = sourceElement.containingFile ?: run { LOG.info("  no containingFile"); return null }
+        if (file.language !is DoxaLanguage) { LOG.info("  wrong lang: ${file.language}"); return null }
 
         val connector = DoxaLspService.getInstance(file.project).connector
-        if (!connector.isRunning) return null
+        if (!connector.isRunning) { LOG.info("  connector not running"); return null }
 
-        val virtualFile = file.virtualFile ?: return null
+        val virtualFile = file.virtualFile ?: run { LOG.info("  no virtualFile"); return null }
         val uri = virtualFile.url
-        val document = file.viewProvider.document ?: return null
+        val document = file.viewProvider.document ?: run { LOG.info("  no document"); return null }
         connector.ensureFileSent(uri, document.text)
+        // Let server process didOpen before querying.
+        Thread.sleep(500)
+        LOG.info("  ensureFileSent, sending definition request")
         val position = DoxaDocumentationProvider.positionAt(document.text, offset)
 
         val params = mapOf(

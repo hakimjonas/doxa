@@ -1,16 +1,17 @@
 package doxa.lang
 
-import com.intellij.lang.documentation.AbstractDocumentationProvider
 import com.intellij.lang.documentation.DocumentationMarkup
-import com.intellij.openapi.editor.Editor
+import com.intellij.lang.documentation.DocumentationProvider
 import com.intellij.psi.PsiElement
-import com.intellij.psi.PsiFile
-import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.psi.PsiManager
 
-class DoxaDocumentationProvider : AbstractDocumentationProvider() {
+class DoxaDocumentationProvider : DocumentationProvider {
 
-    override fun generateDoc(element: PsiElement, originalElement: PsiElement?): String? {
-        if (element.language !is DoxaLanguage) return null
+    private val LOG = com.intellij.openapi.diagnostic.Logger.getInstance(DoxaDocumentationProvider::class.java)
+
+    override fun generateDoc(element: PsiElement?, originalElement: PsiElement?): String? {
+        LOG.info("generateDoc: element=$element, lang=${element?.language}")
+        if (element == null || element.language !is DoxaLanguage) return null
         val file = element.containingFile ?: return null
         val connector = DoxaLspService.getInstance(file.project).connector
         if (!connector.isRunning) return null
@@ -19,6 +20,7 @@ class DoxaDocumentationProvider : AbstractDocumentationProvider() {
         val uri = virtualFile.url
         val document = file.viewProvider.document ?: return null
         connector.ensureFileSent(uri, document.text)
+
         val offset = element.textOffset
         val position = positionAt(document.text, offset)
 
@@ -27,19 +29,20 @@ class DoxaDocumentationProvider : AbstractDocumentationProvider() {
             "position" to mapOf("line" to position.first, "character" to position.second),
         )
 
-        var result = ""
         try {
+            // Brief pause for server to process didOpen.
+            Thread.sleep(200)
             val response = connector.sendRequestBlocking("textDocument/hover", params)
             val contents = response["contents"] as? Map<*, *>
             val value = contents?.get("value") as? String
-            if (value != null) result = value
+            if (value != null) return DocumentationMarkup.CONTENT_START + value + DocumentationMarkup.CONTENT_END
         } catch (_: Exception) {
-            return null
         }
-
-        if (result.isEmpty()) return null
-        return DocumentationMarkup.CONTENT_START + result + DocumentationMarkup.CONTENT_END
+        return null
     }
+
+    override fun getQuickNavigateInfo(element: PsiElement?, originalElement: PsiElement?): String? =
+        generateDoc(element, originalElement)
 
     companion object {
         fun positionAt(text: String, offset: Int): Pair<Int, Int> {
