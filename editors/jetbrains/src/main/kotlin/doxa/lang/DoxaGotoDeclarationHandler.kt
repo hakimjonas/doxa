@@ -2,12 +2,10 @@ package doxa.lang
 
 import com.intellij.codeInsight.navigation.actions.GotoDeclarationHandler
 import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.fileEditor.OpenFileDescriptor
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
-import java.io.File
 
 class DoxaGotoDeclarationHandler : GotoDeclarationHandler {
 
@@ -30,8 +28,6 @@ class DoxaGotoDeclarationHandler : GotoDeclarationHandler {
         val uri = virtualFile.url
         val document = file.viewProvider.document ?: run { LOG.info("  no document"); return null }
         connector.ensureFileSent(uri, document.text)
-        // Let server process didOpen before querying.
-        Thread.sleep(500)
         LOG.info("  ensureFileSent, sending definition request")
         val position = DoxaDocumentationProvider.positionAt(document.text, offset)
 
@@ -42,21 +38,18 @@ class DoxaGotoDeclarationHandler : GotoDeclarationHandler {
 
         try {
             val response = connector.sendRequestBlocking("textDocument/definition", params)
-            val locations = response as? List<*> ?: return null
-            if (locations.isEmpty()) return null
-            val location = locations[0] as? Map<*, *> ?: return null
+            val location = when (response) {
+                is Map<*, *> -> response
+                is List<*> -> response.firstOrNull() as? Map<*, *>
+                else -> null
+            } ?: return null
             val targetUri = location["uri"] as? String ?: return null
             val range = location["range"] as? Map<*, *> ?: return null
             val start = range["start"] as? Map<*, *> ?: return null
             val targetLine = (start["line"] as? Number)?.toInt() ?: 0
             val targetChar = (start["character"] as? Number)?.toInt() ?: 0
 
-            val path = if (targetUri.startsWith("file://")) {
-                targetUri.removePrefix("file://")
-            } else targetUri
-            val targetFile = LocalFileSystem.getInstance().findFileByPath(path)
-                ?: LocalFileSystem.getInstance().findFileByIoFile(File(path))
-                ?: return null
+            val targetFile = VirtualFileManager.getInstance().findFileByUrl(targetUri) ?: return null
 
             val targetPsiFile = PsiManager.getInstance(file.project).findFile(targetFile) ?: return null
             val targetDocument = targetPsiFile.viewProvider.document ?: return null

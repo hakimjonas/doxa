@@ -13,6 +13,8 @@ class DoxaLspConnector(private val project: Project) {
     private var transport: DoxaLspTransport? = null
     private val pendingRequests = ConcurrentHashMap<Int, CompletableFuture<String>>()
     private val notificationHandlers = ConcurrentHashMap<String, (Map<String, Any?>) -> Unit>()
+    private val diagnostics = ConcurrentHashMap<String, List<Map<String, Any?>>>()
+    private val pendingNotifications = ConcurrentLinkedQueue<Pair<String, Any?>>()
     private val requestId = AtomicInteger(0)
     private val executor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "DoxaLspConnector").also { it.isDaemon = true }
@@ -20,14 +22,17 @@ class DoxaLspConnector(private val project: Project) {
     @Volatile
     var isRunning = false
         private set
+    @Volatile
+    private var isStarting = false
 
     @Volatile
     var serverCapabilities: Map<String, Any?>? = null
         private set
 
+    @Synchronized
     fun start() {
-        if (isRunning) return
-        isRunning = true
+        if (isRunning || isStarting) return
+        isStarting = true
         LOG.info("Starting Doxa language server...")
 
         executor.submit {
@@ -38,6 +43,18 @@ class DoxaLspConnector(private val project: Project) {
                     .withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.CONSOLE)
 
                 process = commandLine.createProcess()
+                val startedProcess = process!!
+                startedProcess.onExit().thenRun {
+                    if (process === startedProcess && isRunning) {
+                        isRunning = false
+                        transport?.stop()
+                        transport = null
+                        process = null
+                        pendingRequests.values.forEach { it.cancel(true) }
+                        pendingRequests.clear()
+                        DoxaNotifications.serverError(project, "The Doxa language server stopped unexpectedly. Open a Doxa file to restart it.")
+                    }
+                }
                 LOG.info("Server process started, setting up transport")
                 val t = DoxaLspTransport(process!!.inputStream, process!!.outputStream)
                 transport = t
@@ -49,23 +66,35 @@ class DoxaLspConnector(private val project: Project) {
                     "rootUri" to null,
                     "capabilities" to emptyMap<String, Any>(),
                 ))
-                serverCapabilities = (result["capabilities"] as? Map<String, Any?>)
+                serverCapabilities = (result as? Map<*, *>)?.get("capabilities") as? Map<String, Any?>
                 LOG.info("Server initialized, caps: ${serverCapabilities?.keys?.joinToString()}")
 
-                sendNotification("initialized", emptyMap<String, Any>())
-                sendNotification("workspace/didChangeConfiguration", mapOf(
+                sendNotificationDirect("initialized", emptyMap<String, Any>())
+                sendNotificationDirect("workspace/didChangeConfiguration", mapOf(
                     "settings" to emptyMap<String, Any>(),
                 ))
+                isRunning = true
+                isStarting = false
+                while (true) {
+                    val notification = pendingNotifications.poll() ?: break
+                    sendNotificationDirect(notification.first, notification.second)
+                }
                 LOG.info("Doxa LSP server ready")
             } catch (e: Exception) {
                 LOG.warn("Failed to start Doxa language server", e)
                 isRunning = false
+                isStarting = false
+                DoxaNotifications.serverError(
+                    project,
+                    "Could not start Doxa. Configure a valid Doxa executable in Settings | Languages & Frameworks | Doxa.",
+                )
             }
         }
     }
 
+    @Synchronized
     fun stop() {
-        if (!isRunning) return
+        if (!isRunning && !isStarting) return
         executor.submit {
             try {
                 sendRequestBlocking("shutdown", emptyMap<String, Any>())
@@ -77,17 +106,25 @@ class DoxaLspConnector(private val project: Project) {
             transport = null
             process = null
             pendingRequests.clear()
+            pendingNotifications.clear()
         }
         isRunning = false
-        executor.shutdown()
+        isStarting = false
+    }
+
+    fun restart() {
+        stop()
+        start()
     }
 
     fun onNotification(method: String, handler: (Map<String, Any?>) -> Unit) {
         notificationHandlers[method] = handler
     }
 
-    fun sendRequestAsync(method: String, params: Any?, callback: (Map<String, Any?>) -> Unit) {
-        executor.submit {
+    fun diagnosticsFor(uri: String): List<Map<String, Any?>> = diagnostics[uri].orEmpty()
+
+    fun sendRequestAsync(method: String, params: Any?, callback: (Any?) -> Unit): Future<*> {
+        return executor.submit {
             try {
                 val result = sendRequestBlocking(method, params)
                 ApplicationManager.getApplication().invokeLater {
@@ -96,40 +133,64 @@ class DoxaLspConnector(private val project: Project) {
             } catch (e: Exception) {
                 LOG.warn("LSP request failed: $method", e)
                 ApplicationManager.getApplication().invokeLater {
-                    callback(emptyMap())
+                    callback(null)
                 }
             }
         }
     }
 
-    fun sendRequestBlocking(method: String, params: Any?): Map<String, Any?> {
+    fun sendRequestBlocking(method: String, params: Any?, timeoutSeconds: Long = 5): Any? {
         val id = requestId.incrementAndGet()
         val future = CompletableFuture<String>()
         pendingRequests[id] = future
 
         val message = buildJsonRpcRequest(id, method, params)
-        transport?.send(message)
+        val currentTransport = transport ?: run {
+            pendingRequests.remove(id)
+            return null
+        }
+        currentTransport.send(message)
 
         return try {
-            val response = future.get(30, TimeUnit.SECONDS)
+            val response = future.get(timeoutSeconds, TimeUnit.SECONDS)
             val parsed = gson.fromJson(response, Map::class.java) as Map<String, Any?>
-            (parsed["result"] as? Map<String, Any?>) ?: emptyMap()
+            if (parsed.containsKey("error")) {
+                LOG.warn("LSP request failed: $method: ${parsed["error"]}")
+                null
+            } else {
+                parsed["result"]
+            }
         } catch (e: Exception) {
             pendingRequests.remove(id)
             LOG.warn("LSP request timeout or error: $method", e)
-            emptyMap()
+            null
         }
     }
 
+    fun cancelRequest(id: Int) {
+        pendingRequests.remove(id)?.cancel(true)
+        sendNotification("\$/cancelRequest", mapOf("id" to id))
+    }
+
     fun sendNotification(method: String, params: Any?) {
+        if (!isRunning) {
+            pendingNotifications.add(method to params)
+            return
+        }
+        sendNotificationDirect(method, params)
+    }
+
+    private fun sendNotificationDirect(method: String, params: Any?) {
         val message = buildJsonRpcNotification(method, params)
         transport?.send(message)
     }
 
     private val openFiles = ConcurrentHashMap<String, Boolean>()
+    private val documentVersions = ConcurrentHashMap<String, AtomicInteger>()
 
     fun didOpen(uri: String, text: String) {
-        openFiles[uri] = true
+        if (openFiles.putIfAbsent(uri, true) != null) return
+        documentVersions[uri] = AtomicInteger(1)
         sendNotification("textDocument/didOpen", mapOf(
             "textDocument" to mapOf(
                 "uri" to uri,
@@ -141,9 +202,13 @@ class DoxaLspConnector(private val project: Project) {
     }
 
     fun didChange(uri: String, text: String) {
-        openFiles.putIfAbsent(uri, false)
+        if (!openFiles.containsKey(uri)) {
+            didOpen(uri, text)
+            return
+        }
+        val version = documentVersions.computeIfAbsent(uri) { AtomicInteger(1) }.incrementAndGet()
         sendNotification("textDocument/didChange", mapOf(
-            "textDocument" to mapOf("uri" to uri, "version" to 1),
+            "textDocument" to mapOf("uri" to uri, "version" to version),
             "contentChanges" to listOf(mapOf("text" to text)),
         ))
     }
@@ -156,6 +221,9 @@ class DoxaLspConnector(private val project: Project) {
     }
 
     fun didClose(uri: String) {
+        openFiles.remove(uri)
+        documentVersions.remove(uri)
+        diagnostics.remove(uri)
         sendNotification("textDocument/didClose", mapOf(
             "textDocument" to mapOf("uri" to uri),
         ))
@@ -176,6 +244,13 @@ class DoxaLspConnector(private val project: Project) {
             pendingRequests.remove(id)?.complete(raw)
         } else if (method != null) {
             val params = message["params"] as? Map<String, Any?>
+            if (method == "textDocument/publishDiagnostics" && params != null) {
+                val uri = params["uri"] as? String
+                val items = params["diagnostics"] as? List<*>
+                if (uri != null && items != null) {
+                    diagnostics[uri] = items.mapNotNull { it as? Map<String, Any?> }
+                }
+            }
             ApplicationManager.getApplication().invokeLater {
                 notificationHandlers[method]?.invoke(params ?: emptyMap())
             }

@@ -5,7 +5,6 @@
 /// processes.
 library;
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -71,6 +70,7 @@ final class LspReader {
 /// Send an LSP message to stdout.
 void sendLspMessage(Map<String, dynamic> message) {
   final body = jsonEncode(message);
-  final framed = 'Content-Length: ${body.length}\r\n\r\n$body';
-  stdout.write(framed);
+  final bodyBytes = utf8.encode(body);
+  stdout.add(utf8.encode('Content-Length: ${bodyBytes.length}\r\n\r\n'));
+  stdout.add(bodyBytes);
 }

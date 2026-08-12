@@ -72,6 +72,7 @@ class DoxaStructureViewElement(
         val virtualFile = file.virtualFile ?: return emptyList()
         val uri = virtualFile.url
         val document = file.viewProvider.document ?: return emptyList()
+        connector.ensureFileSent(uri, document.text)
 
         val params = mapOf("textDocument" to mapOf("uri" to uri))
         return try {

@@ -40,7 +40,7 @@ class DoxaCompletionProvider : CompletionProvider<CompletionParameters>() {
         )
 
         try {
-            val response = connector.sendRequestBlocking("textDocument/completion", params)
+            val response = connector.sendRequestBlocking("textDocument/completion", params) as? Map<*, *> ?: return
             val items = response["items"] as? List<*> ?: return
             for (item in items) {
                 val i = item as? Map<*, *> ?: continue

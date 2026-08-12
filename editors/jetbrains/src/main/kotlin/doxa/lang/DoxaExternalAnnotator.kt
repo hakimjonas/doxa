@@ -44,39 +44,8 @@ class DoxaExternalAnnotator : ExternalAnnotator<PsiFile, DoxaExternalAnnotator.A
         val connector = DoxaLspService.getInstance(file.project).connector
         if (!connector.isRunning) return AnnotatorResult(emptyList(), emptyList())
 
-        // Register listeners FIRST, then trigger didChange so we don't miss fast responses.
-        val diags = mutableListOf<Diag>()
-        connector.onNotification("textDocument/publishDiagnostics") { params ->
-            val diagUri = params["uri"] as? String
-            if (diagUri == uri) {
-                val items = params["diagnostics"] as? List<*> ?: emptyList<Any>()
-                for (item in items) {
-                    val d = item as? Map<*, *> ?: continue
-                    val range = d["range"] as? Map<*, *> ?: continue
-                    val start = range["start"] as? Map<*, *> ?: continue
-                    val end = range["end"] as? Map<*, *> ?: continue
-                    val sl = (start["line"] as? Number)?.toInt() ?: 0
-                    val sc = (start["character"] as? Number)?.toInt() ?: 0
-                    val el = (end["line"] as? Number)?.toInt() ?: 0
-                    val ec = (end["character"] as? Number)?.toInt() ?: 0
-                    val msg = d["message"] as? String ?: ""
-                    val sev = (d["severity"] as? Number)?.toInt() ?: 1
+        connector.ensureFileSent(uri, text)
 
-                    diags.add(
-                        Diag(
-                            range = TextRange(offsetFor(text, sl, sc), offsetFor(text, el, ec)),
-                            message = msg,
-                            severity = sev,
-                        )
-                    )
-                }
-            }
-        }
-
-        // Now trigger the server to re-check.
-        connector.didChange(uri, text)
-
-        // Fetch semantic tokens.
         val highlights = mutableListOf<TokenHighlight>()
         try {
             val legend = (connector.serverCapabilities?.get("semanticTokensProvider") as? Map<*, *>)
@@ -85,7 +54,7 @@ class DoxaExternalAnnotator : ExternalAnnotator<PsiFile, DoxaExternalAnnotator.A
 
             val semResponse = connector.sendRequestBlocking("textDocument/semanticTokens/full", mapOf(
                 "textDocument" to mapOf("uri" to uri),
-            ))
+            )) as? Map<*, *> ?: emptyMap<Any, Any>()
             val data = semResponse["data"] as? List<*> ?: emptyList<Any>()
             if (data.isNotEmpty()) {
                 var prevLine = 0
@@ -105,13 +74,7 @@ class DoxaExternalAnnotator : ExternalAnnotator<PsiFile, DoxaExternalAnnotator.A
                     val tokenType = if (typeIdx in tokenTypes.indices) tokenTypes[typeIdx] as? String ?: "" else ""
 
                     if (length > 0 && tokenType.isNotEmpty()) {
-                        highlights.add(
-                            TokenHighlight(
-                                range = TextRange(startOffset, endOffset),
-                                tokenType = tokenType,
-                                modifier = modBits,
-                            )
-                        )
+                        highlights.add(TokenHighlight(TextRange(startOffset, endOffset), tokenType, modBits))
                     }
                     prevLine = line
                     prevChar = char
@@ -120,7 +83,19 @@ class DoxaExternalAnnotator : ExternalAnnotator<PsiFile, DoxaExternalAnnotator.A
         } catch (_: Exception) {
         }
 
-        Thread.sleep(300)
+        val diags = connector.diagnosticsFor(uri).mapNotNull { d ->
+                    val range = d["range"] as? Map<*, *> ?: return@mapNotNull null
+                    val start = range["start"] as? Map<*, *> ?: return@mapNotNull null
+                    val end = range["end"] as? Map<*, *> ?: return@mapNotNull null
+                    val sl = (start["line"] as? Number)?.toInt() ?: 0
+                    val sc = (start["character"] as? Number)?.toInt() ?: 0
+                    val el = (end["line"] as? Number)?.toInt() ?: 0
+                    val ec = (end["character"] as? Number)?.toInt() ?: 0
+                    val msg = d["message"] as? String ?: ""
+                    val sev = (d["severity"] as? Number)?.toInt() ?: 1
+
+                    Diag(TextRange(offsetFor(text, sl, sc), offsetFor(text, el, ec)), msg, sev)
+        }
         return AnnotatorResult(diagnostics = diags, highlights = highlights)
     }
 

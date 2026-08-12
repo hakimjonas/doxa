@@ -3,6 +3,7 @@ package doxa.lang
 import com.intellij.openapi.diagnostic.Logger
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.CopyOnWriteArrayList
 
 class DoxaLspTransport(
@@ -48,26 +49,26 @@ class DoxaLspTransport(
 
     private fun readLoop() {
         val buffer = ByteArray(4096)
-        val content = StringBuilder()
+        val content = ByteArrayOutputStream()
         var contentLength = -1
         var headerDone = false
-        val headerBuffer = StringBuilder()
 
         try {
             while (running) {
                 val n = input.read(buffer)
                 if (n < 0) break
 
-                val chunk = String(buffer, 0, n, Charsets.UTF_8)
-                content.append(chunk)
+                content.write(buffer, 0, n)
 
                 while (true) {
                     if (!headerDone) {
-                        val termIdx = content.indexOf("\r\n\r\n")
+                        val bytes = content.toByteArray()
+                        val termIdx = findHeaderTerminator(bytes)
                         if (termIdx < 0) break
 
-                        val header = content.substring(0, termIdx)
-                        content.delete(0, termIdx + 4)
+                        val header = String(bytes, 0, termIdx, Charsets.US_ASCII)
+                        content.reset()
+                        content.write(bytes, termIdx + 4, bytes.size - termIdx - 4)
 
                         val prefix = "Content-Length: "
                         val startIdx = header.indexOf(prefix)
@@ -79,10 +80,12 @@ class DoxaLspTransport(
                     }
 
                     if (headerDone && contentLength > 0) {
-                        if (content.length < contentLength) break
+                        val bytes = content.toByteArray()
+                        if (bytes.size < contentLength) break
 
-                        val body = content.substring(0, contentLength)
-                        content.delete(0, contentLength)
+                        val body = String(bytes, 0, contentLength, Charsets.UTF_8)
+                        content.reset()
+                        content.write(bytes, contentLength, bytes.size - contentLength)
                         headerDone = false
                         contentLength = -1
 
@@ -104,6 +107,16 @@ class DoxaLspTransport(
         } finally {
             running = false
         }
+    }
+
+    private fun findHeaderTerminator(bytes: ByteArray): Int {
+        for (i in 0 until bytes.size - 3) {
+            if (bytes[i] == '\r'.code.toByte() && bytes[i + 1] == '\n'.code.toByte() &&
+                bytes[i + 2] == '\r'.code.toByte() && bytes[i + 3] == '\n'.code.toByte()) {
+                return i
+            }
+        }
+        return -1
     }
 
     companion object {

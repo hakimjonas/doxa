@@ -1,175 +1,193 @@
-# Doxa LSP Tooling — Full Improvement Plan
+# Doxa LSP and editor tooling plan
 
-## Architecture Overview
+## Decision
 
-```
-doxa (kernel) ─── doxa_tooling (LSP server) ─── doxa-jetbrains (IDE plugin)
-     │                      │                          │
-     │  check/elab/parse    │  handler/transport/      │  LspServerSupportProvider
-     │  ImportResolver      │  web_check/format         │  → spawns "doxa lsp"
-     │                      │                          │
-     └──────────────────────┴──────────────────────────┘
-```
+Doxa supports IntelliJ Community Edition and Android Studio. The JetBrains
+plugin therefore remains independent of JetBrains' commercial-only LSP API.
+It uses standard LSP over stdio and IntelliJ Platform APIs that are available
+in Community Edition.
 
-**Current LSP features served:** `initialize`, `didOpen/Change/Close`, `hover`,
-`definition`, `completion`, `semanticTokens/full`, `references`, `rename`,
-`documentSymbol`, `signatureHelp`, `codeLens`, `formatting`, `shutdown/exit`.
+The Doxa LSP server is the semantic authority for VS Code and JetBrains. The
+JetBrains plugin retains native support only for file recognition and editor
+behavior that does not require semantic analysis: file type, lexical tokens,
+comments, brace matching, and fallback highlighting.
 
----
+The goal is correct, dependable, ergonomic tooling. A feature is incomplete
+until its protocol behavior, IDE behavior, failure mode, and tests are in
+place.
 
-## PHASE 1 — Critical Bug Fix (doxa)
+## Current baseline
 
-**Root cause:** `_processFile` in `doxa/lib/src/import_resolver.dart:245-306`
-never calls `importState.importedPaths.add(path)`. When `web_check.dart` later
-processes the user's `import` declarations, `_processImport` re-elaborates
-already-processed files and throws `DuplicateDeclaration` for every definition
-— citing the same source span for both "first" and "second" occurrence.
+The first repair pass completed these items:
 
-| #  | Action | File | Details |
-|----|--------|------|---------|
-| 1.1 | Add `importState.importedPaths.add(path)` | `doxa/lib/src/import_resolver.dart:246` | Before `importState.push(path)`, add the path to `importedPaths` so the idempotent check in `_processImport` at `elab.dart:3847` works. |
-| 1.2 | Skip non-aliased `SImportKind` decls | `doxa_tooling/lib/src/web_check.dart:99-125` | Match `bin/doxa.dart:453` pattern — `if (decl.kind is SImportKind) continue;` (except aliased imports which need namespace handling). Their bindings are already in `resolver.bindings`. |
+- UTF-8 byte-counted `Content-Length` framing in the Dart server and Kotlin
+  client.
+- Generic JSON-RPC result handling rather than object-only results.
+- Correct result-shape handling for definition, hover, formatting, folding,
+  document symbols, Code Lens, and inlay hints.
+- Rename without the unsupported `textDocument/prepareRename` gate, with
+  reverse-ordered edits in an IntelliJ write command.
+- Document versions, basic diagnostic caching, and removal of fixed sleeps.
+- Basic lexer tokens for comments, strings, whitespace, and paired braces.
+- JetBrains plugin packaging against IntelliJ Community 2025.1.
 
-**Verification:** Run `dart run doxa_tooling/bin/doxa.dart check lib/stdlib/proofs.doxa`
-and all stdlib files — should produce zero diagnostics except for legitimate
-errors.
+This is a transitional baseline. The server keeps state per URI, but several
+IDE providers still issue synchronous requests and the LSP protocol suite is
+only beginning.
 
----
+## Architecture contract
 
-## PHASE 2 — JetBrains CE Compatibility
+### Server
 
-**Current state:** Plugin depends on `com.intellij.modules.lsp`, which the
-JetBrains docs do NOT list among universally available modules (only Ultimate
-has it). The target IDE is `IU` in `build.gradle.kts:14`.
+- Maintain document state per URI: text, version, diagnostic state, semantic
+  result, import cache, and completion ranking data.
+- Resolve every text-document request against the URI in its parameters.
+- Use LSP's negotiated UTF-16 position encoding. Convert positions carefully
+  at the boundary; Doxa internals may continue to use their own offsets.
+- Honor document lifecycle notifications and reject or safely handle requests
+  for unknown documents.
+- Publish diagnostics for the URI and version that was checked. Do not let a
+  later edit publish stale diagnostics over newer content.
+- Support cancellation at request boundaries. Long-running checks must be
+  cancellable or their obsolete result must be discarded.
+- Return standard LSP response shapes and JSON-RPC errors. Do not rely on
+  client-specific behavior.
 
-**Goal:** Plugin works in any JetBrains IDE (IC, IU, RustRover, CLion, etc.)
+### JetBrains client
 
-**Approach — Hybrid LSP client:**
+- Use one project-scoped server process and a tested JSON-RPC transport.
+- Synchronize open, change, close, save, and relevant external file events.
+- Do not block the UI thread. Requests must be asynchronous, cancellable, and
+  bounded by feature-appropriate deadlines.
+- Preserve IDE cancellation and freshness semantics: a response for an old
+  document version must not alter the current editor state.
+- Report missing binaries, failed initialization, and server exits through
+  actionable IDE notifications and logs.
+- Restart the server after a crash or binary-path change without requiring a
+  project restart.
+- Apply workspace edits through IDE commands with correct URI handling,
+  descending ranges, undo grouping, and support for all standard edit forms.
 
-Rather than depending on an external LSP plugin (LSP4IJ), build a **native
-LSP client transport layer** in Kotlin that speaks JSON-RPC 2.0 over stdio.
-This gives:
-- Full CE compatibility (zero external deps beyond platform modules)
-- Full control over server lifecycle, error handling, and feature inspection
-- The ability to polyfill features that the IntelliJ LSP API doesn't expose
+## Work sequence
 
-The plugin will use `com.intellij.modules.platform` +
-`com.intellij.modules.lang` (both available in all JB IDEs including CE) and
-implement the JSON-RPC framing (`Content-Length: N\r\n\r\n`) directly.
+### 1. Server document correctness
 
-| #  | Action | File | Details |
-|----|--------|------|---------|
-| 2.1 | Remove `com.intellij.modules.lsp` dependency | `build.gradle.kts` + `plugin.xml` | Replace with `com.intellij.modules.platform` + `com.intellij.modules.lang` |
-| 2.2 | Change target IDE to `IC` (Community Edition) | `build.gradle.kts:14` | `create("IC", "2025.1")` — compiles against CE, works in all IDEs |
-| 2.3 | Implement JSON-RPC transport | New: `DoxaLspTransport.kt` | Reads JSON-RPC messages from server process stdin/stdout with `Content-Length` framing. Provides `send()` and `onMessage()` API. |
-| 2.4 | Implement LSP client connector | New: `DoxaLspConnector.kt` | Manages server process lifecycle (start/stop/restart), message correlation (request ID → response callback), notification dispatch. |
-| 2.5 | Implement feature integrations | New files per feature | Wire LSP results into IntelliJ APIs: `ExternalAnnotator` (diagnostics), `DocumentationProvider` (hover), `GotoDeclarationHandler` (definition), `CompletionContributor` (completion), `FindUsagesProvider` (references), `ReferenceInjector` (rename), `StructureViewBuilder` (symbols), `FormattingModelBuilder` (format), `InlayModel` (code lens), `ParameterInfoHandler` (signature help), `SemanticHighlighting` (semantic tokens). |
-| 2.6 | Update dependency versions | `build.gradle.kts` + `gradle-wrapper.properties` | Gradle 8.13 → 8.14, Kotlin 2.1.20 → latest, IntelliJ Platform Plugin 2.5.0 → latest |
+Refactor `doxa_tooling/lib/src/lsp/handler.dart` from singleton document fields
+to a URI-indexed document store. Make all current handlers select the requested
+document explicitly. Preserve import caching only where the cache belongs to
+the same document and dependency state.
 
----
+Completion criteria:
 
-## PHASE 3 — JetBrains Plugin Hardening
+- Two open `.doxa` files retain independent text, diagnostics, semantic data,
+  and versions.
+- Requests for either URI return results for that URI after interleaved edits.
+- UTF-16 positions work for non-ASCII source text.
+- Server integration tests cover interleaved multi-file traffic.
 
-| #  | Action | File | Details |
-|----|--------|------|---------|
-| 3.1 | **Fix binary path resolution** | `DoxaLspConnector.kt` (new) | Use `DoxaSettings.instance.binaryPath.ifEmpty { "doxa" }` instead of hardcoded `"doxa"`. Try settings path first, then PATH, then bundled binary. |
-| 3.2 | **Remove bundled binary from repo** | Delete `src/main/resources/bin/doxa` | 8.2MB ELF x86-64 Linux dynamically linked binary — platform-specific, bloats repo, stale. |
-| 3.3 | **Add TextMate grammar** | New: `resources/syntaxes/doxa.tmLanguage.json` + `plugin.xml` | Port from VSCode (`vscode/syntaxes/doxa.tmLanguage.json`) — provides syntax highlighting even without LSP server running. |
-| 3.4 | **Add commenter** | New + `plugin.xml` | `lang.commenter` for `//` (line) and `/* */` (block) |
-| 3.5 | **Add bracket matcher** | New + `plugin.xml` | `lang.braceMatcher` for `()`, `[]`, `{}` |
-| 3.6 | **Add structure view** | New + `plugin.xml` | `StructureViewBuilder` powered by LSP `textDocument/documentSymbol` |
-| 3.7 | **Add folding builder** | New + `plugin.xml` | `lang.foldingBuilder` powered by LSP `textDocument/foldingRange` |
-| 3.8 | **Add color settings page** | New + `plugin.xml` | `colorSettingsPage` for configurable syntax highlighting colors |
-| 3.9 | **Add `.gitattributes` for binary detection** | `.gitattributes` | Ensure correct line endings and binary handling |
+### 2. Tested LSP protocol boundary
 
----
+Build server tests around a subprocess or in-memory framed transport. Cover
+framing across arbitrary byte boundaries, non-ASCII JSON, malformed messages,
+JSON-RPC errors, request cancellation, and the document lifecycle.
 
-## PHASE 4 — LSP Server Enhancements (doxa)
+Completion criteria:
 
-| #  | Action | File | Details |
-|----|--------|------|---------|
-| 4.1 | **`$/cancelRequest`** | `handler.dart` + `transport.dart` | Accept `$/cancelRequest` notifications; use a cancellation token in `checkSourceOutput` to abort long-running type checks. The handler stores active request IDs and their cancellation state. |
-| 4.2 | **`textDocument/prepareRename`** | `handler.dart` | Return default behavior (the span of the identifier at cursor). Validates rename is possible before user starts editing. |
-| 4.3 | **`workspace/didChangeConfiguration`** | `handler.dart` | Accept settings from client (e.g., `doxa.trace.server`, `doxa.maxNumberOfProblems`). |
-| 4.4 | **`workspace/didChangeWatchedFiles`** | `handler.dart` | When imported `.doxa` files change on disk, trigger re-check of open documents. |
-| 4.5 | **`textDocument/foldingRange`** | `handler.dart` | Return foldable regions: consecutive imports, data type definitions, function bodies, match arms. |
-| 4.6 | **`textDocument/documentLink`** | `handler.dart` | Resolve `import "path.doxa"` strings to clickable document links. |
-| 4.7 | **`textDocument/semanticTokens/range`** | `handler.dart` | Partial semantic token refresh for visible range only. |
-| 4.8 | **Debounce `didChange`** | `handler.dart` | Add 300ms debounce timer — on each edit, reset the timer; only run `checkSourceOutput` when timer fires. Prevents check storm on fast typing. |
-| 4.9 | **Completion with snippets** | `handler.dart` | Add `insertTextFormat: 2` (snippet) support for completions with placeholders (e.g., `fun $1($2) : $3 = $0`). |
-| 4.10 | **`textDocument/inlayHint`** | `handler.dart` | Show inferred types for bindings that lack annotations, implicit parameter names. |
-| 4.11 | **`textDocument/typeDefinition`** | `handler.dart` | Go-to-type-definition (jump from a term to its type/data declaration). |
-| 4.12 | **Server version tracking** | `handler.dart:132` | `serverInfo.version` should use actual Doxa version from `pubspec.yaml` instead of hardcoded `"0.1.0"`. |
-| 4.13 | **Initialize result: `positionEncoding`** | `handler.dart:101` | Return `"positionEncodings": ["utf-16"]` to be spec-compliant. |
+- `doxa_tooling/test` covers initialize, open/change/close, diagnostics,
+  hover, definition, completion, semantic tokens, references, rename,
+  formatting, folding, symbols, inlay hints, and shutdown.
+- Tests assert protocol values, including URIs, versions, ranges, and UTF-16
+  offsets, rather than only checking that a response exists.
 
----
+### 3. JetBrains client foundation
 
-## PHASE 5 — Testing, CI/CD, and Polish
+Replace synchronous provider calls with a single asynchronous request layer.
+Wire document and virtual-file lifecycle listeners. Add process monitoring,
+restart behavior, configuration-change handling, and user-visible failures.
 
-| #  | Action | Files | Details |
-|----|--------|-------|---------|
-| 5.1 | **LSP integration tests** (doxa) | New: `doxa_tooling/test/lsp_test.dart` | Spawn `doxa lsp` as subprocess, send JSON-RPC messages, assert responses. Test: initialize, didOpen, hover, definition, completion, semanticTokens, references, rename, formatting, diagnostics, shutdown. |
-| 5.2 | **Plugin unit tests** (doxa-jetbrains) | New: `src/test/kotlin/` | Test: DoxaLspTransport message framing, DoxaLspConnector startup/shutdown, DoxaSettings persistence, DoxaConfigurable UI state. |
-| 5.3 | **GitHub Actions CI** (doxa-jetbrains) | New: `.github/workflows/ci.yml` | Build plugin with `./gradlew buildPlugin`, run tests, verify with Plugin Verifier. |
-| 5.4 | **GitHub Actions CI** (doxa) | New or existing `.github/workflows/` | Already has `.github/` — verify it has CI. If not, add: `dart analyze` (both packages), `dart format --set-exit-if-changed`, `dart test` (both packages), stdlib checks. |
-| 5.5 | **Run full pre-commit checklist** | — | All 6 steps from `AGENTS.md` must pass after all doxa changes. |
-| 5.6 | **Documentation** | `contrib/jetbrains/README.md` + plugin README | Update with CE compatibility info, installation instructions, settings guide. |
-| 5.7 | **`.gitignore` for bundled binary** | `doxa-jetbrains/.gitignore` | Ensure `src/main/resources/bin/doxa` is untracked (if not deleted outright). |
+Completion criteria:
 
----
+- No language feature blocks the UI thread on server I/O.
+- Closing a file sends `didClose`; editor changes send correct ordered versions.
+- The client recovers from a process exit and a changed binary setting.
+- A missing or non-executable binary produces an installation/configuration
+  notification, not only a log entry.
+- Kotlin tests cover framing, response correlation, cancellation, process
+  lifecycle, and document synchronization.
 
-## Binary Strategy
+### 4. Core editor workflows
 
-Rather than bundling platform-specific binaries:
+Implement and verify the workflows Doxa users rely on daily before optional
+presentation features:
 
-1. **User installs doxa via `dart pub global activate doxa_tooling`** — this
-   compiles a native binary on their platform and puts it on PATH.
-2. **Plugin finds `doxa` on PATH** (default) or uses the configured path from
-   settings.
-3. **If neither works**, the plugin shows a notification: "Doxa binary not
-   found. Install with: `dart pub global activate doxa_tooling`"
-4. **CI-published binaries**: Optionally, the GitHub CI can produce `doxa` AOT
-   binaries for `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`,
-   `windows-x64` as release artifacts — but not bundled in the plugin repo.
+1. Diagnostics and semantic highlighting.
+2. Completion and hover.
+3. Go to declaration and references/find usages.
+4. Rename, including multi-file workspace edits.
+5. Full-document formatting.
+6. Document symbols, structure view, folding, and breadcrumbs where supported.
+7. Signature help and inlay hints.
 
----
+Code Lens is presentation-only until Doxa defines commands with useful,
+safe user actions. Do not expose inert clickable-looking entries.
 
-## Risk Items
+Completion criteria:
 
-| Risk | Mitigation |
-|------|------------|
-| Phase 2 manual LSP client is large effort (~20+ Kotlin files) | Implement incrementally, starting with transport + diagnostics + hover + completion; rest follow as features are wired |
-| Phase 2 is sensitive to IntelliJ API changes | Use stable extension points (`ExternalAnnotator`, `DocumentationProvider`, etc.) which have been stable for many versions |
-| `$/cancelRequest` requires threading in Dart | Use `Isolate` or async `Future` with a flag; don't over-engineer — set a volatile bool on cancel and check between declaration processing |
-| Multiple `.doxa` files in a workspace may require `workspace/didChangeWatchedFiles` before Phase 4 is done | Accept that import changes require a server restart initially; Phase 4.4 addresses this |
+- Each workflow has a server test and a JetBrains integration or component
+  test.
+- Unsupported server capabilities are not registered or advertised as working.
+- Errors and empty results are distinguishable in logs and user-facing behavior.
 
----
+### 5. Workspace behavior and proof-assistant ergonomics
 
-## Estimated File Count
+Add watched-file notifications for imports, then evaluate Doxa-specific LSP
+extensions only after the standard contract is stable. Candidate features
+include goals at cursor, normalized types, proof-state views, and proof-aware
+code actions. Each extension must have a stable protocol description before a
+client consumes it.
 
-| Phase | Files Changed | Files Created | Files Deleted |
-|-------|---------------|---------------|---------------|
-| Phase 1 | 2 | 0 | 0 |
-| Phase 2 | 3 | 15-20 | 0 |
-| Phase 3 | 1 | 4-5 | 1 |
-| Phase 4 | 2 | 0 | 0 |
-| Phase 5 | 0 | 4-6 | 0 |
-| **Total** | **8** | **23-31** | **1** |
+Completion criteria:
 
----
+- Imported-file edits cause dependent open files to be rechecked.
+- Standard LSP behavior remains usable in VS Code and JetBrains without any
+  Doxa-specific extension.
+- Doxa-specific UI does not hide or replace ordinary diagnostics.
 
-## Success Criteria
+### 6. Release gate and hosted Wasm update
 
-1. `dart run doxa_tooling/bin/doxa.dart check lib/stdlib/proofs.doxa` produces
-   **zero false-positive duplicate declaration errors**
-2. JetBrains plugin loads in **Community Edition** 2025.1+ and shows
-   diagnostics + hover + completion for `.doxa` files
-3. All 13 LSP features from the current `initialize` response work end-to-end
-   in CE
-4. Binary path from settings page is honored
-5. `.doxa` files have syntax highlighting via TextMate grammar (without LSP
-   server)
-6. `//` and `/* */` commenting, `()[]{}` bracket matching work
-7. Full pre-commit checklist from `AGENTS.md` passes
-8. `./gradlew buildPlugin` produces a working plugin artifact
-9. Zero regressions in existing kernel and tooling tests
+The hosted Wasm checker remains on its current version until the LSP work is
+ready. Before updating `ardaproject.org/doxa`, verify that browser, CLI, VS
+Code, and JetBrains use the same Doxa release and agree on syntax, checking,
+diagnostics, and formatting.
+
+Completion criteria:
+
+- Kernel and tooling tests pass, including the LSP suite.
+- The JetBrains plugin builds and passes its test suite on the supported
+  Community baseline.
+- The latest Wasm build is manually tested against representative standard
+  library and proof examples.
+- Website binary, package versions, extension metadata, and release notes are
+  updated together.
+
+## Compatibility and distribution
+
+- The plugin targets IntelliJ Community Edition first. Test commercial
+  JetBrains IDEs as additional supported hosts where platform APIs permit.
+- Do not depend on `com.intellij.modules.lsp`.
+- The plugin starts `doxa lsp` from the configured executable path or PATH.
+  Do not bundle platform-specific binaries without a separate distribution and
+  update strategy.
+- The monorepo at `editors/jetbrains/` is authoritative. The external
+  `doxa-jetbrains` repository is superseded.
+
+## Quality gates
+
+- `dart format --set-exit-if-changed` and `dart analyze` for affected Dart
+  packages. Existing warnings must be tracked separately; new warnings are not
+  acceptable.
+- `dart test` for kernel and tooling packages.
+- `./gradlew buildPlugin` and JetBrains test tasks.
+- `git diff --check`.
+- Manual smoke tests in IntelliJ Community Edition with a missing binary, a
+  valid binary, a server crash, one file, and two interleaved open files.

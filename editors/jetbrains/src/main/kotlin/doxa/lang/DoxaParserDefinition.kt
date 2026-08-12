@@ -33,9 +33,9 @@ class DoxaParserDefinition : ParserDefinition {
     override fun getFileNodeType(): IFileElementType =
         IFileElementType("DOXA_FILE", DoxaLanguage.INSTANCE)
 
-    override fun getWhitespaceTokens(): TokenSet = TokenSet.EMPTY
-    override fun getCommentTokens(): TokenSet = TokenSet.EMPTY
-    override fun getStringLiteralElements(): TokenSet = TokenSet.EMPTY
+    override fun getWhitespaceTokens(): TokenSet = TokenSet.create(DoxaTokenTypes.WHITESPACE)
+    override fun getCommentTokens(): TokenSet = TokenSet.create(DoxaTokenTypes.LINE_COMMENT, DoxaTokenTypes.BLOCK_COMMENT)
+    override fun getStringLiteralElements(): TokenSet = TokenSet.create(DoxaTokenTypes.STRING)
 
     override fun createFile(viewProvider: FileViewProvider): PsiFile =
         DoxaFile(viewProvider)
@@ -56,18 +56,46 @@ class DoxaLexer : Lexer() {
     override fun start(buffer: CharSequence, startOffset: Int, endOffset: Int, initialState: Int) {
         this.buffer = buffer
         this.startOffset = startOffset
-        this.endOffset = endOffset
+        this.endOffset = startOffset
+        advance()
     }
 
     override fun advance() {
         startOffset = endOffset
-        if (endOffset >= buffer.length || startOffset > 0) return
-        endOffset = buffer.length
+        if (startOffset >= buffer.length) return
+
+        val ch = buffer[startOffset]
+        endOffset = when {
+            ch.isWhitespace() -> consumeWhile(startOffset) { it.isWhitespace() }
+            ch == '/' && startOffset + 1 < buffer.length && buffer[startOffset + 1] == '/' ->
+                consumeUntil(startOffset + 2) { it == '\n' || it == '\r' }
+            ch == '/' && startOffset + 1 < buffer.length && buffer[startOffset + 1] == '*' -> {
+                val close = buffer.indexOf("*/", startOffset + 2)
+                if (close < 0) buffer.length else close + 2
+            }
+            ch == '"' -> consumeString(startOffset)
+            ch.isLetterOrDigit() || ch == '_' -> consumeWhile(startOffset) { it.isLetterOrDigit() || it == '_' }
+            else -> startOffset + 1
+        }
     }
 
     override fun getState(): Int = 0
     override fun getTokenType(): IElementType? =
-        if (endOffset > startOffset) DoxaTokenTypes.IDENT else null
+        if (endOffset <= startOffset) null else when {
+            buffer[startOffset].isWhitespace() -> DoxaTokenTypes.WHITESPACE
+            buffer.startsWith("//", startOffset) -> DoxaTokenTypes.LINE_COMMENT
+            buffer.startsWith("/*", startOffset) -> DoxaTokenTypes.BLOCK_COMMENT
+            buffer[startOffset] == '"' -> DoxaTokenTypes.STRING
+            else -> when (buffer[startOffset]) {
+                '(' -> DoxaTokenTypes.LPAREN
+                ')' -> DoxaTokenTypes.RPAREN
+                '{' -> DoxaTokenTypes.LBRACE
+                '}' -> DoxaTokenTypes.RBRACE
+                '[' -> DoxaTokenTypes.LBRACK
+                ']' -> DoxaTokenTypes.RBRACK
+                else -> DoxaTokenTypes.IDENT
+            }
+        }
     override fun getTokenStart(): Int = startOffset
     override fun getTokenEnd(): Int = endOffset
     override fun getBufferSequence(): CharSequence = buffer
@@ -82,5 +110,26 @@ class DoxaLexer : Lexer() {
     override fun restore(position: com.intellij.lexer.LexerPosition) {
         startOffset = position.offset
         endOffset = position.offset
+    }
+
+    private fun consumeWhile(offset: Int, predicate: (Char) -> Boolean): Int {
+        var index = offset
+        while (index < buffer.length && predicate(buffer[index])) index++
+        return index
+    }
+
+    private fun consumeUntil(offset: Int, predicate: (Char) -> Boolean): Int {
+        var index = offset
+        while (index < buffer.length && !predicate(buffer[index])) index++
+        return index
+    }
+
+    private fun consumeString(offset: Int): Int {
+        var index = offset + 1
+        while (index < buffer.length) {
+            if (buffer[index] == '"' && buffer[index - 1] != '\\') return index + 1
+            index++
+        }
+        return buffer.length
     }
 }

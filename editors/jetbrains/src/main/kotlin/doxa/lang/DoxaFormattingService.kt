@@ -4,6 +4,7 @@ import com.intellij.formatting.service.AsyncDocumentFormattingService
 import com.intellij.formatting.service.AsyncFormattingRequest
 import com.intellij.formatting.service.FormattingService
 import com.intellij.psi.PsiFile
+import java.util.concurrent.Future
 
 class DoxaFormattingService : AsyncDocumentFormattingService() {
 
@@ -11,13 +12,15 @@ class DoxaFormattingService : AsyncDocumentFormattingService() {
     override fun getName(): String = "Doxa Formatter"
 
     override fun getFeatures(): MutableSet<FormattingService.Feature> =
-        mutableSetOf(FormattingService.Feature.FORMAT_FRAGMENTS)
+        mutableSetOf()
 
     override fun canFormat(file: PsiFile): Boolean =
         file.language is DoxaLanguage
 
     override fun createFormattingTask(request: AsyncFormattingRequest): FormattingTask {
         return object : FormattingTask {
+            private var requestFuture: Future<*>? = null
+
             override fun run() {
                 val virtualFile = request.context.virtualFile ?: return
                 val uri = virtualFile.url
@@ -34,18 +37,15 @@ class DoxaFormattingService : AsyncDocumentFormattingService() {
                     "options" to mapOf("tabSize" to 2, "insertSpaces" to true),
                 )
 
-                try {
-                    val response = connector.sendRequestBlocking("textDocument/formatting", params)
-                    val edits = response as? List<*> ?: return
-                    if (edits.isEmpty()) return
-                    val edit = edits[0] as? Map<*, *> ?: return
-                    val newText = edit["newText"] as? String ?: return
+                requestFuture = connector.sendRequestAsync("textDocument/formatting", params) { response ->
+                    val edits = response as? List<*> ?: return@sendRequestAsync
+                    val edit = edits.firstOrNull() as? Map<*, *> ?: return@sendRequestAsync
+                    val newText = edit["newText"] as? String ?: return@sendRequestAsync
                     request.onTextReady(newText)
-                } catch (_: Exception) {
                 }
             }
 
-            override fun cancel(): Boolean { return true }
+            override fun cancel(): Boolean = requestFuture?.cancel(true) ?: true
             override fun isRunUnderProgress(): Boolean = true
         }
     }

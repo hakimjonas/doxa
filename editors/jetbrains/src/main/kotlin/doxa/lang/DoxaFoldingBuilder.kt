@@ -15,6 +15,7 @@ class DoxaFoldingBuilder : FoldingBuilder {
 
         val virtualFile = psiFile.virtualFile ?: return emptyArray()
         val uri = virtualFile.url
+        connector.ensureFileSent(uri, document.text)
 
         val params = mapOf("textDocument" to mapOf("uri" to uri))
         try {

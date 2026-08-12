@@ -67,7 +67,7 @@ class DoxaInlayHintProvider : InlayHintsProvider<NoSettings> {
             override fun collect(element: PsiElement, editor: Editor, sink: InlayHintsSink): Boolean {
                 if (element === file) {
                     for ((offset, label) in hints) {
-                        sink.addInlineElement(offset, true, factory.smallText(label))
+                        sink.addInlineElement(offset, true, factory.smallText(label), false)
                     }
                 }
                 return true

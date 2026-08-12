@@ -1,6 +1,7 @@
 package doxa.lang
 
 import com.intellij.openapi.options.Configurable
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.DialogPanel
 import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.panel
@@ -10,8 +11,7 @@ import javax.swing.JComponent
  * Settings page: `Settings → Languages & Frameworks → Doxa`.
  *
  * Lets the user configure the path to the `doxa` language server binary.
- * The default is `doxa` (on PATH).  Use the bundled AOT binary for
- * zero-dependency operation.
+ * The default is `doxa` from the environment PATH.
  */
 class DoxaConfigurable : Configurable {
 
@@ -42,6 +42,9 @@ class DoxaConfigurable : Configurable {
 
     override fun apply() {
         DoxaSettings.instance.binaryPath = binaryPath
+        ProjectManager.getInstance().openProjects.forEach {
+            DoxaLspService.getInstance(it).restartServer()
+        }
     }
 
     override fun reset() {

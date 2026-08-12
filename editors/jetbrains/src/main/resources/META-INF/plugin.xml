@@ -4,15 +4,18 @@
   <vendor url="https://github.com/hakimjonas/doxa">Doxa</vendor>
 
   <description><![CDATA[
-    Language support for Doxa — a dependently typed proof checker.
+    Language support for Doxa, a dependently typed proof checker.
     Provides diagnostics, hover, go-to-definition, completion,
     formatting, code lens, and syntax highlighting via the
-    Doxa language server. Works in all JetBrains IDEs including
-    Community Edition.
+    Doxa language server. Requires IntelliJ Platform 2025.1-compatible IDEs.
   ]]></description>
 
   <depends>com.intellij.modules.platform</depends>
   <depends>com.intellij.modules.lang</depends>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <notificationGroup id="Doxa Language Server" displayType="BALLOON"/>
+  </extensions>
 
   <extensions defaultExtensionNs="com.intellij">
     <fileType
@@ -79,9 +82,6 @@
   <extensions defaultExtensionNs="com.intellij">
     <renameHandler
         implementation="doxa.lang.DoxaRenameHandler"/>
-
-    <codeInsight.daemonBoundCodeVisionProvider
-        implementation="doxa.lang.DoxaCodeLensProvider"/>
 
     <codeInsight.inlayProvider
         language="Doxa"

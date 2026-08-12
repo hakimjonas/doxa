@@ -11,26 +11,40 @@ import '../web_check.dart';
 import '../format.dart' show formatSource;
 import '../tokenize.dart' show tokenizeDoxaSpans;
 import 'package:rumil_tokens/rumil_tokens.dart'
-    show Keyword, TypeName, Comment, NumberLit, Operator, Punctuation, Spanned, Token;
+    show Keyword, Comment, NumberLit, Operator, Punctuation, Token;
 import 'protocol.dart';
 import 'transport.dart';
 
-/// LSP handler: owns document state and dispatches incoming methods.
+final class _DocumentState {
+  _DocumentState({
+    required this.uri,
+    required this.text,
+    required this.version,
+  });
+
+  final String uri;
+  String text;
+  int version;
+  CheckSuccess? lastSuccess;
+  Map<String, int> frequency = <String, int>{};
+  CachedImports? cachedImports;
+}
+
+/// LSP handler: owns open-document state and dispatches incoming methods.
 final class LspHandler {
-  /// The URI of the open document (or empty if none).
-  String _documentUri = '';
+  final Map<String, _DocumentState> _documents = {};
+  _DocumentState? _activeDocument;
 
-  /// The current source text.
-  String _documentText = '';
-
-  /// The last successful check result, used for semantic queries.
-  CheckSuccess? _lastSuccess;
-
-  /// Per-name reference frequency for completion ranking.
-  Map<String, int> _freq = <String, int>{};
-
-  /// Cached import resolution, reused across edits.
-  CachedImports? _cachedImports;
+  String get _documentUri => _activeDocument?.uri ?? '';
+  String get _documentText => _activeDocument?.text ?? '';
+  set _documentText(String value) => _activeDocument?.text = value;
+  CheckSuccess? get _lastSuccess => _activeDocument?.lastSuccess;
+  set _lastSuccess(CheckSuccess? value) => _activeDocument?.lastSuccess = value;
+  Map<String, int> get _freq => _activeDocument?.frequency ?? const {};
+  set _freq(Map<String, int> value) => _activeDocument?.frequency = value;
+  CachedImports? get _cachedImports => _activeDocument?.cachedImports;
+  set _cachedImports(CachedImports? value) =>
+      _activeDocument?.cachedImports = value;
 
   /// Request IDs that have been cancelled via $/cancelRequest.
   final Set<int> _cancelledIds = {};
@@ -64,6 +78,22 @@ final class LspHandler {
       if (cancelled != null) return cancelled;
     }
 
+    if (method?.startsWith('textDocument/') == true &&
+        method != 'textDocument/didOpen' &&
+        method != 'textDocument/didClose') {
+      final uri = _uriFromParams(params);
+      final document = uri == null ? null : _documents[uri];
+      if (document == null) {
+        if (id == null) return null;
+        return {
+          'jsonrpc': '2.0',
+          'id': id,
+          'error': {'code': -32602, 'message': 'Document is not open: $uri'},
+        };
+      }
+      _activeDocument = document;
+    }
+
     switch (method) {
       case 'initialize':
         return _handleInitialize(id);
@@ -77,7 +107,7 @@ final class LspHandler {
         return null;
 
       case 'textDocument/didClose':
-        _handleDidClose();
+        _handleDidClose(params!);
         return null;
 
       case 'textDocument/hover':
@@ -125,8 +155,7 @@ final class LspHandler {
         return null; // Acknowledged; no configuration to consume yet.
 
       case 'workspace/didChangeWatchedFiles':
-        // Re-check on external file changes.
-        _checkAndPublish();
+        _handleWatchedFiles();
         return null;
 
       case 'shutdown':
@@ -187,8 +216,13 @@ final class LspHandler {
   /// Handle `textDocument/didOpen`.
   void _handleDidOpen(Map<String, dynamic> params) {
     final textDocument = params['textDocument'] as Map<String, dynamic>;
-    _documentUri = textDocument['uri'] as String;
-    _documentText = textDocument['text'] as String;
+    final uri = textDocument['uri'] as String;
+    _activeDocument = _DocumentState(
+      uri: uri,
+      text: textDocument['text'] as String,
+      version: textDocument['version'] as int? ?? 0,
+    );
+    _documents[uri] = _activeDocument!;
     _freq = <String, int>{};
     _cachedImports = null;
     _checkAndPublish();
@@ -196,21 +230,46 @@ final class LspHandler {
 
   /// Handle `textDocument/didChange`.
   void _handleDidChange(Map<String, dynamic> params) {
+    final textDocument = params['textDocument'] as Map<String, dynamic>;
+    final uri = textDocument['uri'] as String;
+    final document = _documents[uri];
+    if (document == null) return;
+    _activeDocument = document;
+    final version = textDocument['version'] as int?;
+    if (version != null && version <= document.version) return;
     final contentChanges = params['contentChanges'] as List<dynamic>;
     if (contentChanges.isNotEmpty) {
       final change = contentChanges.last as Map<String, dynamic>;
       _documentText = change['text'] as String;
     }
+    if (version != null) document.version = version;
     _freq = <String, int>{};
     _checkAndPublish();
   }
 
   /// Handle `textDocument/didClose`.
-  void _handleDidClose() {
-    _documentUri = '';
-    _documentText = '';
-    _lastSuccess = null;
+  void _handleDidClose(Map<String, dynamic> params) {
+    final textDocument = params['textDocument'] as Map<String, dynamic>;
+    final uri = textDocument['uri'] as String;
+    final document = _documents.remove(uri);
+    if (document == null) return;
+    _activeDocument = document;
     _publishDiagnostics(const <LspDiagnostic>[]);
+    if (identical(_activeDocument, document)) _activeDocument = null;
+  }
+
+  void _handleWatchedFiles() {
+    final previous = _activeDocument;
+    for (final document in _documents.values) {
+      _activeDocument = document;
+      _checkAndPublish();
+    }
+    _activeDocument = previous;
+  }
+
+  String? _uriFromParams(Map<String, dynamic>? params) {
+    final textDocument = params?['textDocument'] as Map<String, dynamic>?;
+    return textDocument?['uri'] as String?;
   }
 
   /// Handle `textDocument/hover`.
@@ -228,11 +287,7 @@ final class LspHandler {
         range: range,
       );
     });
-    return {
-      'jsonrpc': '2.0',
-      'id': id,
-      'result': result?.toJson(),
-    };
+    return {'jsonrpc': '2.0', 'id': id, 'result': result?.toJson()};
   }
 
   /// Handle `textDocument/definition`.
@@ -255,11 +310,7 @@ final class LspHandler {
         ),
       );
     });
-    return {
-      'jsonrpc': '2.0',
-      'id': id,
-      'result': result?.toJson(),
-    };
+    return {'jsonrpc': '2.0', 'id': id, 'result': result?.toJson()};
   }
 
   /// Handle `textDocument/completion`.
@@ -325,7 +376,8 @@ final class LspHandler {
     Object? id,
     Map<String, dynamic> params,
   ) {
-    final tokens = <({int line, int char, int length, int typeIndex, int modifierBits})>[];
+    final tokens =
+        <({int line, int char, int length, int typeIndex, int modifierBits})>[];
 
     // Syntax tokens from the Doxa tokenizer (always available).
     for (final spanned in tokenizeDoxaSpans(_documentText)) {
@@ -735,7 +787,11 @@ final class LspHandler {
         }
         if (i - startLine >= 2) {
           folds.add(
-            LspFoldingRange(startLine: startLine, endLine: i - 1, kind: 'region'),
+            LspFoldingRange(
+              startLine: startLine,
+              endLine: i - 1,
+              kind: 'region',
+            ),
           );
         }
         continue;
@@ -744,7 +800,9 @@ final class LspHandler {
       // Block comments spanning multiple lines.
       if (trimmed.contains('/*') && !trimmed.contains('*/')) {
         final startLine = i;
-        while (i < lines.length && !lines[i].contains('*/')) i++;
+        while (i < lines.length && !lines[i].contains('*/')) {
+          i++;
+        }
         if (i < lines.length) i++;
         if (i - startLine >= 2) {
           folds.add(
@@ -802,7 +860,9 @@ final class LspHandler {
     final params = <String>[];
     var i = 0;
     // Skip leading spaces.
-    while (i < type.length && type[i] == ' ') i++;
+    while (i < type.length && type[i] == ' ') {
+      i++;
+    }
     while (i < type.length && type[i] == '(') {
       final start = i;
       var depth = 1;
@@ -876,10 +936,9 @@ final class LspHandler {
     } catch (e) {
       _lastSuccess = null;
       _cachedImports = null;
-      final source = SourceFile(filename: _documentUri, text: _documentText);
       _publishDiagnostics([
         LspDiagnostic(
-          range: LspRange(
+          range: const LspRange(
             start: LspPosition(line: 0, character: 0),
             end: LspPosition(line: 0, character: 0),
           ),

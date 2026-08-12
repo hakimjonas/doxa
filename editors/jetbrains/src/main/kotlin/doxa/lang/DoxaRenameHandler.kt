@@ -3,6 +3,8 @@ package doxa.lang
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.refactoring.rename.RenameHandler
@@ -37,21 +39,6 @@ class DoxaRenameHandler : RenameHandler {
         val text = editor.document.text
         val position = offsetToPosition(text, offset)
 
-        // First, prepare rename to validate the symbol.
-        val prepParams = mapOf(
-            "textDocument" to mapOf("uri" to uri),
-            "position" to mapOf("line" to position.first, "character" to position.second),
-        )
-
-        val prepResult = try {
-            connector.sendRequestBlocking("textDocument/prepareRename", prepParams)
-        } catch (_: Exception) {
-            null
-        }
-
-        if (prepResult == null || prepResult.isEmpty()) return
-
-        // Get the current name from the prepare result or from the token at cursor.
         val word = getWordAtCursor(editor)
         if (word.isEmpty()) return
 
@@ -75,30 +62,34 @@ class DoxaRenameHandler : RenameHandler {
         )
 
         try {
-            val response = connector.sendRequestBlocking("textDocument/rename", params)
+            val response = connector.sendRequestBlocking("textDocument/rename", params) as? Map<*, *> ?: return
             val changes = response["changes"] as? Map<*, *> ?: return
             for ((changeUri, edits) in changes) {
                 val editList = edits as? List<*> ?: continue
-                val targetPath = (changeUri as? String)?.removePrefix("file://") ?: continue
-                val targetFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(targetPath) ?: continue
+                val targetUri = changeUri as? String ?: continue
+                val targetFile = VirtualFileManager.getInstance().findFileByUrl(targetUri) ?: continue
                 val targetDoc = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(targetFile) ?: continue
 
-                com.intellij.openapi.application.ApplicationManager.getApplication().runWriteAction {
-                    for (edit in editList) {
-                        val e = edit as? Map<*, *> ?: continue
-                        val range = e["range"] as? Map<*, *> ?: continue
-                        val start = range["start"] as? Map<*, *> ?: continue
-                        val end = range["end"] as? Map<*, *> ?: continue
-                        val sl = (start["line"] as? Number)?.toInt() ?: 0
-                        val sc = (start["character"] as? Number)?.toInt() ?: 0
-                        val el = (end["line"] as? Number)?.toInt() ?: 0
-                        val ec = (end["character"] as? Number)?.toInt() ?: 0
-                        val newText = e["newText"] as? String ?: continue
-                        val startOffset = offsetFor(targetDoc.text, sl, sc)
-                        val endOffset = offsetFor(targetDoc.text, el, ec)
+                val parsedEdits = editList.mapNotNull { edit ->
+                    val e = edit as? Map<*, *> ?: return@mapNotNull null
+                    val range = e["range"] as? Map<*, *> ?: return@mapNotNull null
+                    val start = range["start"] as? Map<*, *> ?: return@mapNotNull null
+                    val end = range["end"] as? Map<*, *> ?: return@mapNotNull null
+                    val sl = (start["line"] as? Number)?.toInt() ?: 0
+                    val sc = (start["character"] as? Number)?.toInt() ?: 0
+                    val el = (end["line"] as? Number)?.toInt() ?: 0
+                    val ec = (end["character"] as? Number)?.toInt() ?: 0
+                    val newText = e["newText"] as? String ?: return@mapNotNull null
+                    val startOffset = offsetFor(targetDoc.text, sl, sc)
+                    val endOffset = offsetFor(targetDoc.text, el, ec)
+                    Triple(startOffset, endOffset, newText)
+                }.sortedByDescending { it.first }
+
+                WriteCommandAction.runWriteCommandAction(project, "Rename '$word'", null, Runnable {
+                    for ((startOffset, endOffset, newText) in parsedEdits) {
                         targetDoc.replaceString(startOffset, endOffset, newText)
                     }
-                }
+                })
             }
         } catch (_: Exception) {
         }

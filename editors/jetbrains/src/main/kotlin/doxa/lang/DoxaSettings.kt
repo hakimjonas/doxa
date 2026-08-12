@@ -8,8 +8,8 @@ import com.intellij.util.xmlb.XmlSerializerUtil
 /**
  * Persistent settings for the Doxa plugin.
  *
- * Stores the path to the Doxa language server binary.  Defaults to
- * the bundled AOT binary extracted to the plugin's directory.
+ * Stores the path to the Doxa language server binary. An empty path uses
+ * `doxa` from the environment PATH.
  */
 @State(
     name = "DoxaSettings",

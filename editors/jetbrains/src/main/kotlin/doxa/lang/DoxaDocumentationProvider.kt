@@ -30,11 +30,13 @@ class DoxaDocumentationProvider : DocumentationProvider {
         )
 
         try {
-            // Brief pause for server to process didOpen.
-            Thread.sleep(200)
-            val response = connector.sendRequestBlocking("textDocument/hover", params)
-            val contents = response["contents"] as? Map<*, *>
-            val value = contents?.get("value") as? String
+            val response = connector.sendRequestBlocking("textDocument/hover", params) as? Map<*, *> ?: return null
+            val contents = response["contents"]
+            val value = when (contents) {
+                is String -> contents
+                is Map<*, *> -> contents["value"] as? String
+                else -> null
+            }
             if (value != null) return DocumentationMarkup.CONTENT_START + value + DocumentationMarkup.CONTENT_END
         } catch (_: Exception) {
         }
