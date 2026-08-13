@@ -74,10 +74,8 @@ class DoxaStructureViewElement(
         val document = file.viewProvider.document ?: return emptyList()
         connector.ensureFileSent(uri, document.text)
 
-        val params = mapOf("textDocument" to mapOf("uri" to uri))
         return try {
-            val response = connector.sendRequestBlocking("textDocument/documentSymbol", params)
-            val symbols = response as? List<*> ?: return emptyList()
+            val symbols = connector.featuresFor(uri)?.symbols ?: return emptyList()
             symbols.mapNotNull { s ->
                 val sym = s as? Map<*, *> ?: return@mapNotNull null
                 val name = sym["name"] as? String ?: return@mapNotNull null

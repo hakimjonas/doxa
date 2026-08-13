@@ -41,9 +41,8 @@
         language="Doxa"
         implementationClass="doxa.lang.DoxaExternalAnnotator"/>
 
-    <lang.documentationProvider
-        language="Doxa"
-        implementationClass="doxa.lang.DoxaDocumentationProvider"/>
+    <platform.backend.documentation.targetProvider
+        implementation="doxa.lang.DoxaDocumentationProvider"/>
 
     <completion.contributor
         language="Doxa"

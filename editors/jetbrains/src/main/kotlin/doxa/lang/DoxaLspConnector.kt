@@ -3,8 +3,11 @@ package doxa.lang
 import com.google.gson.Gson
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -14,7 +17,13 @@ class DoxaLspConnector(private val project: Project) {
     private val pendingRequests = ConcurrentHashMap<Int, CompletableFuture<String>>()
     private val notificationHandlers = ConcurrentHashMap<String, (Map<String, Any?>) -> Unit>()
     private val diagnostics = ConcurrentHashMap<String, List<Map<String, Any?>>>()
+    private val documentFeatures = ConcurrentHashMap<String, DocumentFeatures>()
     private val pendingNotifications = ConcurrentLinkedQueue<Pair<String, Any?>>()
+    private val unsupportedMethods = ConcurrentHashMap.newKeySet<String>()
+    private val featureRefreshes = ConcurrentHashMap<String, ScheduledFuture<*>>()
+    private val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "DoxaLspFeatureRefresh").also { it.isDaemon = true }
+    }
     private val requestId = AtomicInteger(0)
     private val executor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "DoxaLspConnector").also { it.isDaemon = true }
@@ -37,7 +46,7 @@ class DoxaLspConnector(private val project: Project) {
 
         executor.submit {
             try {
-                val binaryPath = DoxaSettings.instance.binaryPath.ifEmpty { "doxa" }
+                val binaryPath = resolveBinaryPath()
                 LOG.info("Spawning: $binaryPath lsp")
                 val commandLine = GeneralCommandLine(binaryPath, "lsp")
                     .withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.CONSOLE)
@@ -78,6 +87,9 @@ class DoxaLspConnector(private val project: Project) {
                 while (true) {
                     val notification = pendingNotifications.poll() ?: break
                     sendNotificationDirect(notification.first, notification.second)
+                }
+                openDocumentTexts.forEach { (uri, text) ->
+                    refreshDocumentFeatures(uri, documentVersions[uri]?.get() ?: 1, text)
                 }
                 LOG.info("Doxa LSP server ready")
             } catch (e: Exception) {
@@ -123,10 +135,22 @@ class DoxaLspConnector(private val project: Project) {
 
     fun diagnosticsFor(uri: String): List<Map<String, Any?>> = diagnostics[uri].orEmpty()
 
-    fun sendRequestAsync(method: String, params: Any?, callback: (Any?) -> Unit): Future<*> {
+    data class DocumentFeatures(
+        val version: Int,
+        val semanticTokens: Map<String, Any?>? = null,
+        val foldingRanges: List<Any?>? = null,
+        val symbols: List<Any?>? = null,
+        val inlayHints: List<Any?>? = null,
+    )
+
+    fun featuresFor(uri: String): DocumentFeatures? = documentFeatures[uri]
+
+    fun documentVersion(uri: String): Int? = documentVersions[uri]?.get()
+
+    fun sendRequestAsync(method: String, params: Any?, timeoutSeconds: Long = 5, callback: (Any?) -> Unit): Future<*> {
         return executor.submit {
             try {
-                val result = sendRequestBlocking(method, params)
+                val result = sendRequestBlocking(method, params, timeoutSeconds)
                 ApplicationManager.getApplication().invokeLater {
                     callback(result)
                 }
@@ -155,6 +179,10 @@ class DoxaLspConnector(private val project: Project) {
             val response = future.get(timeoutSeconds, TimeUnit.SECONDS)
             val parsed = gson.fromJson(response, Map::class.java) as Map<String, Any?>
             if (parsed.containsKey("error")) {
+                val error = parsed["error"] as? Map<*, *>
+                if ((error?.get("code") as? Number)?.toInt() == -32601) {
+                    unsupportedMethods.add(method)
+                }
                 LOG.warn("LSP request failed: $method: ${parsed["error"]}")
                 null
             } else {
@@ -186,10 +214,12 @@ class DoxaLspConnector(private val project: Project) {
     }
 
     private val openFiles = ConcurrentHashMap<String, Boolean>()
+    private val openDocumentTexts = ConcurrentHashMap<String, String>()
     private val documentVersions = ConcurrentHashMap<String, AtomicInteger>()
 
     fun didOpen(uri: String, text: String) {
         if (openFiles.putIfAbsent(uri, true) != null) return
+        openDocumentTexts[uri] = text
         documentVersions[uri] = AtomicInteger(1)
         sendNotification("textDocument/didOpen", mapOf(
             "textDocument" to mapOf(
@@ -199,6 +229,7 @@ class DoxaLspConnector(private val project: Project) {
                 "text" to text,
             ),
         ))
+        refreshDocumentFeatures(uri, 1, text)
     }
 
     fun didChange(uri: String, text: String) {
@@ -206,27 +237,92 @@ class DoxaLspConnector(private val project: Project) {
             didOpen(uri, text)
             return
         }
+        openDocumentTexts[uri] = text
         val version = documentVersions.computeIfAbsent(uri) { AtomicInteger(1) }.incrementAndGet()
         sendNotification("textDocument/didChange", mapOf(
             "textDocument" to mapOf("uri" to uri, "version" to version),
             "contentChanges" to listOf(mapOf("text" to text)),
         ))
+        scheduleFeatureRefresh(uri, version, text)
     }
 
     /** Ensure the server knows about this file before querying. */
     fun ensureFileSent(uri: String, text: String) {
-        if (openFiles.putIfAbsent(uri, true) == null) {
+        if (!openFiles.containsKey(uri)) {
             didOpen(uri, text)
         }
     }
 
     fun didClose(uri: String) {
         openFiles.remove(uri)
+        openDocumentTexts.remove(uri)
         documentVersions.remove(uri)
         diagnostics.remove(uri)
+        documentFeatures.remove(uri)
+        featureRefreshes.remove(uri)?.cancel(false)
         sendNotification("textDocument/didClose", mapOf(
             "textDocument" to mapOf("uri" to uri),
         ))
+    }
+
+    private fun scheduleFeatureRefresh(uri: String, version: Int, text: String) {
+        featureRefreshes.remove(uri)?.cancel(false)
+        featureRefreshes[uri] = scheduler.schedule(
+            { refreshDocumentFeatures(uri, version, text) },
+            300,
+            TimeUnit.MILLISECONDS,
+        )
+    }
+
+    private fun refreshDocumentFeatures(uri: String, version: Int, text: String) {
+        if (!isRunning) return
+        val range = mapOf(
+            "start" to mapOf("line" to 0, "character" to 0),
+            "end" to mapOf("line" to text.count { it == '\n' } + 1, "character" to 0),
+        )
+        requestDocumentFeature(
+            uri,
+            version,
+            "textDocument/semanticTokens/full",
+            mapOf("textDocument" to mapOf("uri" to uri)),
+        )
+
+        // Highlighting and diagnostics are visible immediately. Folding,
+        // symbols, and hints are presentation details, so do not make the
+        // editor wait for them after opening a file.
+        scheduler.schedule({
+            val requests = mutableListOf<Pair<String, Any?>>(
+                "textDocument/foldingRange" to mapOf("textDocument" to mapOf("uri" to uri)),
+                "textDocument/documentSymbol" to mapOf("textDocument" to mapOf("uri" to uri)),
+            )
+        if (serverCapabilities?.get("inlayHintProvider") == true && !unsupportedMethods.contains("textDocument/inlayHint")) {
+            requests.add("textDocument/inlayHint" to mapOf("textDocument" to mapOf("uri" to uri), "range" to range))
+        }
+        requests.removeIf { unsupportedMethods.contains(it.first) }
+        requests.forEach { (method, params) ->
+            requestDocumentFeature(uri, version, method, params)
+        }
+        }, 200, TimeUnit.MILLISECONDS)
+    }
+
+    private fun requestDocumentFeature(uri: String, version: Int, method: String, params: Any?) {
+        if (unsupportedMethods.contains(method)) return
+        sendRequestAsync(method, params) { result ->
+            if (documentVersions[uri]?.get() != version) return@sendRequestAsync
+            documentFeatures.compute(uri) { _, current ->
+                val features = current?.takeIf { it.version == version } ?: DocumentFeatures(version)
+                when (method) {
+                    "textDocument/semanticTokens/full" -> features.copy(semanticTokens = result as? Map<String, Any?>)
+                    "textDocument/foldingRange" -> features.copy(foldingRanges = result as? List<Any?>)
+                    "textDocument/documentSymbol" -> features.copy(symbols = result as? List<Any?>)
+                    "textDocument/inlayHint" -> features.copy(inlayHints = result as? List<Any?>)
+                    else -> features
+                }
+            }
+            if (method == "textDocument/semanticTokens/full") {
+                DaemonCodeAnalyzer.getInstance(project).restart()
+            }
+        }
     }
 
     private fun handleMessage(raw: String) {
@@ -276,7 +372,22 @@ class DoxaLspConnector(private val project: Project) {
         return gson.toJson(msg)
     }
 
+    private fun resolveBinaryPath(): String {
+        val configured = DoxaSettings.instance.binaryPath
+        if (configured.isNotEmpty()) return configured
+
+        val home = System.getProperty("user.home")
+        val localBinary = Path.of(home, ".local", "bin", "doxa")
+        if (Files.isExecutable(localBinary)) return localBinary.toString()
+
+        val pubCacheBinary = Path.of(home, ".pub-cache", "bin", "doxa")
+        if (Files.isExecutable(pubCacheBinary)) return pubCacheBinary.toString()
+
+        return "doxa"
+    }
+
     companion object {
+        private object NullResult
         private val LOG = Logger.getInstance(DoxaLspConnector::class.java)
         private val gson = Gson()
 

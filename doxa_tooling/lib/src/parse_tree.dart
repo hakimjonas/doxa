@@ -12,7 +12,6 @@ import 'package:rumil/rumil.dart';
 import 'package:rumil_tokens/rumil_tokens.dart' show Spanned, Token;
 
 import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
 import 'syntax.dart';
 import 'tokenize.dart' show tokenizeDoxaSpans;
 
@@ -151,8 +150,8 @@ int _emitLeading(
     SFunBlockKind _ => DoxaSyntax.funDecl,
     SDataKind _ => DoxaSyntax.dataDecl,
     SDataBlockKind _ => DoxaSyntax.dataDecl,
-    STypeclassKind _ => DoxaSyntax.dataDecl,
-    SImplKind _ => DoxaSyntax.valDecl,
+    STypeclassKind _ => DoxaSyntax.typeclassDecl,
+    SImplKind _ => DoxaSyntax.implDecl,
   };
 
   final children = <DoxaGreen>[];

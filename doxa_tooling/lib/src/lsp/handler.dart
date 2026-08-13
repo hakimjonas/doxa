@@ -6,8 +6,14 @@
 library;
 
 import '../output.dart';
+import 'dart:io' show Platform, stderr;
 import 'package:doxa/doxa.dart';
+import 'package:rumil/rumil.dart'
+    show IncrementalStrategy, Partial, Success, TextEdit;
 import '../web_check.dart';
+import '../parse_tree.dart' show parseProgramTree;
+import '../syntax.dart' show DoxaGreen;
+import '../cst.dart' show buildDoxaStructuralReparser, reparse;
 import '../format.dart' show formatSource;
 import '../tokenize.dart' show tokenizeDoxaSpans;
 import 'package:rumil_tokens/rumil_tokens.dart'
@@ -28,6 +34,8 @@ final class _DocumentState {
   CheckSuccess? lastSuccess;
   Map<String, int> frequency = <String, int>{};
   CachedImports? cachedImports;
+  DoxaGreen? syntaxTree;
+  IncrementalStrategy? lastReparseStrategy;
 }
 
 /// LSP handler: owns open-document state and dispatches incoming methods.
@@ -48,6 +56,11 @@ final class LspHandler {
 
   /// Request IDs that have been cancelled via $/cancelRequest.
   final Set<int> _cancelledIds = {};
+  final _structuralReparser = buildDoxaStructuralReparser();
+
+  /// Enables persistent-LSP timing output on stderr for local diagnosis.
+  static final _traceTiming =
+      Platform.environment['DOXA_LSP_TRACE_TIMING'] == '1';
 
   /// Checks if [id] has been cancelled.  If so, returns a cancellation
   /// error response and clears the cancelled flag.
@@ -62,6 +75,12 @@ final class LspHandler {
 
   /// Creates an LSP handler with no open document.
   LspHandler();
+
+  /// The Rumil strategy used for the most recent edit to [uri].
+  ///
+  /// Exposed for protocol tests and performance telemetry.
+  String? lastReparseStrategyFor(String uri) =>
+      _documents[uri]?.lastReparseStrategy?.name;
 
   /// Process a single incoming LSP message.
   ///
@@ -223,6 +242,7 @@ final class LspHandler {
       version: textDocument['version'] as int? ?? 0,
     );
     _documents[uri] = _activeDocument!;
+    _activeDocument!.syntaxTree = _syntaxTreeFor(_documentText);
     _freq = <String, int>{};
     _cachedImports = null;
     _checkAndPublish();
@@ -240,7 +260,9 @@ final class LspHandler {
     final contentChanges = params['contentChanges'] as List<dynamic>;
     if (contentChanges.isNotEmpty) {
       final change = contentChanges.last as Map<String, dynamic>;
-      _documentText = change['text'] as String;
+      final newText = change['text'] as String;
+      _updateSyntaxTree(document, newText);
+      _documentText = newText;
     }
     if (version != null) document.version = version;
     _freq = <String, int>{};
@@ -272,18 +294,75 @@ final class LspHandler {
     return textDocument?['uri'] as String?;
   }
 
+  void _updateSyntaxTree(_DocumentState document, String newText) {
+    final previousTree = document.syntaxTree;
+    if (previousTree == null) {
+      document.syntaxTree = _syntaxTreeFor(newText);
+      document.lastReparseStrategy = IncrementalStrategy.fullReparse;
+      return;
+    }
+    final edit = _minimalEdit(document.text, newText);
+    final result = reparse(
+      previousTree,
+      document.text,
+      edit,
+      parsers:
+          _containsStructuralSyntax(edit.newText) ? _structuralReparser : null,
+    );
+    document.syntaxTree = result.tree;
+    document.lastReparseStrategy = result.strategy;
+  }
+
+  TextEdit _minimalEdit(String previous, String next) {
+    var start = 0;
+    final sharedLength =
+        previous.length < next.length ? previous.length : next.length;
+    while (start < sharedLength &&
+        previous.codeUnitAt(start) == next.codeUnitAt(start)) {
+      start++;
+    }
+    var previousEnd = previous.length;
+    var nextEnd = next.length;
+    while (previousEnd > start &&
+        nextEnd > start &&
+        previous.codeUnitAt(previousEnd - 1) == next.codeUnitAt(nextEnd - 1)) {
+      previousEnd--;
+      nextEnd--;
+    }
+    return TextEdit(start, previousEnd, next.substring(start, nextEnd));
+  }
+
+  DoxaGreen? _syntaxTreeFor(String source) => switch (parseProgramTree(
+    source,
+  )) {
+    Success(:final value) || Partial(:final value) => value.tree,
+    _ => null,
+  };
+
+  bool _containsStructuralSyntax(String text) =>
+      RegExp(r'[(){}\[\]:;,.|=>]').hasMatch(text);
+
   /// Handle `textDocument/hover`.
   Map<String, dynamic> _handleHover(Object? id, Map<String, dynamic> params) {
     final result = _buildResult(id, params, (offset) {
       final info = _infoAt(offset);
-      if (info == null) return null;
+      final declaration = info == null ? _declarationAt(offset) : null;
+      final builtin =
+          info == null && declaration == null ? _builtinHoverAt(offset) : null;
+      if (info == null && declaration == null && builtin == null) return null;
       final pos = _positionAt(offset);
       final range = LspRange(
         start: LspPosition(line: pos.line - 1, character: pos.column - 1),
         end: LspPosition(line: pos.line - 1, character: pos.column - 1),
       );
       return LspHover(
-        contents: '```doxa\n${info.name} : ${info.type}\n```',
+        contents: switch ((info, declaration, builtin)) {
+          (final info?, _, _) => '```doxa\n${info.name} : ${info.type}\n```',
+          (_, final declaration?, _) =>
+            '```doxa\n${declaration.name} : ${declaration.type ?? 'Type'}\n```',
+          (_, _, final builtin?) => builtin,
+          _ => throw StateError('unreachable'),
+        },
         range: range,
       );
     });
@@ -297,10 +376,24 @@ final class LspHandler {
   ) {
     final result = _buildResult(id, params, (offset) {
       final info = _infoAt(offset);
-      if (info?.defSpan == null) return null;
-      final defPos = _positionAt(info!.defSpan!.start);
+      final defSpan = info?.defSpan ?? _declarationAt(offset)?.span;
+      if (defSpan == null) return null;
+      final importState = _cachedImports?.importState;
+      final defFile =
+          info?.defFile ??
+          (info == null || info.defSpan == null
+              ? null
+              : importState?.spanStartToFile[info.defSpan!.start] ??
+                  importState?.definitionFiles[_unqualifiedName(info.name)]);
+      final defText = defFile == null ? _documentText : _sourceTextFor(defFile);
+      if (defText == null) return null;
+      final defOffset =
+          info == null
+              ? defSpan.start
+              : _definitionNameOffset(defText, defSpan, info.name);
+      final defPos = _positionIn(defText, defOffset);
       return LspLocation(
-        uri: _documentUri,
+        uri: defFile == null ? _documentUri : Uri.file(defFile).toString(),
         range: LspRange(
           start: LspPosition(
             line: defPos.line - 1,
@@ -711,7 +804,9 @@ final class LspHandler {
     Map<String, dynamic> params,
   ) {
     try {
-      final formatted = formatSource(_documentText);
+      final options = params['options'] as Map<String, dynamic>?;
+      final lineWidth = options?['lineWidth'] as int? ?? 100;
+      final formatted = formatSource(_documentText, lineWidth: lineWidth);
       final edit = LspTextEdit(
         range: LspRange(
           start: const LspPosition(line: 0, character: 0),
@@ -918,6 +1013,7 @@ final class LspHandler {
 
   /// Run the check pipeline and publish diagnostics.
   void _checkAndPublish() {
+    final stopwatch = Stopwatch()..start();
     final filename =
         _documentUri.startsWith('file://')
             ? Uri.parse(_documentUri).toFilePath()
@@ -994,6 +1090,13 @@ final class LspHandler {
         }
         _publishDiagnostics(diagnostics);
     }
+    if (_traceTiming) {
+      stderr.writeln(
+        'doxa-lsp check uri=$_documentUri version=${_activeDocument?.version} '
+        'reparse=${_activeDocument?.lastReparseStrategy?.name ?? 'open'} '
+        'elapsedMs=${stopwatch.elapsedMilliseconds}',
+      );
+    }
   }
 
   /// Send a `textDocument/publishDiagnostics` notification.
@@ -1043,6 +1146,61 @@ final class LspHandler {
     }
     return null;
   }
+
+  /// Returns the declaration whose name occupies [offset]. Declaration names
+  /// are binders, so elaboration does not emit SemInfo for their own spans.
+  DeclInfo? _declarationAt(int offset) {
+    if (_lastSuccess == null) return null;
+    final word = _wordAt(offset);
+    if (word == null) return null;
+    for (final declaration in _lastSuccess!.declarations) {
+      if (declaration.name != word) continue;
+      final nameOffset = _documentText.indexOf(word, declaration.span.start);
+      if (nameOffset >= declaration.span.start &&
+          nameOffset < declaration.span.end &&
+          offset >= nameOffset &&
+          offset < nameOffset + word.length) {
+        return declaration;
+      }
+    }
+    return null;
+  }
+
+  String? _builtinHoverAt(int offset) => switch (_wordAt(offset)) {
+    'Type' => '```doxa\nType : Type 1\n```\n\nThe universe of types.',
+    'fun' => '```doxa\nfun\n```\n\nDeclares a named function.',
+    'data' => '```doxa\ndata\n```\n\nDeclares an inductive type.',
+    'val' => '```doxa\nval\n```\n\nDeclares a named value.',
+    _ => null,
+  };
+
+  String? _wordAt(int offset) {
+    if (offset < 0 || offset >= _documentText.length) return null;
+    var start = offset;
+    var end = offset;
+    while (start > 0 && _isIdentChar(_documentText, start - 1)) {
+      start--;
+    }
+    while (end < _documentText.length && _isIdentChar(_documentText, end)) {
+      end++;
+    }
+    return start == end ? null : _documentText.substring(start, end);
+  }
+
+  String? _sourceTextFor(String path) =>
+      _cachedImports?.importState.sourceFiles[path]?.text;
+
+  String _unqualifiedName(String name) =>
+      name.contains('.') ? name.substring(name.lastIndexOf('.') + 1) : name;
+
+  int _definitionNameOffset(String text, DoxaSpan span, String name) {
+    final unqualifiedName = _unqualifiedName(name);
+    final offset = text.indexOf(unqualifiedName, span.start);
+    return offset >= span.start && offset < span.end ? offset : span.start;
+  }
+
+  ({int line, int column}) _positionIn(String text, int offset) =>
+      SourceFile(filename: '', text: text).positionAt(offset);
 
   /// Extract the byte offset from LSP params (position object).
   int _offsetFromParams(Map<String, dynamic> params) {

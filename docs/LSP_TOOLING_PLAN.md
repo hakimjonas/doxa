@@ -31,11 +31,53 @@ The first repair pass completed these items:
 - Basic lexer tokens for comments, strings, whitespace, and paired braces.
 - JetBrains plugin packaging against IntelliJ Community 2025.1.
 
-This is a transitional baseline. The server keeps state per URI, but several
-IDE providers still issue synchronous requests and the LSP protocol suite is
-only beginning.
+The server keeps state per URI. JetBrains background providers use versioned
+asynchronous snapshots; explicit user actions such as navigation and hover may
+wait for their own result away from the UI thread. Semantic tokens, folding
+ranges, document symbols, and inlay hints are refreshed asynchronously. The
+LSP protocol suite is only beginning.
 
 ## Architecture contract
+
+### Incremental syntax and checking
+
+Rumil's green/red tree and incremental reparse facilities are a required part
+of Doxa's compiler and editor architecture. They were introduced so Doxa can
+retain syntax structure across edits, avoid parsing an entire document for a
+local change, and provide editor feedback at interactive latency. They must not
+remain an auxiliary CST used only by experiments or tests.
+
+The current LSP path still reparses and re-elaborates the full open document on
+each change. Import caching avoids repeated import resolution but does not make
+the edited document incremental. This is a known architectural gap.
+
+- Retain the prior source text, green tree, red tree, and parsed declaration
+  sequence for each open URI.
+- Apply LSP changes as Rumil `TextEdit`s and use incremental reparse on every
+  compatible edit.
+- Register declaration-level reparse parsers for Doxa syntax kinds. The current
+  `byKind: const {}` fallback is not sufficient.
+- Reuse unchanged declarations and their elaboration outputs. An edit to
+  declaration `n` invalidates that declaration and dependent later
+  declarations; declarations before `n` keep their checked environment and
+  semantic metadata.
+- Fall back to a full parse and check only for import changes,
+  declaration-boundary changes, parser recovery, or an invalid incremental
+  result.
+- Measure persistent LSP timings for parse, elaboration, diagnostics, and
+  semantic-token publication. Do not infer editor latency from one-shot CLI
+  process timings.
+
+Completion criteria:
+
+- A local expression edit uses Rumil incremental reparse and preserves green
+  node identity outside the reparse boundary.
+- The LSP re-elaborates only the edited declaration and declarations that
+  depend on it.
+- Parser and checker timing telemetry identifies the invalidation boundary for
+  each edit.
+- Tests cover simple-token edits, declaration-body edits, declaration-boundary
+  edits, recovery after an invalid edit, and fallback to full parsing.
 
 ### Server
 
@@ -153,7 +195,44 @@ Completion criteria:
   Doxa-specific extension.
 - Doxa-specific UI does not hide or replace ordinary diagnostics.
 
-### 6. Release gate and hosted Wasm update
+### 6. Semantic tooling and language documentation
+
+Bring the semantic editor experience to the standard expected of modern
+language tooling. LSP defines request and token formats; Doxa must supply
+language-specific classification, documentation, instantiated types, and
+source provenance.
+
+1. Complete hover coverage for language keywords and compiler primitives.
+   Keywords have documentation but no definition target. Compiler primitives
+   without source declarations use stable virtual documentation URIs.
+2. Preserve source provenance for source declarations, constructors,
+   projections, generated recursors, and imported declarations. Go to
+   Definition must distinguish source-backed targets from virtual targets.
+3. Classify declaration and reference occurrences separately. Extend semantic
+   metadata and token modifiers for declarations, reads, writes where Doxa
+   permits writes, implicit parameters, type parameters, constructors,
+   projections, generated declarations, and typeclass members.
+4. Present dependent types readably. Hover shows the resolved declaration type
+   instantiated at the cursor; normalization and implicit-argument detail are
+   opt-in views rather than the default display.
+5. Map the expanded semantic-token legend to independently configurable
+   JetBrains attributes. Keep lexical highlighting as the immediate fallback
+   while semantic results are pending.
+
+Completion criteria:
+
+- Hover succeeds for declaration names, resolved uses, all user-visible
+  keywords, and compiler primitives.
+- Source-backed symbols navigate to their declaration across files. Virtual
+  built-ins navigate to a readable, stable documentation target when useful.
+- Semantic-token tests assert declaration/reference roles, kinds, modifiers,
+  ranges, and UTF-16 positions.
+- JetBrains tests assert that semantic colors replace, rather than erase,
+  lexical fallback colors after a successful LSP response.
+- No hover or navigation request exposes raw metavariables, generated names,
+  or core syntax by default unless the user explicitly selects that view.
+
+### 7. Release gate and hosted Wasm update
 
 The hosted Wasm checker remains on its current version until the LSP work is
 ready. Before updating `ardaproject.org/doxa`, verify that browser, CLI, VS

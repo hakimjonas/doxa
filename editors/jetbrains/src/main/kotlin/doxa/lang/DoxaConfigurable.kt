@@ -28,7 +28,7 @@ class DoxaConfigurable : Configurable {
                         .bindText(::binaryPath)
                         .comment(
                             "Command or full path to the Doxa language server binary.\n" +
-                            "Default: doxa (requires it on PATH).\n" +
+                            "Default: ~/.local/bin/doxa, ~/.pub-cache/bin/doxa, then PATH.\n" +
                             "Example: /home/user/.pub-cache/bin/doxa"
                         )
                 }
@@ -41,6 +41,8 @@ class DoxaConfigurable : Configurable {
         binaryPath != (DoxaSettings.instance.binaryPath.ifEmpty { "doxa" })
 
     override fun apply() {
+        val previousPath = DoxaSettings.instance.binaryPath
+        if (binaryPath == previousPath.ifEmpty { "doxa" }) return
         DoxaSettings.instance.binaryPath = binaryPath
         ProjectManager.getInstance().openProjects.forEach {
             DoxaLspService.getInstance(it).restartServer()

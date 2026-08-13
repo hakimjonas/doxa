@@ -48,13 +48,20 @@ class DoxaExternalAnnotator : ExternalAnnotator<PsiFile, DoxaExternalAnnotator.A
 
         val highlights = mutableListOf<TokenHighlight>()
         try {
+            val features = connector.featuresFor(uri) ?: return AnnotatorResult(connector.diagnosticsFor(uri).mapNotNull { d ->
+                val range = d["range"] as? Map<*, *> ?: return@mapNotNull null
+                val start = range["start"] as? Map<*, *> ?: return@mapNotNull null
+                val end = range["end"] as? Map<*, *> ?: return@mapNotNull null
+                Diag(
+                    TextRange(offsetFor(text, (start["line"] as? Number)?.toInt() ?: 0, (start["character"] as? Number)?.toInt() ?: 0), offsetFor(text, (end["line"] as? Number)?.toInt() ?: 0, (end["character"] as? Number)?.toInt() ?: 0)),
+                    d["message"] as? String ?: "",
+                    (d["severity"] as? Number)?.toInt() ?: 1,
+                )
+            }, emptyList())
             val legend = (connector.serverCapabilities?.get("semanticTokensProvider") as? Map<*, *>)
                 ?.get("legend") as? Map<*, *>
             val tokenTypes = legend?.get("tokenTypes") as? List<*> ?: emptyList<Any>()
-
-            val semResponse = connector.sendRequestBlocking("textDocument/semanticTokens/full", mapOf(
-                "textDocument" to mapOf("uri" to uri),
-            )) as? Map<*, *> ?: emptyMap<Any, Any>()
+            val semResponse = features.semanticTokens ?: emptyMap()
             val data = semResponse["data"] as? List<*> ?: emptyList<Any>()
             if (data.isNotEmpty()) {
                 var prevLine = 0

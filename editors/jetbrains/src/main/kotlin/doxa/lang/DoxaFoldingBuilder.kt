@@ -17,10 +17,8 @@ class DoxaFoldingBuilder : FoldingBuilder {
         val uri = virtualFile.url
         connector.ensureFileSent(uri, document.text)
 
-        val params = mapOf("textDocument" to mapOf("uri" to uri))
         try {
-            val response = connector.sendRequestBlocking("textDocument/foldingRange", params)
-            val ranges = response as? List<*> ?: return emptyArray()
+            val ranges = connector.featuresFor(uri)?.foldingRanges ?: return emptyArray()
             return ranges.mapNotNull { r ->
                 val range = r as? Map<*, *> ?: return@mapNotNull null
                 val startLine = (range["startLine"] as? Number)?.toInt() ?: return@mapNotNull null

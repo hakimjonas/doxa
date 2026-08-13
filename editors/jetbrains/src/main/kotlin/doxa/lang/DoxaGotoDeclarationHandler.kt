@@ -21,23 +21,14 @@ class DoxaGotoDeclarationHandler : GotoDeclarationHandler {
         val file = sourceElement.containingFile ?: run { LOG.info("  no containingFile"); return null }
         if (file.language !is DoxaLanguage) { LOG.info("  wrong lang: ${file.language}"); return null }
 
-        val connector = DoxaLspService.getInstance(file.project).connector
-        if (!connector.isRunning) { LOG.info("  connector not running"); return null }
+        val service = DoxaLspService.getInstance(file.project)
+        if (!service.connector.isRunning) { LOG.info("  connector not running"); return null }
 
         val virtualFile = file.virtualFile ?: run { LOG.info("  no virtualFile"); return null }
         val uri = virtualFile.url
         val document = file.viewProvider.document ?: run { LOG.info("  no document"); return null }
-        connector.ensureFileSent(uri, document.text)
-        LOG.info("  ensureFileSent, sending definition request")
-        val position = DoxaDocumentationProvider.positionAt(document.text, offset)
-
-        val params = mapOf(
-            "textDocument" to mapOf("uri" to uri),
-            "position" to mapOf("line" to position.first, "character" to position.second),
-        )
-
         try {
-            val response = connector.sendRequestBlocking("textDocument/definition", params)
+            val response = service.definitionAt(uri, document.text, offset)
             val location = when (response) {
                 is Map<*, *> -> response
                 is List<*> -> response.firstOrNull() as? Map<*, *>

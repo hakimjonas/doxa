@@ -7,8 +7,11 @@ import 'package:doxa/doxa.dart' show Icit;
 import 'package:rumil/rumil.dart';
 
 /// Format a Doxa source string to canonical style.
-String formatSource(String source) {
-  final f = _Formatter(source);
+String formatSource(String source, {int lineWidth = 100}) {
+  if (lineWidth < 20) {
+    throw ArgumentError.value(lineWidth, 'lineWidth', 'must be at least 20');
+  }
+  final f = _Formatter(source, lineWidth);
   return f.format();
 }
 
@@ -117,9 +120,9 @@ bool _fitsDoc(_Doc doc, int remainingWidth) {
 
 /// Render [doc] to a string, breaking groups when they exceed the width.
 /// The outer level starts in broken mode (no enclosing group chooses flat).
-String _renderDoc(_Doc doc) {
+String _renderDoc(_Doc doc, {int lineWidth = 100}) {
   final buf = StringBuffer();
-  _renderDocInner(doc, buf, 0, 0, false);
+  _renderDocInner(doc, buf, 0, 0, false, lineWidth);
   return buf.toString();
 }
 
@@ -129,6 +132,7 @@ void _renderDocInner(
   int col,
   int indent,
   bool flat,
+  int lineWidth,
 ) {
   switch (doc.kind) {
     case _DocKind.nil:
@@ -143,19 +147,19 @@ void _renderDocInner(
         buf.write(' ' * indent);
       }
     case _DocKind.nest:
-      _renderDocInner(doc.a!, buf, col, indent + doc.nest!, flat);
+      _renderDocInner(doc.a!, buf, col, indent + doc.nest!, flat, lineWidth);
     case _DocKind.group:
       final flatWidth = _docFlatWidth(doc.a!);
-      if (flat && col + flatWidth <= 100) {
-        _renderDocInner(doc.a!, buf, col, indent, true);
+      if (flat && col + flatWidth <= lineWidth) {
+        _renderDocInner(doc.a!, buf, col, indent, true, lineWidth);
       } else {
-        _renderDocInner(doc.a!, buf, col, indent, false);
+        _renderDocInner(doc.a!, buf, col, indent, false, lineWidth);
       }
     case _DocKind.cat:
       final before = buf.length;
-      _renderDocInner(doc.a!, buf, col, indent, flat);
+      _renderDocInner(doc.a!, buf, col, indent, flat, lineWidth);
       final consumed = buf.length - before;
-      _renderDocInner(doc.b!, buf, col + consumed, indent, flat);
+      _renderDocInner(doc.b!, buf, col + consumed, indent, flat, lineWidth);
   }
 }
 
@@ -165,6 +169,7 @@ void _renderDocInner(
 
 class _Formatter {
   final String source;
+  final int lineWidth;
   final StringBuffer _buf = StringBuffer();
   int _indent = 0;
   bool _atLineStart = true;
@@ -175,7 +180,7 @@ class _Formatter {
   final List<_CommentInfo> _comments = [];
   int _commentIx = 0;
 
-  _Formatter(this.source);
+  _Formatter(this.source, this.lineWidth);
 
   String format() {
     _extractComments();
@@ -230,7 +235,7 @@ class _Formatter {
   /// Render [doc] assuming the current column is [startCol].
   String _renderDocAt(_Doc doc, int startCol) {
     final buf = StringBuffer();
-    _renderDocInner(doc, buf, startCol, 0, false);
+    _renderDocInner(doc, buf, startCol, 0, false, lineWidth);
     return buf.toString();
   }
 

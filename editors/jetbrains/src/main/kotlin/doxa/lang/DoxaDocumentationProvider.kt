@@ -1,50 +1,20 @@
 package doxa.lang
 
-import com.intellij.lang.documentation.DocumentationMarkup
-import com.intellij.lang.documentation.DocumentationProvider
-import com.intellij.psi.PsiElement
-import com.intellij.psi.PsiManager
+import com.intellij.model.Pointer
+import com.intellij.platform.backend.documentation.DocumentationResult
+import com.intellij.platform.backend.documentation.DocumentationTarget
+import com.intellij.platform.backend.documentation.DocumentationTargetProvider
+import com.intellij.platform.backend.presentation.TargetPresentation
+import com.intellij.psi.PsiFile
+import java.util.function.Supplier
 
-class DoxaDocumentationProvider : DocumentationProvider {
-
-    private val LOG = com.intellij.openapi.diagnostic.Logger.getInstance(DoxaDocumentationProvider::class.java)
-
-    override fun generateDoc(element: PsiElement?, originalElement: PsiElement?): String? {
-        LOG.info("generateDoc: element=$element, lang=${element?.language}")
-        if (element == null || element.language !is DoxaLanguage) return null
-        val file = element.containingFile ?: return null
-        val connector = DoxaLspService.getInstance(file.project).connector
-        if (!connector.isRunning) return null
-
-        val virtualFile = file.virtualFile ?: return null
-        val uri = virtualFile.url
-        val document = file.viewProvider.document ?: return null
-        connector.ensureFileSent(uri, document.text)
-
-        val offset = element.textOffset
-        val position = positionAt(document.text, offset)
-
-        val params = mapOf(
-            "textDocument" to mapOf("uri" to uri),
-            "position" to mapOf("line" to position.first, "character" to position.second),
-        )
-
-        try {
-            val response = connector.sendRequestBlocking("textDocument/hover", params) as? Map<*, *> ?: return null
-            val contents = response["contents"]
-            val value = when (contents) {
-                is String -> contents
-                is Map<*, *> -> contents["value"] as? String
-                else -> null
-            }
-            if (value != null) return DocumentationMarkup.CONTENT_START + value + DocumentationMarkup.CONTENT_END
-        } catch (_: Exception) {
-        }
-        return null
+class DoxaDocumentationProvider : DocumentationTargetProvider {
+    override fun documentationTargets(file: PsiFile, offset: Int): List<DocumentationTarget> {
+        if (file.language !is DoxaLanguage) return emptyList()
+        val virtualFile = file.virtualFile ?: return emptyList()
+        val document = file.viewProvider.document ?: return emptyList()
+        return listOf(DoxaDocumentationTarget(file.project, virtualFile.url, document.text, offset))
     }
-
-    override fun getQuickNavigateInfo(element: PsiElement?, originalElement: PsiElement?): String? =
-        generateDoc(element, originalElement)
 
     companion object {
         fun positionAt(text: String, offset: Int): Pair<Int, Int> {
@@ -60,4 +30,42 @@ class DoxaDocumentationProvider : DocumentationProvider {
             return Pair(line, col)
         }
     }
+}
+
+private class DoxaDocumentationTarget(
+    private val project: com.intellij.openapi.project.Project,
+    private val uri: String,
+    private val text: String,
+    private val offset: Int,
+) : DocumentationTarget {
+    override fun createPointer(): Pointer<out DocumentationTarget> = Pointer.hardPointer(this)
+
+    override fun computePresentation(): TargetPresentation =
+        TargetPresentation.builder("Doxa").presentation()
+
+    override fun computeDocumentation(): DocumentationResult = DocumentationResult.asyncDocumentation(Supplier {
+        val connector = DoxaLspService.getInstance(project).connector
+        if (!connector.isRunning) return@Supplier null
+        connector.ensureFileSent(uri, text)
+        val position = DoxaDocumentationProvider.positionAt(text, offset)
+        val response = connector.sendRequestBlocking(
+            "textDocument/hover",
+            mapOf(
+                "textDocument" to mapOf("uri" to uri),
+                "position" to mapOf("line" to position.first, "character" to position.second),
+            ),
+        ) as? Map<*, *> ?: return@Supplier null
+        val contents = response["contents"]
+        val value = when (contents) {
+            is String -> contents
+            is Map<*, *> -> contents["value"] as? String
+            else -> null
+        } ?: return@Supplier null
+        DocumentationResult.documentation("<pre>${escapeHtml(value)}</pre>")
+    })
+
+    private fun escapeHtml(value: String): String = value
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
 }

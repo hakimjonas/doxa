@@ -38,17 +38,9 @@ class DoxaInlayHintProvider : InlayHintsProvider<NoSettings> {
         val uri = virtualFile.url
         connector.ensureFileSent(uri, editor.document.text)
 
-        // Fetch all hints once.
         val hints = mutableListOf<Pair<Int, String>>() // (offset, label)
         try {
-            val response = connector.sendRequestBlocking("textDocument/inlayHint", mapOf(
-                "textDocument" to mapOf("uri" to uri),
-                "range" to mapOf(
-                    "start" to mapOf("line" to 0, "character" to 0),
-                    "end" to mapOf("line" to editor.document.lineCount, "character" to 0),
-                ),
-            ))
-            val data = response as? List<*> ?: emptyList<Any>()
+            val data = connector.featuresFor(uri)?.inlayHints ?: emptyList()
             for (h in data) {
                 val hint = h as? Map<*, *> ?: continue
                 val pos = hint["position"] as? Map<*, *> ?: continue

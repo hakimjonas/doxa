@@ -36,11 +36,7 @@ CheckOutput checkSourceWithCache(
   required String filename,
   required CachedImports cache,
 }) {
-  return _run(
-    src: src,
-    filename: filename,
-    cachedImports: cache,
-  );
+  return _run(src: src, filename: filename, cachedImports: cache);
 }
 
 /// Cached import resolution result.  Covers the prelude and all
@@ -356,7 +352,7 @@ CheckOutput _run({
     declarations: completedDeclarations,
     count: n,
     semInfo: allSemInfos,
-    imports: cachedImports,
+    imports: cache,
   );
 }
 

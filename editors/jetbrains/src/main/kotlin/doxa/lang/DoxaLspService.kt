@@ -4,6 +4,8 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.editor.event.CaretEvent
+import com.intellij.openapi.editor.event.CaretListener
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -11,15 +13,28 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import java.util.concurrent.ConcurrentHashMap
 
 @Service(Service.Level.PROJECT)
 class DoxaLspService(val project: Project) : Disposable {
     val connector = DoxaLspConnector(project)
+    private val completionCache = ConcurrentHashMap<PositionKey, Map<String, Any?>>()
+    private val definitionCache = ConcurrentHashMap<PositionKey, Any?>()
+    private val pendingCompletions = ConcurrentHashMap.newKeySet<PositionKey>()
+    private val pendingDefinitions = ConcurrentHashMap.newKeySet<PositionKey>()
 
     init {
         EditorFactory.getInstance().eventMulticaster.addDocumentListener(object : DocumentListener {
             override fun documentChanged(event: DocumentEvent) {
                 syncDocument(event.document)
+            }
+        }, this)
+
+        EditorFactory.getInstance().eventMulticaster.addCaretListener(object : CaretListener {
+            override fun caretPositionChanged(event: CaretEvent) {
+                val editor = event.editor
+                if (editor.project != project) return
+                prefetchPositionFeatures(editor.document, editor.caretModel.offset)
             }
         }, this)
 
@@ -49,7 +64,66 @@ class DoxaLspService(val project: Project) : Disposable {
     private fun syncDocument(document: Document) {
         val file = FileDocumentManager.getInstance().getFile(document) ?: return
         if (file.extension != "doxa") return
+        clearPositionFeatures(file.url)
         connector.didChange(file.url, document.text)
+    }
+
+    fun completionAt(uri: String, text: String, offset: Int): Map<String, Any?>? {
+        connector.ensureFileSent(uri, text)
+        val key = positionKey(uri, offset) ?: return null
+        requestCompletion(key, text)
+        return completionCache[key]
+    }
+
+    fun definitionAt(uri: String, text: String, offset: Int): Any? {
+        connector.ensureFileSent(uri, text)
+        val key = positionKey(uri, offset) ?: return null
+        val cached = definitionCache[key]
+        if (cached != null) return cached.takeUnless { it === NoResult }
+
+        // Navigation is an explicit user action. Do not require a prior caret
+        // movement to have populated the asynchronous cache.
+        return connector.sendRequestBlocking(
+            "textDocument/definition",
+            positionParams(uri, text, offset),
+        )
+    }
+
+    private fun prefetchPositionFeatures(document: Document, offset: Int) {
+        val file = FileDocumentManager.getInstance().getFile(document) ?: return
+        if (file.extension != "doxa") return
+        val key = positionKey(file.url, offset) ?: return
+        requestCompletion(key, document.text)
+        requestDefinition(key, document.text)
+    }
+
+    private fun positionKey(uri: String, offset: Int): PositionKey? {
+        val version = connector.documentVersion(uri) ?: return null
+        return PositionKey(uri, version, offset)
+    }
+
+    private fun requestCompletion(key: PositionKey, text: String) {
+        if (completionCache.containsKey(key) || !pendingCompletions.add(key)) return
+        connector.sendRequestAsync("textDocument/completion", positionParams(key.uri, text, key.offset)) { result ->
+            (result as? Map<*, *>)?.let { completionCache[key] = it.entries.associate { it.key.toString() to it.value } }
+            pendingCompletions.remove(key)
+        }
+    }
+
+    private fun requestDefinition(key: PositionKey, text: String) {
+        if (definitionCache.containsKey(key) || !pendingDefinitions.add(key)) return
+        connector.sendRequestAsync("textDocument/definition", positionParams(key.uri, text, key.offset)) { result ->
+            definitionCache[key] = result ?: NoResult
+            pendingDefinitions.remove(key)
+        }
+    }
+
+    private fun positionParams(uri: String, text: String, offset: Int): Map<String, Any> {
+        val position = DoxaDocumentationProvider.positionAt(text, offset)
+        return mapOf(
+            "textDocument" to mapOf("uri" to uri),
+            "position" to mapOf("line" to position.first, "character" to position.second),
+        )
     }
 
     private fun syncFile(file: VirtualFile) {
@@ -58,11 +132,20 @@ class DoxaLspService(val project: Project) : Disposable {
         connector.didOpen(file.url, document.text)
     }
 
+    private fun clearPositionFeatures(uri: String) {
+        completionCache.keys.removeIf { it.uri == uri }
+        definitionCache.keys.removeIf { it.uri == uri }
+        pendingCompletions.removeIf { it.uri == uri }
+        pendingDefinitions.removeIf { it.uri == uri }
+    }
+
     override fun dispose() {
         connector.stop()
     }
 
     companion object {
+        private data class PositionKey(val uri: String, val version: Int, val offset: Int)
+        private object NoResult
         fun getInstance(project: Project): DoxaLspService =
             project.getService(DoxaLspService::class.java)
     }

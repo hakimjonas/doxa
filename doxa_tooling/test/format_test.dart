@@ -10,6 +10,15 @@ import 'package:rumil/rumil.dart';
 import 'package:test/test.dart';
 
 void main() {
+  group('formatSource line width', () {
+    test('rejects unusably narrow widths', () {
+      expect(
+        () => formatSource('val x : Type = Type', lineWidth: 19),
+        throwsArgumentError,
+      );
+    });
+  });
+
   group('canonical formatting', () {
     test('val declaration with type', () {
       final input = 'val x : Nat = zero';

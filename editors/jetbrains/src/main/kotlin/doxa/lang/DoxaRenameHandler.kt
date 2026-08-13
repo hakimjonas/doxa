@@ -61,10 +61,15 @@ class DoxaRenameHandler : RenameHandler {
             "newName" to newName,
         )
 
-        try {
-            val response = connector.sendRequestBlocking("textDocument/rename", params) as? Map<*, *> ?: return
-            val changes = response["changes"] as? Map<*, *> ?: return
-            for ((changeUri, edits) in changes) {
+        connector.sendRequestAsync("textDocument/rename", params) { response ->
+            val workspaceEdit = response as? Map<*, *> ?: return@sendRequestAsync
+            applyWorkspaceEdit(project, word, workspaceEdit)
+        }
+    }
+
+    private fun applyWorkspaceEdit(project: Project, word: String, workspaceEdit: Map<*, *>) {
+        val changes = workspaceEdit["changes"] as? Map<*, *> ?: return
+        for ((changeUri, edits) in changes) {
                 val editList = edits as? List<*> ?: continue
                 val targetUri = changeUri as? String ?: continue
                 val targetFile = VirtualFileManager.getInstance().findFileByUrl(targetUri) ?: continue
@@ -90,8 +95,6 @@ class DoxaRenameHandler : RenameHandler {
                         targetDoc.replaceString(startOffset, endOffset, newText)
                     }
                 })
-            }
-        } catch (_: Exception) {
         }
     }
 

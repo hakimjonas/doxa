@@ -34,10 +34,10 @@ class DoxaFormattingService : AsyncDocumentFormattingService() {
 
                 val params = mapOf(
                     "textDocument" to mapOf("uri" to uri),
-                    "options" to mapOf("tabSize" to 2, "insertSpaces" to true),
+                    "options" to mapOf("tabSize" to 2, "insertSpaces" to true, "lineWidth" to 100),
                 )
 
-                requestFuture = connector.sendRequestAsync("textDocument/formatting", params) { response ->
+                requestFuture = connector.sendRequestAsync("textDocument/formatting", params, timeoutSeconds = 30) { response ->
                     val edits = response as? List<*> ?: return@sendRequestAsync
                     val edit = edits.firstOrNull() as? Map<*, *> ?: return@sendRequestAsync
                     val newText = edit["newText"] as? String ?: return@sendRequestAsync

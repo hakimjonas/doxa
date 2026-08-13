@@ -708,6 +708,10 @@ final class ImportState {
   /// right [SourceFile].
   final Map<int, String> spanStartToFile = {};
 
+  /// Source file for each imported declaration name. Unlike span offsets,
+  /// names remain unambiguous across imported files after resolution.
+  final Map<String, String> definitionFiles = {};
+
   /// Restore points before [push]; matches [importStack] depth.
   final List<String?> _prevPaths = [];
 
@@ -2220,6 +2224,13 @@ void _recordSemInfo(
       kind: kind,
       type: prettyTerm(quote(state.ctx.level, type), outerDepth: 0),
       defSpan: defSpan?.isSynthetic == true ? null : defSpan,
+      defFile:
+          defSpan == null
+              ? null
+              : state.topEnv.importState.spanStartToFile[defSpan.start] ??
+                  state.topEnv.importState.definitionFiles[name.contains('.')
+                      ? name.substring(name.lastIndexOf('.') + 1)
+                      : name],
     ),
   );
 }
@@ -3954,10 +3965,15 @@ DeclResult _processImport(
       if (!b.span.isSynthetic) {
         importState.spanStartToFile[b.span.start] = resolvedPath;
       }
+      importState.definitionFiles[b.name] = resolvedPath;
     }
     for (final d in localDataDecls) {
       if (!d.span.isSynthetic) {
         importState.spanStartToFile[d.span.start] = resolvedPath;
+      }
+      importState.definitionFiles[d.name] = resolvedPath;
+      for (final c in d.ctors) {
+        importState.definitionFiles[c.name] = resolvedPath;
       }
     }
 

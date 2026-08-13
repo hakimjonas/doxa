@@ -250,6 +250,9 @@ final class ImportResolver {
       for (final decl in info.program.decls) {
         if (decl.kind is SImportKind) continue;
 
+        final previousBindings = _bindings.length;
+        final previousDataDecls = _dataDecls.length;
+
         final env = TopEnv(
           _bindings,
           _dataDecls,
@@ -278,6 +281,7 @@ final class ImportResolver {
             _namespaceBindings,
             produced.namespaceBindings,
           );
+          _recordDefinitionFiles(path, previousBindings, previousDataDecls);
         } on DoxaCheckError {
           rethrow;
         } on ElabError {
@@ -303,6 +307,31 @@ final class ImportResolver {
       }
     } finally {
       importState.pop();
+    }
+  }
+
+  void _recordDefinitionFiles(
+    String path,
+    int previousBindings,
+    int previousDataDecls,
+  ) {
+    for (final binding in _bindings.skip(previousBindings)) {
+      importState.definitionFiles[binding.name] = path;
+      if (!binding.span.isSynthetic) {
+        importState.spanStartToFile[binding.span.start] = path;
+      }
+    }
+    for (final dataDecl in _dataDecls.skip(previousDataDecls)) {
+      importState.definitionFiles[dataDecl.name] = path;
+      if (!dataDecl.span.isSynthetic) {
+        importState.spanStartToFile[dataDecl.span.start] = path;
+      }
+      for (final ctor in dataDecl.ctors) {
+        importState.definitionFiles[ctor.name] = path;
+        if (!ctor.span.isSynthetic) {
+          importState.spanStartToFile[ctor.span.start] = path;
+        }
+      }
     }
   }
 }

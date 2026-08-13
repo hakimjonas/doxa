@@ -23,7 +23,7 @@ intellijPlatform {
 
         ideaVersion {
             sinceBuild = providers.gradleProperty("pluginSinceBuild").get()
-            untilBuild = providers.gradleProperty("pluginUntilBuild").get()
+            untilBuild = providers.gradleProperty("pluginUntilBuild").orNull
         }
 
         changeNotes = "LSP client for Doxa language server. Works in all JetBrains IDEs."

@@ -17,6 +17,10 @@ class DoxaCompletionContributor : CompletionContributor() {
 }
 
 class DoxaCompletionProvider : CompletionProvider<CompletionParameters>() {
+    private val keywords = listOf(
+        "val", "fun", "data", "type", "match", "case", "returning",
+        "import", "opaque", "rec", "struct", "where", "theorem", "with", "ind",
+    )
 
     override fun addCompletions(
         parameters: CompletionParameters,
@@ -24,25 +28,20 @@ class DoxaCompletionProvider : CompletionProvider<CompletionParameters>() {
         result: CompletionResultSet,
     ) {
         val file = parameters.originalFile
-        val connector = DoxaLspService.getInstance(file.project).connector
-        if (!connector.isRunning) return
+        val service = DoxaLspService.getInstance(file.project)
+        if (!service.connector.isRunning) return
 
         val virtualFile = file.virtualFile ?: return
         val uri = virtualFile.url
         val document = file.viewProvider.document ?: return
-        connector.ensureFileSent(uri, document.text)
         val offset = parameters.offset
-        val position = DoxaDocumentationProvider.positionAt(document.text, offset)
-
-        val params = mapOf(
-            "textDocument" to mapOf("uri" to uri),
-            "position" to mapOf("line" to position.first, "character" to position.second),
-        )
-
-        try {
-            val response = connector.sendRequestBlocking("textDocument/completion", params) as? Map<*, *> ?: return
-            val items = response["items"] as? List<*> ?: return
-            for (item in items) {
+        val response = service.completionAt(uri, document.text, offset)
+        if (response == null) {
+            keywords.forEach { result.addElement(LookupElementBuilder.create(it)) }
+            return
+        }
+        val items = response["items"] as? List<*> ?: return
+        for (item in items) {
                 val i = item as? Map<*, *> ?: continue
                 val label = i["label"] as? String ?: continue
                 val detail = i["detail"] as? String
@@ -54,8 +53,6 @@ class DoxaCompletionProvider : CompletionProvider<CompletionParameters>() {
                     builder.withTailText(" — $documentation", true)
                 }
                 result.addElement(builder)
-            }
-        } catch (_: Exception) {
         }
     }
 }
