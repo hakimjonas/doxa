@@ -14,36 +14,6 @@ import 'dart:io' show Directory;
 import 'package:rumil/rumil.dart';
 
 import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart'
-    show
-        TacticState,
-        TacticOk,
-        TacticFail,
-        intro,
-        exact,
-        refl,
-        tacticApply,
-        trivial,
-        rewrite,
-        induction,
-        simpl,
-        auto,
-        omega,
-        tacticConstructor,
-        tacticCases,
-        validateTerm;
-import 'package:doxa/doxa.dart' show TPi, TBound, TData, Term, Icit;
-import 'package:doxa/doxa.dart';
 
 /// Meta-command mode: which part of the expression to display.
 enum _MetaMode { type, norm }
@@ -169,13 +139,17 @@ final class ReplSession {
   final Map<String, Set<String>> namespaceBindings;
 
   /// Import resolution state, persisted across REPL declarations.
-  ImportState _importState;
+  final ImportState _importState;
 
   /// Returns the import state, initializing it lazily when needed.
   ImportState get importState => _importState;
 
   /// Active proof session, or null when not in proof mode.
-  final _ProofSession? proofState;
+  final _ProofSession? _proofState;
+
+  /// Opaque proof-state marker for clients that only need to know whether a
+  /// proof is active.
+  Object? get proofState => _proofState;
 
   /// Creates a REPL session, optionally seeded with [seedBindings]
   /// and [seedDataDecls] (e.g. the ambient prelude).
@@ -184,9 +158,17 @@ final class ReplSession {
     this.dataDecls = const <DataDecl>[],
     this.namespaceBindings = const {},
     ImportState? importState,
-    _ProofSession? proofState,
   }) : _importState = importState ?? ImportState(),
-       this.proofState = proofState;
+       _proofState = null;
+
+  ReplSession._({
+    required this.bindings,
+    required this.dataDecls,
+    required this.namespaceBindings,
+    required ImportState importState,
+    required _ProofSession proofState,
+  }) : _importState = importState,
+       _proofState = proofState;
 
   /// Solve the current proof goal with [term], validating it first.
   void _solveMeta(_ProofSession ps, Term term) {
@@ -214,7 +196,7 @@ final class ReplSession {
     }
 
     // In proof mode, only meta-commands are accepted.
-    if (proofState != null) {
+    if (_proofState != null) {
       return (const ReplError('Cannot add declarations during a proof.'), this);
     }
 
@@ -463,7 +445,7 @@ final class ReplSession {
     final text = arg.trim();
     // `:goal` with no args during proof shows the current goal.
     if (text.isEmpty) {
-      final ps = proofState;
+      final ps = _proofState;
       if (ps == null) {
         return (const ReplError(':goal requires a theorem declaration.'), this);
       }
@@ -472,7 +454,7 @@ final class ReplSession {
         this,
       );
     }
-    if (proofState != null) {
+    if (_proofState != null) {
       return (
         const ReplMeta('Already in proof mode. Use :qed, :abort, or :undo.'),
         this,
@@ -565,10 +547,11 @@ final class ReplSession {
 
     return (
       ReplMeta(output.toString().trimRight()),
-      ReplSession(
+      ReplSession._(
         bindings: bindings,
         dataDecls: dataDecls,
         namespaceBindings: namespaceBindings,
+        importState: importState,
         proofState: proofSession,
       ),
     );
@@ -607,7 +590,7 @@ final class ReplSession {
 
   /// Handle `:step <tactic>`.
   ReplStep _handleStep(String arg) {
-    final ps = proofState;
+    final ps = _proofState;
     if (ps == null) {
       return (
         const ReplMeta('No proof in progress. Use :goal to start.'),
@@ -733,7 +716,7 @@ final class ReplSession {
           return (ReplMeta('exact: unresolved name "$name"'), this);
         }
       } else {
-        return (ReplMeta('exact: could not elaborate expression'), this);
+        return (const ReplMeta('exact: could not elaborate expression'), this);
       }
     }
 
@@ -805,7 +788,7 @@ final class ReplSession {
           return (ReplMeta('apply: unresolved name "$name"'), this);
         }
       } else {
-        return (ReplMeta('apply: could not elaborate expression'), this);
+        return (const ReplMeta('apply: could not elaborate expression'), this);
       }
     }
 
@@ -1144,7 +1127,10 @@ final class ReplSession {
           return (ReplMeta('rewrite: unresolved name "$name"'), this);
         }
       } else {
-        return (ReplMeta('rewrite: could not elaborate expression'), this);
+        return (
+          const ReplMeta('rewrite: could not elaborate expression'),
+          this,
+        );
       }
     }
 
@@ -1228,7 +1214,7 @@ final class ReplSession {
 
   /// Handle `:undo`.
   ReplStep _handleUndo() {
-    final ps = proofState;
+    final ps = _proofState;
     if (ps == null) {
       return (const ReplMeta('No proof in progress.'), this);
     }
@@ -1251,12 +1237,12 @@ final class ReplSession {
 
   /// Handle `:print` — show the proof term built so far.
   ReplStep _handlePrint() {
-    final ps = proofState;
+    final ps = _proofState;
     if (ps == null) {
       return (const ReplMeta('No proof in progress.'), this);
     }
     if (!ps.metas.isSolved(ps.rootGoalMetaId)) {
-      return (ReplMeta('No steps taken yet.'), this);
+      return (const ReplMeta('No steps taken yet.'), this);
     }
 
     final rootTerm = ps.metas.solutionOf(ps.rootGoalMetaId);
@@ -1267,7 +1253,7 @@ final class ReplSession {
 
   /// Handle `:qed` — finish the proof and add the theorem binding.
   ReplStep _handleQed() {
-    final ps = proofState;
+    final ps = _proofState;
     if (ps == null) {
       return (
         const ReplMeta('No proof in progress. Use :goal to start.'),
@@ -1302,10 +1288,10 @@ final class ReplSession {
       final quotedInferred = quote(checkCtx.level, inferred);
       final quotedExpected = quote(checkCtx.level, typeValue);
       if (quotedInferred != quotedExpected) {
-        return (ReplMeta('QED failed: type mismatch'), this);
+        return (const ReplMeta('QED failed: type mismatch'), this);
       }
     } on Object {
-      return (ReplMeta('QED failed: type-checking error'), this);
+      return (const ReplMeta('QED failed: type-checking error'), this);
     }
 
     // Create the TopBinding.
@@ -1331,7 +1317,7 @@ final class ReplSession {
 
   /// Handle `:abort` — cancel the current proof.
   ReplStep _handleAbort() {
-    if (proofState == null) {
+    if (_proofState == null) {
       return (const ReplMeta('No proof in progress.'), this);
     }
     return (
@@ -1358,7 +1344,7 @@ final class ReplSession {
       final stubAcc = {
         ...acc,
         b.name: TopBindingEntry(
-          VNeutral(NVar(0)), // placeholder
+          const VNeutral(NVar(0)), // placeholder
           VNeutral(NTop(b.name)),
           isOpaque: b.isOpaque,
           recDecreasingArg: b.recDecreasingArg,

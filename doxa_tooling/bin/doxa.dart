@@ -20,24 +20,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart' show loadPrelude;
-import 'package:doxa/doxa.dart' show AnsiColor;
-import 'package:doxa/doxa.dart'
-    show
-        ClassInfo,
-        ImportState,
-        ImportResolver,
-        elabDecl,
-        checkDeclResult,
-        declNames,
-        ElabError,
-        UnresolvedName,
-        TopEnv,
-        mergeNamespace;
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart' show SourceFile;
-import 'package:doxa/doxa.dart' show SProgram, SImportKind;
 import 'package:doxa_tooling/src/format.dart' show formatSource, isFormatted;
 import 'package:doxa_tooling/src/lsp/handler.dart';
 import 'package:doxa_tooling/src/lsp/transport.dart'
@@ -428,9 +410,6 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
       :final alias,
       :final path,
     ) when alias != null) {
-      importState.push(source.filename);
-      final resolved = importState.resolvePath(path);
-      importState.pop();
       final defaultPrefix =
           path.endsWith('.doxa')
               ? path

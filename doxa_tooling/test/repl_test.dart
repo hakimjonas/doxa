@@ -35,7 +35,7 @@ void main() {
 
     test(':search filters by substring', () {
       var session = ReplSession();
-      var (_, next) = session.processInput(
+      final (_, next) = session.processInput(
         'data Bool : Type { true_ : Bool; false_ : Bool; }',
       );
       session = next;
@@ -56,7 +56,7 @@ void main() {
 
     test(':search is case-insensitive', () {
       var session = ReplSession();
-      var (_, next) = session.processInput(
+      final (_, next) = session.processInput(
         'data Nat : Type { zero : Nat; succ : Nat -> Nat; }',
       );
       session = next;

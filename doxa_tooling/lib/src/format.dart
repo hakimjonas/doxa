@@ -1,9 +1,7 @@
 /// Canonical code formatter for Doxa source files.
 library;
 
-import 'package:doxa/doxa.dart' show parseProgram;
 import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart' show Icit;
 import 'package:rumil/rumil.dart';
 
 /// Format a Doxa source string to canonical style.
@@ -58,27 +56,11 @@ class _Doc {
   }
 
   static _Doc get space => _Doc.txt(' ');
-
-  /// Prepend a space before [d] if [d] is non-empty.
-  static _Doc sp(_Doc d) =>
-      d.kind == _DocKind.nil ? d : _Doc.cat(_Doc.space, d);
-
-  static _Doc sep(List<_Doc> docs) {
-    if (docs.isEmpty) return _Doc.nil;
-    var result = docs[0];
-    for (var i = 1; i < docs.length; i++) {
-      result = _Doc.cat(result, _Doc.cat(_Doc.line, docs[i]));
-    }
-    return result;
-  }
 }
 
 // ---------------------------------------------------------------------------
 // Rendering: Wadler-style with width tracking
 // ---------------------------------------------------------------------------
-
-bool _isFlat(_DocKind k) =>
-    k == _DocKind.nil || k == _DocKind.text || k == _DocKind.line;
 
 /// Width of [doc] in flat mode (lines count as 1 char for space).
 int _docFlatWidth(_Doc doc) {
@@ -96,34 +78,6 @@ int _docFlatWidth(_Doc doc) {
     case _DocKind.cat:
       return _docFlatWidth(doc.a!) + _docFlatWidth(doc.b!);
   }
-}
-
-/// Check if [doc] fits within [remainingWidth] columns in flat mode.
-bool _fitsDoc(_Doc doc, int remainingWidth) {
-  if (remainingWidth < 0) return false;
-  switch (doc.kind) {
-    case _DocKind.nil:
-      return true;
-    case _DocKind.text:
-      return doc.text!.length <= remainingWidth;
-    case _DocKind.line:
-      return true; // line in flat mode = space
-    case _DocKind.nest:
-      return _fitsDoc(doc.a!, remainingWidth);
-    case _DocKind.group:
-      return _fitsDoc(doc.a!, remainingWidth);
-    case _DocKind.cat:
-      return _fitsDoc(doc.a!, remainingWidth) &&
-          _fitsDoc(doc.b!, remainingWidth - _docFlatWidth(doc.a!));
-  }
-}
-
-/// Render [doc] to a string, breaking groups when they exceed the width.
-/// The outer level starts in broken mode (no enclosing group chooses flat).
-String _renderDoc(_Doc doc, {int lineWidth = 100}) {
-  final buf = StringBuffer();
-  _renderDocInner(doc, buf, 0, 0, false, lineWidth);
-  return buf.toString();
 }
 
 void _renderDocInner(
@@ -196,7 +150,7 @@ class _Formatter {
       Success<ParseError, SProgram>(:final value) => value,
       Partial<ParseError, SProgram>(:final value) => value,
       Failure<ParseError, SProgram>() =>
-        throw FormatException('Cannot format source with parse errors'),
+        throw const FormatException('Cannot format source with parse errors'),
     };
 
     _visitProgram(program);
@@ -208,7 +162,7 @@ class _Formatter {
     // Strip leading blank lines (but not leading whitespace/comments).
     out = out.replaceFirst(RegExp(r'^(\n)+'), '');
     // Ensure exactly one trailing newline.
-    out = out.trimRight() + '\n';
+    out = '${out.trimRight()}\n';
     return out;
   }
 
@@ -351,7 +305,7 @@ class _Formatter {
   // -------------------------------------------------------------------------
 
   void _visitProgram(SProgram program) {
-    var decls = program.decls.toList();
+    final decls = program.decls.toList();
 
     // Sort imports to the front in alphabetical order
     final nonImport = <SDecl>[];
@@ -382,7 +336,7 @@ class _Formatter {
   int _compareImportDecls(SDecl a, SDecl b) {
     final ka = a.kind as SImportKind;
     final kb = b.kind as SImportKind;
-    var cmp = ka.path.compareTo(kb.path);
+    final cmp = ka.path.compareTo(kb.path);
     if (cmp != 0) return cmp;
     final aa = ka.alias ?? '';
     final ab = kb.alias ?? '';
@@ -724,63 +678,61 @@ class _Formatter {
   // Expression formatting (returns Doc)
   // -------------------------------------------------------------------------
 
-  _Doc _visit(SExpr expr) {
-    return switch (expr.kind) {
-      SIdentKind(:final name) => _Doc.txt(name),
-      STypeKind(:final level) =>
-        level == null ? _Doc.txt('Type') : _Doc.txt('Type $level'),
-      SPropKind() => _Doc.txt('Prop'),
-      SSPropKind() => _Doc.txt('SProp'),
-      SAppKind(:final fn, :final arg) => _visitApp(fn, arg),
-      SLamKind(:final param, :final domain, :final body, :final icit) =>
-        _visitLam(param, domain, body, isImplicit: icit == Icit.implicit),
-      SPiKind(:final param, :final domain, :final codomain, :final icit) =>
-        _visitPi(param, domain, codomain, isImplicit: icit == Icit.implicit),
-      SMatchKind(:final scrutinee, :final motive, :final cases) => _visitMatch(
-        scrutinee,
-        motive,
-        cases,
-      ),
-      SLetKind(
-        :final param,
-        :final domain,
-        :final bound,
-        :final body,
-        :final isRec,
-      ) =>
-        _visitBlock(param, domain, bound, body, isRec),
-      SDotKind(:final qualifier, :final name) => _Doc.cat(
-        _visit(qualifier),
-        _Doc.txt('.$name'),
-      ),
-      SQuotKind(:final carrier, :final relation) => _Doc.catAll([
-        _Doc.txt('Quot('),
-        _visit(carrier),
-        _Doc.txt(', '),
-        _visit(relation),
-        _Doc.txt(')'),
-      ]),
-      SQuotMkKind(:final arg) => _Doc.catAll([
-        _Doc.txt('Quot.mk('),
-        _visit(arg),
-        _Doc.txt(')'),
-      ]),
-      SQuotLiftKind(:final fn, :final proof) => _Doc.catAll([
-        _Doc.txt('Quot.lift('),
-        _visit(fn),
-        _Doc.txt(', '),
-        _visit(proof),
-        _Doc.txt(')'),
-      ]),
-      SIntersectionKind(:final constraints) => _Doc.catAll([
-        for (var i = 0; i < constraints.length; i++) ...[
-          if (i > 0) _Doc.txt(' & '),
-          _visit(constraints[i]),
-        ],
-      ]),
-      SByKind(:final steps) => _visitBy(steps),
-    };
-  }
+  _Doc _visit(SExpr expr) => switch (expr.kind) {
+    SIdentKind(:final name) => _Doc.txt(name),
+    STypeKind(:final level) =>
+      level == null ? _Doc.txt('Type') : _Doc.txt('Type $level'),
+    SPropKind() => _Doc.txt('Prop'),
+    SSPropKind() => _Doc.txt('SProp'),
+    SAppKind(:final fn, :final arg) => _visitApp(fn, arg),
+    SLamKind(:final param, :final domain, :final body, :final icit) =>
+      _visitLam(param, domain, body, isImplicit: icit == Icit.implicit),
+    SPiKind(:final param, :final domain, :final codomain, :final icit) =>
+      _visitPi(param, domain, codomain, isImplicit: icit == Icit.implicit),
+    SMatchKind(:final scrutinee, :final motive, :final cases) => _visitMatch(
+      scrutinee,
+      motive,
+      cases,
+    ),
+    SLetKind(
+      :final param,
+      :final domain,
+      :final bound,
+      :final body,
+      :final isRec,
+    ) =>
+      _visitBlock(param, domain, bound, body, isRec),
+    SDotKind(:final qualifier, :final name) => _Doc.cat(
+      _visit(qualifier),
+      _Doc.txt('.$name'),
+    ),
+    SQuotKind(:final carrier, :final relation) => _Doc.catAll([
+      _Doc.txt('Quot('),
+      _visit(carrier),
+      _Doc.txt(', '),
+      _visit(relation),
+      _Doc.txt(')'),
+    ]),
+    SQuotMkKind(:final arg) => _Doc.catAll([
+      _Doc.txt('Quot.mk('),
+      _visit(arg),
+      _Doc.txt(')'),
+    ]),
+    SQuotLiftKind(:final fn, :final proof) => _Doc.catAll([
+      _Doc.txt('Quot.lift('),
+      _visit(fn),
+      _Doc.txt(', '),
+      _visit(proof),
+      _Doc.txt(')'),
+    ]),
+    SIntersectionKind(:final constraints) => _Doc.catAll([
+      for (var i = 0; i < constraints.length; i++) ...[
+        if (i > 0) _Doc.txt(' & '),
+        _visit(constraints[i]),
+      ],
+    ]),
+    SByKind(:final steps) => _visitBy(steps),
+  };
 
   _Doc _visitApp(SExpr fn, SExpr arg) {
     final fnDoc = _visit(fn);
@@ -911,20 +863,18 @@ class _Formatter {
     SExpr bound,
     SExpr body,
     bool isRec,
-  ) {
-    return _Doc.catAll([
-      _Doc.txt('{'),
-      _Doc.nst(
-        _indentSize,
-        _Doc.catAll([
-          _Doc.line,
-          _visitSLetChainDocFromLet(param, domain, bound, body, isRec),
-          _Doc.line,
-        ]),
-      ),
-      _Doc.txt('}'),
-    ]);
-  }
+  ) => _Doc.catAll([
+    _Doc.txt('{'),
+    _Doc.nst(
+      _indentSize,
+      _Doc.catAll([
+        _Doc.line,
+        _visitSLetChainDocFromLet(param, domain, bound, body, isRec),
+        _Doc.line,
+      ]),
+    ),
+    _Doc.txt('}'),
+  ]);
 
   _Doc _visitSLetChainDocFromLet(
     String param,
@@ -996,27 +946,25 @@ class _Formatter {
     return _Doc.catAll(parts);
   }
 
-  _Doc _visitTacticStep(STacticStep step) {
-    return switch (step) {
-      STacticIntro(:final name) =>
-        name == null ? _Doc.txt('intro') : _Doc.txt('intro $name'),
-      STacticExact(:final expr) => _Doc.catAll([
-        _Doc.txt('exact '),
-        _visit(expr),
-      ]),
-      STacticApply(:final expr) => _Doc.catAll([
-        _Doc.txt('apply '),
-        _visit(expr),
-      ]),
-      STacticRefl() => _Doc.txt('refl'),
-      STacticRewrite(:final expr) => _Doc.catAll([
-        _Doc.txt('rewrite '),
-        _visit(expr),
-      ]),
-      STacticInduction(:final name) => _Doc.txt('induction $name'),
-      STacticTrivial() => _Doc.txt('trivial'),
-    };
-  }
+  _Doc _visitTacticStep(STacticStep step) => switch (step) {
+    STacticIntro(:final name) =>
+      name == null ? _Doc.txt('intro') : _Doc.txt('intro $name'),
+    STacticExact(:final expr) => _Doc.catAll([
+      _Doc.txt('exact '),
+      _visit(expr),
+    ]),
+    STacticApply(:final expr) => _Doc.catAll([
+      _Doc.txt('apply '),
+      _visit(expr),
+    ]),
+    STacticRefl() => _Doc.txt('refl'),
+    STacticRewrite(:final expr) => _Doc.catAll([
+      _Doc.txt('rewrite '),
+      _visit(expr),
+    ]),
+    STacticInduction(:final name) => _Doc.txt('induction $name'),
+    STacticTrivial() => _Doc.txt('trivial'),
+  };
 
   // -------------------------------------------------------------------------
   // Type parameter formatting

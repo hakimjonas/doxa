@@ -90,7 +90,7 @@ val x : Nat = zero
 
     test('import paths resolve relative to importing file', () {
       // The stdlib dirs exist; test that path resolution works.
-      final src = 'import "../lib/stdlib/nat.doxa"';
+      const src = 'import "../lib/stdlib/nat.doxa"';
       final r = runSource(src, filename: 'import_test.doxa');
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });

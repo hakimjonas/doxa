@@ -14,7 +14,7 @@ void main() {
     });
 
     test('green tree text length matches source', () {
-      final src = 'val x: Type = Type';
+      const src = 'val x: Type = Type';
       final r = parseProgramTree(src);
       final pt = r.valueOrNull;
       expect(pt, isNotNull);
@@ -22,7 +22,7 @@ void main() {
     });
 
     test('multiple declarations', () {
-      final src = 'val a = b\nval c = d';
+      const src = 'val a = b\nval c = d';
       final r = parseProgramTree(src);
       final pt = r.valueOrNull;
       expect(pt, isNotNull);
@@ -32,7 +32,7 @@ void main() {
 
   group('parseProgramCst', () {
     test('produces RedTree that reconstructs source', () {
-      final src = 'val x = y';
+      const src = 'val x = y';
       final r = parseProgramCst(src);
       final red = r.valueOrNull;
       expect(red, isNotNull);
@@ -40,7 +40,7 @@ void main() {
     });
 
     test('nodeAt returns deepest node at offset', () {
-      final src = 'val x = y';
+      const src = 'val x = y';
       final r = parseProgramCst(src);
       final red = r.valueOrNull!;
       final n = nodeAt(red, 4); // 'x'

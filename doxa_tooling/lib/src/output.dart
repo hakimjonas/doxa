@@ -9,7 +9,6 @@ library;
 import 'dart:convert';
 
 import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart' show DoxaSpan;
 
 /// The result of checking a Doxa source file.
 sealed class CheckOutput {
