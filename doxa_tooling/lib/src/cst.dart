@@ -8,6 +8,7 @@ library;
 import 'package:rumil/rumil.dart';
 
 import 'parse_tree.dart';
+import 'tokenize.dart' show tokenizeDoxaSpans;
 
 export 'syntax.dart' show DoxaToken, DoxaSyntax, DoxaGreen, DoxaRed;
 
@@ -84,18 +85,27 @@ Parser<ParseError, DoxaGreen> _buildDeclarationParser(DoxaSyntax kind) {
   return all
       .flatMap((source) {
         final result = parseProgramTree(source);
-        final tree = switch (result) {
-          Success(:final value) || Partial(:final value) => (value.tree
-                  as GreenTree<DoxaToken, DoxaSyntax>)
-              .children
-              .whereType<GreenTree<DoxaToken, DoxaSyntax>>()
-              .firstWhere(
-                (node) => node.kind == kind,
-                orElse: () => GreenTree(kind, tokenizeAsGreens(source)),
-              ),
-          _ => GreenTree(kind, tokenizeAsGreens(source)),
+        final parsed = switch (result) {
+          Success(:final value) => value,
+          _ => null,
         };
-        return succeed<ParseError, DoxaGreen>(tree);
+        if (parsed == null ||
+            parsed.ast.decls.length != 1 ||
+            parsed.ast.decls.single.span.start != 0 ||
+            parsed.ast.decls.single.span.end != source.length) {
+          return failure<ParseError, DoxaGreen>(
+            CustomError('expected one complete declaration', Location.zero),
+          );
+        }
+        final tree = parsed.tree as GreenTree<DoxaToken, DoxaSyntax>;
+        final children =
+            tree.children.whereType<GreenTree<DoxaToken, DoxaSyntax>>();
+        if (children.length != 1 || children.single.kind != kind) {
+          return failure<ParseError, DoxaGreen>(
+            CustomError('declaration kind changed', Location.zero),
+          );
+        }
+        return succeed<ParseError, DoxaGreen>(children.single);
       })
       .thenSkip(eof());
 }
@@ -133,21 +143,6 @@ ReparseableParsers<DoxaToken, DoxaSyntax> buildDoxaReparser() =>
           ),
     );
 
-/// Reparser configuration that skips token-level updates.
-///
-/// Use this when an edit inserts syntax punctuation beside an otherwise simple
-/// token. The token-level path assumes the replacement stays within the same
-/// lexical token class.
-ReparseableParsers<DoxaToken, DoxaSyntax> buildDoxaStructuralReparser() {
-  final parsers = buildDoxaReparser();
-  return ReparseableParsers<DoxaToken, DoxaSyntax>(
-    full: parsers.full,
-    byKind: parsers.byKind,
-    isSimpleToken: (_) => false,
-    onParseFailure: parsers.onParseFailure,
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Convenience wrapper
 // ---------------------------------------------------------------------------
@@ -162,5 +157,55 @@ IncrementalResult<DoxaToken, DoxaSyntax> reparse(
   ReparseableParsers<DoxaToken, DoxaSyntax>? parsers,
 }) {
   final p = parsers ?? buildDoxaReparser();
-  return incrementalParse(previousTree, previousSource, edit, p);
+  final safeTokenUpdate = _canUpdateTokenInPlace(
+    previousTree,
+    previousSource,
+    edit,
+    p,
+  );
+  final selected =
+      safeTokenUpdate
+          ? p
+          : ReparseableParsers<DoxaToken, DoxaSyntax>(
+            full: p.full,
+            byKind: p.byKind,
+            isSimpleToken: (_) => false,
+            onParseFailure: p.onParseFailure,
+          );
+  return incrementalParse(previousTree, previousSource, edit, selected);
+}
+
+bool _canUpdateTokenInPlace(
+  DoxaGreen previousTree,
+  String previousSource,
+  TextEdit edit,
+  ReparseableParsers<DoxaToken, DoxaSyntax> parsers,
+) {
+  final node = DoxaRed(previousTree, previousSource).nodeAt(edit.startOffset);
+  final green = node?.green;
+  if (node == null || green is! GreenToken<DoxaToken, DoxaSyntax>) {
+    return false;
+  }
+  if (!parsers.isSimpleToken(green.kind) ||
+      edit.startOffset < node.offset ||
+      edit.endOffset > node.endOffset) {
+    return false;
+  }
+
+  final newTokenText =
+      green.text.substring(0, edit.startOffset - node.offset) +
+      edit.newText +
+      green.text.substring(edit.endOffset - node.offset);
+  if (newTokenText.isEmpty) return false;
+
+  final newEnd = node.endOffset + edit.lengthDelta;
+  final newSource = edit.apply(previousSource);
+  final retokenized = tokenizeDoxaSpans(newSource);
+  return retokenized.any(
+    (span) =>
+        span.start == node.offset &&
+        span.end == newEnd &&
+        span.token.text == newTokenText &&
+        tokenKind(span.token) == green.kind,
+  );
 }

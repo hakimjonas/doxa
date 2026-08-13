@@ -1,8 +1,7 @@
 /// LSP message dispatch and document management for Doxa.
 ///
-/// Maintains the open document's text, runs the full check pipeline on
-/// every edit, and serves hover/definition/completion from the semantic
-/// metadata produced by Phase 3a.
+/// Maintains open document text and incremental checker sessions, then serves
+/// hover, definition, and completion from the latest semantic metadata.
 library;
 
 import '../output.dart';
@@ -13,7 +12,7 @@ import 'package:rumil/rumil.dart'
 import '../web_check.dart';
 import '../parse_tree.dart' show parseProgramTree;
 import '../syntax.dart' show DoxaGreen;
-import '../cst.dart' show buildDoxaStructuralReparser, reparse;
+import '../cst.dart' show reparse;
 import '../format.dart' show formatSource;
 import '../tokenize.dart' show tokenizeDoxaSpans;
 import 'package:rumil_tokens/rumil_tokens.dart'
@@ -34,6 +33,7 @@ final class _DocumentState {
   CheckSuccess? lastSuccess;
   Map<String, int> frequency = <String, int>{};
   CachedImports? cachedImports;
+  IncrementalCheckSession? checkSession;
   DoxaGreen? syntaxTree;
   IncrementalStrategy? lastReparseStrategy;
 }
@@ -53,10 +53,12 @@ final class LspHandler {
   CachedImports? get _cachedImports => _activeDocument?.cachedImports;
   set _cachedImports(CachedImports? value) =>
       _activeDocument?.cachedImports = value;
+  IncrementalCheckSession? get _checkSession => _activeDocument?.checkSession;
+  set _checkSession(IncrementalCheckSession? value) =>
+      _activeDocument?.checkSession = value;
 
   /// Request IDs that have been cancelled via $/cancelRequest.
   final Set<int> _cancelledIds = {};
-  final _structuralReparser = buildDoxaStructuralReparser();
 
   /// Enables persistent-LSP timing output on stderr for local diagnosis.
   static final _traceTiming =
@@ -81,6 +83,19 @@ final class LspHandler {
   /// Exposed for protocol tests and performance telemetry.
   String? lastReparseStrategyFor(String uri) =>
       _documents[uri]?.lastReparseStrategy?.name;
+
+  /// Semantic invalidation metrics for the latest update to [uri].
+  ({int start, int reused, int rechecked, String? fallback})?
+  lastCheckMetricsFor(String uri) {
+    final session = _documents[uri]?.checkSession;
+    if (session == null) return null;
+    return (
+      start: session.lastRecheckStart,
+      reused: session.lastReusedDeclarationCount,
+      rechecked: session.lastRecheckedDeclarationCount,
+      fallback: session.lastFallbackReason,
+    );
+  }
 
   /// Process a single incoming LSP message.
   ///
@@ -174,7 +189,7 @@ final class LspHandler {
         return null; // Acknowledged; no configuration to consume yet.
 
       case 'workspace/didChangeWatchedFiles':
-        _handleWatchedFiles();
+        _handleWatchedFiles(params);
         return null;
 
       case 'shutdown':
@@ -280,10 +295,25 @@ final class LspHandler {
     if (identical(_activeDocument, document)) _activeDocument = null;
   }
 
-  void _handleWatchedFiles() {
+  void _handleWatchedFiles(Map<String, dynamic>? params) {
+    final changedPaths = <String>{
+      for (final change in (params?['changes'] as List<dynamic>? ?? const []))
+        if (change case {'uri': final String uri} when uri.startsWith('file:'))
+          Uri.parse(uri).toFilePath(),
+    };
     final previous = _activeDocument;
     for (final document in _documents.values) {
+      final session = document.checkSession;
+      if (changedPaths.isNotEmpty &&
+          (session == null || !changedPaths.any(session.importsPath))) {
+        continue;
+      }
       _activeDocument = document;
+      // An import baseline retains parsed external files, so it cannot be
+      // reused after a dependency changes on disk.
+      session?.invalidateImports();
+      _checkSession = null;
+      _cachedImports = null;
       _checkAndPublish();
     }
     _activeDocument = previous;
@@ -302,13 +332,7 @@ final class LspHandler {
       return;
     }
     final edit = _minimalEdit(document.text, newText);
-    final result = reparse(
-      previousTree,
-      document.text,
-      edit,
-      parsers:
-          _containsStructuralSyntax(edit.newText) ? _structuralReparser : null,
-    );
+    final result = reparse(previousTree, document.text, edit);
     document.syntaxTree = result.tree;
     document.lastReparseStrategy = result.strategy;
   }
@@ -329,6 +353,13 @@ final class LspHandler {
       previousEnd--;
       nextEnd--;
     }
+    // Rumil's token update anchors an insertion at the token beginning at its
+    // offset. Include one shared code unit on the left so an insertion at an
+    // identifier's end is checked against that identifier, not its following
+    // whitespace token.
+    if (start == previousEnd && start > 0) {
+      start--;
+    }
     return TextEdit(start, previousEnd, next.substring(start, nextEnd));
   }
 
@@ -338,9 +369,6 @@ final class LspHandler {
     Success(:final value) || Partial(:final value) => value.tree,
     _ => null,
   };
-
-  bool _containsStructuralSyntax(String text) =>
-      RegExp(r'[(){}\[\]:;,.|=>]').hasMatch(text);
 
   /// Handle `textDocument/hover`.
   Map<String, dynamic> _handleHover(Object? id, Map<String, dynamic> params) {
@@ -1020,18 +1048,13 @@ final class LspHandler {
             : _documentUri;
     final CheckOutput output;
     try {
-      if (_cachedImports != null) {
-        output = checkSourceWithCache(
-          _documentText,
-          filename: filename,
-          cache: _cachedImports!,
-        );
-      } else {
-        output = checkSourceOutput(_documentText, filename: filename);
-      }
+      final session =
+          _checkSession ??= IncrementalCheckSession(filename: filename);
+      output = session.update(_documentText);
     } catch (e) {
       _lastSuccess = null;
       _cachedImports = null;
+      _checkSession = null;
       _publishDiagnostics([
         LspDiagnostic(
           range: const LspRange(
@@ -1091,9 +1114,16 @@ final class LspHandler {
         _publishDiagnostics(diagnostics);
     }
     if (_traceTiming) {
+      final session = _checkSession;
       stderr.writeln(
         'doxa-lsp check uri=$_documentUri version=${_activeDocument?.version} '
         'reparse=${_activeDocument?.lastReparseStrategy?.name ?? 'open'} '
+        'parseMs=${session?.lastParseMilliseconds ?? 0} '
+        'checkMs=${session?.lastCheckMilliseconds ?? 0} '
+        'start=${session?.lastRecheckStart ?? -1} '
+        'reused=${session?.lastReusedDeclarationCount ?? 0} '
+        'rechecked=${session?.lastRecheckedDeclarationCount ?? 0} '
+        'fallback=${session?.lastFallbackReason ?? 'none'} '
         'elapsedMs=${stopwatch.elapsedMilliseconds}',
       );
     }
@@ -1104,6 +1134,7 @@ final class LspHandler {
     final params = LspPublishDiagnosticsParams(
       uri: _documentUri,
       diagnostics: diagnostics,
+      version: _activeDocument?.version,
     );
     final msg = {
       'jsonrpc': '2.0',

@@ -1,4 +1,5 @@
-import 'package:doxa_tooling/src/cst.dart' show parseProgramCst, nodeAt;
+import 'package:doxa_tooling/src/cst.dart'
+    show parseProgramCst, nodeAt, reparse;
 import 'package:doxa_tooling/src/parse_tree.dart' show parseProgramTree;
 import 'package:rumil/rumil.dart';
 import 'package:test/test.dart';
@@ -45,6 +46,43 @@ void main() {
       final n = nodeAt(red, 4); // 'x'
       expect(n, isNotNull);
       expect(n!.text, 'x');
+    });
+  });
+
+  group('incremental reparse', () {
+    test('retokenizes identifier edits before using the token path', () {
+      const source = 'fun identity[A: Type](value: A) : A = value\n';
+      final tree = parseProgramTree(source).valueOrNull!.tree;
+      final replacement = source.replaceFirst('value\n', 'fun\n');
+      final edit = TextEdit(
+        source.lastIndexOf('value'),
+        source.length - 1,
+        'fun',
+      );
+
+      final result = reparse(tree, source, edit);
+
+      expect(result.strategy, isNot(IncrementalStrategy.tokenLevel));
+      expect(result.tree.toSource(), replacement);
+    });
+
+    test('falls back when a declaration edit splits the declaration', () {
+      const source = 'val a : Type = Type\nval b : Type = Type\n';
+      final tree = parseProgramTree(source).valueOrNull!.tree;
+      const inserted = 'val c : Type = Type\n';
+      final edit = TextEdit(
+        source.indexOf('\n'),
+        source.indexOf('\n') + 1,
+        '\n$inserted',
+      );
+
+      final result = reparse(tree, source, edit);
+
+      expect(result.strategy, IncrementalStrategy.fullReparse);
+      expect(
+        result.tree.toSource(),
+        'val a : Type = Type\n$inserted${source.substring(source.indexOf('val b'))}',
+      );
     });
   });
 }

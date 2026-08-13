@@ -98,6 +98,28 @@ void main() {
       expect(handler.lastReparseStrategyFor(uri), 'blockLevel');
     });
 
+    test('rechecks only the changed declaration suffix', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/check-boundary.doxa';
+      const source =
+          'data Bool : Type { true_ : Bool; false_ : Bool; }\n'
+          'val first : Bool = true_\n'
+          'val second : Bool = first\n';
+      const changed =
+          'data Bool : Type { true_ : Bool; false_ : Bool; }\n'
+          'val first : Bool = true_\n'
+          'val second : Bool = false_\n';
+      handler.handle(_didOpen(uri, source));
+      handler.handle(_didChange(uri, changed, version: 2));
+
+      expect(handler.lastCheckMetricsFor(uri), (
+        start: 2,
+        reused: 2,
+        rechecked: 1,
+        fallback: null,
+      ));
+    });
+
     test('returns standard shapes for semantic tokens and formatting', () {
       final handler = LspHandler();
       const uri = 'file:///workspace/format.doxa';
@@ -226,6 +248,41 @@ void main() {
       final error = closed!['error'] as Map<String, dynamic>;
       expect(error['code'], -32602);
       expect(open!['result'], isEmpty);
+    });
+
+    test('watched imports invalidate only dependent sessions', () {
+      final directory = Directory.systemTemp.createTempSync('doxa-lsp-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final dependency = File('${directory.path}/dependency.doxa')
+        ..writeAsStringSync('data One : Type { one : One; }');
+      final dependentUri =
+          File('${directory.path}/dependent.doxa').uri.toString();
+      const independentUri = 'file:///workspace/independent.doxa';
+      final handler = LspHandler();
+      handler.handle(
+        _didOpen(dependentUri, 'import "dependency.doxa"\nval x : One = one\n'),
+      );
+      handler.handle(_didOpen(independentUri, 'val x : Type = Type\n'));
+      handler.handle(
+        _didChange(independentUri, 'val x : Type = Type\n', version: 2),
+      );
+
+      dependency.writeAsStringSync('data Two : Type { two : Two; }');
+      handler.handle({
+        'jsonrpc': '2.0',
+        'method': 'workspace/didChangeWatchedFiles',
+        'params': {
+          'changes': [
+            {'uri': dependency.uri.toString(), 'type': 2},
+          ],
+        },
+      });
+
+      expect(
+        handler.lastCheckMetricsFor(dependentUri)!.fallback,
+        'initial_check',
+      );
+      expect(handler.lastCheckMetricsFor(independentUri)!.fallback, isNull);
     });
   });
 }

@@ -159,9 +159,11 @@ tree alongside the existing SExpr/SDecl abstract AST. This gives
 position-indexed tree access, source reconstruction, and incremental
 reparse.
 
-**Status:** `rumil` 0.10.0 supports `treeOf`, `GreenNode`, `RedTree`,
-`TextEdit`, and incremental reparse. Doxa's `parse.dart` currently
-produces only `SExpr`/`SDecl`.
+**Status:** Doxa produces a lossless green tree alongside the surface AST by
+grouping token spans into top-level declaration islands. Rumil performs
+token-level and declaration-level updates. This remains transitional:
+expressions are not yet represented as green nodes, and constructing the
+current tree first parses the whole source into an AST.
 
 ### Deliverables
 
@@ -615,9 +617,10 @@ The architecture is designed to compose with future Doxa features:
 - **Multi-document project support.** The LSP server handles one
   document at a time. Cross-file imports and project-wide diagnostics
   are deferred until Doxa has an import/module system.
-- **Incremental elaboration.** Full-file re-elaboration on every edit.
-  Fast at current scale. Incremental (single-declaration) re-elaboration
-  is future work.
+- **Incremental elaboration.** This is no longer deferred. The active work is
+  a persistent checker session that reuses an unchanged declaration prefix and
+  re-elaborates the affected suffix. `LSP_TOOLING_PLAN.md` defines its syntax,
+  import, checkpoint, correctness, and telemetry requirements.
 
 ## References
 

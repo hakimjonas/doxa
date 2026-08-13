@@ -47,37 +47,114 @@ retain syntax structure across edits, avoid parsing an entire document for a
 local change, and provide editor feedback at interactive latency. They must not
 remain an auxiliary CST used only by experiments or tests.
 
-The current LSP path still reparses and re-elaborates the full open document on
-each change. Import caching avoids repeated import resolution but does not make
-the edited document incremental. This is a known architectural gap.
+The current LSP retains a green tree and applies Rumil `TextEdit`s, including
+declaration-level reparsers. It still constructs a fresh surface AST for the
+whole source and re-elaborates every declaration after each edit. Import
+caching avoids repeated import resolution, but it does not make semantic
+checking incremental.
 
-- Retain the prior source text, green tree, red tree, and parsed declaration
-  sequence for each open URI.
-- Apply LSP changes as Rumil `TextEdit`s and use incremental reparse on every
-  compatible edit.
-- Register declaration-level reparse parsers for Doxa syntax kinds. The current
-  `byKind: const {}` fallback is not sufficient.
-- Reuse unchanged declarations and their elaboration outputs. An edit to
-  declaration `n` invalidates that declaration and dependent later
-  declarations; declarations before `n` keep their checked environment and
-  semantic metadata.
-- Fall back to a full parse and check only for import changes,
-  declaration-boundary changes, parser recovery, or an invalid incremental
-  result.
-- Measure persistent LSP timings for parse, elaboration, diagnostics, and
-  semantic-token publication. Do not infer editor latency from one-shot CLI
-  process timings.
+#### Syntax contract
+
+- Retain source text, green tree, parsed declaration sequence, and checker
+  session state for each open URI. Red trees are transient offset views and are
+  constructed only for a position query or reparse operation.
+- A token-level Rumil update is valid only when local retokenization proves
+  that the edited region remains one token of the same simple token class and
+  has the same boundaries. Text heuristics such as a punctuation regular
+  expression are insufficient: an identifier edit can form a keyword or a
+  comment delimiter.
+- `rumil_tokens.Identifier` maps to `DoxaToken.ident`. Unrecognized token
+  classes must not silently enter the error-token fast path.
+- A declaration reparser must consume exactly one declaration region. Leading
+  and trailing whitespace may be sibling tokens at the source-file level. If
+  an edit splits, merges, or leaves recovery text around a declaration, it
+  must fall back to a whole-source Rumil reparse. The lossless invariant remains
+  `green.toSource() == source` for valid and invalid text.
+- Green-node identity is a reuse hint only. Rumil preserves off-path siblings
+  during a splice, but interning can make equal nodes identical and a result
+  does not report its changed path. Semantic invalidation uses the parsed
+  declaration sequence and exact unchanged source prefixes.
+
+#### Incremental semantic session
+
+`web_check.dart` owns an internal persistent `IncrementalCheckSession`.
+The public `checkSourceOutput`, `checkSourceWithCache`, JSON, and CLI APIs keep
+their fresh-check behavior until callers explicitly opt into a session.
+
+- Resolve the root file's imports into a frozen import baseline. The baseline
+  contains finalized imported bindings, data declarations, namespaces,
+  typeclass registry, and source provenance. A check creates a fresh
+  `ImportState`; mutable import maps and lists are never shared with an earlier
+  check.
+- Record one result for each complete top-level `SDecl`: its source slice and
+  structural fingerprint, finalized binding and data-declaration deltas,
+  class-registry and namespace deltas, declaration summaries, semantic
+  metadata, and diagnostics. A failed declaration records diagnostics but adds
+  no declarations to the environment.
+- Do not store `TopEnv`, `Ctx`, `Env`, `MetaContext`, or `DeclResult` in a
+  checkpoint. Meta contexts are per declaration, and only
+  `checkDeclResult`'s finalized bindings are valid in a later declaration.
+- Do not retain full environment snapshots after every declaration. Rebuild the
+  required prefix environment from the frozen import baseline and the retained
+  declaration deltas. This avoids quadratic retained memory while still
+  avoiding prefix elaboration.
+- On a valid edit, compare the old and newly parsed complete declarations and
+  reuse the longest prefix whose source text, structure, and absolute spans are
+  unchanged. Re-elaborate from the first changed declaration through EOF.
+  This conservative suffix rule is required until Doxa has a semantic
+  dependency graph: later declarations may depend on earlier transparent
+  definitions, namespaces, class instances, and duplicate-name state.
+- A full Rumil reparse does not by itself require a full semantic check. If the
+  newly parsed program proves an unchanged declaration prefix, the session can
+  reuse it. A root import change, changed filename or configuration, changed
+  imported dependency, or changed import-resolution baseline invalidates all
+  declaration records.
+- If whole-source parsing fails, publish only parse diagnostics and retain the
+  prior records privately as candidates for a later valid source revision.
+  Do not expose stale semantic information through hover, definition, symbols,
+  hints, or semantic tokens after a failed check.
+- Mutual `fun` and `data` blocks are one `SDecl` and must be re-elaborated as
+  one atomic unit. A declaration may produce multiple bindings, data
+  declarations, constructors, generated recursors, or typeclass entries, so
+  invalidation and metrics count both surface declarations and produced output
+  separately.
+- Normal forms are evaluated in the final environment. Preserve completed
+  normal forms for the unchanged prefix and compute normal forms for the
+  rechecked suffix only after the final environment is available.
+
+#### Imported-file invalidation
+
+- Track the resolved import paths used by every open document.
+- A changed open import or `workspace/didChangeWatchedFiles` notification
+  invalidates the dependent documents' import baselines and sessions before
+  they are rechecked.
+- Publish diagnostics with the checked document version. Future asynchronous
+  checking must discard results whose version is no longer current.
+
+#### Validation and telemetry
+
+- Compare every incremental session result with a cold `checkSourceOutput` run
+  for the same source, including error ordering and spans.
+- Test token edits that preserve and change lexical class; declaration-body
+  edits; declaration insertion, removal, split, and merge; parse failure and
+  repair; typeclass and namespace changes; mutual blocks; import-path changes;
+  changed imported files; and non-BMP UTF-16 positions.
+- Test Rumil source reconstruction after token-level, declaration-level, and
+  full reparses.
+- Under `DOXA_LSP_TRACE_TIMING=1`, report parse time, check time, total time,
+  Rumil strategy, recheck start index, reused declaration count, rechecked
+  declaration count, and any full-fallback reason. Persistent LSP timings,
+  rather than one-shot CLI timings, are the editor latency measure.
 
 Completion criteria:
 
-- A local expression edit uses Rumil incremental reparse and preserves green
-  node identity outside the reparse boundary.
-- The LSP re-elaborates only the edited declaration and declarations that
-  depend on it.
-- Parser and checker timing telemetry identifies the invalidation boundary for
-  each edit.
-- Tests cover simple-token edits, declaration-body edits, declaration-boundary
-  edits, recovery after an invalid edit, and fallback to full parsing.
+- A local edit preserves green siblings outside Rumil's reparse region and
+  never violates lossless source reconstruction.
+- A semantic session reuses the unchanged declaration prefix and produces the
+  same output as a cold check.
+- A root import or imported-file change invalidates every affected session.
+- Parser and checker telemetry identifies the syntax strategy, semantic
+  invalidation boundary, reused prefix, and fallback reason for each edit.
 
 ### Server
 

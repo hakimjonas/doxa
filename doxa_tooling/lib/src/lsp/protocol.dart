@@ -131,16 +131,21 @@ final class LspPublishDiagnosticsParams {
   /// The diagnostics to publish.
   final List<LspDiagnostic> diagnostics;
 
+  /// Version of the document that produced these diagnostics.
+  final int? version;
+
   /// Creates a publish-diagnostics params object.
   const LspPublishDiagnosticsParams({
     required this.uri,
     required this.diagnostics,
+    this.version,
   });
 
   /// Serialise to a JSON-compatible map.
   Map<String, dynamic> toJson() => {
     'uri': uri,
     'diagnostics': [for (final d in diagnostics) d.toJson()],
+    if (version != null) 'version': version,
   };
 }
 
