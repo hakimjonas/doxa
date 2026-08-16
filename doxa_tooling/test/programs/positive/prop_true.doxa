@@ -1,11 +1,11 @@
 // Prop-sorted inductive type True with its single proof `tt`, and its
 // eliminator (whose motive targets Prop, via impredicativity).
-data True : Prop {
-  tt : True;
+data True: Prop {
+  tt: True;
 }
 
-val trivial : True = tt
+val trivial: True = tt
 // Eliminator for True at Prop. Any P : True -> Prop is inhabited at
 // every `t : True` given a proof at `tt`.
 
-fun elim_true(P: True -> Prop, t: True, p: P tt) : P t = True.rec P p t
+fun elim_true(P: True -> Prop, t: True, p: P tt): P t = True.rec P p t

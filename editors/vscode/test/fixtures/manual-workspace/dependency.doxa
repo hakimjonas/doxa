@@ -1,6 +1,6 @@
-data Status : Type {
-  ready : Status;
-  blocked : Status;
+data Status: Type {
+  ready: Status;
+  blocked: Status;
 }
 
-fun keep(status: Status) : Status = status
+fun keep(status: Status): Status = status

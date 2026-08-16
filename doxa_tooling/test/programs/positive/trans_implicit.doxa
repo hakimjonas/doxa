@@ -1,11 +1,11 @@
 // Eq.trans in implicit style.
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-fun trans{A: Type, x: A, y: A, z: A}(p: Eq A x y, q: Eq A y z) : Eq A x z = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b z -> Eq A a z) x y ((w: A) => (r: Eq A w z) => r) p q
+fun trans{A: Type, x: A, y: A, z: A}(p: Eq A x y, q: Eq A y z): Eq A x z = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b z -> Eq A a z) x y ((w: A) => (r: Eq A w z) => r) p q
 
-val p : Eq Nat zero zero = refl zero
+val p: Eq Nat zero zero = refl zero
 
-val q : Eq Nat zero zero = trans p p
+val q: Eq Nat zero zero = trans p p

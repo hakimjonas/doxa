@@ -1,4 +1,4 @@
-# Doxa Tutorial
+# Doxa tutorial
 
 Doxa is a dependently typed proof checker. You write functions, data types,
 and proofs in a surface syntax modelled on the ML family (Standard ML, OCaml,
@@ -20,23 +20,25 @@ Install Dart 3.7 or later. Build and run the checker:
 ```shell
 cd doxa_tooling
 dart pub get
-dart run doxa check myfile.doxa
+dart run bin/doxa.dart check myfile.doxa
 ```
 
-A successful run prints `OK: N declarations checked`. Errors print a source
-span, the inferred type, the expected type, and the innermost point where
-conversion failed.
+A successful run prints `OK: N declarations checked`. Errors identify the
+source span and, for type mismatches, report the expected and found types.
 
 The REPL provides interactive exploration and step-by-step proof construction:
 
 ```shell
-dart run doxa repl       # interactive proof mode
-dart run doxa lsp        # language server for VS Code / Vim / Emacs
-doxa fmt myfile.doxa     # format to canonical style
+dart run bin/doxa.dart repl       # interactive proof mode
+dart run bin/doxa.dart lsp        # language server over stdio
+dart run bin/doxa.dart fmt myfile.doxa
 ```
 
-The LSP provides diagnostics, hover, go-to-definition, completion (with types
-and frequency ranking), document symbols, signature help, and format-on-save.
+The language server publishes diagnostics and supports hover, go-to-definition,
+references, rename, completion, document symbols, signature help, document
+formatting, folding ranges, and semantic tokens. The VS Code extension starts
+the server configured by `doxa.server.path`; format-on-save remains a VS Code
+setting.
 
 ---
 
@@ -87,8 +89,8 @@ data Bool : Type {
 }
 ```
 
-Constructor names are globally unique. Parameters go in brackets at the
-declaration site and at use sites. `List[A]` is a polymorphic list:
+Parameters go in brackets at the declaration site and at use sites. `List[A]`
+is a polymorphic list:
 
 ```doxa
 data Nat : Type {
@@ -152,8 +154,8 @@ A Pi type `(x: A) -> B` binds `x` in `B`, so the return type can mention
 the argument. The non-dependent arrow `A -> B` is sugar for `(_: A) -> B`
 when `_` does not appear in `B`.
 
-The dependent eliminators `T.ind` and `T.rec` are auto-synthesised for
-every `data` declaration. They let you write induction proofs directly:
+For `Nat`, the checker synthesises the dependent eliminators `Nat.ind` and
+`Nat.rec`. They let you write induction proofs directly:
 
 ```doxa
 data Nat : Type {
@@ -181,8 +183,8 @@ fun plusZeroRight(n: Nat): Eq[Nat] (plus n zero) n =
 ```
 
 `Nat.ind` takes a motive `P : (k: Nat) -> Type`, a base case `P zero`, and
-a step case that given `P m` produces `P (succ m)`. The same pattern works
-for `List.ind`, `Vec.ind`, and every other inductive type.
+a step case that, given `P m`, produces `P (succ m)`. `List.ind` and
+`Vec.ind` follow the corresponding induction principles.
 
 ---
 
@@ -199,8 +201,9 @@ fun sym{A: Type}{x: A}{y: A}(p: Eq[A] x y): Eq[A] y x =
 fun trans{A: Type}{x: A}{y: A}{z: A}(p: Eq[A] x y, q: Eq[A] y z): Eq[A] x z =
   Eq.rec A
     ((a: A) => (b: A) => (_: Eq[A] a b) => Eq[A] b z -> Eq[A] a z)
+    x y
     ((c: A) => (h: Eq[A] c z) => h)
-    x y p q
+    p q
 
 fun cong{A: Type}{B: Type}{x: A}{y: A}(f: A -> B, p: Eq[A] x y): Eq[B] (f x) (f y) =
   match p { case refl a => refl (f a) }
@@ -229,9 +232,8 @@ fun idImp{A: Type}(x: A): A = x
 val example : Nat = idImp (succ zero)
 ```
 
-The solver uses Miller's pattern unification fragment. When it cannot find
-a unique solution, it emits an error asking for an explicit argument. Doxa
-never silently guesses.
+The solver uses Miller-pattern unification to solve omitted arguments from
+the surrounding type information.
 
 ---
 
@@ -282,16 +284,16 @@ Goal:
 > :step intro A
 Introduced A.
 Goal:
-  A -> A
+  ?a -> ?a
 Context:
   A : Type
 
 > :step intro x
 Introduced x.
 Goal:
-  A
+  ?a
 Context:
-  x : A
+  x : ?a
   A : Type
 
 > :step exact x
@@ -302,20 +304,23 @@ Goal solved. Use :qed to commit.
 
 ```
 > :print
-(lambda) (A: Type) => (lambda) (x: A) => x
+(A: Type) => (x: A) => x
 
 > :undo
 Undone.
 Goal:
-  A
+  ?a
 Context:
-  x : A
+  x : ?a
   A : Type
 ```
 
 ### Finishing
 
 ```
+> :step exact x
+Goal solved. Use :qed to commit.
+
 > :qed
 idProof : (A: Type) -> A -> A
 ```
@@ -349,8 +354,9 @@ idProof : (A: Type) -> A -> A
 
 ## 10. Records and field projection
 
-Records are a single-constructor inductive with named fields. The `mk`
-constructor is synthesised; field access uses dot notation:
+Write a record in product form, with named fields rather than constructor
+declarations. The parser desugars the declaration to a single-constructor
+inductive named `mk`; field access uses dot notation:
 
 ```doxa
 data Nat : Type {
@@ -358,39 +364,48 @@ data Nat : Type {
   succ : Nat -> Nat;
 }
 
-data Bool : Type {
-  true_  : Bool;
-  false_ : Bool;
+data Box[A: Type] : Type {
+  value : A;
 }
 
-data Pair[A: Type, B: Type]: Type {
-  pair : A -> B -> Pair[A] B;
-}
-
-val p : Pair[Nat] Bool = pair (succ zero) true_
+val boxed : Box[Nat] = Box.mk (succ zero)
+val unboxed : Nat = boxed.value
 ```
 
-Record types support definitional η: a pair converts to the pair of its
-projections. Field projection via dot notation is available when a data
-type has a single constructor.
+Record types support definitional eta: a record converts to the constructor
+applied to its projections. Field projection via dot notation is available
+for a non-indexed data type with one constructor.
 
 ---
 
-## 11. Typeclasses (experimental)
+## 11. Typeclasses
 
-Typeclasses are an emerging feature. A `typeclass` declares a class with
-named methods; `impl` provides instances:
+`typeclass` declares a class with named methods, and `impl` provides an
+instance:
 
-```
-// Syntax (in progress):
-//   typeclass Eq[A] { fun equals(x: A, y: A): Type; }
-//   impl Eq[Nat] { fun equals(x: Nat, y: Nat): Type = Type; }
+```doxa
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+typeclass Default[A: Type] {
+  fun default(): A;
+}
+
+impl Default[Nat] {
+  fun default(): Nat = zero;
+}
+
+fun useDefault[A: Default](x: A): A = x
+
+val example : Nat = useDefault[Nat] zero
 ```
 
 Functions can constrain type parameters with class requirements using
-`[A: ClassName]`. The checker searches registered instances when an
-implicit argument has a class constraint. Overlapping instances are
-rejected.
+`[A: ClassName]`. At a call such as `useDefault[Nat] zero`, the checker
+fills the hidden class argument from the registered instances. It reports an
+error when no instance, or more than one matching instance, is available.
 
 ---
 
@@ -484,8 +499,9 @@ val succNeZero : (n: Nat) -> Eq[Nat] (succ n) zero -> False =
   (n: Nat) => (p: Eq[Nat] (succ n) zero) =>
     Eq.rec Nat
       ((a: Nat) => (b: Nat) => (_: Eq[Nat] a b) => isZero b -> isZero a)
+      (succ n) zero
       ((z: Nat) => (h: isZero z) => h)
-      (succ n) zero p (refl zero)
+      p (refl zero)
 ```
 
 Together with `cong`, `sym`, and `trans`, the J eliminator `Eq.rec` gives
@@ -500,12 +516,7 @@ of identity proofs is not derivable, and it is not even statable since
 - The [language specification](../SPEC.md) gives the full formal semantics.
 - The [standard library sources](../lib/stdlib/) contain `Nat`, `List`,
   `Vec`, `Bool`, `Option`, and the `Eq` lemmas.
-- The [proof examples](../example/proofs.doxa) include `plus_comm`,
-  `append_assoc`, `map_compose`, `succ_ne_zero`, `true_ne_false`, and a
-  theorem about indexed vectors.
-- The [SPEC coverage document](SPEC_COVERAGE.md) enumerates every clause of
-  the specification and its corresponding test.
-- The [proof guide](proof-guide.md) walks through a complete proof that
-  sqrt(2) is irrational, using induction on natural numbers.
+- The [proof example](../example/proofs.doxa) proves `plus_zero_left`,
+  `plus_zero_right`, `length_append`, `succ_ne_zero`, and `vlength_index`.
 - The [interactive proof mode](#9b-interactive-proof-mode) lets you
   construct proofs step by step in the REPL.

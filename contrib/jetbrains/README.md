@@ -1,19 +1,19 @@
-# Doxa — JetBrains IDE Support
+# Doxa JetBrains IDE support
 
-The JetBrains plugin lives in the main Doxa monorepo at
+The JetBrains plugin is in the main Doxa repository at
 [`editors/jetbrains/`](../../editors/jetbrains/).
 
 ## Quick start
 
 ```sh
 cd editors/jetbrains
-./gradlew buildPlugin  # needs JDK 21+
+./gradlew buildPlugin  # requires JDK 21 or later
 ```
 
 The plugin artifact is at `editors/jetbrains/build/distributions/doxa-jetbrains.zip`.
 
-Install it via **Settings → Plugins → Install Plugin from Disk**, or install
-from the [JetBrains Marketplace](https://plugins.jetbrains.com/).
+Install it with **Settings > Plugins > Install Plugin from Disk**. The plugin
+targets IntelliJ Platform 2025.1-compatible IDEs.
 
 ## Configuration
 

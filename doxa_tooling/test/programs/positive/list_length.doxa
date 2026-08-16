@@ -1,17 +1,17 @@
 // Parametric inductive List[A] and `length` via the derived recursor.
 // `length` fixes the element type to Nat to avoid universe polymorphism.
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-data List[A: Type] : Type {
-  nil : List A;
-  cons : A -> List A -> List A;
+data List[A: Type]: Type {
+  nil: List A;
+  cons: A -> List A -> List A;
 }
 
-val length : List Nat -> Nat = List.rec Nat ((_: List Nat) => Nat) zero ((_: Nat) => (_: List Nat) => (rec: Nat) => succ rec)
+val length: List Nat -> Nat = List.rec Nat ((_: List Nat) => Nat) zero ((_: Nat) => (_: List Nat) => (rec: Nat) => succ rec)
 
-val xs : List Nat = cons zero (cons (succ zero) (cons (succ (succ zero)) nil))
+val xs: List Nat = cons zero (cons (succ zero) (cons (succ (succ zero)) nil))
 
-val n : Nat = length xs
+val n: Nat = length xs

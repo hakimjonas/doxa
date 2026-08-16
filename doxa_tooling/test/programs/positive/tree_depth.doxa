@@ -1,22 +1,22 @@
 // Depth of a binary Tree via structural recursion on `match`, using a `max`
 // helper to combine the two subtree depths.
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-data Bool : Type {
-  t_ : Bool;
-  f_ : Bool;
+data Bool: Type {
+  t_: Bool;
+  f_: Bool;
 }
 
-data Tree : Type {
-  leaf : Tree;
-  node : Tree -> Tree -> Tree;
+data Tree: Type {
+  leaf: Tree;
+  node: Tree -> Tree -> Tree;
 }
 // leq: m ≤ n, via match on m then n.
 
-fun leq(m: Nat, n: Nat) : Bool = match m {
+fun leq(m: Nat, n: Nat): Bool = match m {
   case zero => t_
   case succ m_ => match n {
     case zero => f_
@@ -24,20 +24,20 @@ fun leq(m: Nat, n: Nat) : Bool = match m {
   }
 }// max of two Nats.
 
-fun max(m: Nat, n: Nat) : Nat = match leq m n {
+fun max(m: Nat, n: Nat): Nat = match leq m n {
   case t_ => n
   case f_ => m
 }// Depth of a Tree: leaf is 1, node is 1 + max of children.
 
-fun depth(t: Tree) : Nat = match t {
+fun depth(t: Tree): Nat = match t {
   case leaf => succ zero
   case node l r => succ (max (depth l) (depth r))
 }
 
-val one : Nat = succ zero
+val one: Nat = succ zero
 
-val two : Nat = succ one
+val two: Nat = succ one
 
-val t : Tree = node (node leaf (node leaf leaf)) leaf
+val t: Tree = node (node leaf (node leaf leaf)) leaf
 
-val d : Nat = depth t
+val d: Nat = depth t

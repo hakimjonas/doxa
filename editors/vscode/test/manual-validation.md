@@ -2,12 +2,11 @@
 
 ## Setup
 
-1. Build the local AOT server:
+1. From the repository root, build the local AOT server:
 
    ```sh
-   cd doxa_tooling
-   dart compile exe bin/doxa.dart -o build/doxa.next
-   mv -f build/doxa.next build/doxa
+   dart compile exe doxa_tooling/bin/doxa.dart -o doxa_tooling/build/doxa.next
+   mv -f doxa_tooling/build/doxa.next doxa_tooling/build/doxa
    ```
 
 2. Open `editors/vscode/test/fixtures/manual-workspace` in VS Code, or run
@@ -15,6 +14,9 @@
 3. Set `doxa.server.path` to the absolute path of `doxa_tooling/build/doxa`.
 4. Run `Developer: Reload Window` and open the `Doxa Language Server` output
    channel. It must contain no startup error.
+
+   The `mv` command requires a Unix-like shell. On another platform, replace
+   the existing executable with the platform's file-management command.
 
 ## Core behavior
 
@@ -46,8 +48,7 @@
 
 ## Presentation and recovery
 
-1. Confirm that Code Lens does not repeat explicit declaration types. Future
-   Doxa proof actions will use this presentation surface.
+1. Confirm that the editor does not request or render Code Lens entries.
 2. Confirm that no inlay hint is rendered inside source text.
 3. Reload the VS Code window while `main.doxa` and `dependency.doxa` are open.
    Diagnostics, hover, and navigation must recover without reopening files.

@@ -1,26 +1,26 @@
 // List.map over a monomorphic element type, via structural recursion on match.
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-data List[A: Type] : Type {
-  nil : List A;
-  cons : A -> List A -> List A;
+data List[A: Type]: Type {
+  nil: List A;
+  cons: A -> List A -> List A;
 }
 // Double each element of a List[Nat].
 
-fun mapSucc(xs: List Nat) : List Nat = match xs {
+fun mapSucc(xs: List Nat): List Nat = match xs {
   case nil => nil
   case cons x rest => cons (succ x) (mapSucc rest)
 }
 
-val zero_ : Nat = zero
+val zero_: Nat = zero
 
-val one : Nat = succ zero
+val one: Nat = succ zero
 
-val two : Nat = succ one
+val two: Nat = succ one
 
-val xs : List Nat = cons zero_ (cons one (cons two nil))
+val xs: List Nat = cons zero_ (cons one (cons two nil))
 
-val ys : List Nat = mapSucc xs
+val ys: List Nat = mapSucc xs

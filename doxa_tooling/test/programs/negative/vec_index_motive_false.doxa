@@ -1,22 +1,22 @@
 // Rejected (TypeMismatch): the false indexed-family claim `length v =
 // succ n` (off by one; `length v` is actually `n`) must not typecheck.
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-data Vec[A: Type] : Nat -> Type {
-  vnil : Vec A zero;
-  vcons : (n: Nat) -> A -> Vec A n -> Vec A (succ n);
+data Vec[A: Type]: Nat -> Type {
+  vnil: Vec A zero;
+  vcons: (n: Nat) -> A -> Vec A n -> Vec A (succ n);
 }
 
-fun cong{A: Type, B: Type, x: A, y: A}(f: A -> B, p: Eq A x y) : Eq B (f x) (f y) = match p {
+fun cong{A: Type, B: Type, x: A, y: A}(f: A -> B, p: Eq A x y): Eq B (f x) (f y) = match p {
   case refl a => refl (f a)
 }
 
-fun length{A: Type, n: Nat}(v: Vec A n) : Nat = match v {
+fun length{A: Type, n: Nat}(v: Vec A n): Nat = match v {
   case vnil => zero
   case vcons k x rest => succ (length rest)
 }// FALSE: `length v` is `n`, not `succ n`.
 
-val vlen : (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (length v) (succ n) = (A: Type) => Vec.ind A ((m: Nat) => (w: Vec A m) => Eq Nat (length w) m) (refl zero) ((k: Nat) => (x: A) => (rest: Vec A k) => (ih: Eq Nat (length rest) k) => cong ((j: Nat) => succ j) ih)
+val vlen: (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (length v) (succ n) = (A: Type) => Vec.ind A ((m: Nat) => (w: Vec A m) => Eq Nat (length w) m) (refl zero) ((k: Nat) => (x: A) => (rest: Vec A k) => (ih: Eq Nat (length rest) k) => cong ((j: Nat) => succ j) ih)

@@ -2,17 +2,17 @@
 // but `box` carries an informative (Type-sorted) `Nat`, so the
 // singleton-elimination exception does not apply (SPEC §8.2); admitting
 // it would smuggle data out of a proof, breaking proof-irrelevance.
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-data Box : Prop {
-  box : Nat -> Box;
+data Box: Prop {
+  box: Nat -> Box;
 }
 // Scrutinee lives in Prop, result type `Nat` lives in Type; the
 // ctor's `Nat` arg is Type-sorted so singleton-elim does NOT apply.
 
-fun leak(x: Box) : Nat = match x {
+fun leak(x: Box): Nat = match x {
   case box n => n
 }

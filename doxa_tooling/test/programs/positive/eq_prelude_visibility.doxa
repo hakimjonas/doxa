@@ -1,21 +1,21 @@
 // `Eq` and `refl` are usable without being declared: the prelude provides
 // them ambiently (like Lean 4's Init/Prelude), always in scope.
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 // Refl on `zero`, explicit type arg.
 
-val p1 : Eq Nat zero zero = refl zero
+val p1: Eq Nat zero zero = refl zero
 // Refl on `succ zero`, demonstrating Eq at a non-trivial index value.
 
-val p2 : Eq Nat (succ zero) (succ zero) = refl (succ zero)
+val p2: Eq Nat (succ zero) (succ zero) = refl (succ zero)
 // Refl across a reducible computation: `zero` and `(succ zero)` are
 // distinct, but both sides reduce to zero under a match projection.
 
-fun pred(n: Nat) : Nat = match n {
+fun pred(n: Nat): Nat = match n {
   case zero => zero
   case succ m => m
 }
 
-val p3 : Eq Nat zero (pred (succ zero)) = refl zero
+val p3: Eq Nat zero (pred (succ zero)) = refl zero

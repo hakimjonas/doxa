@@ -2,9 +2,9 @@
 // but `Eq[A] x y : Prop`, so the outer `Eq[Eq[A] x y]` puts a Prop
 // value in a Type parameter slot, which fails typecheck (SPEC §8.9
 // K-freeness).
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-val uip : (A: Type) -> (x: A) -> (y: A) -> (p: Eq A x y) -> (q: Eq A x y) -> Eq (Eq A x y) p q = (A: Type) => (x: A) => (y: A) => (p: Eq A x y) => (q: Eq A x y) => refl (Eq A x y) p
+val uip: (A: Type) -> (x: A) -> (y: A) -> (p: Eq A x y) -> (q: Eq A x y) -> Eq (Eq A x y) p q = (A: Type) => (x: A) => (y: A) => (p: Eq A x y) => (q: Eq A x y) => refl (Eq A x y) p

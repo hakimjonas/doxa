@@ -1,4 +1,4 @@
 // Rejected (TypeMismatch): `x` is declared at `Type 0` but the body
 // `Type` (= `Type 0`) has type `Type 1`, and cumulativity only flows
 // up the universe tower, not down (SPEC §8.3).
-val x : Type 0 = Type
+val x: Type 0 = Type

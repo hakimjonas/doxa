@@ -13,4 +13,4 @@
 - Syntax highlighting via TextMate grammar
 - LSP integration: diagnostics, hover, go-to-definition, completion, references, rename
 - Semantic tokens for rich highlighting
-- Document formatting, code lens, signature help, document symbols
+- Document formatting, signature help, document symbols

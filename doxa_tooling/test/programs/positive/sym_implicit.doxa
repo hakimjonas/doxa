@@ -1,12 +1,12 @@
 // Eq.sym in implicit style: call sites elide all three type/index arguments,
 // pattern unification solving them against the proof's inferred type.
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-fun sym{A: Type, x: A, y: A}(p: Eq A x y) : Eq A y x = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b a) x y ((z: A) => refl z) p
+fun sym{A: Type, x: A, y: A}(p: Eq A x y): Eq A y x = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b a) x y ((z: A) => refl z) p
 
-val p1 : Eq Nat zero zero = refl zero
+val p1: Eq Nat zero zero = refl zero
 
-val p2 : Eq Nat zero zero = sym p1
+val p2: Eq Nat zero zero = sym p1

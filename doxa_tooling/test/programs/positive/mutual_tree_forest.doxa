@@ -1,32 +1,32 @@
 // Mutual structural recursion over the canonical Tree/Forest pair: `treeSize`
 // and `forestSize` recurse into each other on strict sub-terms (a non-Nat
 // data shape), and also call an external recursive helper (`plus`).
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-data Tree : Type {
-  tnode : Forest -> Tree;
-} and data Forest : Type {
-  fnil : Forest;
-  fcons : Tree -> Forest -> Forest;
+data Tree: Type {
+  tnode: Forest -> Tree;
+} and data Forest: Type {
+  fnil: Forest;
+  fcons: Tree -> Forest -> Forest;
 }
 
-fun plus(m: Nat, n: Nat) : Nat = match m {
+fun plus(m: Nat, n: Nat): Nat = match m {
   case zero => n
   case succ m_ => succ (plus m_ n)
 }
 
-fun treeSize(t: Tree) : Nat = match t {
+fun treeSize(t: Tree): Nat = match t {
   case tnode fs => succ (forestSize fs)
-}and forestSize(fs: Forest) : Nat = match fs {
+}and forestSize(fs: Forest): Nat = match fs {
   case fnil => zero
   case fcons t rest => plus (treeSize t) (forestSize rest)
 }
 
-val leaf : Tree = tnode fnil
+val leaf: Tree = tnode fnil
 
-val two : Forest = fcons leaf (fcons leaf fnil)
+val two: Forest = fcons leaf (fcons leaf fnil)
 
-val n : Nat = forestSize two
+val n: Nat = forestSize two

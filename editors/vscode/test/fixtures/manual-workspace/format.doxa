@@ -1,1 +1,4 @@
-data Toggle : Type { on : Toggle; off : Toggle; }
+data Toggle: Type {
+  on: Toggle;
+  off: Toggle;
+}

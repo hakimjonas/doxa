@@ -1,8 +1,8 @@
-# Editor Configuration for Doxa
+# Editor configuration for Doxa
 
-All editors with a generic LSP client can connect to `doxa lsp` for
-diagnostics, hover, go-to-definition, and completion. The snippets
-below configure the most common editors.
+Editors with an LSP client can connect to `doxa lsp`. The server provides
+diagnostics, hover, definition, completion, references, rename, document
+symbols, signature help, formatting, folding ranges, and semantic tokens.
 
 ## Neovim (native LSP, nvim-lspconfig)
 
@@ -43,7 +43,7 @@ let b:current_syntax = "doxa"
 
 ## Vim (coc.nvim)
 
-Add to `~/.config/nvim/coc-settings.json` or `vimrc`:
+Add this JSON to Coc's `coc-settings.json`. Open it with `:CocConfig`.
 
 ```json
 {
@@ -58,11 +58,12 @@ Add to `~/.config/nvim/coc-settings.json` or `vimrc`:
 }
 ```
 
-## JetBrains (IntelliJ, CLion, RustRover, Community Edition, etc.)
+## JetBrains
 
-The Doxa JetBrains plugin lives in the main repository at
-[`editors/jetbrains/`](../editors/jetbrains/). Build it with
-`./gradlew buildPlugin` (needs JDK 21+) and install from
+The Doxa JetBrains plugin is in the main repository at
+[`editors/jetbrains/`](../editors/jetbrains/). It targets IntelliJ Platform
+2025.1-compatible IDEs. Build it with `./gradlew buildPlugin` using JDK 21 or
+later, then install
 `build/distributions/doxa-jetbrains.zip`.
 
 See [`contrib/jetbrains/README.md`](jetbrains/README.md) for setup and

@@ -1,33 +1,33 @@
 // Induction-style proof that addition on Nat commutes, composing the derived
 // equality lemmas (sym, trans, cong) and the helper lemmas plus_zero and
 // plus_succ via Nat.ind.
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-fun plus(m: Nat, n: Nat) : Nat = match m {
+fun plus(m: Nat, n: Nat): Nat = match m {
   case zero => n
   case succ m_ => succ (plus m_ n)
 }
 
-val sym : (A: Type) -> (x: A) -> (y: A) -> Eq A x y -> Eq A y x = (A: Type) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b a) x y ((z: A) => refl z) p
+val sym: (A: Type) -> (x: A) -> (y: A) -> Eq A x y -> Eq A y x = (A: Type) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b a) x y ((z: A) => refl z) p
 
-val trans : (A: Type) -> (x: A) -> (y: A) -> (z: A) -> Eq A x y -> Eq A y z -> Eq A x z = (A: Type) => (x: A) => (y: A) => (z: A) => (p: Eq A x y) => (q: Eq A y z) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b z -> Eq A a z) x y ((w: A) => (r: Eq A w z) => r) p q
+val trans: (A: Type) -> (x: A) -> (y: A) -> (z: A) -> Eq A x y -> Eq A y z -> Eq A x z = (A: Type) => (x: A) => (y: A) => (z: A) => (p: Eq A x y) => (q: Eq A y z) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b z -> Eq A a z) x y ((w: A) => (r: Eq A w z) => r) p q
 
-val cong : (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x y -> Eq B (f x) (f y) = (A: Type) => (B: Type) => (f: A -> B) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) x y ((z: A) => refl (f z)) p
+val cong: (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x y -> Eq B (f x) (f y) = (A: Type) => (B: Type) => (f: A -> B) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) x y ((z: A) => refl (f z)) p
 // Base lemmas for plus_comm.
 
-val plus_zero : (n: Nat) -> Eq Nat (plus n zero) n = Nat.ind ((k: Nat) => Eq Nat (plus k zero) k) (refl zero) ((m: Nat) => (ih: Eq Nat (plus m zero) m) => cong Nat Nat ((k: Nat) => succ k) (plus m zero) m ih)
+val plus_zero: (n: Nat) -> Eq Nat (plus n zero) n = Nat.ind ((k: Nat) => Eq Nat (plus k zero) k) (refl zero) ((m: Nat) => (ih: Eq Nat (plus m zero) m) => cong Nat Nat ((k: Nat) => succ k) (plus m zero) m ih)
 
-val plus_succ : (m: Nat) -> (n: Nat) -> Eq Nat (plus m (succ n)) (succ (plus m n)) = (m: Nat) => Nat.ind ((k: Nat) => (n: Nat) -> Eq Nat (plus k (succ n)) (succ (plus k n))) ((n: Nat) => refl (succ n)) ((k: Nat) => (ih: (n: Nat) -> Eq Nat (plus k (succ n)) (succ (plus k n))) => (n: Nat) => cong Nat Nat ((x: Nat) => succ x) (plus k (succ n)) (succ (plus k n)) (ih n)) m
+val plus_succ: (m: Nat) -> (n: Nat) -> Eq Nat (plus m (succ n)) (succ (plus m n)) = (m: Nat) => Nat.ind ((k: Nat) => (n: Nat) -> Eq Nat (plus k (succ n)) (succ (plus k n))) ((n: Nat) => refl (succ n)) ((k: Nat) => (ih: (n: Nat) -> Eq Nat (plus k (succ n)) (succ (plus k n))) => (n: Nat) => cong Nat Nat ((x: Nat) => succ x) (plus k (succ n)) (succ (plus k n)) (ih n)) m
 // The capstone.
 
-val plus_comm : (m: Nat) -> (n: Nat) -> Eq Nat (plus m n) (plus n m) = (m: Nat) => Nat.ind ((k: Nat) => (n: Nat) -> Eq Nat (plus k n) (plus n k)) ((n: Nat) => sym Nat (plus n zero) n (plus_zero n)) ((k: Nat) => (ih: (n: Nat) -> Eq Nat (plus k n) (plus n k)) => (n: Nat) => trans Nat (succ (plus k n)) (succ (plus n k)) (plus n (succ k)) (cong Nat Nat ((x: Nat) => succ x) (plus k n) (plus n k) (ih n)) (sym Nat (plus n (succ k)) (succ (plus n k)) (plus_succ n k))) m
+val plus_comm: (m: Nat) -> (n: Nat) -> Eq Nat (plus m n) (plus n m) = (m: Nat) => Nat.ind ((k: Nat) => (n: Nat) -> Eq Nat (plus k n) (plus n k)) ((n: Nat) => sym Nat (plus n zero) n (plus_zero n)) ((k: Nat) => (ih: (n: Nat) -> Eq Nat (plus k n) (plus n k)) => (n: Nat) => trans Nat (succ (plus k n)) (succ (plus n k)) (plus n (succ k)) (cong Nat Nat ((x: Nat) => succ x) (plus k n) (plus n k) (ih n)) (sym Nat (plus n (succ k)) (succ (plus n k)) (plus_succ n k))) m
 // Smoke check: instantiate plus_comm at concrete Nats.
 
-val two : Nat = succ (succ zero)
+val two: Nat = succ (succ zero)
 
-val three : Nat = succ two
+val three: Nat = succ two
 
-val witness : Eq Nat (plus two three) (plus three two) = plus_comm two three
+val witness: Eq Nat (plus two three) (plus three two) = plus_comm two three

@@ -1,208 +1,250 @@
-# Doxa Syntax Reference
+# Doxa syntax reference
 
-**Purpose**: Fast lookup of every surface-syntax form Doxa accepts, plus the decisions behind its notational choices. For the semantics behind each form, see `SPEC.md`.
+This reference lists forms accepted by the current parser. Newlines are whitespace. Line comments start with `//`; block comments use `/*` and `*/` and may nest.
 
----
+Unless a block appears under Checked examples, it is a syntax fragment.
+Fragments use metavariables such as `A`, `T`, `body`, and `value`, or require an
+expected type or an importable file, so they cannot be checked as standalone
+programs.
 
-## Aesthetic target
+## Names and sorts
 
-Doxa is **math-voice with developer ergonomics**. It is a proof checker in the CIC tradition, so its notation sits in that tradition (`->` for function types, juxtaposition for application, `data` for inductive declarations). It is also designed to be read by programmers, so it adopts developer-voice choices wherever the semantics allow (`fun` keyword, brace blocks, `[A]` for type parameters at declaration, `match { case p => e }` for pattern matching).
-
-The two targets are in tension only at specific points; each tension is resolved by a principled choice:
-
-- **Application is juxtaposition** (`f a b`), not `f(a, b)`. Doxa is natively curried (CIC requires it), so juxtaposition is the ergonomic default, and partial application `f a` reads uniformly.
-- **Dependent function types** use `(x: A) -> B x`, following CIC tradition (Agda, Coq, Lean, Idris). The dependent Pi is Doxa's load-bearing distinction from a non-dependent language.
-- **Inductive declarations** use `data T[A: Type] : Indices -> Sort { ctor : Type; ... }` rather than a `type T = A | B` sum form, because Doxa needs parameters, indices, sorts, and a positivity check.
-
-Statement boundaries are keyword-delimited, so the grammar is unambiguous; newlines are treated as ordinary whitespace by the parser.
-
----
-
-## Declarations
-
-### Value binding
+Identifiers start with a letter or `_`, then contain letters, digits, or `_`.
+Dotted names append one or more `.name` suffixes to an identifier expression.
 
 ```doxa
-val x : T = expr
-val y = expr              // type inferred
+Type
+Type 0
+Prop
+SProp
+Nat.ind
 ```
 
-### Type alias
-
-```doxa
-type Nat = (A: Type) -> (A -> A) -> A -> A
-```
-
-Types and terms share syntax; `type` is a top-level alias declaration for readability.
-
-### Function declaration (sugar)
-
-```doxa
-fun id[A: Type](x: A): A = x
-
-fun compose[A: Type, B: Type, C: Type](f: B -> C, g: A -> B): A -> C =
-  (x) => f (g x)
-```
-
-`fun` desugars to a `val` whose type is a Pi and whose body is nested lambdas. See SPEC §5.2.
-
-Parameters in square brackets (`[A: Type]`) are explicit: the caller passes them. Parameters in curly brackets (`{A: Type}`) are implicit: the caller omits them and the checker solves for them by pattern unification. So `fun map{A: Type}{B: Type}(xs: List[A], f: A -> B): List[B]` is called as `map xs f`, with `A` and `B` recovered from the arguments.
-
-### Mutual function block
-
-```doxa
-fun even(n: Nat): Bool = /* ... */
-and fun odd(n: Nat): Bool = /* ... */
-```
-
-Both names are in scope during each body's elaboration. Recursive calls are admitted when they pass the structural-recursion check (a call must pass a strict sub-term of the designated decreasing argument).
-
-### Inductive type
-
-```doxa
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
-}
-
-data List[A: Type] : Type {
-  nil  : List[A];
-  cons : A -> List[A] -> List[A];
-}
-
-data Vec[A: Type] : Nat -> Type {
-  vnil  : Vec[A] zero;
-  vcons : (n: Nat) -> A -> Vec[A] n -> Vec[A] (succ n);
-}
-```
-
-- **`[A: Type]` at declaration**: parameter telescope. Optional.
-- **`: Indices -> Sort`**: the type of the type. A parametric-only family (`List`) has no indices and just names the sort (`: Type`). An indexed family (`Vec`) has indices written as arrow domains before the sort (`: Nat -> Type`).
-- **Constructor declarations**: each is `name : type;`. The type may mention the inductive type being declared, subject to the strict-positivity check.
-- **`List[A]`, `Vec[A] n`**: type-level application at use sites. See below.
-
-### Block expressions (local bindings)
-
-```doxa
-{ val x : T = expr; val y : T = expr; result }
-```
-
-A brace-delimited block of zero or more `val` bindings, each terminated
-by `;`, followed by a result expression that is the block's value. The
-result is implicit: there is no `in` or `return` keyword, and a block
-must end in an expression (a bindings-only block has no value and is
-rejected). Bindings scope over the rest of the block. The `;` separator
-is always required between block items; newlines are ordinary
-whitespace, so a separator-free layout is not used.
-
-A block is an atom: usable wherever an expression is, including as a
-function argument when parenthesized (`f ({ val x: T = e; x })`).
-
-The type annotation on a local `val` is optional: when omitted, the
-binder's type is inferred from the bound expression, matching a
-top-level `val`.
-
----
+The decimal after `Type` is a universe level. Decimal numerals are not general
+term literals. `Prop` and `SProp` do not accept levels.
 
 ## Expressions
-
-### Atoms
-
-```
-Type        Type 0     Type 1     ...     // universes
-Prop                                      // the Prop sort
-x                                         // identifier
-List[A]     Vec[A, n]                     // type-level application at use
-(expr)                                    // grouping
-```
 
 ### Application
 
 ```doxa
-f x y z
-```
-
-Pure juxtaposition, left-associative. `f x y z` parses as `((f x) y) z`. Applies identically to:
-- functions: `succ zero`, `compose inc double`.
-- constructors: `cons 1 nil`, `succ (succ zero)`.
-- types: `Vec[A] (succ n)`, where `Vec[A]` is the type-level application and the subsequent `(succ n)` is juxtaposition at the value level.
-
-### Type-level application
-
-```doxa
+f x y
 List[A]
-Vec[A, n]
-Eq[Nat] three three
+Vec[A] n
 ```
 
-Square brackets mark type-parameter slots, mirroring the declaration-site `data List[A: Type]`. Multiple type arguments are comma-separated. The bracketed form is an atom; following it with juxtaposed terms is ordinary value-level application.
+Application is juxtaposition and associates to the left. `f x y` parses as
+`(f x) y`. Brackets are a postfix form on an identifier and contain one or more
+comma-separated expressions. A term after a bracket form is ordinary
+application.
 
-This is the one point where Doxa surface syntax layers visually on purpose. In `Vec[A] (succ n)`, the reader can tell at a glance which is the type argument (`A`, in brackets) and which is the value index (`succ n`, juxtaposed). That layering is preserved throughout inductive-type use: `Vec[A] zero`, `List[Option[Nat]]`, `Eq[Vec[A] n] xs ys`.
-
-### Lambda
+### Functions
 
 ```doxa
-(x: A) => body              // with annotation
-(x) => body                 // only in check mode (against a Pi)
+(x: A) => body
+(x) => body
+{x: A} => body
+
+(x: A) -> B
+{x: A} -> B
+A -> B
 ```
 
-### Dependent Pi
+`(x) => body` needs an expected Pi type. Curly forms introduce implicit
+binders. `A -> B -> C` associates to the right. The non-dependent arrow has an
+unnamed explicit binder.
+
+### Blocks
 
 ```doxa
-(x: A) -> B(x)              // dependent
-A -> B                       // non-dependent sugar for (_: A) -> B
+{ val x: Type 1 = Type; x }
+{ val rec loop(x: T): U = body; result }
 ```
 
-Right-associative: `A -> B -> C` parses as `A -> (B -> C)`.
+Each local binding needs a semicolon and the block needs a final expression.
+The type on a non-recursive local `val` may be omitted. A block used as an
+application argument must be parenthesized: `f ({ val x = y; x })`.
 
-### Pattern match
+### Pattern matching
 
 ```doxa
 match xs {
   case nil => zero
   case cons x rest => succ (length rest)
+  case _ => zero
+}
+
+match xs returning P {
+  case nil => zero
+  case cons x rest => succ (length rest)
 }
 ```
 
-Match arms take **no separator**. The `case` keyword is reserved, so it terminates the previous arm's expression unambiguously, and `}` closes the block.
+Arms have no separator. A constructor pattern has a constructor name and zero
+or more binders. `_` is a wildcard arm only in `case _ => body`.
 
-Unlike `data` ctor lists (which use `;` because constructor signatures are type expressions that can run into each other without a terminator: `zero : Nat succ : Nat -> Nat` would parse as applying `Nat` to `succ`), match-arm right-hand sides are ordinary expressions terminated by the next `case` keyword or the closing `}`. The separator carries no grammatical weight here, so we don't add one.
-
-A dependent-motive annotation precedes the opening brace: `match xs returning P { ... }`. The `returning` clause is optional; when omitted, the checker infers the motive from context (a bounded form; see `SPEC.md` §8.5).
-
----
-
-## Worked example
+### Quotients
 
 ```doxa
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
-}
-
-data List[A: Type] : Type {
-  nil  : List[A];
-  cons : A -> List[A] -> List[A];
-}
-
-// The element type is implicit; the constructors infer it at use.
-fun length{A: Type}(xs: List[A]): Nat = match xs {
-  case nil => zero
-  case cons _ rest => succ (length rest)
-}
-
-val three : Nat = succ (succ (succ zero))
-val xs : List[Nat] = cons zero (cons (succ zero) (cons three nil))
-val n : Nat = length xs
+Quot(A, R)
+mk value
+lift(function, compatibilityProof)
 ```
 
----
+`mk` requires an expected quotient type. `lift` is completed by a surrounding
+application that supplies a quotient argument.
 
-## What Doxa does not have (deliberate)
+### Tactic blocks
 
-- **No `=>` for function types.** `=>` is reserved for term-level "produces a value" (lambda bodies, match arms). Function types use `->` throughout, consistent with the CIC tradition and with the developer-family `->` convention (Rust, Kotlin, Swift).
-- **No `f(a, b)` call syntax.** Juxtaposition only. Parentheses are grouping, not application. See the aesthetic-target note above.
-- **Typeclasses** (experimental): `typeclass Eq[A] { fun equals(x: A, y: A): Type; }`, `impl Eq[Nat] { ... }`. Instance search is wired into implicit-argument resolution.
-- **Records** are single-constructor inductives with named field projection. A `record` keyword desugars to `data`; field access uses dot notation (`p.fst`). Records have definitional η.
-- **No subtyping beyond cumulativity.** `Type n ≤ Type m` when `n ≤ m`; no other implicit coercions.
-- **No tuples, arrays, or numeric literals in the core.** The stdlib adds inductive `Option`, `Pair`, `Nat` with numeric-literal elaboration.
+```doxa
+by { intro x; exact x }
+by { refl | trivial }
+```
+
+The parser accepts `intro [name]`, `exact expr`, `apply expr`, `refl`,
+`rewrite expr`, `induction name`, and `trivial`. `;` sequences steps and `|`
+separates alternatives.
+
+## Declarations
+
+### Values, aliases, and theorems
+
+```doxa
+val x: T = expr
+val x = expr
+opaque val x: T = expr
+type Name = T
+theorem name: T := proof
+theorem name: T = proof
+```
+
+`opaque` also precedes `fun`. A type alias, value declaration, and theorem are
+top-level declarations.
+
+### Functions
+
+```doxa
+fun id[A: Type](x: A): A = x
+fun idImplicit{A: Type}(x: A): A = x
+fun f[A]{B: Type}(x: A): B = body
+fun f[A: Eq & Ord](x: A): A = body
+opaque fun f(x: T): U = body
+fun f(x: T): U {struct x} = body
+fun f(x: T, y: U): V termination_by (x, y) = body
+```
+
+`[...]` introduces explicit type parameters and `{...}` introduces implicit
+type parameters. An explicit group may state `&`-separated constraints. Value
+parameters are comma-separated and have type annotations.
+
+Mutual functions use `and fun`:
+
+```doxa
+fun f(x: T): U = body
+and fun g(x: T): U = body
+```
+
+### Inductive declarations
+
+```doxa
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
+}
+
+data Vec[A: Type]: Nat -> Type {
+  vnil: Vec[A] zero |
+  vcons: (n: Nat) -> A -> Vec[A] n -> Vec[A] (succ n);
+}
+```
+
+The signature after `:` gives the indices, if any, followed by the target
+sort. Constructor entries use either `;` or `|`, and a trailing separator is
+accepted. Mutual data declarations use `and data`.
+
+Product-form declarations have fields and no `record` keyword:
+
+```doxa
+data Point[A: Type]: Type {
+  x: A;
+  y: A;
+}
+```
+
+Field access has the form `point.x`.
+
+### Imports
+
+```doxa
+import "nat.doxa"
+import "nat.doxa" { Nat, zero }
+import "nat.doxa" as N
+import "nat.doxa" { Nat, zero } as N
+```
+
+### Typeclasses and implementations
+
+```doxa
+typeclass Semigroup[A: Type] {
+  fun combine(x: A, y: A): A;
+}
+
+typeclass Ord[A: Type]: Eq[A] {
+  fun compare(x: A, y: A): Int;
+}
+
+impl Semigroup[Nat] {
+  fun combine(x: Nat, y: Nat): Nat = plus x y;
+}
+```
+
+Method separators are optional semicolons. A superclass follows the parameter
+list after `:`.
+
+## Checked examples
+
+The following complete programs were checked with
+`doxa_tooling/build/doxa check` during this documentation update.
+
+```doxa
+opaque fun id[A: Type](x: A): A = x
+```
+
+```doxa
+fun id[A: Type](x: A): A = x
+fun idImplicit{A: Type}(x: A): A = x
+```
+
+```doxa
+theorem identity : (A: Type) -> (x: A) -> Eq A x x := by {
+  intro A; intro x; refl
+}
+```
+
+```doxa
+val block: Type 2 = { val x: Type 1 = Type; x }
+```
+
+```doxa
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
+}
+
+data Vec[A: Type]: Nat -> Type {
+  vnil: Vec[A] zero |
+  vcons: (n: Nat) -> A -> Vec[A] n -> Vec[A] (succ n);
+}
+```
+
+```doxa
+data Point[A: Type]: Type {
+  x: A;
+  y: A;
+}
+```
+
+The checked standard library also contains imports, structural annotations,
+`termination_by`, matching, and typeclass implementations. Quotient syntax is
+covered by the parser and checker tests; its forms remain fragments here because
+their well-typed use requires surrounding context.

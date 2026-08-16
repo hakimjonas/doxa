@@ -1,15 +1,15 @@
 // Regression: the full `map_compose` proof end-to-end, that mapping g after
 // f equals mapping their composition, by induction on the list.
-data List[A: Type] : Type {
-  nil : List A;
-  cons : A -> List A -> List A;
+data List[A: Type]: Type {
+  nil: List A;
+  cons: A -> List A -> List A;
 }
 
-fun map{A: Type, B: Type}(xs: List A, f: A -> B) : List B = match xs {
+fun map{A: Type, B: Type}(xs: List A, f: A -> B): List B = match xs {
   case nil => nil
   case cons h t => cons (f h) (map t f)
 }
 
-val cong_e : (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x y -> Eq B (f x) (f y) = (A: Type) => (B: Type) => (f: A -> B) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) x y ((z: A) => refl (f z)) p
+val cong_e: (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x y -> Eq B (f x) (f y) = (A: Type) => (B: Type) => (f: A -> B) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) x y ((z: A) => refl (f z)) p
 
-val map_compose : (A: Type) -> (B: Type) -> (C: Type) -> (f: A -> B) -> (g: B -> C) -> (xs: List A) -> Eq (List C) (map (map xs f) g) (map xs ((a: A) => g (f a))) = (A: Type) => (B: Type) => (C: Type) => (f: A -> B) => (g: B -> C) => List.ind A ((xs: List A) => Eq (List C) (map (map xs f) g) (map xs ((a: A) => g (f a)))) (refl nil) ((h: A) => (t: List A) => (ih: Eq (List C) (map (map t f) g) (map t ((a: A) => g (f a)))) => cong_e (List C) (List C) ((ts: List C) => cons (g (f h)) ts) (map (map t f) g) (map t ((a: A) => g (f a))) ih)
+val map_compose: (A: Type) -> (B: Type) -> (C: Type) -> (f: A -> B) -> (g: B -> C) -> (xs: List A) -> Eq (List C) (map (map xs f) g) (map xs ((a: A) => g (f a))) = (A: Type) => (B: Type) => (C: Type) => (f: A -> B) => (g: B -> C) => List.ind A ((xs: List A) => Eq (List C) (map (map xs f) g) (map xs ((a: A) => g (f a)))) (refl nil) ((h: A) => (t: List A) => (ih: Eq (List C) (map (map t f) g) (map t ((a: A) => g (f a)))) => cong_e (List C) (List C) ((ts: List C) => cons (g (f h)) ts) (map (map t f) g) (map t ((a: A) => g (f a))) ih)
