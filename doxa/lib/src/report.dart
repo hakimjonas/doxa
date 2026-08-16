@@ -50,7 +50,7 @@ String reportParseFailure(
   sb.writeln(
     '  at ${source.filename}:${failure.furthest.line}:${failure.furthest.column}',
   );
-  bool _isDoxaChar(int cp) =>
+  bool isDoxaChar(int cp) =>
       (cp >= 65 && cp <= 90) || // A-Z
       (cp >= 97 && cp <= 122) || // a-z
       cp == 95 || // _
@@ -82,7 +82,7 @@ String reportParseFailure(
   final offset = failure.furthest.offset;
   if (offset < source.text.length) {
     final ch = source.text[offset];
-    if (!_isDoxaChar(ch.codeUnitAt(0))) {
+    if (!isDoxaChar(ch.codeUnitAt(0))) {
       sb.writeln('  note: «$ch» is not a valid character in Doxa');
     }
   }

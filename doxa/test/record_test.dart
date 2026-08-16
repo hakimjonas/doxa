@@ -4,7 +4,6 @@
 /// projection/η machinery from parser limitations.
 library;
 
-import 'package:doxa/src/check.dart';
 import 'package:doxa/src/env.dart';
 import 'package:doxa/src/eval.dart';
 import 'package:doxa/src/registry.dart';
@@ -13,23 +12,23 @@ import 'package:doxa/src/term.dart';
 import 'package:doxa/src/value.dart';
 import 'package:test/test.dart';
 
-DataDecl _pairDecl() => DataDecl(
+DataDecl _pairDecl() => const DataDecl(
   name: 'Pair',
-  params: const [
+  params: [
     TelescopeEntry('A', TType(LLevel(0)), DoxaSpan.synthetic),
     TelescopeEntry('B', TType(LLevel(0)), DoxaSpan.synthetic),
   ],
-  indices: const [],
+  indices: [],
   sort: TType(LLevel(0)),
   ctors: [
     CtorDecl(
       dataName: 'Pair',
       name: 'mk',
-      args: const [
+      args: [
         TelescopeEntry('fst', TBound(1), DoxaSpan.synthetic),
         TelescopeEntry('snd', TBound(0), DoxaSpan.synthetic),
       ],
-      resultIndices: const [],
+      resultIndices: [],
       source: SCtorDecl(
         'mk',
         SExpr(SIdentKind('dummy'), DoxaSpan.synthetic),
@@ -38,12 +37,12 @@ DataDecl _pairDecl() => DataDecl(
       span: DoxaSpan.synthetic,
     ),
   ],
-  paramsCovariant: const [true, true],
+  paramsCovariant: [true, true],
   source: SDataKind(
     'Pair',
-    const [],
-    const SExpr(SIdentKind('dummy'), DoxaSpan.synthetic),
-    const [],
+    [],
+    SExpr(SIdentKind('dummy'), DoxaSpan.synthetic),
+    [],
   ),
   span: DoxaSpan.synthetic,
 );
@@ -60,7 +59,7 @@ void main() {
         b,
       ]);
       final env = ENil.withData([_pairDecl()]).extend(pair);
-      final t = TProj(TBound(0), 'fst');
+      const t = TProj(TBound(0), 'fst');
       final v = eval(t, env);
       expect(v, a);
     });
@@ -75,7 +74,7 @@ void main() {
         b,
       ]);
       final env = ENil.withData([_pairDecl()]).extend(pair);
-      final t = TProj(TBound(0), 'snd');
+      const t = TProj(TBound(0), 'snd');
       final v = eval(t, env);
       expect(v, b);
     });
@@ -84,7 +83,7 @@ void main() {
   group('Projection from stuck neutral', () {
     test('TProj(VNeutral(NVar(0)), "fst") stays NProj', () {
       final env = ENil.withData([_pairDecl()]).extend(const VNeutral(NVar(0)));
-      final t = TProj(TBound(0), 'fst');
+      const t = TProj(TBound(0), 'fst');
       final v = eval(t, env);
       expect(v, isA<VNeutral>());
       final n = (v as VNeutral).neutral;
@@ -105,9 +104,9 @@ void main() {
       // The η rule: when one side is VConstr and the other is not,
       // compare fields pointwise using NProj.
       const p = VNeutral(NVar(0));
-      final etaExpanded = VConstr('Pair', 'mk', [
-        const VType(LLevel(0)),
-        const VType(LLevel(0)),
+      const etaExpanded = VConstr('Pair', 'mk', [
+        VType(LLevel(0)),
+        VType(LLevel(0)),
         VNeutral(NProj(p, 'fst')),
         VNeutral(NProj(p, 'snd')),
       ]);

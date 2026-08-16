@@ -65,7 +65,7 @@ void main() {
       mc.solve(id, const TType(LLevel(0)));
       final snap = mc.snapshot();
       // Unsolve it (simulate failed tactic).
-      mc.restore(MetaSnapshot(1, {}));
+      mc.restore(const MetaSnapshot(1, {}));
       expect(mc.isSolved(0), isFalse);
       // Now restore back to the solved state.
       mc.restore(snap);
@@ -89,7 +89,7 @@ void main() {
 
       // Mutate: solve meta 0, unsolve meta 1, add meta 3.
       mc.solve(0, const TType(LLevel(0)));
-      mc.restore(MetaSnapshot(3, {0: const TType(LLevel(0))}));
+      mc.restore(const MetaSnapshot(3, {0: TType(LLevel(0))}));
       // Add a new meta.
       mc.freshTermMeta(const VType(LLevel(2)), const CNil());
       expect(mc.length, 4);
