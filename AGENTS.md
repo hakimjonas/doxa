@@ -106,6 +106,16 @@ dart test
 
 ## Editor extensions
 
+### Manual-test findings
+
+Manual testing is expected to uncover further editor and LSP defects. Treat
+each finding as evidence of an invariant failure: reproduce it with the
+reported file and position, identify the underlying cause across the relevant
+layers, fix that cause at its source, and add a regression test. Do not patch
+individual symptoms or add special cases merely to make one manual test pass.
+The goal is a publishable editor experience whose behavior follows from sound
+shared abstractions.
+
 ### VS Code (`editors/vscode/`)
 
 ```sh

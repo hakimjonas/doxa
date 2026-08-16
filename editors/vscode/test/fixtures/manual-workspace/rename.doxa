@@ -1,0 +1,2 @@
+fun identity{A: Type}(value: A) : A = value
+fun applyIdentity(value: Type) : Type = identity value

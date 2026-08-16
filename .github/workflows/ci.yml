@@ -84,6 +84,10 @@ jobs:
         working-directory: ./editors/vscode
         run: npm ci
 
+      - name: Test extension adapter
+        working-directory: ./editors/vscode
+        run: npm test
+
       - name: Bundle with esbuild
         working-directory: ./editors/vscode
         run: npm run esbuild
@@ -104,6 +108,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install dependencies (doxa kernel)
+        working-directory: ./doxa
+        run: dart pub get
+
+      - name: Install dependencies (doxa_tooling)
+        working-directory: ./doxa_tooling
+        run: dart pub get
+
+      - name: Build doxa CLI
+        working-directory: ./doxa_tooling
+        run: dart compile exe bin/doxa.dart -o /tmp/doxa
+
       - uses: actions/setup-java@v4
         with:
           java-version: 21
@@ -111,9 +131,11 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build plugin
+      - name: Test plugin against Doxa LSP
         working-directory: ./editors/jetbrains
-        run: ./gradlew buildPlugin
+        env:
+          DOXA_EXECUTABLE: /tmp/doxa
+        run: ./gradlew test buildPlugin
 
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v4

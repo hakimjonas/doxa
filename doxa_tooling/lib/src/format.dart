@@ -382,7 +382,7 @@ class _Formatter {
 
   void _visitValDecl(SValKind k) {
     if (k.body.kind is SByKind) {
-      _write('theorem ${k.name} : ');
+      _write('theorem ${k.name}: ');
       _writeDoc(_visit(k.body));
       return;
     }
@@ -391,7 +391,6 @@ class _Formatter {
     }
     _write('val ${k.name}');
     if (k.type != null) {
-      _space();
       _write(': ');
       _writeDoc(_visit(k.type!));
     }
@@ -408,7 +407,6 @@ class _Formatter {
   void _visitData(SDataKind k) {
     _write('data ${k.name}');
     _visitTypeParamList(k.typeParams);
-    _space();
     _write(': ');
     _writeDoc(_visit(k.signature));
     _space();
@@ -417,7 +415,7 @@ class _Formatter {
     _newline();
     for (var i = 0; i < k.ctors.length; i++) {
       final ctor = k.ctors[i];
-      _write('${ctor.name} : ');
+      _write('${ctor.name}: ');
       _writeDoc(_visit(ctor.type));
       _write(';');
       if (i < k.ctors.length - 1) _newline();
@@ -442,7 +440,6 @@ class _Formatter {
   void _visitDataBody(SDataKind k) {
     _write(k.name);
     _visitTypeParamList(k.typeParams);
-    _space();
     _write(': ');
     _writeDoc(_visit(k.signature));
     _space();
@@ -451,7 +448,7 @@ class _Formatter {
     _newline();
     for (var i = 0; i < k.ctors.length; i++) {
       final ctor = k.ctors[i];
-      _write('${ctor.name} : ');
+      _write('${ctor.name}: ');
       _writeDoc(_visit(ctor.type));
       _write(';');
       if (i < k.ctors.length - 1) _newline();
@@ -477,7 +474,6 @@ class _Formatter {
       _writeDoc(_visit(ptype));
     }
     _write(')');
-    _space();
     _write(': ');
 
     var returnType = k.returnType;
@@ -625,8 +621,7 @@ class _Formatter {
       _write('$n: ');
       _writeDoc(_visit(t));
     }
-    _write(')');
-    _write(': ');
+    _write('): ');
     _writeDoc(_visit(retType));
     if (m.defaultBody != null) {
       _space();

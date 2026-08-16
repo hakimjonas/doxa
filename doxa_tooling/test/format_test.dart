@@ -13,7 +13,7 @@ void main() {
   group('formatSource line width', () {
     test('rejects unusably narrow widths', () {
       expect(
-        () => formatSource('val x : Type = Type', lineWidth: 19),
+        () => formatSource('val x: Type = Type', lineWidth: 19),
         throwsArgumentError,
       );
     });
@@ -22,7 +22,7 @@ void main() {
   group('canonical formatting', () {
     test('val declaration with type', () {
       const input = 'val x : Nat = zero';
-      const expected = 'val x : Nat = zero\n';
+      const expected = 'val x: Nat = zero\n';
       expect(formatSource(input), equals(expected));
     });
 
@@ -40,8 +40,7 @@ void main() {
 
     test('data declaration', () {
       const input = 'data Bool : Type { true : Bool; false : Bool }';
-      const expected =
-          'data Bool : Type {\n  true : Bool;\n  false : Bool;\n}\n';
+      const expected = 'data Bool: Type {\n  true: Bool;\n  false: Bool;\n}\n';
       expect(formatSource(input), equals(expected));
     });
 
@@ -49,25 +48,25 @@ void main() {
       const input =
           'data Option[A: Type] : Type { some : A -> Option A; none : Option A }';
       const expected =
-          'data Option[A: Type] : Type {\n  some : A -> Option A;\n  none : Option A;\n}\n';
+          'data Option[A: Type]: Type {\n  some: A -> Option A;\n  none: Option A;\n}\n';
       expect(formatSource(input), equals(expected));
     });
 
     test('fun declaration single-expression body', () {
       const input = 'fun double(x: Nat) : Nat = plus x x';
-      const expected = 'fun double(x: Nat) : Nat = plus x x\n';
+      const expected = 'fun double(x: Nat): Nat = plus x x\n';
       expect(formatSource(input), equals(expected));
     });
 
     test('fun declaration with implicit type params', () {
       const input = 'fun id{A: Type}(x: A) : A = x';
-      const expected = 'fun id{A: Type}(x: A) : A = x\n';
+      const expected = 'fun id{A: Type}(x: A): A = x\n';
       expect(formatSource(input), equals(expected));
     });
 
     test('fun declaration with multiple explicit type params grouped', () {
       const input = 'fun compose[A: Type, B: Type](f: B, g: A) : A = f';
-      const expected = 'fun compose[A: Type, B: Type](f: B, g: A) : A = f\n';
+      const expected = 'fun compose[A: Type, B: Type](f: B, g: A): A = f\n';
       expect(formatSource(input), equals(expected));
     });
 
@@ -76,25 +75,25 @@ void main() {
       // The formatter extracts it and emits it in canonical form.
       const input = 'fun gcd(a: Nat, b: Nat) : Nat termination_by a b = a';
       const expected =
-          'fun gcd(a: Nat, b: Nat) : Nat termination_by (a, b) = a\n';
+          'fun gcd(a: Nat, b: Nat): Nat termination_by (a, b) = a\n';
       expect(formatSource(input), equals(expected));
     });
 
     test('fun declaration with struct annotation', () {
       const input = 'fun f(a: Nat, b: Nat) : Nat {struct a} = plus a b';
-      const expected = 'fun f(a: Nat, b: Nat) : Nat {struct a} = plus a b\n';
+      const expected = 'fun f(a: Nat, b: Nat): Nat {struct a} = plus a b\n';
       expect(formatSource(input), equals(expected));
     });
 
     test('fun declaration with multiple params', () {
       const input = 'fun add(x: Nat, y: Nat) : Nat = plus x y';
-      const expected = 'fun add(x: Nat, y: Nat) : Nat = plus x y\n';
+      const expected = 'fun add(x: Nat, y: Nat): Nat = plus x y\n';
       expect(formatSource(input), equals(expected));
     });
 
     test('fun declaration block body', () {
       const input = 'fun f(x: Nat) : Nat { val y = x; y }';
-      const expected = 'fun f(x: Nat) : Nat {\n  val y = x;\n  y\n}\n';
+      const expected = 'fun f(x: Nat): Nat {\n  val y = x;\n  y\n}\n';
       expect(formatSource(input), equals(expected));
     });
 
@@ -102,20 +101,20 @@ void main() {
       const input =
           'fun isZero(x: Nat) : Bool = match x { case zero => true case succ _ => false }';
       const expected =
-          'fun isZero(x: Nat) : Bool = match x {\n  case zero => true\n  case succ _ => false\n}\n';
+          'fun isZero(x: Nat): Bool = match x {\n  case zero => true\n  case succ _ => false\n}\n';
       expect(formatSource(input), equals(expected));
     });
 
     test('non-dependent arrow type', () {
       const input = 'fun f(x: A -> B) : A = x';
-      const expected = 'fun f(x: A -> B) : A = x\n';
+      const expected = 'fun f(x: A -> B): A = x\n';
       expect(formatSource(input), equals(expected));
     });
 
     test('single data decl', () {
       const input = 'data Nat : Type { zero : Nat; succ : Nat -> Nat }';
       const expected =
-          'data Nat : Type {\n  zero : Nat;\n  succ : Nat -> Nat;\n}\n';
+          'data Nat: Type {\n  zero: Nat;\n  succ: Nat -> Nat;\n}\n';
       expect(formatSource(input), equals(expected));
     });
   });
@@ -143,26 +142,25 @@ void main() {
   group('semicolon in output', () {
     test('data constructors separated by | are reformatted to ;', () {
       const input = 'data Bool : Type { true : Bool | false : Bool }';
-      const expected =
-          'data Bool : Type {\n  true : Bool;\n  false : Bool;\n}\n';
+      const expected = 'data Bool: Type {\n  true: Bool;\n  false: Bool;\n}\n';
       expect(formatSource(input), equals(expected));
     });
 
     test('semicolons in block expressions', () {
       const input = 'fun f(x: Nat) : Nat { val y = x; y }';
-      const expected = 'fun f(x: Nat) : Nat {\n  val y = x;\n  y\n}\n';
+      const expected = 'fun f(x: Nat): Nat {\n  val y = x;\n  y\n}\n';
       expect(formatSource(input), equals(expected));
     });
   });
 
   group('idempotency', () {
     test('formatting already formatted output is a no-op', () {
-      const input = 'val x : Nat = zero\n';
+      const input = 'val x: Nat = zero\n';
       expect(formatSource(input), equals(input));
     });
 
     test('format twice is identity', () {
-      const source = 'val   x  :  Nat  =  zero';
+      const source = 'val   x:  Nat  =  zero';
       final once = formatSource(source);
       final twice = formatSource(once);
       expect(twice, equals(once));
@@ -192,7 +190,7 @@ void main() {
 
   group('--check exit codes', () {
     test('formatted file returns true', () {
-      const source = 'val x : Nat = zero\n';
+      const source = 'val x: Nat = zero\n';
       expect(isFormatted(source), isTrue);
     });
 

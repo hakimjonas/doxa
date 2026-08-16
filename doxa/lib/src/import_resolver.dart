@@ -44,6 +44,18 @@ String _modulePrefix(String path) {
   return stem[0].toUpperCase() + stem.substring(1);
 }
 
+/// Normalize an existing source path so imports follow a symbolic link's
+/// target directory. Keep paths for unsaved or missing files usable so the
+/// caller can still provide an in-memory override or report the missing path.
+String _canonicalPath(String path) {
+  final file = File(path);
+  try {
+    return file.resolveSymbolicLinksSync();
+  } on FileSystemException {
+    return file.absolute.path;
+  }
+}
+
 /// Parsed and dependency info for a single file.
 final class _FileInfo {
   final SProgram program;
@@ -60,8 +72,14 @@ final class _FileInfo {
 /// // resolver.bindings, resolver.dataDecls, etc. are now populated.
 /// ```
 final class ImportResolver {
+  /// Import-processing state shared with elaboration.
   final ImportState importState;
+
+  /// Declarations available before imported files are processed.
   final PreludeData prelude;
+
+  /// Unsaved source text keyed by source path.
+  final Map<String, String> sourceOverrides;
 
   final Map<String, _FileInfo> _files = {};
   final Map<String, List<String>> _deps = {};
@@ -73,17 +91,32 @@ final class ImportResolver {
   Map<String, Set<String>> _namespaceBindings;
   Map<String, ClassInfo> _classRegistry;
 
-  ImportResolver(this.importState, {required this.prelude})
-    : _bindings = prelude.bindings.toList(),
-      _dataDecls = prelude.dataDecls.toList(),
-      _namespaceBindings = Map<String, Set<String>>.from(
-        prelude.namespaceBindings,
-      ),
-      _classRegistry = <String, ClassInfo>{};
+  /// Creates a resolver using [prelude] and optional unsaved source text.
+  ImportResolver(
+    this.importState, {
+    required this.prelude,
+    Map<String, String> sourceOverrides = const {},
+  }) : _bindings = prelude.bindings.toList(),
+       _dataDecls = prelude.dataDecls.toList(),
+       _namespaceBindings = Map<String, Set<String>>.from(
+         prelude.namespaceBindings,
+       ),
+       _classRegistry = <String, ClassInfo>{},
+       sourceOverrides = {
+         for (final entry in sourceOverrides.entries)
+           _canonicalPath(entry.key): entry.value,
+       };
 
+  /// Bindings collected from the prelude and imported files.
   List<TopBinding> get bindings => _bindings;
+
+  /// Data declarations collected from the prelude and imported files.
   List<DataDecl> get dataDecls => _dataDecls;
+
+  /// Namespace bindings collected from the prelude and imported files.
   Map<String, Set<String>> get namespaceBindings => _namespaceBindings;
+
+  /// Typeclass declarations collected from imported files.
   Map<String, ClassInfo> get classRegistry => _classRegistry;
 
   // ----------------------------------------------------------------
@@ -129,14 +162,18 @@ final class ImportResolver {
         throw CyclicImport(path, const DoxaSpan(-1, -1));
       }
 
-      if (!File(path).existsSync()) {
+      final source = sourceOverrides[path];
+      if (source == null && !File(path).existsSync()) {
         throw ImportFileNotFound(path, const DoxaSpan(-1, -1));
       }
 
-      final source = File(path).readAsStringSync();
-      importState.sourceFiles[path] = SourceFile(filename: path, text: source);
+      final contents = source ?? File(path).readAsStringSync();
+      importState.sourceFiles[path] = SourceFile(
+        filename: path,
+        text: contents,
+      );
 
-      final r = parseProgram(source);
+      final r = parseProgram(contents);
       final prog = switch (r) {
         Success<ParseError, SProgram>(:final value) => value,
         Partial<ParseError, SProgram>(:final value) => value,
@@ -160,19 +197,17 @@ final class ImportResolver {
     }
   }
 
-  List<String> _importPathsOf(SProgram prog) {
-    return [
-      for (final decl in prog.decls)
-        if (decl.kind case SImportKind(:final path)) path,
-    ];
-  }
+  List<String> _importPathsOf(SProgram prog) => [
+    for (final decl in prog.decls)
+      if (decl.kind case SImportKind(:final path)) path,
+  ];
 
   String? _resolve(String importPath, String currentFile) {
     final current = Uri.file(currentFile);
-    return current.resolve(importPath).toFilePath();
+    return _canonicalPath(current.resolve(importPath).toFilePath());
   }
 
-  String _absPath(String path) => Uri.file(path).toFilePath();
+  String _absPath(String path) => _canonicalPath(path);
 
   // ----------------------------------------------------------------
   // Dependency graph
@@ -240,6 +275,8 @@ final class ImportResolver {
       if (path == _rootPath) continue; // skip root — caller handles it
       _processFile(path);
     }
+    // Root declarations are processed after imports have completed.
+    importState.currentImportPath = _rootPath;
   }
 
   void _processFile(String path) {
@@ -317,20 +354,14 @@ final class ImportResolver {
   ) {
     for (final binding in _bindings.skip(previousBindings)) {
       importState.definitionFiles[binding.name] = path;
-      if (!binding.span.isSynthetic) {
-        importState.spanStartToFile[binding.span.start] = path;
-      }
+      importState.definitionSpans[binding.name] = binding.span;
     }
     for (final dataDecl in _dataDecls.skip(previousDataDecls)) {
       importState.definitionFiles[dataDecl.name] = path;
-      if (!dataDecl.span.isSynthetic) {
-        importState.spanStartToFile[dataDecl.span.start] = path;
-      }
+      importState.definitionSpans[dataDecl.name] = dataDecl.span;
       for (final ctor in dataDecl.ctors) {
         importState.definitionFiles[ctor.name] = path;
-        if (!ctor.span.isSynthetic) {
-          importState.spanStartToFile[ctor.span.start] = path;
-        }
+        importState.definitionSpans[ctor.name] = ctor.span;
       }
     }
   }

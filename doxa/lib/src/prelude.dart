@@ -51,6 +51,16 @@ final class PreludeData {
 /// all calls to [loadPrelude].
 PreludeData? _preludeCache;
 
+/// Whether [filename] names the checked standard-library prelude source.
+///
+/// The prelude is ambient for ordinary user files. Loading it again while
+/// checking its own source would declare `Eq` and `Acc` twice.
+bool isStdlibPreludePath(String filename) {
+  final normalized = filename.replaceAll('\\', '/');
+  return normalized == 'lib/stdlib/prelude.doxa' ||
+      normalized.endsWith('/lib/stdlib/prelude.doxa');
+}
+
 /// Load and cache the prelude.
 ///
 /// The prelude is elaborated once and cached process-wide. Safe to

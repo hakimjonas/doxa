@@ -5,10 +5,10 @@
 library;
 
 import '../output.dart';
-import 'dart:io' show Platform, stderr;
+import 'dart:io' show File, Platform, stderr;
 import 'package:doxa/doxa.dart';
 import 'package:rumil/rumil.dart'
-    show IncrementalStrategy, Partial, Success, TextEdit;
+    show Failure, IncrementalStrategy, ParseError, Partial, Success, TextEdit;
 import '../web_check.dart';
 import '../parse_tree.dart' show parseProgramTree;
 import '../syntax.dart' show DoxaGreen;
@@ -16,7 +16,7 @@ import '../cst.dart' show reparse;
 import '../format.dart' show formatSource;
 import '../tokenize.dart' show tokenizeDoxaSpans;
 import 'package:rumil_tokens/rumil_tokens.dart'
-    show Keyword, Comment, NumberLit, Operator, Punctuation, Token;
+    show Comment, Identifier, Keyword, NumberLit, Operator, Punctuation, Token;
 import 'protocol.dart';
 import 'transport.dart';
 
@@ -34,13 +34,42 @@ final class _DocumentState {
   Map<String, int> frequency = <String, int>{};
   CachedImports? cachedImports;
   IncrementalCheckSession? checkSession;
+  final Set<String> importedPaths = <String>{};
   DoxaGreen? syntaxTree;
   IncrementalStrategy? lastReparseStrategy;
+}
+
+final class _IndexedDocument {
+  const _IndexedDocument({
+    required this.uri,
+    required this.text,
+    required this.success,
+  });
+
+  final String uri;
+  final String text;
+  final CheckSuccess success;
+}
+
+final class _SymbolTarget {
+  const _SymbolTarget({
+    required this.definitionUri,
+    required this.kind,
+    required this.definitionSpan,
+    required this.name,
+  });
+
+  final String definitionUri;
+  final SemInfoKind kind;
+  final DoxaSpan definitionSpan;
+  final String name;
 }
 
 /// LSP handler: owns open-document state and dispatches incoming methods.
 final class LspHandler {
   final Map<String, _DocumentState> _documents = {};
+  final Map<String, IncrementalCheckSession> _importSessions = {};
+  Map<String, _IndexedDocument> _importSnapshots = {};
   _DocumentState? _activeDocument;
 
   String get _documentUri => _activeDocument?.uri ?? '';
@@ -162,6 +191,9 @@ final class LspHandler {
       case 'textDocument/rename':
         return _handleRename(id, params!);
 
+      case 'textDocument/prepareRename':
+        return _handlePrepareRename(id, params!);
+
       case 'textDocument/documentSymbol':
         return _handleDocumentSymbol(id, params!);
 
@@ -188,18 +220,23 @@ final class LspHandler {
       case 'workspace/didChangeConfiguration':
         return null; // Acknowledged; no configuration to consume yet.
 
+      case 'initialized':
+      case 'textDocument/didSave':
+        return null;
+
       case 'workspace/didChangeWatchedFiles':
         _handleWatchedFiles(params);
         return null;
 
       case 'shutdown':
+        if (id == null) return null;
         return {'jsonrpc': '2.0', 'id': id, 'result': null};
 
       case 'exit':
-        // No response for exit; caller should break the loop.
-        return {'jsonrpc': '2.0', 'id': id, 'result': null};
+        return null;
 
       default:
+        if (id == null) return null;
         return {
           'jsonrpc': '2.0',
           'id': id,
@@ -218,12 +255,10 @@ final class LspHandler {
         'hoverProvider': true,
         'definitionProvider': true,
         'referencesProvider': true,
-        'renameProvider': true,
+        'renameProvider': <String, dynamic>{'prepareProvider': true},
         'documentSymbolProvider': true,
-        'codeLensProvider': <String, dynamic>{'resolveProvider': false},
         'documentFormattingProvider': true,
         'foldingRangeProvider': true,
-        'inlayHintProvider': true,
         'signatureHelpProvider': <String, dynamic>{
           'triggerCharacters': ['(', ','],
         },
@@ -257,10 +292,14 @@ final class LspHandler {
       version: textDocument['version'] as int? ?? 0,
     );
     _documents[uri] = _activeDocument!;
+    if (uri.startsWith('file:')) {
+      _invalidateImportSnapshotsFor(Uri.parse(uri).toFilePath());
+    }
     _activeDocument!.syntaxTree = _syntaxTreeFor(_documentText);
     _freq = <String, int>{};
     _cachedImports = null;
     _checkAndPublish();
+    _recheckDependents(uri);
   }
 
   /// Handle `textDocument/didChange`.
@@ -278,10 +317,14 @@ final class LspHandler {
       final newText = change['text'] as String;
       _updateSyntaxTree(document, newText);
       _documentText = newText;
+      if (uri.startsWith('file:')) {
+        _invalidateImportSnapshotsFor(Uri.parse(uri).toFilePath());
+      }
     }
     if (version != null) document.version = version;
     _freq = <String, int>{};
     _checkAndPublish();
+    _recheckDependents(uri);
   }
 
   /// Handle `textDocument/didClose`.
@@ -290,9 +333,13 @@ final class LspHandler {
     final uri = textDocument['uri'] as String;
     final document = _documents.remove(uri);
     if (document == null) return;
+    if (uri.startsWith('file:')) {
+      _invalidateImportSnapshotsFor(Uri.parse(uri).toFilePath());
+    }
     _activeDocument = document;
     _publishDiagnostics(const <LspDiagnostic>[]);
     if (identical(_activeDocument, document)) _activeDocument = null;
+    _recheckDependents(uri);
   }
 
   void _handleWatchedFiles(Map<String, dynamic>? params) {
@@ -301,11 +348,14 @@ final class LspHandler {
         if (change case {'uri': final String uri} when uri.startsWith('file:'))
           Uri.parse(uri).toFilePath(),
     };
+    for (final path in changedPaths) {
+      _invalidateImportSnapshotsFor(path);
+    }
     final previous = _activeDocument;
     for (final document in _documents.values) {
       final session = document.checkSession;
       if (changedPaths.isNotEmpty &&
-          (session == null || !changedPaths.any(session.importsPath))) {
+          !changedPaths.any((path) => _importsPath(document, path))) {
         continue;
       }
       _activeDocument = document;
@@ -318,6 +368,26 @@ final class LspHandler {
     }
     _activeDocument = previous;
   }
+
+  void _recheckDependents(String uri) {
+    if (!uri.startsWith('file:')) return;
+    final path = Uri.parse(uri).toFilePath();
+    final previous = _activeDocument;
+    for (final document in _documents.values) {
+      if (document.uri == uri || !_importsPath(document, path)) {
+        continue;
+      }
+      _activeDocument = document;
+      document.checkSession?.invalidateImports();
+      _cachedImports = null;
+      _checkAndPublish();
+    }
+    _activeDocument = previous;
+  }
+
+  bool _importsPath(_DocumentState document, String path) =>
+      document.importedPaths.contains(path) ||
+      document.checkSession?.importsPath(path) == true;
 
   String? _uriFromParams(Map<String, dynamic>? params) {
     final textDocument = params?['textDocument'] as Map<String, dynamic>?;
@@ -372,29 +442,29 @@ final class LspHandler {
 
   /// Handle `textDocument/hover`.
   Map<String, dynamic> _handleHover(Object? id, Map<String, dynamic> params) {
-    final result = _buildResult(id, params, (offset) {
-      final info = _infoAt(offset);
-      final declaration = info == null ? _declarationAt(offset) : null;
-      final builtin =
-          info == null && declaration == null ? _builtinHoverAt(offset) : null;
-      if (info == null && declaration == null && builtin == null) return null;
-      final pos = _positionAt(offset);
-      final range = LspRange(
+    final offset = _offsetFromParams(params);
+    final info = _infoAt(offset);
+    final declaration = info == null ? _declarationAt(offset) : null;
+    final builtin =
+        info == null && declaration == null ? _builtinHoverAt(offset) : null;
+    if (info == null && declaration == null && builtin == null) {
+      return {'jsonrpc': '2.0', 'id': id, 'result': null};
+    }
+    final pos = _positionAt(offset);
+    final result = LspHover(
+      contents: switch ((info, declaration, builtin)) {
+        (final info?, _, _) => '```doxa\n${info.name} : ${info.type}\n```',
+        (_, final declaration?, _) =>
+          '```doxa\n${declaration.name} : ${declaration.type ?? 'Type'}\n```',
+        (_, _, final builtin?) => builtin,
+        _ => throw StateError('unreachable'),
+      },
+      range: LspRange(
         start: LspPosition(line: pos.line - 1, character: pos.column - 1),
         end: LspPosition(line: pos.line - 1, character: pos.column - 1),
-      );
-      return LspHover(
-        contents: switch ((info, declaration, builtin)) {
-          (final info?, _, _) => '```doxa\n${info.name} : ${info.type}\n```',
-          (_, final declaration?, _) =>
-            '```doxa\n${declaration.name} : ${declaration.type ?? 'Type'}\n```',
-          (_, _, final builtin?) => builtin,
-          _ => throw StateError('unreachable'),
-        },
-        range: range,
-      );
-    });
-    return {'jsonrpc': '2.0', 'id': id, 'result': result?.toJson()};
+      ),
+    );
+    return {'jsonrpc': '2.0', 'id': id, 'result': result.toJson()};
   }
 
   /// Handle `textDocument/definition`.
@@ -402,17 +472,24 @@ final class LspHandler {
     Object? id,
     Map<String, dynamic> params,
   ) {
+    final offset = _offsetFromParams(params);
+    final importedFile = _importDefinitionAt(offset);
+    if (importedFile != null) {
+      return {'jsonrpc': '2.0', 'id': id, 'result': importedFile.toJson()};
+    }
     final result = _buildResult(id, params, (offset) {
       final info = _infoAt(offset);
+      final importedDefinition =
+          info == null ? _importedDefinitionAt(offset) : null;
+      if (importedDefinition != null) return importedDefinition;
       final defSpan = info?.defSpan ?? _declarationAt(offset)?.span;
       if (defSpan == null) return null;
       final importState = _cachedImports?.importState;
       final defFile =
-          info?.defFile ??
-          (info == null || info.defSpan == null
+          info == null
               ? null
-              : importState?.spanStartToFile[info.defSpan!.start] ??
-                  importState?.definitionFiles[_unqualifiedName(info.name)]);
+              : importState?.definitionFiles[_unqualifiedName(info.name)] ??
+                  info.defFile;
       final defText = defFile == null ? _documentText : _sourceTextFor(defFile);
       if (defText == null) return null;
       final defOffset =
@@ -532,6 +609,47 @@ final class LspHandler {
           modifierBits: modifier?.bit ?? 0,
         ));
       }
+
+      // Declaration names are binders, so elaboration does not emit SemInfo
+      // for them. Imported data declarations likewise need a source-level
+      // fallback when they appear in data-only files.
+      final declarationTypes = <String, LspSemanticTokenType>{
+        for (final declaration in _lastSuccess!.declarations)
+          declaration.name: switch (declaration.kind) {
+            'data' => LspSemanticTokenType.type_,
+            'fun' => LspSemanticTokenType.function,
+            _ => LspSemanticTokenType.variable,
+          },
+      };
+      final importedDataTypes = {
+        for (final data in _cachedImports?.dataDecls ?? const <DataDecl>[])
+          data.name,
+      };
+      final importedConstructors = {
+        for (final data in _cachedImports?.dataDecls ?? const <DataDecl>[])
+          for (final ctor in data.ctors) ctor.name,
+      };
+      for (final spanned in tokenizeDoxaSpans(_documentText)) {
+        if (spanned.token is! Identifier || _infoAt(spanned.start) != null) {
+          continue;
+        }
+        final type =
+            declarationTypes[spanned.token.text] ??
+            (importedDataTypes.contains(spanned.token.text)
+                ? LspSemanticTokenType.type_
+                : importedConstructors.contains(spanned.token.text)
+                ? LspSemanticTokenType.enumMember
+                : null);
+        if (type == null) continue;
+        final pos = _positionAt(spanned.start);
+        tokens.add((
+          line: pos.line - 1,
+          char: pos.column - 1,
+          length: spanned.end - spanned.start,
+          typeIndex: type.legendIndex,
+          modifierBits: 0,
+        ));
+      }
     }
 
     // Sort by (line, char) for correct delta encoding.
@@ -600,11 +718,21 @@ final class LspHandler {
     Map<String, dynamic> params,
   ) {
     final result = _buildResult(id, params, (offset) {
-      final info = _infoAt(offset);
-      if (info == null) return null;
-      return _referencesFor(info.name);
+      final target = _symbolTargetAt(offset);
+      if (target == null) return null;
+      final context = params['context'] as Map<String, dynamic>?;
+      final includeDeclaration =
+          context?['includeDeclaration'] as bool? ?? true;
+      return _referencesFor(target, includeDeclaration: includeDeclaration);
     });
-    return {'jsonrpc': '2.0', 'id': id, 'result': result};
+    return {
+      'jsonrpc': '2.0',
+      'id': id,
+      'result':
+          result == null
+              ? null
+              : [for (final location in result) location.toJson()],
+    };
   }
 
   /// Handle `textDocument/rename`.
@@ -618,18 +746,29 @@ final class LspHandler {
       };
     }
     final result = _buildResult(id, params, (offset) {
-      final info = _infoAt(offset);
-      if (info == null) return null;
-      final refs = _referencesFor(info.name);
+      final target = _symbolTargetAt(offset);
+      if (target == null) return null;
+      final refs = _referencesFor(target);
       if (refs.isEmpty) return null;
-      // Build text edits: one per reference span.
-      final edits = <LspTextEdit>[];
+      // Build text edits grouped by the document containing each reference.
+      final changes = <String, List<LspTextEdit>>{};
       for (final ref in refs) {
-        edits.add(LspTextEdit(range: ref.range, newText: newName));
+        changes
+            .putIfAbsent(ref.uri, () => <LspTextEdit>[])
+            .add(LspTextEdit(range: ref.range, newText: newName));
       }
-      return LspWorkspaceEdit(changes: {_documentUri: edits}).toJson();
+      return LspWorkspaceEdit(changes: changes).toJson();
     });
     return {'jsonrpc': '2.0', 'id': id, 'result': result};
+  }
+
+  /// Handle `textDocument/prepareRename`.
+  Map<String, dynamic> _handlePrepareRename(
+    Object? id,
+    Map<String, dynamic> params,
+  ) {
+    final result = _buildResult(id, params, _renameRangeAt);
+    return {'jsonrpc': '2.0', 'id': id, 'result': result?.toJson()};
   }
 
   /// Handle `textDocument/documentSymbol`.
@@ -646,6 +785,9 @@ final class LspHandler {
     for (final decl in _lastSuccess!.declarations) {
       final pos = _positionAt(decl.span.start);
       final endPos = _positionAt(decl.span.end);
+      final namePos = _positionAt(
+        _definitionNameOffset(_documentText, decl.span, decl.name),
+      );
       final kind = switch (decl.kind) {
         'data' => LspSymbolKind.struct,
         'type' => LspSymbolKind.interface,
@@ -661,13 +803,19 @@ final class LspHandler {
           kind: kind,
           range: LspRange(
             start: LspPosition(line: pos.line - 1, character: 0),
-            end: LspPosition(line: endPos.line - 1, character: 0),
+            end: LspPosition(
+              line: endPos.line - 1,
+              character: endPos.column - 1,
+            ),
           ),
           selectionRange: LspRange(
-            start: LspPosition(line: pos.line - 1, character: pos.column - 1),
+            start: LspPosition(
+              line: namePos.line - 1,
+              character: namePos.column - 1,
+            ),
             end: LspPosition(
-              line: pos.line - 1,
-              character: pos.column - 1 + decl.name.length,
+              line: namePos.line - 1,
+              character: namePos.column - 1 + decl.name.length,
             ),
           ),
         ),
@@ -762,7 +910,8 @@ final class LspHandler {
 
   /// Handle `textDocument/codeLens`.
   ///
-  /// Returns one code lens per top-level declaration showing its type.
+  /// Retained for future actionable Doxa proof tooling. The server does not
+  /// currently advertise Code Lens because declaration types duplicate source.
   Map<String, dynamic> _handleCodeLens(
     Object? id,
     Map<String, dynamic> params,
@@ -807,7 +956,12 @@ final class LspHandler {
     for (final decl in _lastSuccess!.declarations) {
       final type = decl.type;
       if (type == null) continue;
-      final pos = _positionAt(decl.span.start);
+      final nameOffset = _definitionNameOffset(
+        _documentText,
+        decl.span,
+        decl.name,
+      );
+      final pos = _positionAt(nameOffset);
       // Show the type as an inlay hint after the declaration name.
       hints.add({
         'position': {
@@ -1006,33 +1160,198 @@ final class LspHandler {
     return params;
   }
 
-  /// Find all references to [name] in the current document.
+  /// Find all source-backed references to [target] in open documents.
   ///
-  /// Returns a list of LspLocation, one per occurrence (including the
-  /// definition site itself when a defSpan is available).
-  List<LspLocation> _referencesFor(String name) {
-    if (_lastSuccess == null) return <LspLocation>[];
-    final infos = _lastSuccess!.semInfo;
+  /// Returns a list of LspLocation, one per occurrence including the
+  /// declaration site when requested.
+  List<LspLocation> _referencesFor(
+    _SymbolTarget target, {
+    bool includeDeclaration = true,
+  }) {
     final locations = <LspLocation>[];
-    for (final info in infos) {
-      if (info.name == name && !info.span.isSynthetic) {
-        final pos = _positionAt(info.span.start);
-        final endPos = _positionAt(info.span.end);
-        locations.add(
-          LspLocation(
-            uri: _documentUri,
-            range: LspRange(
-              start: LspPosition(line: pos.line - 1, character: pos.column - 1),
-              end: LspPosition(
-                line: endPos.line - 1,
-                character: endPos.column - 1,
-              ),
-            ),
-          ),
-        );
+    final seen = <String>{};
+    if (includeDeclaration) {
+      final definitionDocument = _documentForUri(target.definitionUri);
+      if (definitionDocument != null) {
+        final definition = _definitionNameSpan(target, definitionDocument);
+        locations.add(_locationForSpan(definition, definitionDocument));
+        seen.add(_spanKey(definitionDocument, definition));
+      }
+    }
+    for (final document in _indexedDocuments()) {
+      for (final info in document.success.semInfo) {
+        if (!_matchesTarget(info, document, target)) continue;
+        final reference = _referenceNameSpan(info, target.name, document.text);
+        if (reference == null || !seen.add(_spanKey(document, reference))) {
+          continue;
+        }
+        locations.add(_locationForSpan(reference, document));
       }
     }
     return locations;
+  }
+
+  String _spanKey(_IndexedDocument document, DoxaSpan span) =>
+      '${_canonicalDocumentUri(document.uri)}:${span.start}:${span.end}';
+
+  LspLocation _locationForSpan(DoxaSpan span, _IndexedDocument document) =>
+      LspLocation(uri: document.uri, range: _rangeForSpan(span, document.text));
+
+  LspRange? _renameRangeAt(int offset) {
+    final target = _symbolTargetAt(offset);
+    if (target == null) return null;
+    final info = _infoAt(offset) ?? _infoAt(offset - 1);
+    final span =
+        info == null
+            ? _definitionNameSpan(target, _activeIndexedDocument!)
+            : _referenceNameSpan(info, target.name, _documentText);
+    return span == null ? null : _rangeForSpan(span);
+  }
+
+  LspRange _rangeForSpan(DoxaSpan span, [String? text]) {
+    final pos = _positionIn(text ?? _documentText, span.start);
+    final endPos = _positionIn(text ?? _documentText, span.end);
+    return LspRange(
+      start: LspPosition(line: pos.line - 1, character: pos.column - 1),
+      end: LspPosition(line: endPos.line - 1, character: endPos.column - 1),
+    );
+  }
+
+  _SymbolTarget? _symbolTargetAt(int offset) {
+    final info = _infoAt(offset) ?? _infoAt(offset - 1);
+    if (info != null) return _symbolTargetForInfo(info);
+    final declaration = _declarationAt(offset) ?? _declarationAt(offset - 1);
+    return declaration == null
+        ? null
+        : _symbolTargetForDeclaration(declaration);
+  }
+
+  _SymbolTarget? _symbolTargetForInfo(SemInfo info) {
+    final definitionSpan = info.defSpan;
+    if (definitionSpan == null || definitionSpan.isSynthetic) {
+      return null;
+    }
+    if (info.kind case SemInfoKind.topBinding || SemInfoKind.dataType) {
+      final name = _unqualifiedName(info.name);
+      final definitionUri = _definitionUriFor(info, _activeIndexedDocument!);
+      final definitionDocument = _documentForUri(definitionUri);
+      final declaration = definitionDocument?.success.declarations.where(
+        (declaration) =>
+            declaration.span == definitionSpan &&
+            declaration.name == name &&
+            _semanticKindForDeclaration(declaration) == info.kind,
+      );
+      if (declaration == null || declaration.isEmpty) return null;
+      return _SymbolTarget(
+        definitionUri: definitionUri,
+        kind: info.kind,
+        definitionSpan: definitionSpan,
+        name: name,
+      );
+    }
+    return null;
+  }
+
+  _SymbolTarget? _symbolTargetForDeclaration(DeclInfo declaration) {
+    final kind = _semanticKindForDeclaration(declaration);
+    if (kind == null) return null;
+    return _SymbolTarget(
+      definitionUri: _canonicalDocumentUri(_documentUri),
+      kind: kind,
+      definitionSpan: declaration.span,
+      name: declaration.name,
+    );
+  }
+
+  SemInfoKind? _semanticKindForDeclaration(DeclInfo declaration) =>
+      switch (declaration.kind) {
+        'data' || 'typeclass' => SemInfoKind.dataType,
+        'val' || 'fun' || 'type' => SemInfoKind.topBinding,
+        _ => null,
+      };
+
+  DoxaSpan _definitionNameSpan(
+    _SymbolTarget target,
+    _IndexedDocument document,
+  ) {
+    final offset = _definitionNameOffset(
+      document.text,
+      target.definitionSpan,
+      target.name,
+    );
+    return DoxaSpan(offset, offset + target.name.length);
+  }
+
+  DoxaSpan? _referenceNameSpan(SemInfo info, String name, String text) {
+    if (info.span.isSynthetic) return null;
+    for (final token in tokenizeDoxaSpans(text).reversed) {
+      if (token.end > info.span.end) continue;
+      if (token.start < info.span.start) break;
+      if (token.token is Identifier && token.token.text == name) {
+        return DoxaSpan(token.start, token.end);
+      }
+    }
+    return null;
+  }
+
+  bool _matchesTarget(
+    SemInfo info,
+    _IndexedDocument document,
+    _SymbolTarget target,
+  ) =>
+      info.kind == target.kind &&
+      info.defSpan == target.definitionSpan &&
+      _definitionUriFor(info, document) == target.definitionUri;
+
+  String _definitionUriFor(SemInfo info, _IndexedDocument document) =>
+      info.defFile == null
+          ? _canonicalDocumentUri(document.uri)
+          : _canonicalFileUri(info.defFile!);
+
+  _IndexedDocument? get _activeIndexedDocument {
+    final document = _activeDocument;
+    final success = document?.lastSuccess;
+    return document == null || success == null
+        ? null
+        : _IndexedDocument(
+          uri: document.uri,
+          text: document.text,
+          success: success,
+        );
+  }
+
+  Iterable<_IndexedDocument> _indexedDocuments() sync* {
+    for (final document in _documents.values) {
+      final success = document.lastSuccess;
+      if (success == null) continue;
+      yield _IndexedDocument(
+        uri: document.uri,
+        text: document.text,
+        success: success,
+      );
+    }
+    yield* _importSnapshots.values;
+  }
+
+  _IndexedDocument? _documentForUri(String uri) {
+    for (final document in _indexedDocuments()) {
+      if (_canonicalDocumentUri(document.uri) == uri) return document;
+    }
+    return null;
+  }
+
+  String _canonicalDocumentUri(String uri) =>
+      uri.startsWith('file:')
+          ? _canonicalFileUri(Uri.parse(uri).toFilePath())
+          : uri;
+
+  String _canonicalFileUri(String path) {
+    final file = File(path);
+    final canonicalPath =
+        file.existsSync()
+            ? file.resolveSymbolicLinksSync()
+            : file.absolute.path;
+    return Uri.file(canonicalPath).toString();
   }
 
   // ---------------------------------------------------------------------------
@@ -1050,7 +1369,10 @@ final class LspHandler {
     try {
       final session =
           _checkSession ??= IncrementalCheckSession(filename: filename);
-      output = session.update(_documentText);
+      output = session.update(
+        _documentText,
+        sourceOverrides: _openDocumentSources(),
+      );
     } catch (e) {
       _lastSuccess = null;
       _cachedImports = null;
@@ -1074,16 +1396,26 @@ final class LspHandler {
         // Cache import resolution for subsequent edits.
         if (output.imports != null) {
           _cachedImports = output.imports as CachedImports?;
+          final document = _activeDocument;
+          if (document != null) {
+            document.importedPaths
+              ..clear()
+              ..addAll(
+                _cachedImports?.importState.sourceFiles.keys ?? const {},
+              );
+          }
         }
         // Build frequency map from SemInfo references.
         _freq = <String, int>{};
         for (final info in output.semInfo) {
           _freq[info.name] = (_freq[info.name] ?? 0) + 1;
         }
+        _refreshImportSnapshots();
         // Publish empty diagnostics on success.
         _publishDiagnostics(<LspDiagnostic>[]);
       case final CheckFailure failure:
         _lastSuccess = null;
+        _cachedImports = null;
         final source = SourceFile(filename: _documentUri, text: _documentText);
         final diagnostics = <LspDiagnostic>[];
         for (final error in failure.errors) {
@@ -1126,6 +1458,58 @@ final class LspHandler {
         'fallback=${session?.lastFallbackReason ?? 'none'} '
         'elapsedMs=${stopwatch.elapsedMilliseconds}',
       );
+    }
+  }
+
+  Map<String, String> _openDocumentSources() => {
+    for (final document in _documents.values)
+      if (document.uri.startsWith('file:'))
+        Uri.parse(document.uri).toFilePath(): document.text,
+  };
+
+  void _refreshImportSnapshots() {
+    final sources = <String, SourceFile>{};
+    for (final document in _documents.values) {
+      final imports = document.lastSuccess?.imports as CachedImports?;
+      if (imports != null) {
+        sources.addAll(imports.importState.sourceFiles);
+      }
+    }
+    final openUris = {
+      for (final document in _documents.values)
+        _canonicalDocumentUri(document.uri),
+    };
+    final overrides = _openDocumentSources();
+    final next = <String, _IndexedDocument>{};
+    for (final entry in sources.entries) {
+      final path = entry.key;
+      final uri = _canonicalFileUri(path);
+      if (openUris.contains(uri)) continue;
+      final session = _importSessions.putIfAbsent(
+        path,
+        () => IncrementalCheckSession(filename: path),
+      );
+      final output = session.update(
+        entry.value.text,
+        sourceOverrides: overrides,
+      );
+      if (output is CheckSuccess) {
+        next[uri] = _IndexedDocument(
+          uri: Uri.file(path).toString(),
+          text: entry.value.text,
+          success: output,
+        );
+      }
+    }
+    _importSessions.removeWhere((path, _) => !sources.containsKey(path));
+    _importSnapshots = next;
+  }
+
+  void _invalidateImportSnapshotsFor(String path) {
+    for (final session in _importSessions.values) {
+      if (session.filename == path || session.importsPath(path)) {
+        session.invalidateImports();
+      }
     }
   }
 
@@ -1199,9 +1583,18 @@ final class LspHandler {
 
   String? _builtinHoverAt(int offset) => switch (_wordAt(offset)) {
     'Type' => '```doxa\nType : Type 1\n```\n\nThe universe of types.',
+    'Prop' => '```doxa\nProp : Type\n```\n\nThe sort of propositions.',
     'fun' => '```doxa\nfun\n```\n\nDeclares a named function.',
     'data' => '```doxa\ndata\n```\n\nDeclares an inductive type.',
     'val' => '```doxa\nval\n```\n\nDeclares a named value.',
+    'import' =>
+      '```doxa\nimport\n```\n\nLoads declarations from another Doxa file.',
+    'match' => '```doxa\nmatch\n```\n\nEliminates an inductive value by cases.',
+    'case' =>
+      '```doxa\ncase\n```\n\nIntroduces one branch of a match expression.',
+    'typeclass' =>
+      '```doxa\ntypeclass\n```\n\nDeclares an interface with operations.',
+    'impl' => '```doxa\nimpl\n```\n\nDefines an implementation of a typeclass.',
     _ => null,
   };
 
@@ -1223,6 +1616,60 @@ final class LspHandler {
 
   String _unqualifiedName(String name) =>
       name.contains('.') ? name.substring(name.lastIndexOf('.') + 1) : name;
+
+  LspLocation? _importDefinitionAt(int offset) {
+    if (!_documentUri.startsWith('file:')) return null;
+    final parsed = parseProgram(_documentText);
+    final declarations = switch (parsed) {
+      Success<ParseError, SProgram>(:final value) ||
+      Partial<ParseError, SProgram>(:final value) => value.decls,
+      Failure<ParseError, SProgram>() => parseLeadingImports(_documentText),
+    };
+    for (final declaration in declarations) {
+      if (offset < declaration.span.start || offset >= declaration.span.end) {
+        continue;
+      }
+      final kind = declaration.kind;
+      if (kind is! SImportKind) return null;
+      final sourcePath = Uri.parse(_documentUri).toFilePath();
+      final target = File(Uri.file(sourcePath).resolve(kind.path).toFilePath());
+      final targetPath =
+          target.existsSync()
+              ? target.resolveSymbolicLinksSync()
+              : target.absolute.path;
+      return LspLocation(
+        uri: Uri.file(targetPath).toString(),
+        range: const LspRange(
+          start: LspPosition(line: 0, character: 0),
+          end: LspPosition(line: 0, character: 0),
+        ),
+      );
+    }
+    return null;
+  }
+
+  LspLocation? _importedDefinitionAt(int offset) {
+    final name = _wordAt(offset);
+    if (name == null) return null;
+    final importState = _cachedImports?.importState;
+    final defFile = importState?.definitionFiles[name];
+    final defSpan = importState?.definitionSpans[name];
+    if (defFile == null || defSpan == null) return null;
+    final defText = _sourceTextFor(defFile);
+    if (defText == null) return null;
+    final defOffset = _definitionNameOffset(defText, defSpan, name);
+    final defPos = _positionIn(defText, defOffset);
+    return LspLocation(
+      uri: Uri.file(defFile).toString(),
+      range: LspRange(
+        start: LspPosition(line: defPos.line - 1, character: defPos.column - 1),
+        end: LspPosition(
+          line: defPos.line - 1,
+          character: defPos.column - 1 + name.length,
+        ),
+      ),
+    );
+  }
 
   int _definitionNameOffset(String text, DoxaSpan span, String name) {
     final unqualifiedName = _unqualifiedName(name);

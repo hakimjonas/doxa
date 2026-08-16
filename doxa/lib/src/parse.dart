@@ -48,6 +48,18 @@ Result<ParseError, SExpr> parseExpr(String input) =>
 Result<ParseError, SDecl> parseDecl(String input) =>
     _ws.skipThen(_decl).thenSkip(_ws).thenSkip(eof()).run(input);
 
+/// Parse the complete import declarations at the start of [input].
+///
+/// Editor features use this after a later declaration is incomplete. Import
+/// paths are structural and remain safe to navigate without a complete AST.
+List<SDecl> parseLeadingImports(String input) => switch (_leadingImports.run(
+  input,
+)) {
+  Success<ParseError, List<SDecl>>(:final value) ||
+  Partial<ParseError, List<SDecl>>(:final value) => value,
+  Failure<ParseError, List<SDecl>>() => const [],
+};
+
 // ===========================================================================
 // Whitespace and comments.
 // ===========================================================================
@@ -254,7 +266,9 @@ Parser<ParseError, SExpr> _spanned(Parser<ParseError, SExprKind> p) =>
 /// means `_binder | _appOrArrow` backtracks cleanly when the `(ident : ty)`
 /// header fails to match, no `attempt` wrapper needed.
 final Parser<ParseError, SExpr> _expr = defer(
-  () => _matchExpr | _binder | _implicitBinder | _appOrArrow,
+  () => (_matchExpr | _binder | _implicitBinder | _appOrArrow).expect(
+    'expected an expression',
+  ),
 );
 
 /// A single `val` binding inside a block: `'val' ident (':' type)? '=' expr`.
@@ -722,7 +736,9 @@ final Parser<ParseError, (String, int)> _dotSuffix = _sym(
 /// interaction. The resulting AST shape is identical to what an LR
 /// grammar would produce.
 final Parser<ParseError, SExpr> _identAtom = position<ParseError>().flatMap(
-  (start) => _ident.zip(position<ParseError>()).flatMap((identAndEnd) {
+  (start) => _rawIdent.zip(position<ParseError>()).thenSkip(_ws).flatMap((
+    identAndEnd,
+  ) {
     final name = identAndEnd.$1;
     final identEnd = identAndEnd.$2;
     final bareIdent = SExpr(SIdentKind(name), DoxaSpan(start, identEnd));
@@ -1407,6 +1423,11 @@ final Parser<ParseError, List<SDecl>> _programDecls = defer(
   () => _decl
       .flatMap((first) => _programDecls.map((rest) => [first, ...rest]))
       .or(_ws.skipThen(eof()).map((_) => <SDecl>[])),
+);
+
+/// A leading sequence of complete imports, without an EOF requirement.
+final Parser<ParseError, List<SDecl>> _leadingImports = _ws.skipThen(
+  _importDecl.many,
 );
 
 /// A program: leading whitespace, declarations, eof.

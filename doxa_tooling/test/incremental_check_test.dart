@@ -77,6 +77,19 @@ val third : Bool = Type
       expect(session.lastRecheckedDeclarationCount, 0);
     });
 
+    test('parse failures retain their furthest source span', () {
+      const source = 'val value : Type =\n';
+
+      final output = checkSourceOutput(source);
+
+      expect(output, isA<CheckFailure>());
+      final failure = output as CheckFailure;
+      expect(failure.errors, hasLength(1));
+      expect(failure.errors.single.span?.start, source.length);
+      expect(failure.errors.single.span?.end, source.length);
+      expect(failure.errors.single.message, 'expected an expression');
+    });
+
     test('repair completes normal forms retained from a failed pass', () {
       final session = IncrementalCheckSession(filename: 'incremental.doxa');
       const broken = '''

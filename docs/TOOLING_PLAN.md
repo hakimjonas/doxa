@@ -5,6 +5,13 @@ dogfooding the rumil-dart tooling. The architecture anticipates future
 expansion (modules, imports, tactics, multi-file projects) without
 over-building for them today.
 
+## Current status
+
+This document records the original phase architecture. The core tooling phases
+are implemented. `LSP_TOOLING_PLAN.md` tracks the current editor, protocol,
+incrementality, and distribution work. Its status supersedes historical status
+paragraphs in this document where they conflict.
+
 ## Development discipline (read before every piece of work)
 
 Before any piece of work is considered complete, all three of these must
@@ -46,8 +53,15 @@ or test failures. This is a hard gate.
    useful without the later phases.
 
 5. **Anticipate future expansion.** Every architectural decision works
-   for the current single-file Doxa AND scales to multi-file projects,
-   modules, tactics, and a full LSP server — without a rewrite.
+    for the current single-file Doxa AND scales to multi-file projects,
+    modules, tactics, and a full LSP server — without a rewrite.
+
+6. **Own syntax declaratively when sharing it.** Rumil's executable parser is
+   authoritative today. If Doxa needs a shared grammar for additional parser
+   backends, define a Rumil-owned declarative grammar IR rather than making a
+   JavaScript Tree-sitter grammar the competing source of truth. The IR may
+   generate Tree-sitter `grammar.json`; it must keep Dart semantic actions,
+   desugaring, and elaboration outside the syntax model.
 
 ## Architecture Overview
 
@@ -81,6 +95,29 @@ or test failures. This is a hard gate.
 │    (server, playground, cells), editor theming   │
 └──────────────────────────────────────────────────┘
 
+## Shared syntax backends
+
+The current Doxa parser is executable Rumil combinator code. It contains
+semantic actions, predicates, deferred parsers, and Pratt callbacks expressed
+as Dart closures. It cannot be mechanically serialized into a Tree-sitter
+grammar without losing or guessing behavior.
+
+If Doxa needs native Tree-sitter support, first add a declarative grammar IR to
+the `rumil-dart` family. It must model named recursive rules, terminals,
+sequence, choice, repetition, precedence, fields, aliases, trivia, conflicts,
+and external tokens. The IR has distinct lowerings:
+
+- Rumil builds the authoritative Doxa CST and invokes named Dart semantic
+  actions to construct the existing surface AST.
+- Tree-sitter emits `grammar.json` and a separately tested external scanner
+  where syntax requires stateful lexing, including nested block comments.
+- `rumil_tokens` receives only the lexical subset it can represent.
+
+The generated Tree-sitter parser is a structural editor backend for Zed,
+Neovim, Helix, and similar consumers. It does not check, elaborate, format, or
+replace Doxa's Rumil parser. Doxa's stdlib and parser fixtures form the shared
+acceptance corpus for every backend.
+
 ## Phase 0 — Tokenizer & Highlighting
 
 **Goal:** Replace the hand-written Doxa lexer (duplicated in 3 places:
@@ -88,7 +125,9 @@ server-side Dart, playground JS, cells JS) with a single Doxa grammar
 for `rumil_tokens`, the existing rumil package for lossless source
 tokenization.
 
-**Status:** `rumil_tokens` 0.10.0 exists. No Doxa grammar yet.
+**Status:** Doxa uses `rumil_tokens` through `tokenizeDoxaSpans` for lossless
+editor tokenization and syntax highlighting. Browser-renderer integration is
+outside the active editor-support roadmap.
 
 ### Deliverables
 
@@ -232,8 +271,8 @@ current tree first parses the whole source into an AST.
 Per-declaration info (name, kind, type, normal form, span). Errors
 with structured fields (kind, expected, actual, line, column, message).
 
-**Status:** The checker already computes all this data (types, values,
-spans, errors). It just discards it after formatting it into a string.
+**Status:** Complete. `CheckSuccess`, `CheckFailure`, `DeclInfo`, and
+structured diagnostics are used by the CLI, Wasm tooling, and LSP server.
 
 ### Deliverables
 
@@ -317,9 +356,9 @@ name, type, source span, declaration-site span). This is the shared
 dependency that powers the REPL, the LSP server, and the website demo.
 Doxa's equivalent of Lean 4's InfoTree.
 
-**Status:** The elaborator resolves every identifier, determines its
-type, and knows its source span (via `SExpr.span`). This info is
-currently discarded after elaboration.
+**Status:** Implemented for source-backed semantic references. `SemInfo`
+records resolved names, kinds, types, declaration spans, and imported source
+files. Stable identity for local binders remains later semantic-tooling work.
 
 ### Deliverables
 
@@ -384,8 +423,7 @@ currently discarded after elaboration.
 expressions and declarations interactively, showing inferred types
 and normal forms, with accumulated top-level state.
 
-**Status:** All building blocks exist: `parseExpr`, `elabExpr`, `nf`,
-`prettyTerm`, and the accumulator pattern from `checkSourceOutput`.
+**Status:** Implemented as `doxa repl`, with accumulated declaration state.
 
 ### Architecture
 
@@ -460,10 +498,10 @@ that speaks JSON-RPC over stdio. VS Code talks to it directly as a
 separate process. Provides diagnostics, hover, go-to-definition, and
 completion.
 
-**Status:** The LSP protocol is well-defined. The transport is trivial
-(Content-Length framed JSON over stdin/stdout). The semantic data
-(CheckFailure diagnostics, SemInfo hover/definition/completion) already
-exists from Phases 2 and 3a.
+**Status:** Implemented and extended beyond the initial feature set. The
+server supports URI-indexed documents, incremental checking, imports, semantic
+tokens, formatting, references, and safe cross-file rename. Current editor
+validation and remaining semantic work are tracked in `LSP_TOOLING_PLAN.md`.
 
 ### Architecture
 
@@ -528,16 +566,17 @@ records/classes with `fromJson`/`toJson`.
 - The architecture is independent of the website demo — LSP works
   in any LSP-compatible editor
 
-### Risks / unknowns
+### Current limits
 
-- Single-document model: the initial LSP handles one document at a
-  time. Multi-document project support (imports across files) is
-  deferred.
-- Full-file recheck on every edit: efficient at current file sizes
-  (<1000 lines, 6-15ms). Incremental checking (recheck only the
-  changed declaration) is future work.
-- Process isolation: Doxa has no `#eval` side effects, so a single
-  process is safe. No watchdog/worker split needed initially.
+- The server keeps state for multiple open URIs and resolves transitive imports.
+  It does not yet discover arbitrary project files outside the resolved import
+  closure.
+- The checker reuses an unchanged top-level declaration prefix and rechecks the
+  suffix. It does not yet use a semantic dependency graph for smaller
+  invalidation regions.
+- Rename supports source-backed top-level declarations. Stable identities for
+  local binders, constructors, fields, and generated declarations remain
+  future semantic work.
 
 ## Phase Dependencies
 
@@ -593,30 +632,29 @@ The architecture is designed to compose with future Doxa features:
 
 | Future feature     | What's already handled                                |
 |--------------------|-------------------------------------------------------|
-| **Modules/imports** | GreenNode trees per file compose naturally. `SemInfo` includes cross-file references via URI + span. |
+| **Modules/imports** | GreenNode trees per file compose naturally. `SemInfo` includes cross-file references via URI + span, and the LSP indexes the resolved import closure. |
 | **Tactics**        | The `InfoTree` collects metadata during elaboration, including tactic-produced subgoals and their contexts. Add `SemInfoKind.tacticGoal`. |
-| **Multi-file projects** | Incremental reparse works per-file. The `TopEnv` accumulates across files. A project-level `CheckOutput` aggregates per-file results. |
-| **LSP server**     | Built in Phase 3c. The `doxa lsp` command speaks standard JSON-RPC over stdio. `SemInfo` and `CheckOutput` are directly serializable to LSP types. Multi-document support added when modules/imports land. |
+| **Multi-file projects** | Incremental reparse works per-file. A future project index can add discovered files beyond the resolved import closure. |
+| **LSP server**     | Built in Phase 3c. The `doxa lsp` command speaks standard JSON-RPC over stdio. `SemInfo` and `CheckOutput` are directly serializable to LSP types. Multi-document imports are implemented. |
 | **Universe polymorphism** | `SemInfo` records the resolved universe level for each type occurrence. |
 | **Record types**   | `SemInfo` records field names and their types at each record literal. |
 | **Typeclasses / instance search** | `SemInfo` records instance resolutions. The completion provider can filter by instance availability. |
 
-## Non-Goals (deliberately excluded)
+## Scope boundaries of the original phase plan
 
 - **Code formatting.** GreenNode.toSource() gives lossless
   reproduction. A formatter needs a different pass (re-pretty-printing
   with canonical whitespace). Not in this plan.
-- **A VS Code extension.** The LSP server from Phase 3c works with any
-  LSP-compatible editor. A dedicated VS Code extension (package.json +
-  TypeScript shim to launch `doxa lsp`) is a thin follow-on, tracked
-  separately.
+- **Editor adapters.** VS Code is implemented. Zed and Helix are the next
+  open-platform targets. Their support decision and any grammar backend work
+  are tracked in `LSP_TOOLING_PLAN.md`.
 - **WebWorker-based WASM.** The current synchronous `doxaCheck` call
   works for a file that checks in 6-15ms. If/when checking times
   grow (larger files, more imports), move to a WebWorker. Not needed
   now.
-- **Multi-document project support.** The LSP server handles one
-  document at a time. Cross-file imports and project-wide diagnostics
-  are deferred until Doxa has an import/module system.
+- **Project-wide source discovery.** The LSP indexes files in the resolved
+  import closure. It does not yet discover unrelated workspace files or issue
+  project-wide diagnostics.
 - **Incremental elaboration.** This is no longer deferred. The active work is
   a persistent checker session that reuses an unchanged declaration prefix and
   re-elaborates the affected suffix. `LSP_TOOLING_PLAN.md` defines its syntax,

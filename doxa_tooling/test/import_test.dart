@@ -95,6 +95,25 @@ val x : Nat = zero
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
+    test('imports from a symbolic link resolve relative to its target', () {
+      final directory = Directory.systemTemp.createTempSync('doxa-import-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final sourceDirectory = Directory('${directory.path}/source')
+        ..createSync();
+      final linkDirectory = Directory('${directory.path}/alias')..createSync();
+      File('${sourceDirectory.path}/bool.doxa').writeAsStringSync(
+        'data Bool : Type { true_ : Bool; false_ : Bool; }\n',
+      );
+      final target = File('${sourceDirectory.path}/proofs.doxa')
+        ..writeAsStringSync('import "bool.doxa"\nval value : Bool = true_\n');
+      final link = Link('${linkDirectory.path}/proofs.doxa')
+        ..createSync(target.path);
+
+      final result = runFile(File(link.path));
+
+      expect(result.code, 0, reason: 'stderr: ${result.stderr}');
+    });
+
     test('transitive import works (list imports nat which imports bool)', () {
       const src = '''
 import "../lib/stdlib/list.doxa"

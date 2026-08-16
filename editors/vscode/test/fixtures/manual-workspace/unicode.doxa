@@ -1,0 +1,2 @@
+// 😀 LSP positions use UTF-16 code units.
+fun identity[A: Type](value: A) : A = value

@@ -97,7 +97,10 @@ final class IncrementalCheckSession {
   }
 
   /// Check [source] using the longest unchanged declaration prefix.
-  CheckOutput update(String source) {
+  CheckOutput update(
+    String source, {
+    Map<String, String> sourceOverrides = const {},
+  }) {
     final file = SourceFile(filename: filename, text: source);
     final parseWatch = Stopwatch()..start();
     final parsed = _parse(file);
@@ -119,7 +122,11 @@ final class IncrementalCheckSession {
       _imports = null;
       lastFallbackReason =
           importsChanged ? 'root_imports_changed' : 'initial_check';
-      final resolved = _resolveImports(file, program);
+      final resolved = _resolveImports(
+        file,
+        program,
+        sourceOverrides: sourceOverrides,
+      );
       if (resolved.failure != null) {
         lastRecheckStart = 0;
         lastReusedDeclarationCount = 0;
@@ -249,10 +256,10 @@ CheckOutput _run({
             kind: 'parse_error',
             line: furthest.line,
             column: furthest.column,
-            message: reportParseFailure(
-              file,
+            message: _parseFailureMessage(
               result as Failure<ParseError, Object?>,
             ),
+            span: DoxaSpan(furthest.offset, furthest.offset),
           ),
         ],
       ),
@@ -260,13 +267,28 @@ CheckOutput _run({
   };
 }
 
+String _parseFailureMessage(Failure<ParseError, Object?> failure) {
+  for (final error in failure.errors) {
+    if (error is CustomError) return error.message;
+  }
+  return 'invalid syntax';
+}
+
 ({CachedImports? cache, CheckFailure? failure}) _resolveImports(
   SourceFile file,
-  SProgram program,
-) {
-  final prelude = loadPrelude();
+  SProgram program, {
+  Map<String, String> sourceOverrides = const {},
+}) {
+  final prelude =
+      isStdlibPreludePath(file.filename)
+          ? const PreludeData([], [], {})
+          : loadPrelude();
   final importState = ImportState()..currentImportPath = file.filename;
-  final resolver = ImportResolver(importState, prelude: prelude);
+  final resolver = ImportResolver(
+    importState,
+    prelude: prelude,
+    sourceOverrides: sourceOverrides,
+  );
   try {
     resolver.processTransitiveImports(program);
   } on ElabError catch (e) {
@@ -556,8 +578,8 @@ ImportState _copyImportState(ImportState source) {
   final copy = ImportState()..currentImportPath = source.currentImportPath;
   copy.importedPaths.addAll(source.importedPaths);
   copy.sourceFiles.addAll(source.sourceFiles);
-  copy.spanStartToFile.addAll(source.spanStartToFile);
   copy.definitionFiles.addAll(source.definitionFiles);
+  copy.definitionSpans.addAll(source.definitionSpans);
   return copy;
 }
 

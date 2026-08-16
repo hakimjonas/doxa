@@ -98,19 +98,29 @@ printer, with meta-variables condensed and equality chains truncated.
 
 ### b) LSP features (P3)
 
-The LSP exists (diagnostics, completions, semantic tokens) but could surface
-more information:
-- Type-on-hover for identifiers and expressions
-- Go-to-definition for lemmas and constructors
-- Proof-state display for tactic blocks
+The LSP supports diagnostics, completion, semantic tokens, hover,
+go-to-definition, formatting, references, and safe rename. It retains
+versioned state for multiple open documents, incrementally rechecks a changed
+declaration suffix, and follows transitive imports for source-backed top-level
+references and rename.
 
-**Deliverable**: Three new LSP requests — `textDocument/hover`,
-`textDocument/definition`, and proper error diagnostic formatting.
+Remaining LSP work:
+
+- Stable identities and rename for local binders, constructors, fields, and
+  generated declarations.
+- Declaration and reference token roles, richer source provenance, and
+  instantiated dependent types in hover.
+- Proper error diagnostic formatting and proof-state display for tactic blocks.
+- Open-editor validation: finish the VS Code manual gate, then timebox Zed and
+  Helix support discovery before resuming JetBrains work.
+
+**Deliverable**: Complete the semantic and client-validation milestones in
+[`LSP_TOOLING_PLAN.md`](LSP_TOOLING_PLAN.md).
 
 ### c) Formatter (P2)
 
-The formatter exists (`doxa_tooling/lib/src/format.dart`) but is minimal.
-Long `trans_e` chains and nested SApp trees aren't broken across lines.
+The formatter canonicalizes core declaration spacing, including annotations.
+It does not yet wrap long `trans_e` chains or nested applications.
 A proper pretty-printer with configurable width and consistent indentation
 makes the codebase scannable.
 
@@ -154,7 +164,7 @@ construction of `trans_e` chains.
 | P2 | 2c | Implicit argument mechanism | Reduces annotation burden |
 | P2 | 3c | Formatter | Codebase scannability |
 | P2 | 4a | stdlib organisation | Maintainability |
-| P3 | 3b | LSP type-on-hover | Interactive development |
+| P3 | 3b | LSP semantic coverage and open-editor validation | Complete safe rename and validate VS Code, Zed, and Helix support paths |
 | P3 | 4b | Tactic expansion | Reduces proof verbosity |
 
 ---
@@ -191,5 +201,6 @@ tooling layer.
 ## Related documents
 
 - [`docs/RELEASE_0_9_PLAN.md`](RELEASE_0_9_PLAN.md) — current release plan
+- [`docs/LSP_TOOLING_PLAN.md`](LSP_TOOLING_PLAN.md) — editor tooling roadmap
 - This document supersedes the "Remaining lemmas" sections in
   `lib/stdlib/case_study.doxa` — those are now organised under this roadmap.

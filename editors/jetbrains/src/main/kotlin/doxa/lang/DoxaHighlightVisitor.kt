@@ -31,6 +31,10 @@ class DoxaHighlightVisitor : HighlightVisitor {
     override fun visit(element: PsiElement) {
         if (element.language !is DoxaLanguage) return
         val file = element.containingFile ?: return
+        // HighlightVisitor visits every PSI leaf. The lexical fallback scans
+        // the complete source, so running it for each leaf blocks the IDE on
+        // larger files while the LSP semantic tokens are still loading.
+        if (element !== file) return
         val text = file.text
         if (text.isEmpty()) return
 

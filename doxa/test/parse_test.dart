@@ -309,6 +309,27 @@ void main() {
       final r = unwrap(parseProgram('val x = y val z = w'));
       expect(r.decls, hasLength(2));
     });
+
+    test('missing declaration body reports one expression expectation', () {
+      final result = parseProgram('val value : Type =\n');
+
+      expect(result, isA<Failure<ParseError, SProgram>>());
+      final failure = result as Failure<ParseError, SProgram>;
+      expect(failure.furthest.offset, 'val value : Type =\n'.length);
+      expect(
+        failure.errors.whereType<CustomError>().map((error) => error.message),
+        contains('expected an expression'),
+      );
+    });
+
+    test('reads leading imports before a later incomplete declaration', () {
+      final imports = parseLeadingImports(
+        'import "dependency.doxa"\nval value : Type =\n',
+      );
+
+      expect(imports, hasLength(1));
+      expect((imports.single.kind as SImportKind).path, 'dependency.doxa');
+    });
   });
 
   group('comments and whitespace', () {
@@ -336,6 +357,11 @@ void main() {
   group('spans', () {
     test('simple ident span covers the identifier', () {
       final r = unwrap(parseExpr('hello'));
+      expect(r.span, const DoxaSpan(0, 5));
+    });
+
+    test('ident span excludes trailing whitespace', () {
+      final r = unwrap(parseExpr('hello '));
       expect(r.span, const DoxaSpan(0, 5));
     });
 

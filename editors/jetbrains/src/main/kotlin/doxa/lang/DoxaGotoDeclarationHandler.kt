@@ -9,25 +9,24 @@ import com.intellij.psi.PsiManager
 
 class DoxaGotoDeclarationHandler : GotoDeclarationHandler {
 
-    private val LOG = com.intellij.openapi.diagnostic.Logger.getInstance(DoxaGotoDeclarationHandler::class.java)
-
     override fun getGotoDeclarationTargets(
         sourceElement: PsiElement?,
         offset: Int,
         editor: Editor?,
     ): Array<PsiElement>? {
-        LOG.info("getGotoDeclarationTargets: source=$sourceElement, lang=${sourceElement?.language}")
-        if (sourceElement == null) { LOG.info("  null source"); return null }
-        val file = sourceElement.containingFile ?: run { LOG.info("  no containingFile"); return null }
-        if (file.language !is DoxaLanguage) { LOG.info("  wrong lang: ${file.language}"); return null }
+        if (sourceElement == null) return null
+        val file = sourceElement.containingFile ?: return null
+        if (file.language !is DoxaLanguage) return null
 
         val service = DoxaLspService.getInstance(file.project)
-        if (!service.connector.isRunning) { LOG.info("  connector not running"); return null }
+        if (!service.connector.isRunning) return null
 
-        val virtualFile = file.virtualFile ?: run { LOG.info("  no virtualFile"); return null }
+        val virtualFile = file.virtualFile ?: return null
         val uri = virtualFile.url
-        val document = file.viewProvider.document ?: run { LOG.info("  no document"); return null }
+        val document = file.viewProvider.document ?: return null
         try {
+            // IntelliJ invokes this extension point on the UI thread. The
+            // service returns a cached target or starts a background lookup.
             val response = service.definitionAt(uri, document.text, offset)
             val location = when (response) {
                 is Map<*, *> -> response
@@ -46,7 +45,8 @@ class DoxaGotoDeclarationHandler : GotoDeclarationHandler {
             val targetDocument = targetPsiFile.viewProvider.document ?: return null
             val targetOffset = offsetFor(targetDocument.text, targetLine, targetChar)
 
-            val targetElement = targetPsiFile.findElementAt(targetOffset) ?: targetPsiFile
+            val targetElement = targetPsiFile.findElementAt(targetOffset)
+                ?: return arrayOf(targetPsiFile)
             return arrayOf(targetElement)
         } catch (_: Exception) {
             return null

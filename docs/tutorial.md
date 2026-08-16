@@ -36,8 +36,7 @@ doxa fmt myfile.doxa     # format to canonical style
 ```
 
 The LSP provides diagnostics, hover, go-to-definition, completion (with types
-and frequency ranking), document symbols, signature help, code lens (inline
-declaration types), and format-on-save.
+and frequency ranking), document symbols, signature help, and format-on-save.
 
 ---
 

@@ -1,0 +1,6 @@
+data Status : Type {
+  ready : Status;
+  blocked : Status;
+}
+
+fun keep(status: Status) : Status = status

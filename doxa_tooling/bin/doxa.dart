@@ -232,17 +232,16 @@ Future<void> _runLspAsync() async {
   final reader = LspReader();
   final done = Completer<void>();
 
-  stdin.listen(
+  final subscription = stdin.listen(
     (data) {
       final messages = reader.feed(data);
       for (final message in messages) {
         final response = handler.handle(message);
+        if (message['method'] == 'exit') {
+          if (!done.isCompleted) done.complete();
+          return;
+        }
         if (response != null) {
-          final method = message['method'] as String?;
-          if (method == 'exit') {
-            done.complete();
-            return;
-          }
           sendLspMessage(response);
         }
       }
@@ -257,6 +256,7 @@ Future<void> _runLspAsync() async {
   );
 
   await done.future;
+  await subscription.cancel();
 }
 
 /// Run the REPL.
@@ -344,7 +344,10 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   // Seed bindings + dataDecls from the prelude so user code can
   // reference `Eq`, `Acc`, and any other ambient names without
   // redeclaring them.
-  final prelude = loadPrelude();
+  final prelude =
+      isStdlibPreludePath(source.filename)
+          ? const PreludeData([], [], {})
+          : loadPrelude();
   final preludeDeclCount = prelude.bindings.length + prelude.dataDecls.length;
 
   // Set up import state so relative imports resolve correctly.

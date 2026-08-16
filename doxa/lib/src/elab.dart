@@ -702,15 +702,12 @@ final class ImportState {
   /// source text for a span that originated in an imported file.
   final Map<String, SourceFile> sourceFiles = {};
 
-  /// Map from a [DoxaSpan]'s start offset to the resolved file path
-  /// where that span was created.  Populated when building imported
-  /// bindings.  Used by [sourceFileFor] to route error spans to the
-  /// right [SourceFile].
-  final Map<int, String> spanStartToFile = {};
-
   /// Source file for each imported declaration name. Unlike span offsets,
   /// names remain unambiguous across imported files after resolution.
   final Map<String, String> definitionFiles = {};
+
+  /// Declaration span for each imported declaration name.
+  final Map<String, DoxaSpan> definitionSpans = {};
 
   /// Restore points before [push]; matches [importStack] depth.
   final List<String?> _prevPaths = [];
@@ -735,13 +732,15 @@ final class ImportState {
     return current.resolve(importPath).toFilePath();
   }
 
-  /// Look up the [SourceFile] that a given [span] belongs to, or
-  /// `null` when the span belongs to the top-level file.
+  /// Look up the source being processed, or `null` for the top-level file.
+  ///
+  /// A [DoxaSpan] is local to its source file, so its numeric offsets cannot
+  /// identify that file among imports. Import processing keeps
+  /// [currentImportPath] aligned with the declaration being elaborated.
   SourceFile? sourceFileFor(DoxaSpan span) {
     if (span.isSynthetic) return null;
-    final path = spanStartToFile[span.start];
-    if (path == null) return null;
-    return sourceFiles[path];
+    final path = currentImportPath;
+    return path == null ? null : sourceFiles[path];
   }
 
   /// Creates a new, empty import state.
@@ -2227,10 +2226,9 @@ void _recordSemInfo(
       defFile:
           defSpan == null
               ? null
-              : state.topEnv.importState.spanStartToFile[defSpan.start] ??
-                  state.topEnv.importState.definitionFiles[name.contains('.')
-                      ? name.substring(name.lastIndexOf('.') + 1)
-                      : name],
+              : state.topEnv.importState.definitionFiles[name.contains('.')
+                  ? name.substring(name.lastIndexOf('.') + 1)
+                  : name],
     ),
   );
 }
@@ -3959,21 +3957,16 @@ DeclResult _processImport(
 
     importState.importedPaths.add(resolvedPath);
 
-    // Record span-to-file mappings so error-reporting code can route
-    // spans back to the correct SourceFile.
     for (final b in localBindings) {
-      if (!b.span.isSynthetic) {
-        importState.spanStartToFile[b.span.start] = resolvedPath;
-      }
       importState.definitionFiles[b.name] = resolvedPath;
+      importState.definitionSpans[b.name] = b.span;
     }
     for (final d in localDataDecls) {
-      if (!d.span.isSynthetic) {
-        importState.spanStartToFile[d.span.start] = resolvedPath;
-      }
       importState.definitionFiles[d.name] = resolvedPath;
+      importState.definitionSpans[d.name] = d.span;
       for (final c in d.ctors) {
         importState.definitionFiles[c.name] = resolvedPath;
+        importState.definitionSpans[c.name] = c.span;
       }
     }
 
@@ -6540,7 +6533,7 @@ DeclResult _desugarFuel(
   );
 
   final fuelBody = SExpr(
-    SMatchKind(SExpr(SIdentKind('fuel'), DoxaSpan.synthetic), null, [
+    SMatchKind(const SExpr(SIdentKind('fuel'), DoxaSpan.synthetic), null, [
       SMatchCase('zero', const [], kind.body, DoxaSpan.synthetic),
       SMatchCase('succ', [fuelPatVar], rewrittenBody, DoxaSpan.synthetic),
     ]),
@@ -6550,7 +6543,10 @@ DeclResult _desugarFuel(
   final fuelKind = SFunKind(
     fuelName,
     kind.typeParams,
-    [('fuel', SExpr(SIdentKind('Nat'), DoxaSpan.synthetic)), ...kind.params],
+    [
+      ('fuel', const SExpr(SIdentKind('Nat'), DoxaSpan.synthetic)),
+      ...kind.params,
+    ],
     cleanRet,
     fuelBody,
     isOpaque: false,
@@ -6573,9 +6569,9 @@ DeclResult _desugarFuel(
   final wrapperType = _buildFunType(topEnv, allBinders, cleanRet, metas: metas);
 
   final fuelAllBinders = <_FunBinder>[
-    _FunBinder(
+    const _FunBinder(
       'fuel',
-      SExpr(SIdentKind('Nat'), DoxaSpan.synthetic),
+      const SExpr(SIdentKind('Nat'), DoxaSpan.synthetic),
       Icit.explicit,
     ),
     ...allBinders,

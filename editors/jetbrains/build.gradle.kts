@@ -1,3 +1,5 @@
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+
 plugins {
     id("org.jetbrains.intellij.platform") version "2.5.0"
     kotlin("jvm") version "2.1.20"
@@ -11,9 +13,17 @@ repositories {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+
     intellijPlatform {
         create("IC", "2025.1")
+        testFramework(TestFrameworkType.Platform)
     }
+}
+
+tasks.test {
+    useJUnit()
+    systemProperty("doxa.executable", System.getenv("DOXA_EXECUTABLE") ?: "doxa")
 }
 
 intellijPlatform {

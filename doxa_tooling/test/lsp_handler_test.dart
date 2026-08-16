@@ -43,6 +43,24 @@ void main() {
       expect(funHover!['result'], isNotNull);
     });
 
+    test('provides hover documentation before semantic checking succeeds', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/keyword.doxa';
+      const source = 'typeclass Broken[A: Type] { fun combine(x: A): A; }\n';
+      handler.handle(_didOpen(uri, source));
+
+      final hover = handler.handle(
+        _positionRequest(
+          1,
+          'textDocument/hover',
+          uri,
+          source.indexOf('typeclass'),
+        ),
+      );
+
+      expect(hover!['result'], isNotNull);
+    });
+
     test('uses UTF-16 positions for requests after non-BMP characters', () {
       final handler = LspHandler();
       const uri = 'file:///workspace/unicode.doxa';
@@ -147,6 +165,327 @@ void main() {
       expect((formatting['result'] as List<dynamic>), isNotEmpty);
     });
 
+    test('returns document symbol selections inside their full ranges', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/symbols.doxa';
+      const source = 'fun identity[A: Type](value: A) : A = value';
+      handler.handle(_didOpen(uri, source));
+
+      final result = handler.handle(
+        _request(1, 'textDocument/documentSymbol', uri),
+      );
+
+      final symbol =
+          (result!['result'] as List<dynamic>).single as Map<String, dynamic>;
+      final range = symbol['range'] as Map<String, dynamic>;
+      final selection = symbol['selectionRange'] as Map<String, dynamic>;
+      final rangeEnd = range['end'] as Map<String, dynamic>;
+      final selectionEnd = selection['end'] as Map<String, dynamic>;
+      expect(range['start'], {'line': 0, 'character': 0});
+      expect(selection['start'], {'line': 0, 'character': 'fun '.length});
+      expect(rangeEnd['line'], selectionEnd['line']);
+      expect(
+        rangeEnd['character'] as int,
+        greaterThanOrEqualTo(selectionEnd['character'] as int),
+      );
+    });
+
+    test('places declaration inlay hints after declaration names', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/nat.doxa';
+      const source =
+          'data Nat : Type {\n'
+          '  zero : Nat;\n'
+          '  succ : Nat -> Nat;\n'
+          '}\n';
+      handler.handle(_didOpen(uri, source));
+
+      final result = handler.handle({
+        'jsonrpc': '2.0',
+        'id': 1,
+        'method': 'textDocument/inlayHint',
+        'params': {
+          'textDocument': {'uri': uri},
+          'range': {
+            'start': {'line': 0, 'character': 0},
+            'end': {'line': 3, 'character': 0},
+          },
+        },
+      });
+
+      final hints = result!['result'] as List<dynamic>;
+      expect(hints, isNotEmpty);
+      expect((hints.first as Map<String, dynamic>)['position'], {
+        'line': 0,
+        'character': 'data Nat'.length,
+      });
+    });
+
+    test('serializes reference locations as JSON maps', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/references.doxa';
+      const source =
+          'val identity: Type 1 = Prop\n'
+          'val value: Type 1 = identity\n';
+      handler.handle(_didOpen(uri, source));
+
+      final result = handler.handle(
+        _linePositionRequest(
+          1,
+          'textDocument/references',
+          uri,
+          1,
+          'val value: Type 1 = '.length,
+        ),
+      );
+
+      expect(result!['result'], isA<List<dynamic>>());
+      expect(
+        (result['result'] as List<dynamic>).first,
+        isA<Map<String, dynamic>>(),
+      );
+    });
+
+    test('does not conflate a top-level binding with a shadowing local', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/shadowing.doxa';
+      const source =
+          'val x: Type 1 = Prop\n'
+          'val value: Type 1 = x\n'
+          'fun local(x: Type 1): Type 1 = x\n';
+      handler.handle(_didOpen(uri, source));
+
+      final topReferences = handler.handle(
+        _linePositionRequest(
+          1,
+          'textDocument/references',
+          uri,
+          0,
+          'val '.length,
+        ),
+      );
+      expect(topReferences!['result'], hasLength(2));
+
+      final withoutDeclaration = handler.handle({
+        'jsonrpc': '2.0',
+        'id': 2,
+        'method': 'textDocument/references',
+        'params': {
+          'textDocument': {'uri': uri},
+          'position': {'line': 0, 'character': 'val '.length},
+          'context': {'includeDeclaration': false},
+        },
+      });
+      expect(withoutDeclaration!['result'], hasLength(1));
+
+      final renamed = handler.handle({
+        'jsonrpc': '2.0',
+        'id': 3,
+        'method': 'textDocument/rename',
+        'params': {
+          'textDocument': {'uri': uri},
+          'position': {'line': 0, 'character': 'val '.length},
+          'newName': 'global',
+        },
+      });
+      final changes =
+          (renamed!['result'] as Map<String, dynamic>)['changes']
+              as Map<String, dynamic>;
+      expect(changes[uri], hasLength(2));
+
+      final localUse = handler.handle(
+        _linePositionRequest(
+          4,
+          'textDocument/prepareRename',
+          uri,
+          2,
+          'fun local(x: Type 1): Type 1 = '.length,
+        ),
+      );
+      expect(localUse!['result'], isNull);
+    });
+
+    test('finds top-level declaration references from the declaration', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/references.doxa';
+      const source =
+          'fun identity{A: Type}(value: A): A = value\n'
+          'fun applyIdentity(value: Type): Type = identity value\n';
+      handler.handle(_didOpen(uri, source));
+
+      final result = handler.handle(
+        _linePositionRequest(
+          1,
+          'textDocument/references',
+          uri,
+          0,
+          source.indexOf('identity'),
+        ),
+      );
+
+      expect(result!['result'], hasLength(2));
+    });
+
+    test('renames top-level declarations from either occurrence', () {
+      const uri = 'file:///workspace/rename.doxa';
+      const source =
+          'fun identity{A: Type}(value: A): A = value\n'
+          'fun applyIdentity(value: Type): Type = identity value\n';
+      final declarationOffset = source.indexOf('identity');
+      final referenceOffset = source.lastIndexOf('identity');
+      final referenceCharacter = referenceOffset - source.indexOf('\n') - 1;
+
+      for (final (line, character, targetCharacter) in [
+        (0, declarationOffset, declarationOffset),
+        (0, declarationOffset + 'identity'.length, declarationOffset),
+        (1, referenceCharacter, referenceCharacter),
+        (1, referenceCharacter + 'identity'.length, referenceCharacter),
+      ]) {
+        final handler = LspHandler();
+        handler.handle(_didOpen(uri, source));
+        final prepared = handler.handle(
+          _linePositionRequest(
+            1,
+            'textDocument/prepareRename',
+            uri,
+            line,
+            character,
+          ),
+        );
+        expect(prepared!['result'], {
+          'start': {'line': line, 'character': targetCharacter},
+          'end': {
+            'line': line,
+            'character': targetCharacter + 'identity'.length,
+          },
+        });
+        final result = handler.handle({
+          'jsonrpc': '2.0',
+          'id': 2,
+          'method': 'textDocument/rename',
+          'params': {
+            'textDocument': {'uri': uri},
+            'position': {'line': line, 'character': character},
+            'newName': 'same',
+          },
+        });
+
+        final changes =
+            (result!['result'] as Map<String, dynamic>)['changes']
+                as Map<String, dynamic>;
+        expect(changes[uri], [
+          {
+            'range': {
+              'start': {'line': 0, 'character': declarationOffset},
+              'end': {
+                'line': 0,
+                'character': declarationOffset + 'identity'.length,
+              },
+            },
+            'newText': 'same',
+          },
+          {
+            'range': {
+              'start': {'line': 1, 'character': referenceCharacter},
+              'end': {
+                'line': 1,
+                'character': referenceCharacter + 'identity'.length,
+              },
+            },
+            'newText': 'same',
+          },
+        ]);
+      }
+    });
+
+    test('finds and renames an imported top-level declaration', () {
+      final directory = Directory.systemTemp.createTempSync('doxa-lsp-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final base = File('${directory.path}/base.doxa');
+      const baseSource = 'val identity: Type 1 = Prop\n';
+      base.writeAsStringSync(baseSource);
+      final library = File('${directory.path}/library.doxa');
+      const librarySource =
+          'import "base.doxa"\n'
+          'val libraryValue: Type 1 = identity\n';
+      library.writeAsStringSync(librarySource);
+      final app = File('${directory.path}/app.doxa');
+      const appSource =
+          'import "library.doxa"\n'
+          'val value: Type 1 = identity\n';
+      app.writeAsStringSync(appSource);
+      final baseUri = base.uri.toString();
+      final libraryUri = library.uri.toString();
+      final appUri = app.uri.toString();
+      final handler = LspHandler();
+      handler.handle(_didOpen(appUri, appSource));
+
+      final references = handler.handle(
+        _linePositionRequest(
+          1,
+          'textDocument/references',
+          appUri,
+          1,
+          'val value: Type 1 = '.length,
+        ),
+      );
+      final locations = references!['result'] as List<dynamic>;
+      expect(locations, hasLength(3));
+      expect(
+        locations.map((location) => (location as Map<String, dynamic>)['uri']),
+        containsAll(<String>[baseUri, libraryUri, appUri]),
+      );
+
+      final renamed = handler.handle({
+        'jsonrpc': '2.0',
+        'id': 2,
+        'method': 'textDocument/rename',
+        'params': {
+          'textDocument': {'uri': appUri},
+          'position': {'line': 1, 'character': 'val value: Type 1 = '.length},
+          'newName': 'same',
+        },
+      });
+      final changes =
+          (renamed!['result'] as Map<String, dynamic>)['changes']
+              as Map<String, dynamic>;
+      expect(changes[baseUri], hasLength(1));
+      expect(changes[libraryUri], hasLength(1));
+      expect(changes[appUri], hasLength(1));
+    });
+
+    test('does not respond to notifications', () {
+      final handler = LspHandler();
+
+      expect(
+        handler.handle({'jsonrpc': '2.0', 'method': 'initialized'}),
+        isNull,
+      );
+      expect(
+        handler.handle({'jsonrpc': '2.0', 'method': 'unknown/notification'}),
+        isNull,
+      );
+      expect(handler.handle({'jsonrpc': '2.0', 'method': 'shutdown'}), isNull);
+      expect(handler.handle({'jsonrpc': '2.0', 'method': 'exit'}), isNull);
+    });
+
+    test('does not advertise redundant type presentation capabilities', () {
+      final handler = LspHandler();
+
+      final result = handler.handle({
+        'jsonrpc': '2.0',
+        'id': 1,
+        'method': 'initialize',
+        'params': <String, dynamic>{},
+      });
+
+      final capabilities =
+          (result!['result'] as Map<String, dynamic>)['capabilities']
+              as Map<String, dynamic>;
+      expect(capabilities.containsKey('codeLensProvider'), isFalse);
+      expect(capabilities.containsKey('inlayHintProvider'), isFalse);
+    });
+
     test('returns imported declaration locations from their source file', () {
       final directory = Directory.systemTemp.createTempSync('doxa-lsp-');
       addTearDown(() => directory.deleteSync(recursive: true));
@@ -176,6 +515,298 @@ void main() {
         'line': 0,
         'character': 'fun '.length,
       });
+    });
+
+    test(
+      'returns stdlib locations for declarations used by example proofs',
+      () {
+        final root = File('../example/proofs.doxa').absolute;
+        final source = root.readAsStringSync();
+        final uri = root.uri.toString();
+        final handler = LspHandler();
+        handler.handle(_didOpen(uri, source));
+
+        final result = handler.handle(
+          _linePositionRequest(
+            1,
+            'textDocument/definition',
+            uri,
+            30,
+            'val one : '.length,
+          ),
+        );
+
+        expect(result!['result'], isNotNull, reason: result.toString());
+        final location = result['result'] as Map<String, dynamic>;
+        expect(
+          location['uri'],
+          File('../lib/stdlib/nat.doxa').absolute.uri.toString(),
+        );
+        expect((location['range'] as Map<String, dynamic>)['start'], {
+          'line': 6,
+          'character': 'data '.length,
+        });
+      },
+    );
+
+    test(
+      'returns the source location for transitive imported declarations',
+      () {
+        final root = File('../lib/stdlib/Prop/prop.doxa').absolute;
+        final source = root.readAsStringSync();
+        final uri = root.uri.toString();
+        final handler = LspHandler();
+        handler.handle(_didOpen(uri, source));
+
+        final result = handler.handle(
+          _linePositionRequest(
+            1,
+            'textDocument/definition',
+            uri,
+            23,
+            '  not_intro : (A -> '.length + 1,
+          ),
+        );
+
+        expect(result!['result'], isNotNull, reason: result.toString());
+        final location = result['result'] as Map<String, dynamic>;
+        expect(
+          location['uri'],
+          File('../lib/stdlib/proofs.doxa').absolute.uri.toString(),
+        );
+        expect((location['range'] as Map<String, dynamic>)['start'], {
+          'line': 95,
+          'character': 'data '.length,
+        });
+      },
+    );
+
+    test(
+      'semantically highlights data declarations and imported data types',
+      () {
+        final root = File('../lib/stdlib/Prop/prop.doxa').absolute;
+        final source = root.readAsStringSync();
+        final uri = root.uri.toString();
+        final handler = LspHandler();
+        handler.handle(_didOpen(uri, source));
+
+        final result = handler.handle(
+          _request(1, 'textDocument/semanticTokens/full', uri),
+        );
+        final data =
+            ((result!['result'] as Map<String, dynamic>)['data']
+                    as List<dynamic>)
+                .cast<int>();
+        final tokens = _decodeSemanticTokens(data);
+
+        expect(
+          tokens,
+          contains((
+            line: 6,
+            character: 'data '.length,
+            length: 'And'.length,
+            type: 'type',
+          )),
+        );
+        expect(
+          tokens,
+          contains((
+            line: 23,
+            character: '  not_intro: (A -> '.length,
+            length: 'False'.length,
+            type: 'type',
+          )),
+        );
+      },
+    );
+
+    test('returns imported constructors from their defining files', () {
+      final intBase = File('../lib/stdlib/int_base.doxa').absolute;
+      final intBaseSource = intBase.readAsStringSync();
+      final intBaseUri = intBase.uri.toString();
+      final typeclasses = File('../lib/stdlib/typeclasses.doxa').absolute;
+      final typeclassesSource = typeclasses.readAsStringSync();
+      final typeclassesUri = typeclasses.uri.toString();
+      final handler = LspHandler();
+      handler.handle(_didOpen(intBaseUri, intBaseSource));
+      handler.handle(_didOpen(typeclassesUri, typeclassesSource));
+
+      final falseDefinition = handler.handle(
+        _linePositionRequest(
+          1,
+          'textDocument/definition',
+          intBaseUri,
+          70,
+          '  case neg _ => '.length,
+        ),
+      );
+      final zeroDefinition = handler.handle(
+        _linePositionRequest(
+          2,
+          'textDocument/definition',
+          typeclassesUri,
+          52,
+          '  fun empty() : Int = pos '.length,
+        ),
+      );
+
+      expect(
+        falseDefinition!['result'],
+        isNotNull,
+        reason: falseDefinition.toString(),
+      );
+      expect(
+        zeroDefinition!['result'],
+        isNotNull,
+        reason: zeroDefinition.toString(),
+      );
+      final falseLocation = falseDefinition['result'] as Map<String, dynamic>;
+      final zeroLocation = zeroDefinition['result'] as Map<String, dynamic>;
+      expect(
+        falseLocation['uri'],
+        File('../lib/stdlib/bool.doxa').absolute.uri.toString(),
+      );
+      expect((falseLocation['range'] as Map<String, dynamic>)['start'], {
+        'line': 5,
+        'character': '  '.length,
+      });
+      expect(
+        zeroLocation['uri'],
+        File('../lib/stdlib/nat.doxa').absolute.uri.toString(),
+      );
+      expect((zeroLocation['range'] as Map<String, dynamic>)['start'], {
+        'line': 7,
+        'character': '  '.length,
+      });
+    });
+
+    test('returns imported files for import declarations', () {
+      final directory = Directory.systemTemp.createTempSync('doxa-lsp-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final dependency = File('${directory.path}/dependency.doxa')
+        ..writeAsStringSync('data Dependency : Type {}\n');
+      final root = File('${directory.path}/root.doxa');
+      const source = 'import "dependency.doxa"\n';
+      final handler = LspHandler();
+      handler.handle(_didOpen(root.uri.toString(), source));
+
+      final result = handler.handle(
+        _linePositionRequest(
+          1,
+          'textDocument/definition',
+          root.uri.toString(),
+          0,
+          'import "'.length,
+        ),
+      );
+
+      expect(result!['result'], isNotNull, reason: result.toString());
+      final location = result['result'] as Map<String, dynamic>;
+      expect(location['uri'], dependency.uri.toString());
+      expect((location['range'] as Map<String, dynamic>)['start'], {
+        'line': 0,
+        'character': 0,
+      });
+    });
+
+    test('returns import targets before the document type-checks', () {
+      final directory = Directory.systemTemp.createTempSync('doxa-lsp-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final dependency = File('${directory.path}/dependency.doxa')
+        ..writeAsStringSync('data Dependency : Type {}\n');
+      final root = File('${directory.path}/root.doxa');
+      const source =
+          'import "dependency.doxa"\nval broken : Missing = missing\n';
+      final handler = LspHandler();
+      handler.handle(_didOpen(root.uri.toString(), source));
+
+      final result = handler.handle(
+        _linePositionRequest(
+          1,
+          'textDocument/definition',
+          root.uri.toString(),
+          0,
+          'import "'.length,
+        ),
+      );
+
+      expect(result!['result'], isNotNull, reason: result.toString());
+      final location = result['result'] as Map<String, dynamic>;
+      expect(location['uri'], dependency.uri.toString());
+    });
+
+    test('returns import targets after a later parse failure', () {
+      final directory = Directory.systemTemp.createTempSync('doxa-lsp-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final dependency = File('${directory.path}/dependency.doxa')
+        ..writeAsStringSync('data Dependency : Type {}\n');
+      final root = File('${directory.path}/root.doxa');
+      const source = 'import "dependency.doxa"\nval broken : Dependency =\n';
+      final handler = LspHandler();
+      handler.handle(_didOpen(root.uri.toString(), source));
+
+      final result = handler.handle(
+        _linePositionRequest(
+          1,
+          'textDocument/definition',
+          root.uri.toString(),
+          0,
+          'import "'.length,
+        ),
+      );
+
+      expect(result!['result'], isNotNull, reason: result.toString());
+      final location = result['result'] as Map<String, dynamic>;
+      expect(location['uri'], dependency.uri.toString());
+    });
+
+    test('resolves constructors with multiple imported source files', () {
+      final directory = Directory.systemTemp.createTempSync('doxa-lsp-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final bool = File('${directory.path}/bool.doxa')..writeAsStringSync(
+        'data Bool : Type { true_ : Bool; false_ : Bool; }\n',
+      );
+      File('${directory.path}/nat.doxa').writeAsStringSync(
+        'data Nat : Type { zero : Nat; succ : Nat -> Nat; }\n',
+      );
+      final root = File('${directory.path}/typeclasses.doxa');
+      const source =
+          'import "bool.doxa"\n'
+          'import "nat.doxa"\n'
+          'fun choose(n: Nat) : Bool = match n {\n'
+          '  case zero => false_\n'
+          '  case succ _ => true_\n'
+          '}\n';
+      final handler = LspHandler();
+      handler.handle(_didOpen(root.uri.toString(), source));
+
+      final result = handler.handle(
+        _linePositionRequest(
+          1,
+          'textDocument/definition',
+          root.uri.toString(),
+          3,
+          '  case zero => '.length,
+        ),
+      );
+
+      expect(result!['result'], isNotNull, reason: result.toString());
+      final location = result['result'] as Map<String, dynamic>;
+      expect(location['uri'], bool.uri.toString());
+    });
+
+    test('checks the standard-library prelude without ambient duplicates', () {
+      final prelude = File('../lib/stdlib/prelude.doxa').absolute;
+      final handler = LspHandler();
+      handler.handle(
+        _didOpen(prelude.uri.toString(), prelude.readAsStringSync()),
+      );
+
+      final result = handler.handle(
+        _request(1, 'textDocument/semanticTokens/full', prelude.uri.toString()),
+      );
+
+      expect(result!['result'], isA<Map<String, dynamic>>());
     });
 
     test('serves interleaved requests from their requested document', () {
@@ -284,6 +915,90 @@ void main() {
       );
       expect(handler.lastCheckMetricsFor(independentUri)!.fallback, isNull);
     });
+
+    test('recovers after sequential watched import edits', () {
+      final directory = Directory.systemTemp.createTempSync('doxa-lsp-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final base = File('${directory.path}/base.doxa')
+        ..writeAsStringSync('val identity: Type 1 = Prop\n');
+      final library = File('${directory.path}/library.doxa')..writeAsStringSync(
+        'import "base.doxa"\n'
+        'val libraryValue: Type 1 = identity\n',
+      );
+      final app = File('${directory.path}/app.doxa');
+      const appSource =
+          'import "library.doxa"\n'
+          'val value: Type 1 = identity\n';
+      const renamedAppSource =
+          'import "library.doxa"\n'
+          'val value: Type 1 = same\n';
+      final appUri = app.uri.toString();
+      final handler = LspHandler();
+      handler.handle(_didOpen(appUri, appSource));
+
+      // A workspace edit can expose an intermediate import graph in which the
+      // definition has changed before uses in dependent files are updated.
+      handler.handle(_didChange(appUri, renamedAppSource, version: 2));
+      base.writeAsStringSync('val same: Type 1 = Prop\n');
+      handler.handle(_watchedFileChange(base.uri.toString()));
+      library.writeAsStringSync(
+        'import "base.doxa"\n'
+        'val libraryValue: Type 1 = same\n',
+      );
+      handler.handle(_watchedFileChange(library.uri.toString()));
+
+      final definition = handler.handle(
+        _linePositionRequest(
+          1,
+          'textDocument/definition',
+          appUri,
+          1,
+          'val value: Type 1 = '.length,
+        ),
+      );
+      expect(definition!['result'], isNotNull, reason: definition.toString());
+      expect(
+        (definition['result'] as Map<String, dynamic>)['uri'],
+        base.uri.toString(),
+      );
+    });
+
+    test('open imported documents override disk contents for dependents', () {
+      final directory = Directory.systemTemp.createTempSync('doxa-lsp-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final dependency = File('${directory.path}/dependency.doxa')
+        ..writeAsStringSync('data One : Type { one : One; }');
+      final dependent = File('${directory.path}/dependent.doxa');
+      final dependentUri = dependent.uri.toString();
+      final dependencyUri = dependency.uri.toString();
+      final handler = LspHandler();
+      handler.handle(
+        _didOpen(dependentUri, 'import "dependency.doxa"\nval x : One = one\n'),
+      );
+
+      handler.handle(_didOpen(dependencyUri, 'data Two : Type { two : Two; }'));
+
+      final definition = handler.handle(
+        _linePositionRequest(1, 'textDocument/definition', dependentUri, 1, 8),
+      );
+      expect(definition!['result'], isNull);
+      expect(
+        handler.lastCheckMetricsFor(dependentUri)!.fallback,
+        'initial_check',
+      );
+
+      handler.handle({
+        'jsonrpc': '2.0',
+        'method': 'textDocument/didClose',
+        'params': {
+          'textDocument': {'uri': dependencyUri},
+        },
+      });
+      final restored = handler.handle(
+        _linePositionRequest(2, 'textDocument/definition', dependentUri, 1, 8),
+      );
+      expect(restored!['result'], isNotNull);
+    });
   });
 }
 
@@ -311,6 +1026,16 @@ Map<String, dynamic> _didChange(
     'textDocument': {'uri': uri, 'version': version},
     'contentChanges': [
       {'text': text},
+    ],
+  },
+};
+
+Map<String, dynamic> _watchedFileChange(String uri) => {
+  'jsonrpc': '2.0',
+  'method': 'workspace/didChangeWatchedFiles',
+  'params': {
+    'changes': [
+      {'uri': uri, 'type': 2},
     ],
   },
 };
@@ -354,3 +1079,38 @@ Map<String, dynamic> _linePositionRequest(
     'position': {'line': line, 'character': character},
   },
 };
+
+List<({int line, int character, int length, String type})>
+_decodeSemanticTokens(List<int> data) {
+  const legend = [
+    'type',
+    'class',
+    'enumMember',
+    'variable',
+    'function',
+    'method',
+    'parameter',
+    'property',
+    'keyword',
+    'modifier',
+    'namespace',
+    'comment',
+    'number',
+    'string',
+    'operator',
+  ];
+  var line = 0;
+  var character = 0;
+  final result = <({int line, int character, int length, String type})>[];
+  for (var i = 0; i < data.length; i += 5) {
+    line += data[i];
+    character = data[i] == 0 ? character + data[i + 1] : data[i + 1];
+    result.add((
+      line: line,
+      character: character,
+      length: data[i + 2],
+      type: legend[data[i + 3]],
+    ));
+  }
+  return result;
+}

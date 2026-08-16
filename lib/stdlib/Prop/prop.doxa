@@ -4,22 +4,22 @@
 import "../proofs.doxa"
 // Conjunction: A ∧ B
 
-data And[A: Prop, B: Prop] : Prop {
-  and_intro : (a: A) -> (b: B) -> And A B;
+data And[A: Prop, B: Prop]: Prop {
+  and_intro: (a: A) -> (b: B) -> And A B;
 }
 // Disjunction: A ∨ B
 
-data Or[A: Prop, B: Prop] : Prop {
-  or_intro_l : (a: A) -> Or A B;
-  or_intro_r : (b: B) -> Or A B;
+data Or[A: Prop, B: Prop]: Prop {
+  or_intro_l: (a: A) -> Or A B;
+  or_intro_r: (b: B) -> Or A B;
 }
 // Existential quantification: ∃ x: A, P x
 
-data Exists[A: Type] : (A -> Prop) -> Prop {
-  ex_intro : (x: A) -> (P: A -> Prop) -> (p: P x) -> Exists A P;
+data Exists[A: Type]: (A -> Prop) -> Prop {
+  ex_intro: (x: A) -> (P: A -> Prop) -> (p: P x) -> Exists A P;
 }
 // Negation: ¬ A ≡ A → False
 
-data Not[A: Prop] : Prop {
-  not_intro : (A -> False) -> Not A;
+data Not[A: Prop]: Prop {
+  not_intro: (A -> False) -> Not A;
 }

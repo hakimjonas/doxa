@@ -19,6 +19,7 @@ class DoxaLspConnector(private val project: Project) {
     private val diagnostics = ConcurrentHashMap<String, List<Map<String, Any?>>>()
     private val documentFeatures = ConcurrentHashMap<String, DocumentFeatures>()
     private val pendingNotifications = ConcurrentLinkedQueue<Pair<String, Any?>>()
+    private val documentStateLock = Any()
     private val unsupportedMethods = ConcurrentHashMap.newKeySet<String>()
     private val featureRefreshes = ConcurrentHashMap<String, ScheduledFuture<*>>()
     private val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
@@ -54,14 +55,18 @@ class DoxaLspConnector(private val project: Project) {
                 process = commandLine.createProcess()
                 val startedProcess = process!!
                 startedProcess.onExit().thenRun {
-                    if (process === startedProcess && isRunning) {
+                    if (process === startedProcess) {
+                        val wasRunning = isRunning
                         isRunning = false
+                        isStarting = false
                         transport?.stop()
                         transport = null
                         process = null
                         pendingRequests.values.forEach { it.cancel(true) }
                         pendingRequests.clear()
-                        DoxaNotifications.serverError(project, "The Doxa language server stopped unexpectedly. Open a Doxa file to restart it.")
+                        if (wasRunning) {
+                            DoxaNotifications.serverError(project, "The Doxa language server stopped unexpectedly. Open a Doxa file to restart it.")
+                        }
                     }
                 }
                 LOG.info("Server process started, setting up transport")
@@ -82,10 +87,27 @@ class DoxaLspConnector(private val project: Project) {
                 sendNotificationDirect("workspace/didChangeConfiguration", mapOf(
                     "settings" to emptyMap<String, Any>(),
                 ))
-                isRunning = true
-                isStarting = false
+                synchronized(documentStateLock) {
+                    // A restarted process has no document state. Replay every
+                    // current editor snapshot before accepting new updates.
+                    openDocumentTexts.forEach { (uri, text) ->
+                        sendNotificationDirect("textDocument/didOpen", mapOf(
+                            "textDocument" to mapOf(
+                                "uri" to uri,
+                                "languageId" to "doxa",
+                                "version" to (documentVersions[uri]?.get() ?: 1),
+                                "text" to text,
+                            ),
+                        ))
+                    }
+                    isRunning = true
+                    isStarting = false
+                }
                 while (true) {
                     val notification = pendingNotifications.poll() ?: break
+                    if (notification.first == "textDocument/didOpen" || notification.first == "textDocument/didChange") {
+                        continue
+                    }
                     sendNotificationDirect(notification.first, notification.second)
                 }
                 openDocumentTexts.forEach { (uri, text) ->
@@ -218,31 +240,42 @@ class DoxaLspConnector(private val project: Project) {
     private val documentVersions = ConcurrentHashMap<String, AtomicInteger>()
 
     fun didOpen(uri: String, text: String) {
-        if (openFiles.putIfAbsent(uri, true) != null) return
-        openDocumentTexts[uri] = text
-        documentVersions[uri] = AtomicInteger(1)
-        sendNotification("textDocument/didOpen", mapOf(
-            "textDocument" to mapOf(
-                "uri" to uri,
-                "languageId" to "doxa",
-                "version" to 1,
-                "text" to text,
-            ),
-        ))
+        synchronized(documentStateLock) {
+            if (openFiles.putIfAbsent(uri, true) != null) {
+                // File-opening and PSI/document events can race. The server must
+                // receive the most recent editor snapshot, not whichever event
+                // first marked this URI open.
+                if (openDocumentTexts[uri] != text) didChange(uri, text)
+                return
+            }
+            openDocumentTexts[uri] = text
+            documentVersions[uri] = AtomicInteger(1)
+            sendNotification("textDocument/didOpen", mapOf(
+                "textDocument" to mapOf(
+                    "uri" to uri,
+                    "languageId" to "doxa",
+                    "version" to 1,
+                    "text" to text,
+                ),
+            ))
+        }
         refreshDocumentFeatures(uri, 1, text)
     }
 
     fun didChange(uri: String, text: String) {
-        if (!openFiles.containsKey(uri)) {
-            didOpen(uri, text)
-            return
+        val version: Int
+        synchronized(documentStateLock) {
+            if (!openFiles.containsKey(uri)) {
+                didOpen(uri, text)
+                return
+            }
+            openDocumentTexts[uri] = text
+            version = documentVersions.computeIfAbsent(uri) { AtomicInteger(1) }.incrementAndGet()
+            sendNotification("textDocument/didChange", mapOf(
+                "textDocument" to mapOf("uri" to uri, "version" to version),
+                "contentChanges" to listOf(mapOf("text" to text)),
+            ))
         }
-        openDocumentTexts[uri] = text
-        val version = documentVersions.computeIfAbsent(uri) { AtomicInteger(1) }.incrementAndGet()
-        sendNotification("textDocument/didChange", mapOf(
-            "textDocument" to mapOf("uri" to uri, "version" to version),
-            "contentChanges" to listOf(mapOf("text" to text)),
-        ))
         scheduleFeatureRefresh(uri, version, text)
     }
 
@@ -254,15 +287,17 @@ class DoxaLspConnector(private val project: Project) {
     }
 
     fun didClose(uri: String) {
-        openFiles.remove(uri)
-        openDocumentTexts.remove(uri)
-        documentVersions.remove(uri)
+        synchronized(documentStateLock) {
+            openFiles.remove(uri)
+            openDocumentTexts.remove(uri)
+            documentVersions.remove(uri)
+            sendNotification("textDocument/didClose", mapOf(
+                "textDocument" to mapOf("uri" to uri),
+            ))
+        }
         diagnostics.remove(uri)
         documentFeatures.remove(uri)
         featureRefreshes.remove(uri)?.cancel(false)
-        sendNotification("textDocument/didClose", mapOf(
-            "textDocument" to mapOf("uri" to uri),
-        ))
     }
 
     private fun scheduleFeatureRefresh(uri: String, version: Int, text: String) {

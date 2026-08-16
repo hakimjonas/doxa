@@ -11,7 +11,7 @@ The kernel (Phases 0–14) is complete and verified:
 - 42-declaration stdlib proof roster (`plus_comm`, `map_compose`, `vlength_index`, etc.)
 - 766 tests, stack-safe defunctionalized driver, linear-time structural operations
 
-The tooling stack (Phases 0–3c, see `docs/TOOLING_PLAN.md`) is complete:
+The core tooling stack (Phases 0–3c, see `docs/TOOLING_PLAN.md`) is complete:
 - Tokenizer + syntax highlighting (rumil_tokens grammar)
 - GreenNode concrete syntax tree with position queries
 - Structured JSON output with per-declaration type/normal-form display
@@ -19,6 +19,10 @@ The tooling stack (Phases 0–3c, see `docs/TOOLING_PLAN.md`) is complete:
 - REPL (`doxa repl`) — interactive expression evaluation + declaration accumulation
 - LSP server (`doxa lsp`) — diagnostics, hover, go-to-definition, completion
 - Package split: `doxa` (kernel), `doxa_tooling` (CLI + WASM + LSP + REPL)
+
+Editor distribution and advanced semantic tooling continue under
+`docs/LSP_TOOLING_PLAN.md`. VS Code is the reference client; Zed and Helix are
+the next open-platform targets, while JetBrains work is deferred.
 
 What follows covers benchmarking, kernel hardening, and the language features
 that build Doxa from a proof-checker kernel into a practical proof assistant.

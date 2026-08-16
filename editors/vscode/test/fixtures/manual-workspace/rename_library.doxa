@@ -1,0 +1,3 @@
+import "rename_base.doxa"
+
+val libraryValue: Type 1 = same

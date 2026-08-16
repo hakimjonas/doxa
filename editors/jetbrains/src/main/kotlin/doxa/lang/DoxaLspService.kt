@@ -2,6 +2,7 @@ package doxa.lang
 
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.Disposable
+import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.event.CaretEvent
@@ -13,6 +14,9 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.openapi.vfs.newvfs.BulkFileListener
+import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import java.util.concurrent.ConcurrentHashMap
 
 @Service(Service.Level.PROJECT)
@@ -47,6 +51,19 @@ class DoxaLspService(val project: Project) : Disposable {
                 if (file.extension == "doxa") connector.didClose(file.url)
             }
         })
+
+        project.messageBus.connect(this).subscribe(VirtualFileManager.VFS_CHANGES, object : BulkFileListener {
+            override fun after(events: List<VFileEvent>) {
+                val changes = events.mapNotNull { event ->
+                    val file = event.file ?: return@mapNotNull null
+                    if (file.extension != "doxa") return@mapNotNull null
+                    mapOf("uri" to file.url, "type" to 2)
+                }
+                if (changes.isNotEmpty()) {
+                    connector.sendNotification("workspace/didChangeWatchedFiles", mapOf("changes" to changes))
+                }
+            }
+        })
     }
 
     fun startServer() {
@@ -64,6 +81,7 @@ class DoxaLspService(val project: Project) : Disposable {
     private fun syncDocument(document: Document) {
         val file = FileDocumentManager.getInstance().getFile(document) ?: return
         if (file.extension != "doxa") return
+        if (FileEditorManager.getInstance(project).getAllEditors(file).isEmpty()) return
         clearPositionFeatures(file.url)
         connector.didChange(file.url, document.text)
     }
@@ -80,13 +98,8 @@ class DoxaLspService(val project: Project) : Disposable {
         val key = positionKey(uri, offset) ?: return null
         val cached = definitionCache[key]
         if (cached != null) return cached.takeUnless { it === NoResult }
-
-        // Navigation is an explicit user action. Do not require a prior caret
-        // movement to have populated the asynchronous cache.
-        return connector.sendRequestBlocking(
-            "textDocument/definition",
-            positionParams(uri, text, offset),
-        )
+        requestDefinition(key, text)
+        return null
     }
 
     private fun prefetchPositionFeatures(document: Document, offset: Int) {
@@ -115,6 +128,7 @@ class DoxaLspService(val project: Project) : Disposable {
         connector.sendRequestAsync("textDocument/definition", positionParams(key.uri, text, key.offset)) { result ->
             definitionCache[key] = result ?: NoResult
             pendingDefinitions.remove(key)
+            DaemonCodeAnalyzer.getInstance(project).restart()
         }
     }
 
