@@ -150,6 +150,15 @@ final Parser<ParseError, String> _rawIdent = (letter() | char('_'))
 /// A lexed identifier (consumes trailing whitespace).
 final Parser<ParseError, String> _ident = _lex(_rawIdent);
 
+/// A lexed identifier paired with its exact source span.
+final Parser<ParseError, (String, DoxaSpan)> _identWithSpan =
+    position<ParseError>().flatMap(
+      (start) => _rawIdent
+          .zip(position<ParseError>())
+          .thenSkip(_ws)
+          .map((pair) => (pair.$1, DoxaSpan(start, pair.$2))),
+    );
+
 /// A keyword: an exact-string match that is not followed by another
 /// identifier character. Prevents `valid` from matching `val`.
 Parser<ParseError, String> _keyword(String word) =>
@@ -282,10 +291,11 @@ typedef _ValBinding =
     ({
       int start,
       String name,
+      DoxaSpan nameSpan,
       SExpr? domain,
       SExpr bound,
       bool isRec,
-      List<(String, SExpr)> funParams,
+      List<(String, SExpr, DoxaSpan)> funParams,
     });
 
 /// Optional `rec` keyword modifier on a `val` binding.
@@ -294,22 +304,24 @@ final Parser<ParseError, bool> _recMod = _keyword(
 ).map((_) => true).optional.map((v) => v ?? false);
 
 /// Value parameters for a `val rec` binding: `'(' name ':' expr (',' name ':' expr)* ')'`.
-final Parser<ParseError, List<(String, SExpr)>> _recValueParams = _sym('(')
-    .skipThen(
-      _ident
-          .flatMap<(String, SExpr)>(
-            (name) => _sym(':').skipThen(_expr).map((t) => (name, t)),
-          )
-          .sepBy(_sym(',')),
-    )
-    .thenSkip(_sym(')'));
+final Parser<ParseError, List<(String, SExpr, DoxaSpan)>> _recValueParams =
+    _sym('(')
+        .skipThen(
+          _identWithSpan
+              .flatMap<(String, SExpr, DoxaSpan)>(
+                (name) =>
+                    _sym(':').skipThen(_expr).map((t) => (name.$1, t, name.$2)),
+              )
+              .sepBy(_sym(',')),
+        )
+        .thenSkip(_sym(')'));
 
 final Parser<ParseError, _ValBinding> _valBinding = position<ParseError>()
     .flatMap(
       (start) => _keyword('val')
           .skipThen(_recMod)
           .flatMap(
-            (isRec) => _ident.flatMap((name) {
+            (isRec) => _identWithSpan.flatMap((name) {
               if (isRec) {
                 // val rec f(x: T): R = body
                 return _recValueParams.flatMap(
@@ -321,7 +333,8 @@ final Parser<ParseError, _ValBinding> _valBinding = position<ParseError>()
                             .map(
                               (body) => (
                                 start: start,
-                                name: name,
+                                name: name.$1,
+                                nameSpan: name.$2,
                                 domain: retType,
                                 bound: body,
                                 isRec: true,
@@ -341,7 +354,8 @@ final Parser<ParseError, _ValBinding> _valBinding = position<ParseError>()
                           .map(
                             (bound) => (
                               start: start,
-                              name: name,
+                              name: name.$1,
+                              nameSpan: name.$2,
                               domain: domain,
                               bound: bound,
                               isRec: false,
@@ -386,7 +400,7 @@ final Parser<ParseError, SExpr> _blockExpr = _sym('{').skipThen(
                   var bound = b.bound;
                   for (final p in b.funParams.reversed) {
                     bound = SExpr(
-                      SLamKind(p.$1, p.$2, bound),
+                      SLamKind(p.$1, p.$2, bound, paramSpan: p.$3),
                       DoxaSpan(b.start, end),
                     );
                   }
@@ -394,17 +408,30 @@ final Parser<ParseError, SExpr> _blockExpr = _sym('{').skipThen(
                   var domain = b.domain!;
                   for (final p in b.funParams.reversed) {
                     domain = SExpr(
-                      SPiKind(p.$1, p.$2, domain),
+                      SPiKind(p.$1, p.$2, domain, paramSpan: p.$3),
                       DoxaSpan(b.start, end),
                     );
                   }
                   body = SExpr(
-                    SLetKind(b.name, domain, bound, body, isRec: true),
+                    SLetKind(
+                      b.name,
+                      domain,
+                      bound,
+                      body,
+                      isRec: true,
+                      paramSpan: b.nameSpan,
+                    ),
                     DoxaSpan(b.start, end),
                   );
                 } else {
                   body = SExpr(
-                    SLetKind(b.name, b.domain, b.bound, body),
+                    SLetKind(
+                      b.name,
+                      b.domain,
+                      b.bound,
+                      body,
+                      paramSpan: b.nameSpan,
+                    ),
                     DoxaSpan(b.start, end),
                   );
                 }
@@ -522,7 +549,7 @@ final Parser<ParseError, SExpr> _matchExpr = position<ParseError>().flatMap(
 /// parenthesized atom.
 final Parser<ParseError, SExpr> _binder = position<ParseError>().flatMap(
   (start) => _sym('(')
-      .skipThen(_ident)
+      .skipThen(_identWithSpan)
       .flatMap(
         (name) => _sym(':')
             .skipThen(_expr)
@@ -544,8 +571,18 @@ final Parser<ParseError, SExpr> _binder = position<ParseError>().flatMap(
                         final span = DoxaSpan(start, end);
                         final kind =
                             domain == null || arrow == '=>'
-                                ? SLamKind(name, domain, body)
-                                : SPiKind(name, domain, body);
+                                ? SLamKind(
+                                  name.$1,
+                                  domain,
+                                  body,
+                                  paramSpan: name.$2,
+                                )
+                                : SPiKind(
+                                  name.$1,
+                                  domain,
+                                  body,
+                                  paramSpan: name.$2,
+                                );
                         return SExpr(kind, span);
                       }),
                     ),
@@ -558,7 +595,7 @@ final Parser<ParseError, SExpr> _binder = position<ParseError>().flatMap(
 final Parser<ParseError, SExpr> _implicitBinder = position<ParseError>()
     .flatMap(
       (start) => _sym('{')
-          .skipThen(_ident)
+          .skipThen(_identWithSpan)
           .flatMap(
             (name) => _sym(':')
                 .skipThen(_expr)
@@ -574,16 +611,18 @@ final Parser<ParseError, SExpr> _implicitBinder = position<ParseError>()
                                 final kind =
                                     arrow == '=>'
                                         ? SLamKind(
-                                          name,
+                                          name.$1,
                                           domain,
                                           body,
                                           icit: Icit.implicit,
+                                          paramSpan: name.$2,
                                         )
                                         : SPiKind(
-                                          name,
+                                          name.$1,
                                           domain,
                                           body,
                                           icit: Icit.implicit,
+                                          paramSpan: name.$2,
                                         );
                                 return SExpr(kind, span);
                               }),
@@ -916,7 +955,7 @@ Parser<ParseError, List<SFunTypeParam>> _funTypeParamGroup(
   bool isImplicit,
 ) => _sym(open)
     .skipThen(
-      _ident
+      _identWithSpan
           .flatMap<SFunTypeParam>(
             (name) => _sym(
               ':',
@@ -932,10 +971,11 @@ Parser<ParseError, List<SFunTypeParam>> _funTypeParamGroup(
                 constraints = cs;
               }
               return SFunTypeParam(
-                name,
+                name.$1,
                 kind,
                 isImplicit: isImplicit,
                 constraints: constraints,
+                span: name.$2,
               );
             }),
           )
@@ -978,11 +1018,14 @@ final Parser<ParseError, List<SFunTypeParam>> _funTypeParams =
         .map((groups) => [for (final g in groups) ...g]);
 
 /// Value parameters: `( name ':' expr (',' name ':' expr)* )` or `()`.
-final Parser<ParseError, List<(String, SExpr)>> _valueParams = _sym('(')
+final Parser<ParseError, List<(String, SExpr, DoxaSpan)>> _valueParams = _sym(
+      '(',
+    )
     .skipThen(
-      _ident
-          .flatMap<(String, SExpr)>(
-            (name) => _sym(':').skipThen(_expr).map((t) => (name, t)),
+      _identWithSpan
+          .flatMap<(String, SExpr, DoxaSpan)>(
+            (name) =>
+                _sym(':').skipThen(_expr).map((t) => (name.$1, t, name.$2)),
           )
           .sepBy(_sym(','))
           .optional
@@ -1024,18 +1067,20 @@ Parser<ParseError, SFunKind> _mkFunBody(bool isOpaque) => _ident.flatMap(
           .flatMap(
             (ret) => _structAnn.flatMap(
               (structAnn) => _terminationBy.flatMap(
-                (tby) => (_sym('=').skipThen(_expr) | _blockExpr).map(
-                  (body) => SFunKind(
+                (tby) => (_sym('=').skipThen(_expr) | _blockExpr).map((body) {
+                  final params = ps ?? const <(String, SExpr, DoxaSpan)>[];
+                  return SFunKind(
                     name,
                     tps,
-                    ps ?? const [],
+                    [for (final param in params) (param.$1, param.$2)],
                     ret,
                     body,
                     isOpaque: isOpaque,
                     structAnn: structAnn,
                     terminationBy: tby,
-                  ),
-                ),
+                    paramSpans: [for (final param in params) param.$3],
+                  );
+                }),
               ),
             ),
           ),
@@ -1313,18 +1358,22 @@ final Parser<ParseError, SClassMethod> _classMethod = position<ParseError>()
           ),
     );
 
-SExpr _buildMethodPi(String name, List<(String, SExpr)> params, SExpr retType) {
+SExpr _buildMethodPi(
+  String name,
+  List<(String, SExpr, DoxaSpan)> params,
+  SExpr retType,
+) {
   var ty = retType;
   const span = DoxaSpan.synthetic;
   for (final p in params.reversed) {
-    ty = SExpr(SPiKind(p.$1, p.$2, ty), span);
+    ty = SExpr(SPiKind(p.$1, p.$2, ty, paramSpan: p.$3), span);
   }
   return ty;
 }
 
 Parser<ParseError, SClassMethod> _buildMethodBody(
   String name,
-  List<(String, SExpr)> params,
+  List<(String, SExpr, DoxaSpan)> params,
   SExpr retType,
   SExpr? defaultBody,
   int start,

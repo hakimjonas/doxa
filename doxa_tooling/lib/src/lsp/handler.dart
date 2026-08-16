@@ -718,7 +718,7 @@ final class LspHandler {
     Map<String, dynamic> params,
   ) {
     final result = _buildResult(id, params, (offset) {
-      final target = _symbolTargetAt(offset);
+      final target = _symbolTargetAt(offset, includeLocal: true);
       if (target == null) return null;
       final context = params['context'] as Map<String, dynamic>?;
       final includeDeclaration =
@@ -856,15 +856,33 @@ final class LspHandler {
     if (nameStart >= nameEnd) {
       return {'jsonrpc': '2.0', 'id': id, 'result': null};
     }
-    final funcName = _documentText.substring(nameStart, nameEnd);
-    // Count commas between the matching '(' and cursor position.
-    final parenStart = _documentText.lastIndexOf('(', offset);
-    if (parenStart == -1) {
-      return {'jsonrpc': '2.0', 'id': id, 'result': null};
-    }
+    var funcName = _documentText.substring(nameStart, nameEnd);
+    var activeParameter = 0;
+    // A parenthesis starts signature help only while it is still open. This
+    // avoids mistaking a function declaration's parameter list for a call.
+    final parenStart = _unclosedParenBefore(offset);
     var commas = 0;
-    for (var i = parenStart + 1; i < offset; i++) {
-      if (_documentText[i] == ',') commas++;
+    if (parenStart != -1) {
+      final calledName = _identifierBefore(parenStart);
+      if (calledName == null) {
+        return {'jsonrpc': '2.0', 'id': id, 'result': null};
+      }
+      funcName = calledName;
+      for (var i = parenStart + 1; i < offset; i++) {
+        if (_documentText[i] == ',') commas++;
+      }
+      activeParameter = commas;
+    } else if ((nameEnd < offset &&
+            _documentText.substring(nameEnd, offset).trim().isEmpty) ||
+        (offset < _documentText.length &&
+            (_documentText[offset] == ' ' || _documentText[offset] == '\t'))) {
+      // The cursor follows a function head in a whitespace application.
+    } else {
+      final calledName = _identifierBefore(nameStart);
+      if (calledName == null) {
+        return {'jsonrpc': '2.0', 'id': id, 'result': null};
+      }
+      funcName = calledName;
     }
 
     // Look up the function's type from semInfo or declarations.
@@ -903,9 +921,37 @@ final class LspHandler {
             signatures: [signature],
             activeSignature: 0,
             activeParameter:
-                params_.isNotEmpty ? commas.clamp(0, params_.length - 1) : 0,
+                params_.isNotEmpty
+                    ? activeParameter.clamp(0, params_.length - 1)
+                    : 0,
           ).toJson(),
     };
+  }
+
+  int _unclosedParenBefore(int offset) {
+    var depth = 0;
+    for (var i = offset - 1; i >= 0; i--) {
+      final character = _documentText[i];
+      if (character == ')') {
+        depth++;
+      } else if (character == '(') {
+        if (depth == 0) return i;
+        depth--;
+      }
+    }
+    return -1;
+  }
+
+  String? _identifierBefore(int offset) {
+    var end = offset;
+    while (end > 0 && _documentText[end - 1].trim().isEmpty) {
+      end--;
+    }
+    var start = end;
+    while (start > 0 && _isIdentChar(_documentText, start - 1)) {
+      start--;
+    }
+    return start == end ? null : _documentText.substring(start, end);
   }
 
   /// Handle `textDocument/codeLens`.
@@ -1217,9 +1263,28 @@ final class LspHandler {
     );
   }
 
-  _SymbolTarget? _symbolTargetAt(int offset) {
+  _SymbolTarget? _symbolTargetAt(int offset, {bool includeLocal = false}) {
     final info = _infoAt(offset) ?? _infoAt(offset - 1);
-    if (info != null) return _symbolTargetForInfo(info);
+    if (info != null) {
+      if (info.kind == SemInfoKind.localVar && !includeLocal) return null;
+      return _symbolTargetForInfo(info);
+    }
+    if (includeLocal) {
+      final document = _activeIndexedDocument;
+      if (document != null) {
+        for (final local in document.success.semInfo) {
+          final definition = local.defSpan;
+          if (local.kind != SemInfoKind.localVar ||
+              definition == null ||
+              definition.isSynthetic ||
+              offset < definition.start ||
+              offset > definition.end) {
+            continue;
+          }
+          return _symbolTargetForInfo(local);
+        }
+      }
+    }
     final declaration = _declarationAt(offset) ?? _declarationAt(offset - 1);
     return declaration == null
         ? null
@@ -1247,6 +1312,14 @@ final class LspHandler {
         kind: info.kind,
         definitionSpan: definitionSpan,
         name: name,
+      );
+    }
+    if (info.kind == SemInfoKind.localVar) {
+      return _SymbolTarget(
+        definitionUri: _definitionUriFor(info, _activeIndexedDocument!),
+        kind: info.kind,
+        definitionSpan: definitionSpan,
+        name: info.name,
       );
     }
     return null;

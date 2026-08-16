@@ -376,5 +376,20 @@ void main() {
       expect(r.span.start, 0);
       expect(r.span.end, 11);
     });
+
+    test('binder spans cover identifier tokens', () {
+      final lambda = unwrap(parseExpr('(x: A) => x')).kind as SLamKind;
+      final pi = unwrap(parseExpr('(x: A) -> x')).kind as SPiKind;
+      final fun =
+          unwrap(
+                parseProgram('fun id[A: Type](value: A) : A = value'),
+              ).decls.single.kind
+              as SFunKind;
+
+      expect(lambda.paramSpan, const DoxaSpan(1, 2));
+      expect(pi.paramSpan, const DoxaSpan(1, 2));
+      expect(fun.typeParams.single.span, const DoxaSpan(7, 8));
+      expect(fun.paramSpans.single, const DoxaSpan(16, 21));
+    });
   });
 }

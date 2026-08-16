@@ -311,10 +311,29 @@ Completion criteria:
 
 ### 5. Open-platform validation and syntax backends
 
+#### Immediate order
+
+Complete the following sequence before beginning Zed and Helix discovery:
+
+1. Finish the VS Code manual validation gate and commit the pending server and
+   extension regressions.
+2. Implement local Go to Definition and References for function parameters,
+   Pi and lambda binders, and `let` bindings. The parser records the binder
+   identifier span; elaboration carries that span through lexical scope and
+   records it as the resolved use's `SemInfo.defSpan`. References resolve from
+   either a binder or a use. Tests cover exact binder ranges and shadowing.
+   Local Rename remains out of scope.
+3. Rebuild the `doxa lsp` executable and validate local Definition and
+   References in the same representative multi-file VS Code workspace used for
+   discovery.
+
+This is a focused parser and semantic-metadata change. It does not require a
+Rumil grammar rewrite, expression-level green nodes, or a Tree-sitter backend.
+
 #### Discovery, timeboxed to two working days
 
-After VS Code manual validation, run a two-working-day discovery for Zed and
-Helix before committing to either editor adapter. The discovery uses the
+After the immediate order completes, run a two-working-day discovery for Zed
+and Helix before committing to either editor adapter. The discovery uses the
 current `doxa lsp` executable and a representative multi-file workspace. It
 records installation flow, language-server launch configuration, grammar and
 highlighting requirements, semantic-token support, watched-file behavior,
@@ -342,12 +361,18 @@ expected presentation path there.
 #### Native syntax and integrations, when selected by discovery
 
 Do not write a standalone Doxa `grammar.js` as a competing syntax authority.
-If an editor needs native syntax support, grammar work has two deliverables:
+If discovery selects native syntax support, grammar work has two deliverables:
 
 1. A Rumil-owned declarative grammar IR and lowering strategy, with explicit
    backend capability diagnostics.
 2. A generated `tree-sitter-doxa` grammar plus queries and minimal Zed and
    Helix integrations that launch `doxa lsp`.
+
+The declarative grammar IR belongs in a new package in the `rumil-dart`
+family. Its API follows the editor capability requirements recorded during
+discovery. It lowers to Rumil's authoritative parser and to syntax-only
+backends; Dart semantic actions, desugaring, and elaboration remain outside the
+IR.
 
 Completion criteria for native syntax and integrations:
 
@@ -439,14 +464,19 @@ source provenance.
 2. Preserve source provenance for source declarations, constructors,
    projections, generated recursors, and imported declarations. Go to
    Definition must distinguish source-backed targets from virtual targets.
-3. Classify declaration and reference occurrences separately. Extend semantic
+3. Preserve source provenance for local binders. Go to Definition resolves
+   parameter, lambda, and `let` uses to their lexical binder, including under
+   shadowing. References resolve from a binder or a use to the other occurrences
+   of that lexical binder. This requires parser spans for binder names and
+   stable binder identity in semantic metadata. Local Rename remains deferred.
+4. Classify declaration and reference occurrences separately. Extend semantic
    metadata and token modifiers for declarations, reads, writes where Doxa
    permits writes, implicit parameters, type parameters, constructors,
    projections, generated declarations, and typeclass members.
-4. Present dependent types readably. Hover shows the resolved declaration type
+5. Present dependent types readably. Hover shows the resolved declaration type
    instantiated at the cursor; normalization and implicit-argument detail are
    opt-in views rather than the default display.
-5. Map the expanded semantic-token legend to each client without changing the
+6. Map the expanded semantic-token legend to each client without changing the
    server legend. Keep lexical highlighting as the immediate fallback while
    semantic results are pending.
 
@@ -456,6 +486,10 @@ Completion criteria:
   keywords, and compiler primitives.
 - Source-backed symbols navigate to their declaration across files. Virtual
   built-ins navigate to a readable, stable documentation target when useful.
+- Local parameter, lambda, and `let` uses navigate to their lexical binder,
+  including when an inner binder shadows an outer binder.
+- References from a local binder or use return only occurrences of that lexical
+  binder, including its declaration when requested.
 - Semantic-token tests assert declaration/reference roles, kinds, modifiers,
   ranges, and UTF-16 positions.
 - Client tests assert that semantic colors replace, rather than erase, lexical

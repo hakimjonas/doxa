@@ -46,8 +46,7 @@ final class SemInfo {
 
   /// The span of the declaration site, when known.
   ///
-  /// Null for local variables (the elaborator does not currently
-  /// track binder-spans) and for implicit parameters.
+  /// Null for synthetic local binders and implicit parameters.
   final DoxaSpan? defSpan;
 
   /// URI-like file path containing [defSpan] when it comes from an import.

@@ -43,6 +43,62 @@ void main() {
       expect(funHover!['result'], isNotNull);
     });
 
+    test('navigates local uses to their lexical binders', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/local-definition.doxa';
+      const source =
+          'fun parameter[A: Type](value: A) : A = value\n'
+          'fun lambda[A: Type] : A -> A = (value: A) => value\n'
+          'fun nested[A: Type](value: A) : A = { val value: A = value; value }\n'
+          'fun pi[A: Type]{P: A -> Type}(x: A, value: (inner: A) -> P inner) : P x = value x\n';
+      handler.handle(_didOpen(uri, source));
+      final lines = source.split('\n');
+
+      void expectDefinition(
+        int line,
+        int character,
+        int expectedLine,
+        int expectedCharacter,
+      ) {
+        final result = handler.handle(
+          _linePositionRequest(
+            1,
+            'textDocument/definition',
+            uri,
+            line,
+            character,
+          ),
+        );
+        final location = result!['result'] as Map<String, dynamic>;
+        expect((location['range'] as Map<String, dynamic>)['start'], {
+          'line': expectedLine,
+          'character': expectedCharacter,
+        });
+      }
+
+      final parameter = lines[0];
+      final typeParameter = parameter.indexOf('A');
+      final typeParameterUse = parameter.indexOf('A', typeParameter + 1);
+      expectDefinition(0, typeParameterUse, 0, typeParameter);
+      final parameterDecl = parameter.indexOf('value');
+      expectDefinition(0, parameter.lastIndexOf('value'), 0, parameterDecl);
+
+      final lambda = lines[1];
+      final lambdaDecl = lambda.indexOf('value');
+      expectDefinition(1, lambda.lastIndexOf('value'), 1, lambdaDecl);
+
+      final nested = lines[2];
+      final functionValue = nested.indexOf('value');
+      final localValue = nested.indexOf('value', functionValue + 1);
+      final boundValue = nested.indexOf('value', localValue + 1);
+      expectDefinition(2, boundValue, 2, functionValue);
+      expectDefinition(2, nested.lastIndexOf('value'), 2, localValue);
+
+      final pi = lines[3];
+      final inner = pi.indexOf('inner');
+      expectDefinition(3, pi.lastIndexOf('inner'), 3, inner);
+    });
+
     test('provides hover documentation before semantic checking succeeds', () {
       final handler = LspHandler();
       const uri = 'file:///workspace/keyword.doxa';
@@ -190,6 +246,67 @@ void main() {
       );
     });
 
+    test('excludes generated data eliminators from document symbols', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/status.doxa';
+      const source =
+          'data Status : Type {\n'
+          '  ready : Status;\n'
+          '  blocked : Status;\n'
+          '}\n'
+          '\n'
+          'fun keep(status: Status) : Status = status\n';
+      handler.handle(_didOpen(uri, source));
+
+      final result = handler.handle(
+        _request(1, 'textDocument/documentSymbol', uri),
+      );
+
+      final symbols = result!['result'] as List<dynamic>;
+      expect(
+        symbols.map((symbol) => (symbol as Map<String, dynamic>)['name']),
+        ['Status', 'keep'],
+      );
+    });
+
+    test('provides signature help for whitespace application', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/signature.doxa';
+      const source =
+          'data Status : Type {\n'
+          '  ready : Status;\n'
+          '  blocked : Status;\n'
+          '}\n'
+          '\n'
+          'fun keep(status: Status) : Status = status\n'
+          'fun preserve(status: Status) : Status = keep status\n';
+      handler.handle(_didOpen(uri, source));
+
+      const callPrefix = 'fun preserve(status: Status) : Status = keep ';
+      for (final character in [
+        callPrefix.length - 1,
+        callPrefix.length,
+        callPrefix.length + 6,
+      ]) {
+        final result = handler.handle(
+          _linePositionRequest(
+            1,
+            'textDocument/signatureHelp',
+            uri,
+            6,
+            character,
+          ),
+        );
+
+        final help = result!['result'] as Map<String, dynamic>;
+        final signature =
+            (help['signatures'] as List<dynamic>).single
+                as Map<String, dynamic>;
+        expect(signature['label'], 'keep (status: Status)');
+        expect(help['activeParameter'], 0);
+      }
+    });
+
     test('places declaration inlay hints after declaration names', () {
       final handler = LspHandler();
       const uri = 'file:///workspace/nat.doxa';
@@ -303,6 +420,57 @@ void main() {
         ),
       );
       expect(localUse!['result'], isNull);
+    });
+
+    test('finds local binder references without enabling local rename', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/local-references.doxa';
+      const source =
+          'fun nested[A: Type](status: A) : A = { val status: A = status; status }\n';
+      handler.handle(_didOpen(uri, source));
+      final parameter = source.indexOf('status');
+      final local = source.indexOf('status', parameter + 1);
+      final parameterUse = source.indexOf('status', local + 1);
+      final localUse = source.lastIndexOf('status');
+
+      int startCharacter(Object? location) {
+        final range =
+            (location as Map<String, dynamic>)['range'] as Map<String, dynamic>;
+        final start = range['start'] as Map<String, dynamic>;
+        return start['character'] as int;
+      }
+
+      List<int> referencesAt(int character, {bool includeDeclaration = true}) {
+        final result = handler.handle({
+          'jsonrpc': '2.0',
+          'id': 1,
+          'method': 'textDocument/references',
+          'params': {
+            'textDocument': {'uri': uri},
+            'position': {'line': 0, 'character': character},
+            'context': {'includeDeclaration': includeDeclaration},
+          },
+        });
+        return [
+          for (final Object? location in result!['result'] as List<dynamic>)
+            startCharacter(location),
+        ];
+      }
+
+      expect(
+        referencesAt(parameterUse),
+        unorderedEquals([parameter, parameterUse]),
+      );
+      expect(referencesAt(localUse), unorderedEquals([local, localUse]));
+      expect(referencesAt(local), unorderedEquals([local, localUse]));
+      expect(referencesAt(parameter, includeDeclaration: false), [
+        parameterUse,
+      ]);
+
+      final prepared = handler.handle(
+        _linePositionRequest(2, 'textDocument/prepareRename', uri, 0, local),
+      );
+      expect(prepared!['result'], isNull);
     });
 
     test('finds top-level declaration references from the declaration', () {

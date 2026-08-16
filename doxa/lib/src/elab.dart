@@ -773,23 +773,27 @@ sealed class _LocalScope {
   const _LocalScope();
 
   /// Push [name] as the new innermost binding.
-  _LocalScope push(String name) => _LocalCons(name, this);
+  _LocalScope push(String name, [DoxaSpan span = DoxaSpan.synthetic]) =>
+      _LocalCons(name, span, this);
 
-  /// Return the de Bruijn index of [name], or -1 if not bound locally.
-  int indexOf(String name) {
+  /// Return the index and binder span for [name], or null if it is absent.
+  (int, DoxaSpan)? lookup(String name) {
     var i = 0;
     var s = this;
     while (true) {
       switch (s) {
         case _LocalNil():
-          return -1;
-        case _LocalCons(:final name_, :final rest):
-          if (name_ == name) return i;
+          return null;
+        case _LocalCons(:final name_, :final span, :final rest):
+          if (name_ == name) return (i, span);
           i += 1;
           s = rest;
       }
     }
   }
+
+  /// Return the de Bruijn index of [name], or -1 if it is absent.
+  int indexOf(String name) => lookup(name)?.$1 ?? -1;
 }
 
 final class _LocalNil extends _LocalScope {
@@ -798,10 +802,11 @@ final class _LocalNil extends _LocalScope {
 
 final class _LocalCons extends _LocalScope {
   // The binder name. Trailing-underscore to avoid shadowing `name` in
-  // the enclosing class's `indexOf`.
+  // the enclosing class's `lookup`.
   final String name_;
+  final DoxaSpan span;
   final _LocalScope rest;
-  const _LocalCons(this.name_, this.rest);
+  const _LocalCons(this.name_, this.span, this.rest);
 }
 
 /// A single `fun` binder (type-param or value-param) after
@@ -818,7 +823,15 @@ final class _FunBinder {
   /// sites and filled in by unification.
   final Icit icit;
 
-  const _FunBinder(this.name, this.type, this.icit);
+  /// The source span of [name], or synthetic for generated binders.
+  final DoxaSpan span;
+
+  const _FunBinder(
+    this.name,
+    this.type,
+    this.icit, [
+    this.span = DoxaSpan.synthetic,
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -858,8 +871,11 @@ final class _ElabState {
   /// Extend state with a new binder [name] of [type]. The [ctx] gains
   /// a fresh neutral at the current level; [names] gains the name at
   /// the head so [lookupLocal] returns index 0 for it.
-  _ElabState push(String name, Value type) =>
-      _ElabState(topEnv, ctx.extend(type), names.push(name));
+  _ElabState push(
+    String name,
+    Value type, [
+    DoxaSpan span = DoxaSpan.synthetic,
+  ]) => _ElabState(topEnv, ctx.extend(type), names.push(name, span));
 
   /// Extend state with a let-bound binder whose type and concrete
   /// [value] are both known (the `_inferExpr(SLet)` path). Uses
@@ -867,16 +883,20 @@ final class _ElabState {
   /// `_inferExpr` calls evaluate the body under an env carrying the
   /// actual bound value; the body's inferred type is then already
   /// correct in the outer scope without a post-hoc substitution.
-  _ElabState pushWith(String name, Value type, Value value) =>
-      _ElabState(topEnv, ctx.extendWith(type, value), names.push(name));
+  _ElabState pushWith(
+    String name,
+    Value type,
+    Value value, [
+    DoxaSpan span = DoxaSpan.synthetic,
+  ]) => _ElabState(topEnv, ctx.extendWith(type, value), names.push(name, span));
 
-  /// Look up a local [name]: returns (index, type) or null if it does
+  /// Look up a local [name]: returns (index, type, binder span) or null if it does
   /// not name a local binder. The index is a de Bruijn index into
   /// [ctx]; the type is the value-level type bound there.
-  (int, Value)? lookupLocal(String name) {
-    final i = names.indexOf(name);
-    if (i < 0) return null;
-    return (i, ctx.lookupType(i));
+  (int, Value, DoxaSpan)? lookupLocal(String name) {
+    final local = names.lookup(name);
+    if (local == null) return null;
+    return (local.$1, ctx.lookupType(local.$1), local.$2);
   }
 }
 
@@ -1664,14 +1684,14 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
     case SIdentKind(:final name):
       final local = state.lookupLocal(name);
       if (local != null) {
-        final (index, type) = local;
+        final (index, type, defSpan) = local;
         _recordSemInfo(
           state,
           expr.span,
           name,
           SemInfoKind.localVar,
           type,
-          null,
+          defSpan.isSynthetic ? null : defSpan,
         );
         return (TBound(index), type);
       }
@@ -1829,14 +1849,14 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       }
       final local = state.lookupLocal(flat);
       if (local != null) {
-        final (index, type) = local;
+        final (index, type, defSpan) = local;
         _recordSemInfo(
           state,
           expr.span,
           flat,
           SemInfoKind.localVar,
           type,
-          null,
+          defSpan.isSynthetic ? null : defSpan,
         );
         return (TBound(index), type);
       }
@@ -1861,7 +1881,13 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       );
       return (TTop(flat), topEntry.type);
 
-    case SPiKind(:final param, :final domain, :final codomain, :final icit):
+    case SPiKind(
+      :final param,
+      :final paramSpan,
+      :final domain,
+      :final codomain,
+      :final icit,
+    ):
       // Pi-type elaboration. Sort computation follows `_piSort` in
       // eval.dart (SPEC §8.2 PTS rules). We infer both sides and
       // compute the Pi's sort when both sides inferred cleanly,
@@ -1870,7 +1896,7 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       final domV = eval(domT, state.ctx.env);
       final binderName = param ?? ' _';
       final (codT, codSort) = _inferExpr(
-        state.push(binderName, domV),
+        state.push(binderName, domV, paramSpan),
         codomain,
       );
       final resultV = _computePiSort(domSort, codSort) ?? _vType0;
@@ -1878,6 +1904,7 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
 
     case SLetKind(
       :final param,
+      :final paramSpan,
       :final domain,
       :final bound,
       :final body,
@@ -1896,13 +1923,20 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
         // Extract params and inner body from the lambda chain bound.
         final List<SExpr> paramDomains = [];
         final List<String> paramNames = [];
+        final List<DoxaSpan> paramSpans = [];
         SExpr innerBody = bound;
         var extracting = true;
         while (extracting) {
           switch (innerBody.kind) {
-            case SLamKind(:final param, :final domain, :final body):
+            case SLamKind(
+              :final param,
+              :final paramSpan,
+              :final domain,
+              :final body,
+            ):
               paramNames.add(param);
               paramDomains.add(domain!);
+              paramSpans.add(paramSpan);
               innerBody = body;
             default:
               extracting = false;
@@ -1917,7 +1951,7 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
           final (domT, _) = _inferExpr(funState, paramDomains[i]);
           final domV = eval(domT, funState.ctx.env);
           domainTerms.add(domT);
-          funState = funState.push(paramNames[i], domV);
+          funState = funState.push(paramNames[i], domV, paramSpans[i]);
         }
         Term funcBody = _inferExpr(funState, innerBody).$1;
         for (var i = paramNames.length - 1; i >= 0; i--) {
@@ -1929,7 +1963,7 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
         const decreasingArg = 0;
         final arity = paramNames.length;
         final (bodyTerm, bodyV) = _inferExpr(
-          state.pushWith(param, piV, boundV),
+          state.pushWith(param, piV, boundV, paramSpan),
           body,
         );
         return (
@@ -1964,12 +1998,18 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       final domainV = eval(domainTerm, state.ctx.env);
       final boundV = eval(boundTerm, state.ctx.env);
       final (bodyTerm, bodyV) = _inferExpr(
-        state.pushWith(param, domainV, boundV),
+        state.pushWith(param, domainV, boundV, paramSpan),
         body,
       );
       return (TLet(domainTerm, boundTerm, bodyTerm, name: param), bodyV);
 
-    case SLamKind(:final param, :final domain, :final body, :final icit):
+    case SLamKind(
+      :final param,
+      :final paramSpan,
+      :final domain,
+      :final body,
+      :final icit,
+    ):
       // Lambda elaboration in infer mode. An unannotated lambda
       // (`(x) => body`) cannot synthesize its domain here; it only
       // elaborates in check mode against an explicit Pi (see `_checkExpr`
@@ -1997,7 +2037,7 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       // path).
       final (domT, _) = _inferExpr(state, domain);
       final domV = eval(domT, state.ctx.env);
-      final pushed = state.push(param, domV);
+      final pushed = state.push(param, domV, paramSpan);
       final (bodyT, bodyV) = _inferExpr(pushed, body);
       final bodyTypeT = quote(pushed.ctx.level, bodyV);
       return (
@@ -2377,7 +2417,7 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
       expected.codomain.body,
       expected.codomain.env.extend(VNeutral(NVar(state.ctx.level))),
     );
-    final pushed = state.push(kind.param, expected.domain);
+    final pushed = state.push(kind.param, expected.domain, kind.paramSpan);
     final bodyT = _checkExpr(pushed, kind.body, opened);
     return TLam(domT, bodyT, name: kind.param, icit: kind.icit);
   }
@@ -4029,10 +4069,17 @@ TopBinding _elabFun(
         tp.name,
         tp.kind ?? const SExpr(STypeKind(null), DoxaSpan.synthetic),
         tp.isImplicit ? Icit.implicit : Icit.explicit,
+        tp.span,
       ),
       ..._constraintBinders(tp),
     ],
-    for (final p in kind.params) _FunBinder(p.$1, p.$2, Icit.explicit),
+    for (var i = 0; i < kind.params.length; i++)
+      _FunBinder(
+        kind.params[i].$1,
+        kind.params[i].$2,
+        Icit.explicit,
+        i < kind.paramSpans.length ? kind.paramSpans[i] : DoxaSpan.synthetic,
+      ),
   ];
   final funBodyTerm = _buildFunBody(
     topEnv,
@@ -4167,10 +4214,19 @@ TopBinding _elabFun(
             tp.name,
             tp.kind ?? const SExpr(STypeKind(null), DoxaSpan.synthetic),
             tp.isImplicit ? Icit.implicit : Icit.explicit,
+            tp.span,
           ),
           ..._constraintBinders(tp),
         ],
-        for (final p in m.fun.params) _FunBinder(p.$1, p.$2, Icit.explicit),
+        for (var i = 0; i < m.fun.params.length; i++)
+          _FunBinder(
+            m.fun.params[i].$1,
+            m.fun.params[i].$2,
+            Icit.explicit,
+            i < m.fun.paramSpans.length
+                ? m.fun.paramSpans[i]
+                : DoxaSpan.synthetic,
+          ),
       ],
       retType,
       metas: metas,
@@ -4335,7 +4391,7 @@ Term _buildFunBody(
     final (domT, _) = _inferExpr(state, b.type);
     final domV = eval(domT, state.ctx.env);
     domains.add(domT);
-    state = state.push(b.name, domV);
+    state = state.push(b.name, domV, b.span);
   }
   // Elaborate the return type under the binder-extended state; eval
   // to get the expected Value for body check-mode elaboration.
@@ -4379,7 +4435,7 @@ Term _buildFunType(
     final (domT, _) = _inferExpr(state, b.type);
     final domV = eval(domT, state.ctx.env);
     domains.add(domT);
-    state = state.push(b.name, domV);
+    state = state.push(b.name, domV, b.span);
   }
   final (returnT, _) = _inferExpr(state, returnType);
   // Preserve source parameter names as diagnostic hints on each Pi.
@@ -6259,7 +6315,13 @@ SExpr _replaceSelfCalls(
       if (walkedFn.kind == fn.kind && walkedArg.kind == arg.kind) return expr;
       return SExpr(SAppKind(walkedFn, walkedArg), DoxaSpan.synthetic);
 
-    case SLamKind(:final param, :final domain, :final body, :final icit):
+    case SLamKind(
+      :final param,
+      :final paramSpan,
+      :final domain,
+      :final body,
+      :final icit,
+    ):
       final walkedDomain =
           domain != null
               ? _replaceSelfCalls(
@@ -6282,12 +6344,19 @@ SExpr _replaceSelfCalls(
         return expr;
       }
       return SExpr(
-        SLamKind(param, walkedDomain, walkedBody, icit: icit),
+        SLamKind(
+          param,
+          walkedDomain,
+          walkedBody,
+          icit: icit,
+          paramSpan: paramSpan,
+        ),
         DoxaSpan.synthetic,
       );
 
     case SLetKind(
       :final param,
+      :final paramSpan,
       :final domain,
       :final bound,
       :final body,
@@ -6324,11 +6393,24 @@ SExpr _replaceSelfCalls(
         return expr;
       }
       return SExpr(
-        SLetKind(param, walkedDomain, walkedBound, walkedBody, isRec: isRec),
+        SLetKind(
+          param,
+          walkedDomain,
+          walkedBound,
+          walkedBody,
+          isRec: isRec,
+          paramSpan: paramSpan,
+        ),
         DoxaSpan.synthetic,
       );
 
-    case SPiKind(:final param, :final domain, :final codomain, :final icit):
+    case SPiKind(
+      :final param,
+      :final paramSpan,
+      :final domain,
+      :final codomain,
+      :final icit,
+    ):
       final walkedDomain = _replaceSelfCalls(
         domain,
         originalName,
@@ -6350,7 +6432,13 @@ SExpr _replaceSelfCalls(
         return expr;
       }
       return SExpr(
-        SPiKind(param, walkedDomain, walkedCodomain, icit: icit),
+        SPiKind(
+          param,
+          walkedDomain,
+          walkedCodomain,
+          icit: icit,
+          paramSpan: paramSpan,
+        ),
         DoxaSpan.synthetic,
       );
 
@@ -6552,6 +6640,7 @@ DeclResult _desugarFuel(
     isOpaque: false,
     structAnn: null,
     terminationBy: null,
+    paramSpans: [DoxaSpan.synthetic, ...kind.paramSpans],
   );
 
   final allBinders = <_FunBinder>[
@@ -6560,10 +6649,17 @@ DeclResult _desugarFuel(
         tp.name,
         tp.kind ?? const SExpr(STypeKind(null), DoxaSpan.synthetic),
         tp.isImplicit ? Icit.implicit : Icit.explicit,
+        tp.span,
       ),
       ..._constraintBinders(tp),
     ],
-    for (final p in kind.params) _FunBinder(p.$1, p.$2, Icit.explicit),
+    for (var i = 0; i < kind.params.length; i++)
+      _FunBinder(
+        kind.params[i].$1,
+        kind.params[i].$2,
+        Icit.explicit,
+        i < kind.paramSpans.length ? kind.paramSpans[i] : DoxaSpan.synthetic,
+      ),
   ];
 
   final wrapperType = _buildFunType(topEnv, allBinders, cleanRet, metas: metas);
@@ -6571,7 +6667,7 @@ DeclResult _desugarFuel(
   final fuelAllBinders = <_FunBinder>[
     const _FunBinder(
       'fuel',
-      const SExpr(SIdentKind('Nat'), DoxaSpan.synthetic),
+      SExpr(SIdentKind('Nat'), DoxaSpan.synthetic),
       Icit.explicit,
     ),
     ...allBinders,
@@ -6641,6 +6737,7 @@ DeclResult _desugarFuel(
     isOpaque: false,
     structAnn: null,
     terminationBy: null,
+    paramSpans: kind.paramSpans,
   );
 
   final wrapperBinding = _elabFun(scratchEnv, span, wrapperKind, metas: metas);

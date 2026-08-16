@@ -358,7 +358,9 @@ Doxa's equivalent of Lean 4's InfoTree.
 
 **Status:** Implemented for source-backed semantic references. `SemInfo`
 records resolved names, kinds, types, declaration spans, and imported source
-files. Stable identity for local binders remains later semantic-tooling work.
+files. The next semantic-metadata milestone records stable source identity for
+local binders so Go to Definition and References can resolve parameter, lambda,
+and `let` uses under shadowing. Local Rename remains later work.
 
 ### Deliverables
 
@@ -575,7 +577,8 @@ records/classes with `fromJson`/`toJson`.
   suffix. It does not yet use a semantic dependency graph for smaller
   invalidation regions.
 - Rename supports source-backed top-level declarations. Stable identities for
-  local binders, constructors, fields, and generated declarations remain
+  local binders support Go to Definition and References. Scoped Rename for
+  local binders, constructors, fields, and generated declarations remains
   future semantic work.
 
 ## Phase Dependencies

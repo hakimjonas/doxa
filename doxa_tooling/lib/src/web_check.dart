@@ -415,6 +415,7 @@ _SessionDecl _processDeclaration(SourceFile file, SDecl decl, _State state) {
     SImplKind _ => 'impl',
   };
   try {
+    final sourceNames = declNames(decl);
     final produced = elabDecl(
       TopEnv(
         state.bindings,
@@ -446,19 +447,21 @@ _SessionDecl _processDeclaration(SourceFile file, SDecl decl, _State state) {
       semInfo: produced.metas?.semInfos ?? const [],
       declarations: [
         for (final d in data)
-          DeclInfo(
-            name: d.name,
-            kind: kind,
-            type: prettyTerm(d.sort, outerDepth: 0),
-            span: d.span,
-          ),
+          if (sourceNames.contains(d.name))
+            DeclInfo(
+              name: d.name,
+              kind: kind,
+              type: prettyTerm(d.sort, outerDepth: 0),
+              span: d.span,
+            ),
         for (final b in bindings)
-          DeclInfo(
-            name: b.name,
-            kind: kind,
-            type: prettyTerm(b.type, outerDepth: 0),
-            span: b.span,
-          ),
+          if (sourceNames.contains(b.name))
+            DeclInfo(
+              name: b.name,
+              kind: kind,
+              type: prettyTerm(b.type, outerDepth: 0),
+              span: b.span,
+            ),
       ],
     );
   } on DoxaCheckError catch (e) {

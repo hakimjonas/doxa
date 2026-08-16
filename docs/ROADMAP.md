@@ -106,13 +106,27 @@ references and rename.
 
 Remaining LSP work:
 
-- Stable identities and rename for local binders, constructors, fields, and
+- Local Go to Definition and References for parameter, lambda, and `let` uses.
+  This requires parser spans for binder names and stable binder identity in
+  semantic metadata so shadowed uses resolve to the correct binder.
+- Scoped Rename for local binders, constructors, fields, and
   generated declarations.
 - Declaration and reference token roles, richer source provenance, and
   instantiated dependent types in hover.
 - Proper error diagnostic formatting and proof-state display for tactic blocks.
-- Open-editor validation: finish the VS Code manual gate, then timebox Zed and
-  Helix support discovery before resuming JetBrains work.
+
+Immediate order:
+
+1. Finish the VS Code manual gate and commit the pending server and extension
+   regressions.
+2. Add local Go to Definition and References through binder identifier spans in
+   the parser and lexical source provenance in semantic metadata. This includes
+   shadowing tests; local Rename stays deferred.
+3. Run the two-day Zed and Helix support discovery against that reference LSP
+   before resuming JetBrains work.
+4. If discovery selects a native syntax backend, create the Rumil declarative
+   grammar-IR package before generating `tree-sitter-doxa`. The existing Rumil
+   parser remains authoritative.
 
 **Deliverable**: Complete the semantic and client-validation milestones in
 [`LSP_TOOLING_PLAN.md`](LSP_TOOLING_PLAN.md).

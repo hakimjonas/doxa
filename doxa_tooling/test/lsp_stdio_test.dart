@@ -100,8 +100,91 @@ void main() {
         expect(await server.process.exitCode, 0);
       },
     );
+
+    test(
+      'rechecks dependents against an unsaved imported data declaration',
+      () async {
+        final directory = Directory.systemTemp.createTempSync('doxa-lsp-');
+        addTearDown(() => directory.deleteSync(recursive: true));
+        final dependency = File('${directory.path}/dependency.doxa')
+          ..writeAsStringSync(
+            'data Status : Type {\n'
+            '  ready : Status;\n'
+            '  blocked : Status;\n'
+            '}\n'
+            '\n'
+            'fun keep(status: Status) : Status = status\n',
+          );
+        final main = File('${directory.path}/main.doxa')..writeAsStringSync(
+          'import "dependency.doxa"\n'
+          '\n'
+          'val current : Status = ready\n'
+          'fun preserve(status: Status) : Status = keep status\n',
+        );
+        const unsavedDependency =
+            'data State : Type {\n'
+            '  ready : State;\n'
+            '  blocked : State;\n'
+            '}\n'
+            '\n'
+            'fun keep(status: State) : State = status\n';
+        final server = await _LspServer.start();
+        addTearDown(server.dispose);
+
+        server.send(_didOpen(main.uri.toString(), main.readAsStringSync()));
+        expect(_diagnostics(await server.nextMessage()), isEmpty);
+
+        server.send(_didOpen(dependency.uri.toString(), unsavedDependency));
+        expect(_diagnostics(await server.nextMessage()), isEmpty);
+        final staleMain = await server.nextMessage();
+        expect(
+          (staleMain['params'] as Map<String, dynamic>)['uri'],
+          main.uri.toString(),
+        );
+        final staleDiagnostics = _diagnostics(staleMain);
+        expect(staleDiagnostics, isNotEmpty);
+        expect(
+          (staleDiagnostics.first as Map<String, dynamic>)['message'],
+          isNot(contains('TypeMismatch(')),
+        );
+
+        server.send({
+          'jsonrpc': '2.0',
+          'method': 'textDocument/didClose',
+          'params': {
+            'textDocument': {'uri': dependency.uri.toString()},
+          },
+        });
+        expect(_diagnostics(await server.nextMessage()), isEmpty);
+        final restoredMain = await server.nextMessage();
+        expect(
+          (restoredMain['params'] as Map<String, dynamic>)['uri'],
+          main.uri.toString(),
+        );
+        expect(_diagnostics(restoredMain), isEmpty);
+
+        server.send({'jsonrpc': '2.0', 'method': 'exit'});
+        expect(await server.process.exitCode, 0);
+      },
+    );
   });
 }
+
+Map<String, dynamic> _didOpen(String uri, String text) => {
+  'jsonrpc': '2.0',
+  'method': 'textDocument/didOpen',
+  'params': {
+    'textDocument': {
+      'uri': uri,
+      'languageId': 'doxa',
+      'version': 1,
+      'text': text,
+    },
+  },
+};
+
+List<dynamic> _diagnostics(Map<String, dynamic> message) =>
+    (message['params'] as Map<String, dynamic>)['diagnostics'] as List<dynamic>;
 
 final class _LspServer {
   _LspServer._(this.process, this._messages);
