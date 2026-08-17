@@ -124,14 +124,16 @@ val vlength_index: (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) n
 val succ_inj: (a: Nat) -> (b: Nat) -> Eq Nat (succ a) (succ b) -> Eq Nat a b = (a: Nat) => (b: Nat) => (p: Eq Nat (succ a) (succ b)) => cong_e Nat Nat ((n: Nat) => match n {
   case zero => zero
   case succ n_ => n_
-}) (succ a) (succ b) p// --- Well-founded induction for Nat -----------------------------------------
+}) (succ a) (succ b) p
+// --- Well-founded induction for Nat -----------------------------------------
 
 fun strong_ind_impl_help(P: Nat -> Prop, step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n, k: Nat, n: Nat, h: Lt k n, ind: (n: Nat) -> P n): P k {struct h} = match h {
   case lt_succ k_ => ind k_
   case lt_trans a b c p q => strong_ind_impl_help P step a b p ind
-}// strong_ind_impl: well-founded induction on n, desugared via fuel.
+}
+// strong_ind_impl: well-founded induction on n, desugared via fuel.
 
-fun strong_ind_impl(n: Nat, P: Nat -> Prop, step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n): P n termination_by (n) = match n {
+fun strong_ind_impl(n: Nat, P: Nat -> Prop, step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n): P n termination_by n = match n {
   case zero => step zero (Nat.ind ((m: Nat) => (k: Nat) -> Lt k m -> P k) ((k: Nat) => (h: Lt k zero) => False.rec ((_: False) => P k) (Lt.rec ((a: Nat) => (b: Nat) => (_: Lt a b) => Eq Nat b zero -> False) k zero ((n_: Nat) => (eq: Eq Nat (succ n_) zero) => succ_ne_zero n_ eq) ((a: Nat) => (b: Nat) => (c: Nat) => (_: Lt a b) => (_: Lt b c) => (_: Eq Nat b zero -> False) => (ih2: Eq Nat c zero -> False) => (eq: Eq Nat c zero) => ih2 eq) h (refl zero))) ((n_: Nat) => (ih: (j: Nat) -> Lt j n_ -> P j) => (k: Nat) => (h: Lt k (succ n_)) => strong_ind_impl_help P step k (succ n_) h ((m: Nat) => strong_ind_impl m P step)) zero)
   case succ n_ => step (succ n_) ((k: Nat) => (h: Lt k (succ n_)) => strong_ind_impl_help P step k (succ n_) h ((m: Nat) => strong_ind_impl m P step))
 }

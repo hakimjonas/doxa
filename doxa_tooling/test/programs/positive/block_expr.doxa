@@ -11,18 +11,21 @@ fun idNat(x: Nat): Nat = x
 val one: Nat = {
   val n: Nat = zero;
   succ n
-  }// Multiple bindings; later binding references an earlier one.
+  }
+// Multiple bindings; later binding references an earlier one.
 
 val three: Nat = {
   val a: Nat = succ zero;
   val b: Nat = succ a;
   succ b
-  }// Block as a (parenthesized) function argument.
+  }
+// Block as a (parenthesized) function argument.
 
 val two: Nat = idNat ({
   val n: Nat = zero;
   succ (succ n)
-  })// Block as a function body.
+  })
+// Block as a function body.
 
 fun double(x: Nat): Nat {
   val y: Nat = x;

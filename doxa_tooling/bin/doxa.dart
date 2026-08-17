@@ -20,7 +20,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:doxa/doxa.dart';
-import 'package:doxa_tooling/src/format.dart' show formatSource, isFormatted;
+import 'package:doxa_tooling/src/format.dart' show formatSource;
 import 'package:doxa_tooling/src/lsp/handler.dart';
 import 'package:doxa_tooling/src/lsp/transport.dart'
     show LspReader, sendLspMessage;
@@ -91,23 +91,16 @@ Future<void> main(List<String> args) async {
 /// `doxa fmt --check FILE` — exits 0 if already formatted, 1 otherwise.
 /// `doxa fmt --stdout FILE` — writes formatted result to stdout.
 void _runFmt(List<String> args) {
-  var checkMode = false;
-  var stdoutMode = false;
-  String path;
-
-  if (args.length >= 3 && args[1] == '--check') {
-    checkMode = true;
-    path = args[2];
-  } else if (args.length >= 3 && args[1] == '--stdout') {
-    stdoutMode = true;
-    path = args[2];
-  } else if (args.length >= 2) {
-    path = args[1];
-    if (path.startsWith('--')) {
-      _usage();
-      exit(2);
-    }
-  } else {
+  final fmtArgs = args.skip(1).toList();
+  if (fmtArgs.isEmpty || fmtArgs.length > 2) {
+    _usage();
+    exit(2);
+  }
+  final checkMode = fmtArgs.length == 2 && fmtArgs.first == '--check';
+  final stdoutMode = fmtArgs.length == 2 && fmtArgs.first == '--stdout';
+  final path = fmtArgs.last;
+  if (path.startsWith('--') ||
+      (fmtArgs.length == 2 && !checkMode && !stdoutMode)) {
     _usage();
     exit(2);
   }
@@ -120,16 +113,19 @@ void _runFmt(List<String> args) {
 
   final text = file.readAsStringSync();
 
-  if (checkMode) {
-    if (isFormatted(text)) {
-      exit(0);
-    } else {
-      stderr.writeln('$path: would reformat');
-      exit(1);
-    }
+  String formatted;
+  try {
+    formatted = formatSource(text);
+  } on FormatException catch (error) {
+    stderr.writeln('doxa: cannot format $path: ${error.message}');
+    exit(1);
   }
 
-  final formatted = formatSource(text);
+  if (checkMode) {
+    if (formatted == text) exit(0);
+    stderr.writeln('$path: would reformat');
+    exit(1);
+  }
 
   if (stdoutMode) {
     stdout.write(formatted);

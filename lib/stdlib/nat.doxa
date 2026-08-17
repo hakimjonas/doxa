@@ -23,7 +23,8 @@ fun plus(m: Nat, n: Nat): Nat = match m {
 fun mult(m: Nat, n: Nat): Nat = match m {
   case zero => zero
   case succ m_ => plus n (mult m_ n)
-}// `pow exp base`: exp^base. Note the arg order, `exp` is the
+}
+// `pow exp base`: exp^base. Note the arg order, `exp` is the
 // decreasing argument, and the decreasing arg must be the first
 // explicit value parameter. Without per-argument `{struct}`
 // annotations (Coq's shape), users match on the first arg or
@@ -32,7 +33,8 @@ fun mult(m: Nat, n: Nat): Nat = match m {
 fun pow(exp: Nat, base: Nat): Nat = match exp {
   case zero => succ zero
   case succ e_ => mult base (pow e_ base)
-}// Non-strict "less-or-equal": leq m n = true_ iff m ≤ n.
+}
+// Non-strict "less-or-equal": leq m n = true_ iff m ≤ n.
 
 fun leq(m: Nat, n: Nat): Bool = match m {
   case zero => true_
@@ -40,7 +42,8 @@ fun leq(m: Nat, n: Nat): Bool = match m {
     case zero => false_
     case succ n_ => leq m_ n_
   }
-}// Truncated subtraction: sub m n = m - n, or 0 if m < n.
+}
+// Truncated subtraction: sub m n = m - n, or 0 if m < n.
 
 fun sub(m: Nat, n: Nat): Nat = match m {
   case zero => zero
@@ -48,12 +51,14 @@ fun sub(m: Nat, n: Nat): Nat = match m {
     case zero => succ m_
     case succ n_ => sub m_ n_
   }
-}// Strict less-than: lt m n = true_ iff m < n.
+}
+// Strict less-than: lt m n = true_ iff m < n.
 
 fun lt(m: Nat, n: Nat): Bool = match n {
   case zero => false_
   case succ n_ => leq m n_
-}// Modulo via iterated subtraction: mod_acc k m n keeps subtracting n
+}
+// Modulo via iterated subtraction: mod_acc k m n keeps subtracting n
 // from m up to k times.  Structurally recursive on k (first arg).
 
 fun mod_acc(k: Nat, m: Nat, n: Nat): Nat = match k {
@@ -62,7 +67,8 @@ fun mod_acc(k: Nat, m: Nat, n: Nat): Nat = match k {
     case true_ => m
     case false_ => mod_acc k_ (sub m n) n
   }
-}// mod m n: compute m % n by iterating up to m times (worst case).
+}
+// mod m n: compute m % n by iterating up to m times (worst case).
 
 val mod: (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => mod_acc m m n
 // Greatest common divisor via Euclid's algorithm.  Structurally
@@ -79,7 +85,8 @@ fun gcd_acc(k: Nat, m: Nat, n: Nat): Nat = match k {
 val gcd: (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => match m {
   case zero => n
   case succ m_ => gcd_acc m m n
-}// Integer division: div m n = floor(m / n), 0 if n = 0.
+}
+// Integer division: div m n = floor(m / n), 0 if n = 0.
 // Uses iterated subtraction, structurally recursive on k.
 
 fun div_acc(k: Nat, m: Nat, n: Nat): Nat = match k {
@@ -93,7 +100,8 @@ fun div_acc(k: Nat, m: Nat, n: Nat): Nat = match k {
 val div: (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => match n {
   case zero => zero
   case succ n_ => div_acc m m n
-}// Least common multiple: lcm m n = m * n / gcd m n
+}
+// Least common multiple: lcm m n = m * n / gcd m n
 
 val lcm: (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => div (mult m n) (gcd m n)
 // Coprime: gcd m n == 1
@@ -104,7 +112,8 @@ val coprime: (m: Nat) -> (n: Nat) -> Bool = (m: Nat) => (n: Nat) => leq (gcd m n
 val divides: (d: Nat) -> (n: Nat) -> Bool = (d: Nat) => (n: Nat) => match d {
   case zero => false_
   case succ d_ => leq (mod n (succ d_)) zero
-}// Prime: n >= 2 and has no divisor d where 2 <= d < n.
+}
+// Prime: n >= 2 and has no divisor d where 2 <= d < n.
 
 fun prime_acc(k: Nat, n: Nat): Bool = match k {
   case zero => true_
@@ -123,7 +132,8 @@ val prime: (n: Nat) -> Bool = (n: Nat) => match n {
     case zero => false_
     case succ n__ => prime_acc n n
   }
-}// --- Fuel-based fixpoint combinator -------------------------------------------
+}
+// --- Fuel-based fixpoint combinator -------------------------------------------
 // fix_by_fuel T fuel step base: iterate [step] up to [fuel] times on [base].
 // Structurally recursive on fuel — always terminates.
 

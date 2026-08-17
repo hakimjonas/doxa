@@ -15,7 +15,7 @@ data Bool: Type {
 fun isEven(n: Nat): Bool = match n {
   case zero => t_
   case succ m => isOdd n
-}and isOdd(n: Nat): Bool = match n {
+} and isOdd(n: Nat): Bool = match n {
   case zero => f_
   case succ m => isEven m
 }

@@ -22,8 +22,11 @@ val two: Nat = succ (succ zero)
 
 val three: Nat = succ two
 
-val a: Bool = toggle zero // t_
+val a: Bool = toggle zero
+// t_
 
-val b: Bool = toggle two // t_
+val b: Bool = toggle two
+// t_
 
-val c: Bool = toggle three // f_
+val c: Bool = toggle three
+// f_

@@ -14,13 +14,7 @@ String formatSource(String source, {int lineWidth = 100}) {
 }
 
 /// Check whether [source] is already formatted.
-bool isFormatted(String source) {
-  try {
-    return formatSource(source) == source;
-  } on FormatException {
-    return true;
-  }
-}
+bool isFormatted(String source) => formatSource(source) == source;
 
 // ---------------------------------------------------------------------------
 // Simple pretty-printer document type (Wadler-style)
@@ -176,7 +170,7 @@ class _Formatter {
     _buf.write(rendered);
     // Update column tracking based on last line in rendered output.
     final lastNl = rendered.lastIndexOf('\n');
-    _atLineStart = lastNl >= 0;
+    _atLineStart = rendered.endsWith('\n');
     _currentCol =
         lastNl >= 0
             ? rendered.length - lastNl - 1
@@ -197,18 +191,24 @@ class _Formatter {
   // Comment extraction
   // -------------------------------------------------------------------------
 
-  /// Scan [source] for `//` line comments and `/* */` block comments.
-  /// Returns spans as [_CommentInfo] records for later emission.
-  ///
-  /// Uses a simple string scanner instead of the full tokenizer
-  /// because we only need comment boundaries — not token classification.
-  /// This eliminates a redundant tokenizer pass (parseProgram already
-  /// tokenizes internally).
+  /// Scan [source] for comments while skipping quoted strings and nested blocks.
   void _extractComments() {
     _comments.clear();
     var i = 0;
     final len = source.length;
     while (i < len) {
+      if (source[i] == '"') {
+        i++;
+        while (i < len && source[i] != '"') {
+          if (source[i] == r'\' && i + 1 < len) {
+            i += 2;
+          } else {
+            i++;
+          }
+        }
+        if (i < len) i++;
+        continue;
+      }
       if (source[i] == '/' && i + 1 < len) {
         if (source[i + 1] == '/') {
           // Line comment: scan to end of line.
@@ -220,13 +220,20 @@ class _Formatter {
           _comments.add(_CommentInfo(start, i, source.substring(start, i)));
           continue;
         } else if (source[i + 1] == '*') {
-          // Block comment: scan to `*/`.
           final start = i;
           i += 2;
-          while (i + 1 < len && !(source[i] == '*' && source[i + 1] == '/')) {
-            i++;
+          var depth = 1;
+          while (i + 1 < len && depth > 0) {
+            if (source[i] == '/' && source[i + 1] == '*') {
+              depth++;
+              i += 2;
+            } else if (source[i] == '*' && source[i + 1] == '/') {
+              depth--;
+              i += 2;
+            } else {
+              i++;
+            }
           }
-          if (i + 1 < len) i += 2;
           _comments.add(_CommentInfo(start, i, source.substring(start, i)));
           continue;
         }
@@ -240,22 +247,9 @@ class _Formatter {
       final c = _comments[_commentIx];
       if (c.start >= offset) break;
 
-      final isFreshLine =
-          c.start == 0 ||
-          source[c.start - 1] == '\n' ||
-          source[c.start - 1] == '\r';
-
-      if (isFreshLine) {
-        if (!_atLineStart) {
-          _newline();
-        }
-        _write(c.text);
-        _newline();
-      } else {
-        _space();
-        _write(c.text);
-        _newline();
-      }
+      if (!_atLineStart) _newline();
+      _write(c.text);
+      _newline();
       _commentIx++;
     }
   }
@@ -307,20 +301,8 @@ class _Formatter {
   void _visitProgram(SProgram program) {
     final decls = program.decls.toList();
 
-    // Sort imports to the front in alphabetical order
-    final nonImport = <SDecl>[];
-    final imports = <SDecl>[];
-    for (final d in decls) {
-      if (d.kind is SImportKind) {
-        imports.add(d);
-      } else {
-        nonImport.add(d);
-      }
-    }
-    imports.sort(_compareImportDecls);
-
     var first = true;
-    for (final d in [...imports, ...nonImport]) {
+    for (final d in decls) {
       _emitCommentsBefore(d.span.start);
       if (first) {
         first = false;
@@ -331,16 +313,6 @@ class _Formatter {
       _visitDecl(d);
     }
     _emitRemainingComments();
-  }
-
-  int _compareImportDecls(SDecl a, SDecl b) {
-    final ka = a.kind as SImportKind;
-    final kb = b.kind as SImportKind;
-    final cmp = ka.path.compareTo(kb.path);
-    if (cmp != 0) return cmp;
-    final aa = ka.alias ?? '';
-    final ab = kb.alias ?? '';
-    return aa.compareTo(ab);
   }
 
   // -------------------------------------------------------------------------
@@ -381,8 +353,10 @@ class _Formatter {
   }
 
   void _visitValDecl(SValKind k) {
-    if (k.body.kind is SByKind) {
+    if (!k.isOpaque && k.type != null && k.body.kind is SByKind) {
       _write('theorem ${k.name}: ');
+      _writeDoc(_visit(k.type!));
+      _write(' := ');
       _writeDoc(_visit(k.body));
       return;
     }
@@ -459,7 +433,7 @@ class _Formatter {
   }
 
   void _visitFun(SFunKind k, {bool withKeyword = true}) {
-    if (k.isOpaque) {
+    if (k.isOpaque && withKeyword) {
       _write('opaque ');
     }
     if (withKeyword) _write('fun ');
@@ -495,7 +469,7 @@ class _Formatter {
     final tby = k.terminationBy ?? extractedTby;
     if (tby != null) {
       _space();
-      _write('termination_by (${tby.join(', ')})');
+      _write('termination_by ${tby.join(' ')}');
     }
 
     if (k.body.kind is SLetKind) {
@@ -612,7 +586,7 @@ class _Formatter {
 
   void _visitClassMethod(SClassMethod m) {
     _write('fun ${m.name}');
-    final (params, retType) = _decomposePi(m.type!);
+    final (params, retType) = _decomposeMethodType(m.type!);
     _write('(');
     for (var i = 0; i < params.length; i++) {
       if (i > 0) _write(', ');
@@ -630,30 +604,34 @@ class _Formatter {
     }
   }
 
-  (List<(String, SExpr)>, SExpr) _decomposePi(SExpr expr) {
+  (List<(String, SExpr)>, SExpr) _decomposeMethodType(SExpr expr) {
     final params = <(String, SExpr)>[];
     var cur = expr;
     while (cur.kind is SPiKind) {
       final pi = cur.kind as SPiKind;
-      if (pi.param != null) {
+      if (pi.param != null && pi.icit == Icit.explicit) {
         params.add((pi.param!, pi.domain));
+        cur = pi.codomain;
+        continue;
       }
-      cur = pi.codomain;
+      break;
     }
     return (params, cur);
   }
 
   void _visitImpl(SImplKind k) {
     _write('impl ');
-    final ref = k.typeclassRef;
-    if (ref.kind is SAppKind) {
-      final app = ref.kind as SAppKind;
-      _writeDoc(_visit(app.fn));
+    final (head, args) = _unwindApp(k.typeclassRef);
+    if (head.kind is SIdentKind && args.isNotEmpty) {
+      _writeDoc(_visit(head));
       _write('[');
-      _writeDoc(_visit(app.arg));
+      for (var i = 0; i < args.length; i++) {
+        if (i > 0) _write(', ');
+        _writeDoc(_visit(args[i]));
+      }
       _write(']');
     } else {
-      _writeDoc(_visit(ref));
+      _writeDoc(_visit(k.typeclassRef));
     }
     _space();
     _write('{');
@@ -708,13 +686,9 @@ class _Formatter {
       _visit(relation),
       _Doc.txt(')'),
     ]),
-    SQuotMkKind(:final arg) => _Doc.catAll([
-      _Doc.txt('Quot.mk('),
-      _visit(arg),
-      _Doc.txt(')'),
-    ]),
+    SQuotMkKind(:final arg) => _Doc.catAll([_Doc.txt('mk '), _visit(arg)]),
     SQuotLiftKind(:final fn, :final proof) => _Doc.catAll([
-      _Doc.txt('Quot.lift('),
+      _Doc.txt('lift('),
       _visit(fn),
       _Doc.txt(', '),
       _visit(proof),
@@ -732,18 +706,51 @@ class _Formatter {
   _Doc _visitApp(SExpr fn, SExpr arg) {
     final fnDoc = _visit(fn);
     final argDoc = _visit(arg);
-    final needsParens =
-        arg.kind is SLamKind ||
-        (arg.kind is SPiKind && (arg.kind as SPiKind).param != null) ||
-        arg.kind is SAppKind ||
-        arg.kind is SLetKind;
+    final wrappedFn =
+        _needsAppFunctionParens(fn)
+            ? _Doc.catAll([_Doc.txt('('), fnDoc, _Doc.txt(')')])
+            : fnDoc;
     final wrappedArg =
-        needsParens
+        _needsAppArgumentParens(arg)
             ? _Doc.catAll([_Doc.txt('('), argDoc, _Doc.txt(')')])
             : argDoc;
-    // Inline application: no grouping. Long chains are handled by
-    // strategic groups at enclosing boundaries (= body, -> codomain).
-    return _Doc.catAll([fnDoc, _Doc.space, wrappedArg]);
+    return _Doc.catAll([wrappedFn, _Doc.space, wrappedArg]);
+  }
+
+  bool _needsAppFunctionParens(SExpr expr) => switch (expr.kind) {
+    SLamKind() ||
+    SPiKind() ||
+    SLetKind() ||
+    SMatchKind() ||
+    SByKind() ||
+    SQuotKind() ||
+    SQuotMkKind() ||
+    SQuotLiftKind() => true,
+    _ => false,
+  };
+
+  bool _needsAppArgumentParens(SExpr expr) => switch (expr.kind) {
+    SAppKind() ||
+    SLamKind() ||
+    SPiKind() ||
+    SLetKind() ||
+    SMatchKind() ||
+    SByKind() ||
+    SQuotKind() ||
+    SQuotMkKind() ||
+    SQuotLiftKind() => true,
+    _ => false,
+  };
+
+  (SExpr, List<SExpr>) _unwindApp(SExpr expr) {
+    final args = <SExpr>[];
+    var head = expr;
+    while (head.kind is SAppKind) {
+      final app = head.kind as SAppKind;
+      args.add(app.arg);
+      head = app.fn;
+    }
+    return (head, args.reversed.toList());
   }
 
   _Doc _visitLam(

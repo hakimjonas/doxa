@@ -22,12 +22,14 @@ fun leq(m: Nat, n: Nat): Bool = match m {
     case zero => f_
     case succ n_ => leq m_ n_
   }
-}// max of two Nats.
+}
+// max of two Nats.
 
 fun max(m: Nat, n: Nat): Nat = match leq m n {
   case t_ => n
   case f_ => m
-}// Depth of a Tree: leaf is 1, node is 1 + max of children.
+}
+// Depth of a Tree: leaf is 1, node is 1 + max of children.
 
 fun depth(t: Tree): Nat = match t {
   case leaf => succ zero

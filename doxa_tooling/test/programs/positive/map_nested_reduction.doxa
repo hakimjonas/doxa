@@ -9,7 +9,8 @@ data List[A: Type]: Type {
 fun map{A: Type, B: Type}(xs: List A, f: A -> B): List B = match xs {
   case nil => nil
   case cons h t => cons (f h) (map t f)
-}// RHS of map_compose's cons step reduces to the expected head/tail.
+}
+// RHS of map_compose's cons step reduces to the expected head/tail.
 
 val rhs_reduces: (A: Type) -> (B: Type) -> (C: Type) -> (f: A -> B) -> (g: B -> C) -> (h: A) -> (t: List A) -> Eq (List C) (map (cons h t) ((a: A) => g (f a))) (cons (g (f h)) (map t ((a: A) => g (f a)))) = (A: Type) => (B: Type) => (C: Type) => (f: A -> B) => (g: B -> C) => (h: A) => (t: List A) => refl (cons (g (f h)) (map t ((a: A) => g (f a))))
 // LHS of map_compose's cons step reduces to the expected head/tail.

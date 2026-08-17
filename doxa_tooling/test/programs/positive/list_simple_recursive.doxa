@@ -10,7 +10,8 @@ data List[A: Type]: Type {
 fun dup{A: Type}(xs: List A): List A = match xs {
   case nil => nil
   case cons x rest => dup rest
-}// Two implicits, single-arg rec.
+}
+// Two implicits, single-arg rec.
 
 fun dupTwo{A: Type, B: Type}(xs: List A): List A = match xs {
   case nil => nil

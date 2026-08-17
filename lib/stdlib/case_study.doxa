@@ -14,7 +14,8 @@ fun even(n: Nat): Bool = match n {
     case true_ => false_
     case false_ => true_
   }
-}// Small concrete parity facts
+}
+// Small concrete parity facts
 
 val even_0: Eq Bool (even zero) true_ = refl true_
 
@@ -95,12 +96,13 @@ val sqrt2_parity: (n: Nat) -> (m: Nat) -> Eq Nat (square n) (mult two (square m)
 fun nat_wf(n: Nat): Acc Nat ((x: Nat) => (y: Nat) => Lt x y) n = match n {
   case zero => acc_intro ((x: Nat) => (y: Nat) => Lt x y) zero ((y: Nat) => (h: Lt y zero) => False.rec ((_: False) => Acc Nat ((x: Nat) => (y: Nat) => Lt x y) y) (Lt.rec ((a: Nat) => (b: Nat) => (_: Lt a b) => Eq Nat b zero -> False) y zero ((n: Nat) => (eq: Eq Nat (succ n) zero) => succ_ne_zero n eq) ((n: Nat) => (m: Nat) => (k: Nat) => (_: Lt n m) => (_: Lt m k) => (ih1: Eq Nat m zero -> False) => (ih2: Eq Nat k zero -> False) => (eq: Eq Nat k zero) => ih2 eq) h (refl zero)))
   case succ k => acc_intro ((x: Nat) => (y: Nat) => Lt x y) (succ k) ((y: Nat) => (h: Lt y (succ k)) => nat_wf_help k y h)
-}and nat_wf_help(k: Nat, y: Nat, h: Lt y (succ k)): Acc Nat ((x: Nat) => (y: Nat) => Lt x y) y {struct h} = match h {
+} and nat_wf_help(k: Nat, y: Nat, h: Lt y (succ k)): Acc Nat ((x: Nat) => (y: Nat) => Lt x y) y {struct h} = match h {
   case lt_succ y_ => nat_wf y_
   case lt_trans y_ m _ p1 p2 => match nat_wf_help k m p2 {
     case acc_intro _ _ f => f y_ p1
   }
-}// --- Algebraic lemmas ----------------------------------------------------
+}
+// --- Algebraic lemmas ----------------------------------------------------
 
 fun half(n: Nat): Nat = match n {
   case zero => zero
@@ -135,13 +137,15 @@ fun even_implies_double(n: Nat, h: Eq Bool (even n) true_): Eq Nat n (mult two (
   val even_m_true: Eq Bool (even m) true_ = trans_e Bool (even m) (even (succ (succ m))) true_ (sym_e Bool (even (succ (succ m))) (even m) (even_succ_succ_eq_even m)) hssm;
   val rec_m: Eq Nat m (mult two (half m)) = go m even_m_true;
   trans_e Nat (succ (succ m)) (succ (succ (mult two (half m)))) (mult two (half (succ (succ m)))) (cong_e Nat Nat ((x: Nat) => succ (succ x)) m (mult two (half m)) rec_m) (sym_e Nat (mult two (half (succ (succ m)))) (succ (succ (mult two (half m)))) (mult_two_succ (half m)))
-  }) k hsk) n h0// --- lt_succ_t_mult_two_t: succ t < 2*(succ t) -----------------------------
+  }) k hsk) n h0
+// --- lt_succ_t_mult_two_t: succ t < 2*(succ t) -----------------------------
 
 val lt_succ_t_mult_two_t: (t: Nat) -> Lt (succ t) (mult two (succ t)) = Nat.ind ((t: Nat) => Lt (succ t) (mult two (succ t))) (lt_succ (succ zero)) ((u: Nat) => (ih: Lt (succ u) (mult two (succ u))) => {
   val h_lt_succ_ss: Lt (succ (succ u)) (succ (mult two (succ u))) = lt_succ_mono (succ u) (mult two (succ u)) ih;
   val h_lt_ss_ssmu: Lt (succ (succ u)) (succ (succ (mult two (succ u)))) = lt_succ_right (succ (succ u)) (succ (mult two (succ u))) h_lt_succ_ss;
   Eq.rec Nat ((a: Nat) => (b: Nat) => (p: Eq Nat a b) => Lt (succ (succ u)) a -> Lt (succ (succ u)) b) (succ (succ (mult two (succ u)))) (mult two (succ (succ u))) ((z: Nat) => (h: Lt (succ (succ u)) z) => h) (sym_e Nat (mult two (succ (succ u))) (succ (succ (mult two (succ u)))) (mult_two_succ (succ u))) h_lt_ss_ssmu
-  })// --- lt_t_succ_k: if succ k = 2*t then t < succ k --------------------------
+  })
+// --- lt_t_succ_k: if succ k = 2*t then t < succ k --------------------------
 
 fun lt_t_succ_k(t: Nat, k: Nat, h: Eq Nat (succ k) (mult two t)): Lt t (succ k) = Nat.ind ((t: Nat) => (k: Nat) -> Eq Nat (succ k) (mult two t) -> Lt t (succ k)) ((k: Nat) => (h_zero: Eq Nat (succ k) (mult two zero)) => False.rec ((_: False) => Lt zero (succ k)) (succ_ne_zero k (trans_e Nat (succ k) (mult two zero) zero h_zero (mult_zero two)))) ((u: Nat) => (ih: (k: Nat) -> Eq Nat (succ k) (mult two u) -> Lt u (succ k)) => (k: Nat) => (h_succ_u: Eq Nat (succ k) (mult two (succ u))) => Eq.rec Nat ((a: Nat) => (b: Nat) => (p: Eq Nat a b) => Lt (succ u) a -> Lt (succ u) b) (mult two (succ u)) (succ k) ((z: Nat) => (h_l: Lt (succ u) z) => h_l) (sym_e Nat (succ k) (mult two (succ u)) h_succ_u) (lt_succ_t_mult_two_t u)) t k h
 // --- Strong induction on Nat via Lt ----------------------------------------
@@ -175,7 +179,8 @@ val sqrt2: (n: Nat) -> (m: Nat) -> Eq Nat (square n) (mult two (square m)) -> Eq
     val h_t_zero: Eq Nat (succ v) zero = ih (succ v) h_lt u h_sq_sv_2u2;
     False.rec ((_: False) => Eq Nat x zero) (succ_ne_zero v h_t_zero)
     }) t h_double
-  }) n m h// Descent algebra: square t = 2 * square u
+  }) n m h
+// Descent algebra: square t = 2 * square u
 // Case analysis on t
 // t = 0: x = 2*0 = 0
 // t = succ v: descent

@@ -73,7 +73,8 @@ fun intAbs(a: Int): Nat = match a {
 fun intSign(a: Int): Bool = match a {
   case pos _ => true_
   case neg _ => false_
-}// --- Lemmas ---
+}
+// --- Lemmas ---
 // intPlus_comm: a + b = b + a
 
 val intPlus_comm: (a: Int) -> (b: Int) -> Eq Int (intPlus a b) (intPlus b a) = Int.ind ((x: Int) => (y: Int) -> Eq Int (intPlus x y) (intPlus y x)) ((n: Nat) => (y: Int) => Int.ind ((z: Int) => Eq Int (intPlus (pos n) z) (intPlus z (pos n))) ((m: Nat) => cong_e Nat Int ((k: Nat) => pos k) (plus n m) (plus m n) (plus_comm n m)) ((m: Nat) => refl (intPlusHelp n m)) y) ((n: Nat) => (y: Int) => Int.ind ((z: Int) => Eq Int (intPlus (neg n) z) (intPlus z (neg n))) ((m: Nat) => refl (intPlusHelp m n)) ((m: Nat) => cong_e Nat Int ((k: Nat) => neg (succ k)) (plus n m) (plus m n) (plus_comm n m)) y)

@@ -20,7 +20,7 @@ fun plus(m: Nat, n: Nat): Nat = match m {
 
 fun treeSize(t: Tree): Nat = match t {
   case tnode fs => succ (forestSize fs)
-}and forestSize(fs: Forest): Nat = match fs {
+} and forestSize(fs: Forest): Nat = match fs {
   case fnil => zero
   case fcons t rest => plus (treeSize t) (forestSize rest)
 }

@@ -74,8 +74,7 @@ void main() {
       // termination_by is parsed as part of the return-type expression.
       // The formatter extracts it and emits it in canonical form.
       const input = 'fun gcd(a: Nat, b: Nat) : Nat termination_by a b = a';
-      const expected =
-          'fun gcd(a: Nat, b: Nat): Nat termination_by (a, b) = a\n';
+      const expected = 'fun gcd(a: Nat, b: Nat): Nat termination_by a b = a\n';
       expect(formatSource(input), equals(expected));
     });
 
@@ -119,16 +118,10 @@ void main() {
     });
   });
 
-  group('import sorting', () {
-    test('sorts imports alphabetically', () {
+  group('imports', () {
+    test('preserves import order', () {
       const input = 'import "z.doxa"\nimport "a.doxa"\nval x = zero';
-      const expected = 'import "a.doxa"\n\nimport "z.doxa"\n\nval x = zero\n';
-      expect(formatSource(input), equals(expected));
-    });
-
-    test('sorts imports by alias secondary', () {
-      const input = 'import "b.doxa" as B\nimport "a.doxa" as A';
-      const expected = 'import "a.doxa" as A\n\nimport "b.doxa" as B\n';
+      const expected = 'import "z.doxa"\n\nimport "a.doxa"\n\nval x = zero\n';
       expect(formatSource(input), equals(expected));
     });
 
@@ -165,6 +158,30 @@ void main() {
       final twice = formatSource(once);
       expect(twice, equals(once));
     });
+
+    test('preserves comment-looking text inside import paths', () {
+      const source = 'import "https://example.doxa"\nval x = zero';
+      final formatted = formatSource(source);
+      expect(
+        formatted,
+        equals('import "https://example.doxa"\n\nval x = zero\n'),
+      );
+      expect(formatSource(formatted), equals(formatted));
+    });
+
+    test('preserves nested block comments', () {
+      const source = '/* outer /* inner */ retained */\nval x = zero';
+      final formatted = formatSource(source);
+      expect(formatted, contains('/* outer /* inner */ retained */'));
+      expect(formatSource(formatted), equals(formatted));
+    });
+
+    test('moves trailing comments to their own line', () {
+      const source =
+          'fun f(x: Nat): Nat = match x { case zero => zero }// tail\n'
+          'val x = zero';
+      expect(formatSource(source), contains('}\n// tail\n\nval x = zero\n'));
+    });
   });
 
   group('round-trip', () {
@@ -186,6 +203,68 @@ void main() {
         );
       }
     });
+
+    test('preserves syntax requiring application parentheses', () {
+      const input = 'val id = ((x: Nat) => x) zero';
+      const expected = 'val id = ((x: Nat) => x) zero\n';
+      final formatted = formatSource(input);
+      expect(formatted, equals(expected));
+      _expectParses(formatted);
+    });
+
+    test('preserves match arguments', () {
+      const input = 'val x = f (match n { case zero => a })';
+      final formatted = formatSource(input);
+      expect(formatted, contains('f (match n {'));
+      _expectParses(formatted);
+    });
+
+    test('uses the accepted quotient syntax', () {
+      const input = 'val q = mk x\nval liftQ = lift(f, p)';
+      final formatted = formatSource(input);
+      expect(formatted, contains('val q = mk x'));
+      expect(formatted, contains('val liftQ = lift(f, p)'));
+      _expectParses(formatted);
+    });
+
+    test('retains theorem types for by blocks', () {
+      const input = 'theorem p: Prop := by { trivial }';
+      final formatted = formatSource(input);
+      expect(formatted, contains('theorem p: Prop := by {'));
+      _expectParses(formatted);
+    });
+
+    test('prints termination_by in its accepted application form', () {
+      const input = 'fun gcd(a: Nat, b: Nat): Nat termination_by a b = a';
+      final formatted = formatSource(input);
+      expect(
+        formatted,
+        equals('fun gcd(a: Nat, b: Nat): Nat termination_by a b = a\n'),
+      );
+      _expectParses(formatted);
+    });
+
+    test('prints opaque once for a mutual function block', () {
+      const input = 'opaque fun f(x: Nat): Nat = x and g(x: Nat): Nat = x';
+      final formatted = formatSource(input);
+      expect(formatted, contains('and g(x: Nat): Nat = x'));
+      expect(formatted, isNot(contains('and opaque g')));
+      _expectParses(formatted);
+    });
+
+    test('preserves all implementation type arguments', () {
+      const input = 'impl C[A, B] {}';
+      final formatted = formatSource(input);
+      expect(formatted, contains('impl C[A, B] {'));
+      _expectParses(formatted);
+    });
+
+    test('preserves implicit method return types', () {
+      const input = 'typeclass C { fun f: {x: Nat} -> Nat; }';
+      final formatted = formatSource(input);
+      expect(formatted, contains('fun f(): {x: Nat} -> Nat;'));
+      _expectParses(formatted);
+    });
   });
 
   group('--check exit codes', () {
@@ -198,19 +277,22 @@ void main() {
       const source = 'val   x  :  Nat  =  zero';
       expect(isFormatted(source), isFalse);
     });
+
+    test('parse errors are not considered formatted', () {
+      expect(() => isFormatted('val x = )'), throwsFormatException);
+    });
   });
 
   group('stdlib formatting', () {
     final stdlibDir = Directory('../lib/stdlib');
 
-    test('all stdlib files type-check after formatting', () {
+    test('all stdlib files parse after formatting', () {
       if (!stdlibDir.existsSync()) return;
       final files =
           stdlibDir
-              .listSync()
+              .listSync(recursive: true)
               .whereType<File>()
               .where((f) => f.path.endsWith('.doxa'))
-              .where((f) => !f.path.endsWith('prelude.doxa'))
               .toList();
       for (final file in files) {
         final text = file.readAsStringSync();
@@ -224,4 +306,8 @@ void main() {
       }
     });
   });
+}
+
+void _expectParses(String source) {
+  expect(parseProgram(source), isA<Success<ParseError, SProgram>>());
 }

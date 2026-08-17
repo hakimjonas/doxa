@@ -19,7 +19,8 @@ fun or_(a: Bool, b: Bool): Bool = match a {
 fun not_(a: Bool): Bool = match a {
   case true_ => false_
   case false_ => true_
-}// `if_{A}(b, t, f)`: selects `t` when `b` is true_, `f` otherwise.
+}
+// `if_{A}(b, t, f)`: selects `t` when `b` is true_, `f` otherwise.
 // A is implicit; pattern unification solves it from `t`'s inferred
 // type. Both branches are evaluated eagerly, Doxa has no built-in
 // laziness. For control-flow-as-laziness, wrap branches in
