@@ -176,6 +176,89 @@ void main() {
       expect(formatSource(formatted), equals(formatted));
     });
 
+    test('keeps comments local to data entries', () {
+      const source = '''
+data Bool : Type {
+  // true branch
+  true : Bool;
+  /* false branch */
+  false : Bool;
+}
+''';
+      const expected = '''
+data Bool: Type {
+  // true branch
+  true: Bool;
+  /* false branch */
+  false: Bool;
+}
+''';
+      expect(formatSource(source), equals(expected));
+    });
+
+    test('keeps declaration comments outside data bodies', () {
+      const source = '''
+data A : Type { a : A; }
+// Documentation for B.
+data B : Type { b : B; }
+''';
+      const expected = '''
+data A: Type {
+  a: A;
+}
+// Documentation for B.
+
+data B: Type {
+  b: B;
+}
+''';
+      final formatted = formatSource(source);
+      expect(formatted, equals(expected));
+      expect(formatted, isNot(contains(RegExp(r'[ \t]+\n'))));
+    });
+
+    test('keeps comments local to match cases', () {
+      const source = '''
+val choose = match b {
+  // chosen when true
+  case true => left
+  // chosen when false
+  case false => right
+}
+''';
+      const expected = '''
+val choose = match b {
+  // chosen when true
+  case true => left
+  // chosen when false
+  case false => right
+}
+''';
+      expect(formatSource(source), equals(expected));
+    });
+
+    test('keeps comments local to block bindings', () {
+      const source = '''
+fun f(x: Nat): Nat {
+  // retained before the first binding
+  val y = x;
+  // retained before the second binding
+  val z = y;
+  z
+}
+''';
+      const expected = '''
+fun f(x: Nat): Nat {
+  // retained before the first binding
+  val y = x;
+  // retained before the second binding
+  val z = y;
+  z
+}
+''';
+      expect(formatSource(source), equals(expected));
+    });
+
     test('moves trailing comments to their own line', () {
       const source =
           'fun f(x: Nat): Nat = match x { case zero => zero }// tail\n'
@@ -215,7 +298,7 @@ void main() {
     test('preserves match arguments', () {
       const input = 'val x = f (match n { case zero => a })';
       final formatted = formatSource(input);
-      expect(formatted, contains('f (match n {'));
+      expect(formatted, contains('(match n {'));
       _expectParses(formatted);
     });
 
@@ -257,6 +340,55 @@ void main() {
       final formatted = formatSource(input);
       expect(formatted, contains('impl C[A, B] {'));
       _expectParses(formatted);
+    });
+
+    test('keeps parentheses around low-precedence Pi domains', () {
+      const input = 'val f: ((x: A) => x) -> B = f';
+      const expected = 'val f: ((x: A) => x) -> B = f\n';
+      final formatted = formatSource(input);
+      expect(formatted, equals(expected));
+      final type = _singleVal(formatted).type!.kind as SPiKind;
+      expect(type.domain.kind, isA<SLamKind>());
+    });
+
+    test('keeps match and quotient Pi domains parenthesized', () {
+      const input = '''
+val matchType: Type = (match x { case c => A }) -> B
+val quotientType: Type = (mk x) -> B
+''';
+      final formatted = formatSource(input);
+      expect(formatted, contains('(match x {'));
+      expect(formatted, contains('(mk x) -> B'));
+      _expectParses(formatted);
+    });
+
+    test('preserves product-form data syntax', () {
+      const input = 'data Pair[A: Type] : Type { fst : A; snd : A; }';
+      const expected = '''
+data Pair[A: Type]: Type {
+  fst: A;
+  snd: A;
+}
+''';
+      final formatted = formatSource(input);
+      expect(formatted, equals(expected));
+      final data = _singleData(formatted);
+      expect(data.productFields, isNotNull);
+      expect(data.ctors.single.name, equals('mk'));
+    });
+
+    test('soft-wraps long application right-hand sides', () {
+      const input =
+          'val result: Type = functionName firstArgument secondArgument';
+      const expected = '''
+val result: Type =
+  functionName
+    firstArgument
+    secondArgument
+''';
+      final formatted = formatSource(input, lineWidth: 20);
+      expect(formatted, equals(expected));
+      expect(formatSource(formatted, lineWidth: 20), equals(formatted));
     });
 
     test('preserves implicit method return types', () {
@@ -311,3 +443,19 @@ void main() {
 void _expectParses(String source) {
   expect(parseProgram(source), isA<Success<ParseError, SProgram>>());
 }
+
+SValKind _singleVal(String source) =>
+    (parseProgram(source) as Success<ParseError, SProgram>)
+            .value
+            .decls
+            .single
+            .kind
+        as SValKind;
+
+SDataKind _singleData(String source) =>
+    (parseProgram(source) as Success<ParseError, SProgram>)
+            .value
+            .decls
+            .single
+            .kind
+        as SDataKind;

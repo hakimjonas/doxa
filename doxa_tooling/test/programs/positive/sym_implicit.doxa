@@ -5,7 +5,8 @@ data Nat: Type {
   succ: Nat -> Nat;
 }
 
-fun sym{A: Type, x: A, y: A}(p: Eq A x y): Eq A y x = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b a) x y ((z: A) => refl z) p
+fun sym{A: Type, x: A, y: A}(p: Eq A x y): Eq A y x =
+  Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b a) x y ((z: A) => refl z) p
 
 val p1: Eq Nat zero zero = refl zero
 

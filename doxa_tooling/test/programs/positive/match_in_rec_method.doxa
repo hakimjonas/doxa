@@ -13,10 +13,14 @@ data Bool: Type {
 // `toggle n = if n is zero then t_ else flip(toggle n.pred)`, expressed
 // via Nat.rec whose step method pattern-matches on the IH.
 
-val toggle: (n: Nat) -> Bool = Nat.rec ((_: Nat) => Bool) t_ ((n: Nat) => (ih: Bool) => match ih {
-  case t_ => f_
-  case f_ => t_
-})
+val toggle: (n: Nat) -> Bool =
+  Nat.rec
+    ((_: Nat) => Bool)
+    t_
+    ((n: Nat) => (ih: Bool) => match ih {
+      case t_ => f_
+      case f_ => t_
+    })
 
 val two: Nat = succ (succ zero)
 

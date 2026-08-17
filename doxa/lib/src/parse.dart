@@ -1140,10 +1140,12 @@ final Parser<ParseError, SCtorDecl> _ctorDecl = position<ParseError>().flatMap(
 /// Separator between constructors in a `data` body: `|` or `;`.
 final Parser<ParseError, String> _ctorSep = _sym('|') | _sym(';');
 
-final Parser<ParseError, List<SCtorDecl>> _ctorList = _sym('{')
-    .skipThen(_ctorDecl.sepBy(_ctorSep))
-    .thenSkip(_ctorSep.optional)
-    .thenSkip(_sym('}'));
+final Parser<ParseError, ({List<SCtorDecl> ctors, int bodyEnd})> _ctorList =
+    _sym('{')
+        .skipThen(_ctorDecl.sepBy(_ctorSep))
+        .thenSkip(_ctorSep.optional)
+        .zip(string('}').zip(position<ParseError>()).thenSkip(_ws))
+        .map((pair) => (ctors: pair.$1, bodyEnd: pair.$2.$2));
 
 /// Walk a Pi chain to find the rightmost expression (the result type).
 SExpr _resultType(SExpr expr) {
@@ -1216,17 +1218,25 @@ final Parser<ParseError, SDataKind> _dataBody = _ident.flatMap(
     (tps) => _sym(':')
         .skipThen(_expr)
         .flatMap(
-          (signature) => _ctorList.map((ctors) {
+          (signature) => _ctorList.map((body) {
             final resolvedTps = tps ?? const <(String, SExpr?)>[];
-            if (_isProductForm(ctors, name)) {
+            if (_isProductForm(body.ctors, name)) {
               return SDataKind(
                 name,
                 resolvedTps,
                 signature,
-                _desugarProduct(ctors, name, resolvedTps),
+                _desugarProduct(body.ctors, name, resolvedTps),
+                productFields: body.ctors,
+                bodyEnd: body.bodyEnd,
               );
             }
-            return SDataKind(name, resolvedTps, signature, ctors);
+            return SDataKind(
+              name,
+              resolvedTps,
+              signature,
+              body.ctors,
+              bodyEnd: body.bodyEnd,
+            );
           }),
         ),
   ),

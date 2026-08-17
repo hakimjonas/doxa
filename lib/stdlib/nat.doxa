@@ -82,10 +82,11 @@ fun gcd_acc(k: Nat, m: Nat, n: Nat): Nat = match k {
   }
 }
 
-val gcd: (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => match m {
-  case zero => n
-  case succ m_ => gcd_acc m m n
-}
+val gcd: (m: Nat) -> (n: Nat) -> Nat =
+  (m: Nat) => (n: Nat) => match m {
+    case zero => n
+    case succ m_ => gcd_acc m m n
+  }
 // Integer division: div m n = floor(m / n), 0 if n = 0.
 // Uses iterated subtraction, structurally recursive on k.
 
@@ -97,10 +98,11 @@ fun div_acc(k: Nat, m: Nat, n: Nat): Nat = match k {
   }
 }
 
-val div: (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => match n {
-  case zero => zero
-  case succ n_ => div_acc m m n
-}
+val div: (m: Nat) -> (n: Nat) -> Nat =
+  (m: Nat) => (n: Nat) => match n {
+    case zero => zero
+    case succ n_ => div_acc m m n
+  }
 // Least common multiple: lcm m n = m * n / gcd m n
 
 val lcm: (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => div (mult m n) (gcd m n)
@@ -109,10 +111,11 @@ val lcm: (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => div (mult m n) (g
 val coprime: (m: Nat) -> (n: Nat) -> Bool = (m: Nat) => (n: Nat) => leq (gcd m n) (succ zero)
 // Divisibility: does d divide n?  True when d > 0 and n % d == 0.
 
-val divides: (d: Nat) -> (n: Nat) -> Bool = (d: Nat) => (n: Nat) => match d {
-  case zero => false_
-  case succ d_ => leq (mod n (succ d_)) zero
-}
+val divides: (d: Nat) -> (n: Nat) -> Bool =
+  (d: Nat) => (n: Nat) => match d {
+    case zero => false_
+    case succ d_ => leq (mod n (succ d_)) zero
+  }
 // Prime: n >= 2 and has no divisor d where 2 <= d < n.
 
 fun prime_acc(k: Nat, n: Nat): Bool = match k {
@@ -126,13 +129,14 @@ fun prime_acc(k: Nat, n: Nat): Bool = match k {
   }
 }
 
-val prime: (n: Nat) -> Bool = (n: Nat) => match n {
-  case zero => false_
-  case succ n_ => match n_ {
+val prime: (n: Nat) -> Bool =
+  (n: Nat) => match n {
     case zero => false_
-    case succ n__ => prime_acc n n
+    case succ n_ => match n_ {
+      case zero => false_
+      case succ n__ => prime_acc n n
+    }
   }
-}
 // --- Fuel-based fixpoint combinator -------------------------------------------
 // fix_by_fuel T fuel step base: iterate [step] up to [fuel] times on [base].
 // Structurally recursive on fuel — always terminates.

@@ -21,7 +21,7 @@ bool isFormatted(String source) => formatSource(source) == source;
 // ---------------------------------------------------------------------------
 
 /// Tag for [_Doc] variants.
-enum _DocKind { nil, text, line, nest, group, cat }
+enum _DocKind { nil, text, line, hardLine, nest, group, cat }
 
 /// A document that can be rendered flat or with line breaks.
 class _Doc {
@@ -35,6 +35,7 @@ class _Doc {
   static const _Doc nil = _Doc._(_DocKind.nil);
   static _Doc txt(String s) => _Doc._(_DocKind.text, text: s);
   static const _Doc line = _Doc._(_DocKind.line);
+  static const _Doc hardLine = _Doc._(_DocKind.hardLine);
   static _Doc nst(int n, _Doc d) => _Doc._(_DocKind.nest, nest: n, a: d);
   static _Doc grp(_Doc d) => _Doc._(_DocKind.group, a: d);
   static _Doc cat(_Doc a, _Doc b) => _Doc._(_DocKind.cat, a: a, b: b);
@@ -65,6 +66,8 @@ int _docFlatWidth(_Doc doc) {
       return doc.text!.length;
     case _DocKind.line:
       return 1; // space in flat mode
+    case _DocKind.hardLine:
+      return 1000000;
     case _DocKind.nest:
       return _docFlatWidth(doc.a!);
     case _DocKind.group:
@@ -94,11 +97,14 @@ void _renderDocInner(
         buf.write('\n');
         buf.write(' ' * indent);
       }
+    case _DocKind.hardLine:
+      buf.write('\n');
+      buf.write(' ' * indent);
     case _DocKind.nest:
       _renderDocInner(doc.a!, buf, col, indent + doc.nest!, flat, lineWidth);
     case _DocKind.group:
       final flatWidth = _docFlatWidth(doc.a!);
-      if (flat && col + flatWidth <= lineWidth) {
+      if (col + flatWidth <= lineWidth) {
         _renderDocInner(doc.a!, buf, col, indent, true, lineWidth);
       } else {
         _renderDocInner(doc.a!, buf, col, indent, false, lineWidth);
@@ -106,8 +112,11 @@ void _renderDocInner(
     case _DocKind.cat:
       final before = buf.length;
       _renderDocInner(doc.a!, buf, col, indent, flat, lineWidth);
-      final consumed = buf.length - before;
-      _renderDocInner(doc.b!, buf, col + consumed, indent, flat, lineWidth);
+      final rendered = buf.toString().substring(before);
+      final lastNl = rendered.lastIndexOf('\n');
+      final nextCol =
+          lastNl < 0 ? col + rendered.length : rendered.length - lastNl - 1;
+      _renderDocInner(doc.b!, buf, nextCol, indent, flat, lineWidth);
   }
 }
 
@@ -142,8 +151,7 @@ class _Formatter {
 
     final program = switch (result) {
       Success<ParseError, SProgram>(:final value) => value,
-      Partial<ParseError, SProgram>(:final value) => value,
-      Failure<ParseError, SProgram>() =>
+      Partial<ParseError, SProgram>() || Failure<ParseError, SProgram>() =>
         throw const FormatException('Cannot format source with parse errors'),
     };
 
@@ -151,6 +159,9 @@ class _Formatter {
     _emitCommentsBefore(source.length);
 
     var out = _buf.toString();
+    // Newlines are indented eagerly while rendering, so remove indentation
+    // from lines that ultimately contain no content.
+    out = out.replaceAll(RegExp(r'[ \t]+\n'), '\n');
     // Collapse 3+ consecutive `\n` into 2 (at most 1 blank line).
     out = out.replaceAll(RegExp(r'\n{3,}'), '\n\n');
     // Strip leading blank lines (but not leading whitespace/comments).
@@ -183,7 +194,14 @@ class _Formatter {
   /// Render [doc] assuming the current column is [startCol].
   String _renderDocAt(_Doc doc, int startCol) {
     final buf = StringBuffer();
-    _renderDocInner(doc, buf, startCol, 0, false, lineWidth);
+    _renderDocInner(
+      doc,
+      buf,
+      startCol,
+      _indent * _indentSize,
+      false,
+      lineWidth,
+    );
     return buf.toString();
   }
 
@@ -256,6 +274,18 @@ class _Formatter {
 
   void _emitRemainingComments() {
     _emitCommentsBefore(source.length);
+  }
+
+  _Doc _takeCommentsBeforeDoc(int offset) {
+    final docs = <_Doc>[];
+    while (_commentIx < _comments.length) {
+      final comment = _comments[_commentIx];
+      if (comment.start >= offset) break;
+      docs.add(_Doc.txt(comment.text));
+      docs.add(_Doc.hardLine);
+      _commentIx++;
+    }
+    return _Doc.catAll(docs);
   }
 
   // -------------------------------------------------------------------------
@@ -368,14 +398,28 @@ class _Formatter {
       _write(': ');
       _writeDoc(_visit(k.type!));
     }
-    _space();
-    _write('= ');
-    _writeDoc(_visit(k.body));
+    _writeAssignment(k.body);
   }
 
   void _visitTypeAlias(STypeAliasKind k) {
-    _write('type ${k.name} = ');
-    _writeDoc(_visit(k.body));
+    _write('type ${k.name}');
+    _writeAssignment(k.body);
+  }
+
+  void _writeAssignment(SExpr body) {
+    if (body.kind is SMatchKind ||
+        body.kind is SLetKind ||
+        body.kind is SByKind) {
+      _space();
+      _write('= ');
+      _writeDoc(_visit(body));
+      return;
+    }
+    _space();
+    _write('=');
+    _writeDoc(
+      _Doc.grp(_Doc.nst(_indentSize, _Doc.catAll([_Doc.line, _visit(body)]))),
+    );
   }
 
   void _visitData(SDataKind k) {
@@ -387,12 +431,17 @@ class _Formatter {
     _write('{');
     _indentBy(1);
     _newline();
-    for (var i = 0; i < k.ctors.length; i++) {
-      final ctor = k.ctors[i];
+    final entries = k.productFields ?? k.ctors;
+    for (var i = 0; i < entries.length; i++) {
+      final ctor = entries[i];
+      _emitCommentsBefore(ctor.span.start);
       _write('${ctor.name}: ');
       _writeDoc(_visit(ctor.type));
       _write(';');
-      if (i < k.ctors.length - 1) _newline();
+      if (i < entries.length - 1) _newline();
+    }
+    if (k.bodyEnd case final endOffset?) {
+      _emitCommentsBefore(endOffset);
     }
     _indentBy(-1);
     _newline();
@@ -420,12 +469,17 @@ class _Formatter {
     _write('{');
     _indentBy(1);
     _newline();
-    for (var i = 0; i < k.ctors.length; i++) {
-      final ctor = k.ctors[i];
+    final entries = k.productFields ?? k.ctors;
+    for (var i = 0; i < entries.length; i++) {
+      final ctor = entries[i];
+      _emitCommentsBefore(ctor.span.start);
       _write('${ctor.name}: ');
       _writeDoc(_visit(ctor.type));
       _write(';');
-      if (i < k.ctors.length - 1) _newline();
+      if (i < entries.length - 1) _newline();
+    }
+    if (k.bodyEnd case final endOffset?) {
+      _emitCommentsBefore(endOffset);
     }
     _indentBy(-1);
     _newline();
@@ -482,9 +536,7 @@ class _Formatter {
       _newline();
       _write('}');
     } else {
-      _space();
-      _write('= ');
-      _writeDoc(_visit(k.body));
+      _writeAssignment(k.body);
     }
   }
 
@@ -492,6 +544,7 @@ class _Formatter {
     var cur = expr;
     while (cur.kind is SLetKind) {
       final let = cur.kind as SLetKind;
+      _emitCommentsBefore(let.paramSpan.start);
       if (let.isRec) {
         _write('val rec ${let.param}');
         final params = _extractLambdaParams(let.bound);
@@ -521,6 +574,7 @@ class _Formatter {
       _newline();
       cur = let.body;
     }
+    _emitCommentsBefore(cur.span.start);
     _writeDoc(_visit(cur));
   }
 
@@ -673,8 +727,17 @@ class _Formatter {
       :final bound,
       :final body,
       :final isRec,
+      :final paramSpan,
     ) =>
-      _visitBlock(param, domain, bound, body, isRec),
+      _visitBlock(
+        param,
+        domain,
+        bound,
+        body,
+        isRec,
+        paramSpan.start,
+        expr.span.end,
+      ),
     SDotKind(:final qualifier, :final name) => _Doc.cat(
       _visit(qualifier),
       _Doc.txt('.$name'),
@@ -704,17 +767,35 @@ class _Formatter {
   };
 
   _Doc _visitApp(SExpr fn, SExpr arg) {
-    final fnDoc = _visit(fn);
-    final argDoc = _visit(arg);
+    final args = <SExpr>[arg];
+    var head = fn;
+    while (head.kind is SAppKind) {
+      final app = head.kind as SAppKind;
+      args.add(app.arg);
+      head = app.fn;
+    }
+    final orderedArgs = args.reversed.toList();
+    final fnDoc = _visit(head);
     final wrappedFn =
-        _needsAppFunctionParens(fn)
+        _needsAppFunctionParens(head)
             ? _Doc.catAll([_Doc.txt('('), fnDoc, _Doc.txt(')')])
             : fnDoc;
-    final wrappedArg =
-        _needsAppArgumentParens(arg)
-            ? _Doc.catAll([_Doc.txt('('), argDoc, _Doc.txt(')')])
-            : argDoc;
-    return _Doc.catAll([wrappedFn, _Doc.space, wrappedArg]);
+    return _Doc.grp(
+      _Doc.catAll([
+        wrappedFn,
+        for (final appArg in orderedArgs) ...[
+          _Doc.nst(
+            _indentSize,
+            _Doc.catAll([
+              _Doc.line,
+              _needsAppArgumentParens(appArg)
+                  ? _Doc.catAll([_Doc.txt('('), _visit(appArg), _Doc.txt(')')])
+                  : _visit(appArg),
+            ]),
+          ),
+        ],
+      ]),
+    );
   }
 
   bool _needsAppFunctionParens(SExpr expr) => switch (expr.kind) {
@@ -791,29 +872,43 @@ class _Formatter {
       // Non-dependent arrow
       final domainDoc = _visit(domain);
       final domainWrapped =
-          domain.kind is SPiKind
+          _needsPiDomainParens(domain)
               ? _Doc.catAll([_Doc.txt('('), domainDoc, _Doc.txt(')')])
               : domainDoc;
       return _Doc.grp(
         _Doc.catAll([
           domainWrapped,
-          _Doc.space,
+          _Doc.line,
           _Doc.txt('-> '),
           _Doc.nst(_indentSize, _visit(codomain)),
         ]),
       );
     }
     final open = isImplicit ? _Doc.txt('{$param: ') : _Doc.txt('($param: ');
-    final close = isImplicit ? _Doc.txt('} -> ') : _Doc.txt(') -> ');
+    final close = isImplicit ? _Doc.txt('}') : _Doc.txt(')');
     return _Doc.grp(
       _Doc.catAll([
         open,
         _visit(domain),
         close,
+        _Doc.line,
+        _Doc.txt('-> '),
         _Doc.nst(_indentSize, _visit(codomain)),
       ]),
     );
   }
+
+  bool _needsPiDomainParens(SExpr expr) => switch (expr.kind) {
+    SPiKind() ||
+    SLamKind() ||
+    SLetKind() ||
+    SMatchKind() ||
+    SByKind() ||
+    SQuotKind() ||
+    SQuotMkKind() ||
+    SQuotLiftKind() => true,
+    _ => false,
+  };
 
   _Doc _visitMatch(SExpr scrutinee, SExpr? motive, List<SMatchCaseArm> cases) {
     final caseDocs = <_Doc>[];
@@ -823,6 +918,7 @@ class _Formatter {
         case SMatchCase(:final ctor, :final binders, :final body):
           caseDocs.add(
             _Doc.catAll([
+              _takeCommentsBeforeDoc(arm.span.start),
               _Doc.txt('case $ctor'),
               for (final b in binders) _Doc.cat(_Doc.space, _Doc.txt(b)),
               _Doc.txt(' => '),
@@ -830,7 +926,13 @@ class _Formatter {
             ]),
           );
         case SWildcardCase(:final body):
-          caseDocs.add(_Doc.catAll([_Doc.txt('case _ => '), _visit(body)]));
+          caseDocs.add(
+            _Doc.catAll([
+              _takeCommentsBeforeDoc(arm.span.start),
+              _Doc.txt('case _ => '),
+              _visit(body),
+            ]),
+          );
       }
     }
     return _Doc.catAll([
@@ -845,16 +947,16 @@ class _Formatter {
       _Doc.nst(
         _indentSize,
         _Doc.catAll([
-          _Doc.line,
+          _Doc.hardLine,
           _Doc.catAll([
             for (var i = 0; i < caseDocs.length; i++) ...[
-              if (i > 0) _Doc.line,
+              if (i > 0) _Doc.hardLine,
               caseDocs[i],
             ],
           ]),
         ]),
       ),
-      _Doc.line,
+      _Doc.hardLine,
       _Doc.txt('}'),
     ]);
   }
@@ -865,14 +967,24 @@ class _Formatter {
     SExpr bound,
     SExpr body,
     bool isRec,
+    int paramOffset,
+    int endOffset,
   ) => _Doc.catAll([
     _Doc.txt('{'),
     _Doc.nst(
       _indentSize,
       _Doc.catAll([
-        _Doc.line,
-        _visitSLetChainDocFromLet(param, domain, bound, body, isRec),
-        _Doc.line,
+        _Doc.hardLine,
+        _visitSLetChainDocFromLet(
+          param,
+          domain,
+          bound,
+          body,
+          isRec,
+          paramOffset,
+        ),
+        _takeCommentsBeforeDoc(endOffset),
+        _Doc.hardLine,
       ]),
     ),
     _Doc.txt('}'),
@@ -884,6 +996,7 @@ class _Formatter {
     SExpr bound,
     SExpr body,
     bool isRec,
+    int paramOffset,
   ) {
     final bindParts = <_Doc>[];
     if (isRec) {
@@ -916,12 +1029,14 @@ class _Formatter {
               (body.kind as SLetKind).bound,
               (body.kind as SLetKind).body,
               (body.kind as SLetKind).isRec,
+              (body.kind as SLetKind).paramSpan.start,
             )
             : _visit(body);
     return _Doc.catAll([
+      _takeCommentsBeforeDoc(paramOffset),
       _Doc.catAll(bindParts),
       _Doc.txt(';'),
-      _Doc.line,
+      _Doc.hardLine,
       bodyDoc,
     ]);
   }
@@ -932,15 +1047,15 @@ class _Formatter {
       _Doc.nst(
         _indentSize,
         _Doc.catAll([
-          _Doc.line,
+          _Doc.hardLine,
           for (var i = 0; i < steps.length; i++) ...[
-            if (i > 0) ...[_Doc.txt(' |'), _Doc.line],
+            if (i > 0) ...[_Doc.txt(' |'), _Doc.hardLine],
             for (var j = 0; j < steps[i].length; j++) ...[
               if (j > 0) _Doc.txt('; '),
               _visitTacticStep(steps[i][j]),
             ],
           ],
-          _Doc.line,
+          _Doc.hardLine,
         ]),
       ),
       _Doc.txt('}'),

@@ -21,10 +21,12 @@ val three: Nat = {
   }
 // Block as a (parenthesized) function argument.
 
-val two: Nat = idNat ({
-  val n: Nat = zero;
-  succ (succ n)
-  })
+val two: Nat =
+  idNat
+    ({
+      val n: Nat = zero;
+      succ (succ n)
+      })
 // Block as a function body.
 
 fun double(x: Nat): Nat {

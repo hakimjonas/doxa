@@ -20,4 +20,11 @@ fun length{A: Type, n: Nat}(v: Vec A n): Nat = match v {
 }
 // FALSE: `length v` is `n`, not `succ n`.
 
-val vlen: (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (length v) (succ n) = (A: Type) => Vec.ind A ((m: Nat) => (w: Vec A m) => Eq Nat (length w) m) (refl zero) ((k: Nat) => (x: A) => (rest: Vec A k) => (ih: Eq Nat (length rest) k) => cong ((j: Nat) => succ j) ih)
+val vlen: (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (length v) (succ n) =
+  (A: Type) => Vec.ind
+    A
+    ((m: Nat) => (w: Vec A m) => Eq Nat (length w) m)
+    (refl zero)
+    ((k: Nat) => (x: A) => (rest: Vec A k) => (ih: Eq Nat (length rest) k) => cong
+      ((j: Nat) => succ j)
+      ih)

@@ -6,8 +6,20 @@ data Nat: Type {
   succ: Nat -> Nat;
 }
 
-fun trans{A: Type, x: A, y: A, z: A}(p: Eq A x y, q: Eq A y z): Eq A x z = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b z -> Eq A a z) x y ((w: A) => (r: Eq A w z) => r) p q
+fun trans{A: Type, x: A, y: A, z: A}(p: Eq A x y, q: Eq A y z): Eq A x z =
+  Eq.rec
+    A
+    ((a: A) => (b: A) => (_: Eq A a b) => Eq A b z -> Eq A a z)
+    x
+    y
+    ((w: A) => (r: Eq A w z) => r)
+    p
+    q
 
-fun cong{A: Type, B: Type, x: A, y: A}(f: A -> B, p: Eq A x y): Eq B (f x) (f y) = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) x y ((z: A) => refl (f z)) p
+fun cong{A: Type, B: Type, x: A, y: A}(f: A -> B, p: Eq A x y): Eq B (f x) (f y) =
+  Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) x y ((z: A) => refl (f z)) p
 
-fun cong2{A: Type, B: Type, C: Type, x1: A, y1: A, x2: B, y2: B}(f: A -> B -> C, p1: Eq A x1 y1, p2: Eq B x2 y2): Eq C (f x1 x2) (f y1 y2) = trans (cong ((a: A) => f a x2) p1) (cong ((b: B) => f y1 b) p2)
+fun cong2{A: Type, B: Type, C: Type, x1: A, y1: A, x2: B, y2: B}(f: A -> B -> C, p1: Eq A x1 y1, p2: Eq
+  B
+  x2
+  y2): Eq C (f x1 x2) (f y1 y2) = trans (cong ((a: A) => f a x2) p1) (cong ((b: B) => f y1 b) p2)

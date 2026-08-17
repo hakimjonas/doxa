@@ -10,7 +10,8 @@ data List[A: Type]: Type {
   cons: A -> List A -> List A;
 }
 
-val length: List Nat -> Nat = List.rec Nat ((_: List Nat) => Nat) zero ((_: Nat) => (_: List Nat) => (rec: Nat) => succ rec)
+val length: List Nat -> Nat =
+  List.rec Nat ((_: List Nat) => Nat) zero ((_: Nat) => (_: List Nat) => (rec: Nat) => succ rec)
 
 val xs: List Nat = cons zero (cons (succ zero) (cons (succ (succ zero)) nil))
 

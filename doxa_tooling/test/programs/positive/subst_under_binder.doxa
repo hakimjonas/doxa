@@ -11,7 +11,15 @@ data Vec[A: Type]: Nat -> Type {
   vcons: (n: Nat) -> A -> Vec A n -> Vec A (succ n);
 }
 
-val subst: (A: Type) -> (P: A -> Type) -> (x: A) -> (y: A) -> Eq A x y -> P x -> P y = (A: Type) => (P: A -> Type) => (x: A) => (y: A) => (p: Eq A x y) => (px: P x) => Eq.rect A ((a: A) => (b: A) => (_: Eq A a b) => P a -> P b) x y ((z: A) => (pz: P z) => pz) p px
+val subst: (A: Type) -> (P: A -> Type) -> (x: A) -> (y: A) -> Eq A x y -> P x -> P y =
+  (A: Type) => (P: A -> Type) => (x: A) => (y: A) => (p: Eq A x y) => (px: P x) => Eq.rect
+    A
+    ((a: A) => (b: A) => (_: Eq A a b) => P a -> P b)
+    x
+    y
+    ((z: A) => (pz: P z) => pz)
+    p
+    px
 // The motive is a dependently-typed function: Vec indexed by its length.
 
 val P: Nat -> Type = (n: Nat) => Vec Nat n

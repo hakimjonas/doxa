@@ -7,4 +7,5 @@ data Nat: Type {
   succ: Nat -> Nat;
 }
 
-val uip: (A: Type) -> (x: A) -> (y: A) -> (p: Eq A x y) -> (q: Eq A x y) -> Eq (Eq A x y) p q = (A: Type) => (x: A) => (y: A) => (p: Eq A x y) => (q: Eq A x y) => refl (Eq A x y) p
+val uip: (A: Type) -> (x: A) -> (y: A) -> (p: Eq A x y) -> (q: Eq A x y) -> Eq (Eq A x y) p q =
+  (A: Type) => (x: A) => (y: A) => (p: Eq A x y) => (q: Eq A x y) => refl (Eq A x y) p

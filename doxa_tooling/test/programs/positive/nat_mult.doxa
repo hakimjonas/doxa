@@ -5,9 +5,11 @@ data Nat: Type {
   succ: Nat -> Nat;
 }
 
-val plus: Nat -> Nat -> Nat = (m: Nat) => (n: Nat) => Nat.rec ((_: Nat) => Nat) n ((_: Nat) => (rec: Nat) => succ rec) m
+val plus: Nat -> Nat -> Nat =
+  (m: Nat) => (n: Nat) => Nat.rec ((_: Nat) => Nat) n ((_: Nat) => (rec: Nat) => succ rec) m
 
-val mult: Nat -> Nat -> Nat = (m: Nat) => (n: Nat) => Nat.rec ((_: Nat) => Nat) zero ((_: Nat) => (rec: Nat) => plus n rec) m
+val mult: Nat -> Nat -> Nat =
+  (m: Nat) => (n: Nat) => Nat.rec ((_: Nat) => Nat) zero ((_: Nat) => (rec: Nat) => plus n rec) m
 
 val two: Nat = succ (succ zero)
 

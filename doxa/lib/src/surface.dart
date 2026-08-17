@@ -1038,13 +1038,34 @@ final class SDataKind extends SDeclKind {
   /// Constructor declarations in source order.
   final List<SCtorDecl> ctors;
 
+  /// Original fields when this declaration used product form.
+  ///
+  /// The parser still puts the generated `mk` constructor in [ctors] so that
+  /// elaboration and name resolution keep their constructor-only view. The
+  /// formatter uses this field to retain the product declaration spelling.
+  final List<SCtorDecl>? productFields;
+
+  /// Offset immediately after the closing brace of the declaration body.
+  ///
+  /// Parser spans include trailing whitespace and comments. The formatter uses
+  /// this offset to distinguish comments inside a data body from comments
+  /// before the following declaration.
+  final int? bodyEnd;
+
   /// Creates a data-type declaration.
-  const SDataKind(this.name, this.typeParams, this.signature, this.ctors);
+  const SDataKind(
+    this.name,
+    this.typeParams,
+    this.signature,
+    this.ctors, {
+    this.productFields,
+    this.bodyEnd,
+  });
 
   @override
   String toString() =>
       'SDataKind($name, typeParams: $typeParams, signature: $signature, '
-      'ctors: $ctors)';
+      'ctors: $ctors${productFields == null ? "" : ", productFields: $productFields"})';
 }
 
 /// A single constructor declaration inside an [SDataKind].

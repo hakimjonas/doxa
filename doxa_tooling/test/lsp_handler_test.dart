@@ -723,6 +723,10 @@ void main() {
         final root = File('../lib/stdlib/Prop/prop.doxa').absolute;
         final source = root.readAsStringSync();
         final uri = root.uri.toString();
+        final notIntro = _sourcePosition(source, 'not_intro');
+        final proofsSource =
+            File('../lib/stdlib/proofs.doxa').readAsStringSync();
+        final falseDefinition = _sourcePosition(proofsSource, 'data False');
         final handler = LspHandler();
         handler.handle(_didOpen(uri, source));
 
@@ -731,8 +735,8 @@ void main() {
             1,
             'textDocument/definition',
             uri,
-            23,
-            '  not_intro : (A -> '.length + 1,
+            notIntro.line,
+            notIntro.character + 'not_intro: (A -> '.length + 1,
           ),
         );
 
@@ -743,7 +747,7 @@ void main() {
           File('../lib/stdlib/proofs.doxa').absolute.uri.toString(),
         );
         expect((location['range'] as Map<String, dynamic>)['start'], {
-          'line': 95,
+          'line': falseDefinition.line,
           'character': 'data '.length,
         });
       },
@@ -755,6 +759,8 @@ void main() {
         final root = File('../lib/stdlib/Prop/prop.doxa').absolute;
         final source = root.readAsStringSync();
         final uri = root.uri.toString();
+        final andDefinition = _sourcePosition(source, 'data And');
+        final falseUse = _sourcePosition(source, 'not_intro: (A -> False');
         final handler = LspHandler();
         handler.handle(_didOpen(uri, source));
 
@@ -770,7 +776,7 @@ void main() {
         expect(
           tokens,
           contains((
-            line: 6,
+            line: andDefinition.line,
             character: 'data '.length,
             length: 'And'.length,
             type: 'type',
@@ -779,8 +785,8 @@ void main() {
         expect(
           tokens,
           contains((
-            line: 23,
-            character: '  not_intro: (A -> '.length,
+            line: falseUse.line,
+            character: falseUse.character + 'not_intro: (A -> '.length,
             length: 'False'.length,
             type: 'type',
           )),
@@ -1247,6 +1253,14 @@ Map<String, dynamic> _linePositionRequest(
     'position': {'line': line, 'character': character},
   },
 };
+
+({int line, int character}) _sourcePosition(String source, String text) {
+  final offset = source.indexOf(text);
+  if (offset < 0) throw StateError('Could not find "$text" in source');
+  final prefix = source.substring(0, offset);
+  final line = '\n'.allMatches(prefix).length;
+  return (line: line, character: offset - prefix.lastIndexOf('\n') - 1);
+}
 
 List<({int line, int character, int length, String type})>
 _decodeSemanticTokens(List<int> data) {
