@@ -163,3 +163,21 @@ jobs:
       - name: pana score (doxa_tooling)
         run: |
           pana doxa_tooling/ --no-warning --source path --exit-code-threshold 0 2>&1 | tail -20 || true
+
+  # Preserve the branch-protection context while requiring every CI job.
+  test:
+    needs: [doxa-core, vscode, jetbrains, pub-score]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify CI jobs
+        env:
+          DOXA_CORE_RESULT: ${{ needs['doxa-core'].result }}
+          VSCODE_RESULT: ${{ needs.vscode.result }}
+          JETBRAINS_RESULT: ${{ needs.jetbrains.result }}
+          PUB_SCORE_RESULT: ${{ needs['pub-score'].result }}
+        run: |
+          test "$DOXA_CORE_RESULT" = success
+          test "$VSCODE_RESULT" = success
+          test "$JETBRAINS_RESULT" = success
+          test "$PUB_SCORE_RESULT" = success
