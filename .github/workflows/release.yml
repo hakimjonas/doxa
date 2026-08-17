@@ -27,9 +27,6 @@ jobs:
           tar -czf /tmp/doxa-bin/doxa-linux-x64.tar.gz -C /tmp/doxa-bin doxa-linux-x64
 
       - name: Publish to pub.dev (doxa kernel)
-        uses: dart-lang/setup-dart@v1
-        with:
-          sdk: stable
         run: |
           dart pub publish --directory doxa/ --force || true
 

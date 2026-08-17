@@ -48,9 +48,11 @@ jobs:
         working-directory: ./doxa_tooling
         run: dart compile exe bin/doxa.dart -o /tmp/doxa
 
-      - name: doxa fmt --check (all .doxa files)
+      - name: doxa fmt --check (all parseable .doxa files)
         run: |
-          for f in $(find lib/stdlib example doxa_tooling/test/programs -name '*.doxa' -type f); do
+          for f in $(find lib/stdlib example doxa_tooling/test/programs -name '*.doxa' -type f \
+            ! -path 'doxa_tooling/test/programs/negative/block_no_result.doxa' \
+            ! -path 'doxa_tooling/test/programs/negative/parse_error.doxa'); do
             /tmp/doxa fmt --check "$f" || exit 1
           done
 
