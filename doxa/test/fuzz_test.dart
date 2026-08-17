@@ -29,7 +29,7 @@ void main() {
     });
 
     test('quote(level, VType(n)) round-trips through eval', () {
-      final env = const ENil();
+      const env = ENil();
       for (var level = 0; level <= 5; level++) {
         final v = VType(LLevel(level));
         final quoted = quote(0, v);
@@ -70,9 +70,9 @@ void main() {
         TProp(),
         TSProp(),
         // Pi types: (x: Type) -> Type
-        TPi(const TType(LLevel(0)), const TType(LLevel(0))),
+        TPi(TType(LLevel(0)), TType(LLevel(0))),
         // Lambda: (x: Type) -> x
-        TLam(const TType(LLevel(0)), TBound(0)),
+        TLam(TType(LLevel(0)), TBound(0)),
       ];
       for (final term in terms) {
         expect(

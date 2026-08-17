@@ -20,25 +20,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart' show loadPrelude;
-import 'package:doxa/doxa.dart' show AnsiColor;
-import 'package:doxa/doxa.dart'
-    show
-        ClassInfo,
-        ImportState,
-        ImportResolver,
-        elabDecl,
-        checkDeclResult,
-        declNames,
-        ElabError,
-        UnresolvedName,
-        TopEnv,
-        mergeNamespace;
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart' show SourceFile;
-import 'package:doxa/doxa.dart' show SProgram, SImportKind;
-import 'package:doxa_tooling/src/format.dart' show formatSource, isFormatted;
+import 'package:doxa_tooling/src/format.dart' show formatSource;
 import 'package:doxa_tooling/src/lsp/handler.dart';
 import 'package:doxa_tooling/src/lsp/transport.dart'
     show LspReader, sendLspMessage;
@@ -109,23 +91,16 @@ Future<void> main(List<String> args) async {
 /// `doxa fmt --check FILE` — exits 0 if already formatted, 1 otherwise.
 /// `doxa fmt --stdout FILE` — writes formatted result to stdout.
 void _runFmt(List<String> args) {
-  var checkMode = false;
-  var stdoutMode = false;
-  String path;
-
-  if (args.length >= 3 && args[1] == '--check') {
-    checkMode = true;
-    path = args[2];
-  } else if (args.length >= 3 && args[1] == '--stdout') {
-    stdoutMode = true;
-    path = args[2];
-  } else if (args.length >= 2) {
-    path = args[1];
-    if (path.startsWith('--')) {
-      _usage();
-      exit(2);
-    }
-  } else {
+  final fmtArgs = args.skip(1).toList();
+  if (fmtArgs.isEmpty || fmtArgs.length > 2) {
+    _usage();
+    exit(2);
+  }
+  final checkMode = fmtArgs.length == 2 && fmtArgs.first == '--check';
+  final stdoutMode = fmtArgs.length == 2 && fmtArgs.first == '--stdout';
+  final path = fmtArgs.last;
+  if (path.startsWith('--') ||
+      (fmtArgs.length == 2 && !checkMode && !stdoutMode)) {
     _usage();
     exit(2);
   }
@@ -138,16 +113,19 @@ void _runFmt(List<String> args) {
 
   final text = file.readAsStringSync();
 
-  if (checkMode) {
-    if (isFormatted(text)) {
-      exit(0);
-    } else {
-      stderr.writeln('$path: would reformat');
-      exit(1);
-    }
+  String formatted;
+  try {
+    formatted = formatSource(text);
+  } on FormatException catch (error) {
+    stderr.writeln('doxa: cannot format $path: ${error.message}');
+    exit(1);
   }
 
-  final formatted = formatSource(text);
+  if (checkMode) {
+    if (formatted == text) exit(0);
+    stderr.writeln('$path: would reformat');
+    exit(1);
+  }
 
   if (stdoutMode) {
     stdout.write(formatted);
@@ -242,29 +220,27 @@ void _checkFile(File file, {bool json = false}) {
 
 /// Run the LSP server with async I/O.
 ///
-/// Uses a stream-based stdin reader to avoid a known Dart runtime
-/// contention issue between synchronous stdin reads and stdout writes
-/// in piped processes.
+/// Reads LSP messages from stdin synchronously (byte-by-byte) to
+/// avoid stream-based stdin issues in AOT-compiled binaries where
+/// piped data may not reliably deliver to async listeners.
 Future<void> _runLspAsync() async {
   final handler = LspHandler();
   final reader = LspReader();
   final done = Completer<void>();
 
-  stdin.listen(
+  final subscription = stdin.listen(
     (data) {
       final messages = reader.feed(data);
       for (final message in messages) {
         final response = handler.handle(message);
+        if (message['method'] == 'exit') {
+          if (!done.isCompleted) done.complete();
+          return;
+        }
         if (response != null) {
-          final method = message['method'] as String?;
-          if (method == 'exit') {
-            done.complete();
-            return;
-          }
           sendLspMessage(response);
         }
       }
-      // Flush buffered output after processing each batch.
       stdout.flush();
     },
     onDone: () {
@@ -276,6 +252,7 @@ Future<void> _runLspAsync() async {
   );
 
   await done.future;
+  await subscription.cancel();
 }
 
 /// Run the REPL.
@@ -363,7 +340,10 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
   // Seed bindings + dataDecls from the prelude so user code can
   // reference `Eq`, `Acc`, and any other ambient names without
   // redeclaring them.
-  final prelude = loadPrelude();
+  final prelude =
+      isStdlibPreludePath(source.filename)
+          ? const PreludeData([], [], {})
+          : loadPrelude();
   final preludeDeclCount = prelude.bindings.length + prelude.dataDecls.length;
 
   // Set up import state so relative imports resolve correctly.
@@ -429,9 +409,6 @@ int checkSource(SourceFile source, {IOSink? out, IOSink? err}) {
       :final alias,
       :final path,
     ) when alias != null) {
-      importState.push(source.filename);
-      final resolved = importState.resolvePath(path);
-      importState.pop();
       final defaultPrefix =
           path.endsWith('.doxa')
               ? path

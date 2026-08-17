@@ -48,6 +48,18 @@ Result<ParseError, SExpr> parseExpr(String input) =>
 Result<ParseError, SDecl> parseDecl(String input) =>
     _ws.skipThen(_decl).thenSkip(_ws).thenSkip(eof()).run(input);
 
+/// Parse the complete import declarations at the start of [input].
+///
+/// Editor features use this after a later declaration is incomplete. Import
+/// paths are structural and remain safe to navigate without a complete AST.
+List<SDecl> parseLeadingImports(String input) => switch (_leadingImports.run(
+  input,
+)) {
+  Success<ParseError, List<SDecl>>(:final value) ||
+  Partial<ParseError, List<SDecl>>(:final value) => value,
+  Failure<ParseError, List<SDecl>>() => const [],
+};
+
 // ===========================================================================
 // Whitespace and comments.
 // ===========================================================================
@@ -137,6 +149,15 @@ final Parser<ParseError, String> _rawIdent = (letter() | char('_'))
 
 /// A lexed identifier (consumes trailing whitespace).
 final Parser<ParseError, String> _ident = _lex(_rawIdent);
+
+/// A lexed identifier paired with its exact source span.
+final Parser<ParseError, (String, DoxaSpan)> _identWithSpan =
+    position<ParseError>().flatMap(
+      (start) => _rawIdent
+          .zip(position<ParseError>())
+          .thenSkip(_ws)
+          .map((pair) => (pair.$1, DoxaSpan(start, pair.$2))),
+    );
 
 /// A keyword: an exact-string match that is not followed by another
 /// identifier character. Prevents `valid` from matching `val`.
@@ -254,7 +275,9 @@ Parser<ParseError, SExpr> _spanned(Parser<ParseError, SExprKind> p) =>
 /// means `_binder | _appOrArrow` backtracks cleanly when the `(ident : ty)`
 /// header fails to match, no `attempt` wrapper needed.
 final Parser<ParseError, SExpr> _expr = defer(
-  () => _matchExpr | _binder | _implicitBinder | _appOrArrow,
+  () => (_matchExpr | _binder | _implicitBinder | _appOrArrow).expect(
+    'expected an expression',
+  ),
 );
 
 /// A single `val` binding inside a block: `'val' ident (':' type)? '=' expr`.
@@ -268,10 +291,11 @@ typedef _ValBinding =
     ({
       int start,
       String name,
+      DoxaSpan nameSpan,
       SExpr? domain,
       SExpr bound,
       bool isRec,
-      List<(String, SExpr)> funParams,
+      List<(String, SExpr, DoxaSpan)> funParams,
     });
 
 /// Optional `rec` keyword modifier on a `val` binding.
@@ -280,22 +304,24 @@ final Parser<ParseError, bool> _recMod = _keyword(
 ).map((_) => true).optional.map((v) => v ?? false);
 
 /// Value parameters for a `val rec` binding: `'(' name ':' expr (',' name ':' expr)* ')'`.
-final Parser<ParseError, List<(String, SExpr)>> _recValueParams = _sym('(')
-    .skipThen(
-      _ident
-          .flatMap<(String, SExpr)>(
-            (name) => _sym(':').skipThen(_expr).map((t) => (name, t)),
-          )
-          .sepBy(_sym(',')),
-    )
-    .thenSkip(_sym(')'));
+final Parser<ParseError, List<(String, SExpr, DoxaSpan)>> _recValueParams =
+    _sym('(')
+        .skipThen(
+          _identWithSpan
+              .flatMap<(String, SExpr, DoxaSpan)>(
+                (name) =>
+                    _sym(':').skipThen(_expr).map((t) => (name.$1, t, name.$2)),
+              )
+              .sepBy(_sym(',')),
+        )
+        .thenSkip(_sym(')'));
 
 final Parser<ParseError, _ValBinding> _valBinding = position<ParseError>()
     .flatMap(
       (start) => _keyword('val')
           .skipThen(_recMod)
           .flatMap(
-            (isRec) => _ident.flatMap((name) {
+            (isRec) => _identWithSpan.flatMap((name) {
               if (isRec) {
                 // val rec f(x: T): R = body
                 return _recValueParams.flatMap(
@@ -307,7 +333,8 @@ final Parser<ParseError, _ValBinding> _valBinding = position<ParseError>()
                             .map(
                               (body) => (
                                 start: start,
-                                name: name,
+                                name: name.$1,
+                                nameSpan: name.$2,
                                 domain: retType,
                                 bound: body,
                                 isRec: true,
@@ -327,7 +354,8 @@ final Parser<ParseError, _ValBinding> _valBinding = position<ParseError>()
                           .map(
                             (bound) => (
                               start: start,
-                              name: name,
+                              name: name.$1,
+                              nameSpan: name.$2,
                               domain: domain,
                               bound: bound,
                               isRec: false,
@@ -372,7 +400,7 @@ final Parser<ParseError, SExpr> _blockExpr = _sym('{').skipThen(
                   var bound = b.bound;
                   for (final p in b.funParams.reversed) {
                     bound = SExpr(
-                      SLamKind(p.$1, p.$2, bound),
+                      SLamKind(p.$1, p.$2, bound, paramSpan: p.$3),
                       DoxaSpan(b.start, end),
                     );
                   }
@@ -380,17 +408,30 @@ final Parser<ParseError, SExpr> _blockExpr = _sym('{').skipThen(
                   var domain = b.domain!;
                   for (final p in b.funParams.reversed) {
                     domain = SExpr(
-                      SPiKind(p.$1, p.$2, domain),
+                      SPiKind(p.$1, p.$2, domain, paramSpan: p.$3),
                       DoxaSpan(b.start, end),
                     );
                   }
                   body = SExpr(
-                    SLetKind(b.name, domain, bound, body, isRec: true),
+                    SLetKind(
+                      b.name,
+                      domain,
+                      bound,
+                      body,
+                      isRec: true,
+                      paramSpan: b.nameSpan,
+                    ),
                     DoxaSpan(b.start, end),
                   );
                 } else {
                   body = SExpr(
-                    SLetKind(b.name, b.domain, b.bound, body),
+                    SLetKind(
+                      b.name,
+                      b.domain,
+                      b.bound,
+                      body,
+                      paramSpan: b.nameSpan,
+                    ),
                     DoxaSpan(b.start, end),
                   );
                 }
@@ -508,7 +549,7 @@ final Parser<ParseError, SExpr> _matchExpr = position<ParseError>().flatMap(
 /// parenthesized atom.
 final Parser<ParseError, SExpr> _binder = position<ParseError>().flatMap(
   (start) => _sym('(')
-      .skipThen(_ident)
+      .skipThen(_identWithSpan)
       .flatMap(
         (name) => _sym(':')
             .skipThen(_expr)
@@ -530,8 +571,18 @@ final Parser<ParseError, SExpr> _binder = position<ParseError>().flatMap(
                         final span = DoxaSpan(start, end);
                         final kind =
                             domain == null || arrow == '=>'
-                                ? SLamKind(name, domain, body)
-                                : SPiKind(name, domain, body);
+                                ? SLamKind(
+                                  name.$1,
+                                  domain,
+                                  body,
+                                  paramSpan: name.$2,
+                                )
+                                : SPiKind(
+                                  name.$1,
+                                  domain,
+                                  body,
+                                  paramSpan: name.$2,
+                                );
                         return SExpr(kind, span);
                       }),
                     ),
@@ -544,7 +595,7 @@ final Parser<ParseError, SExpr> _binder = position<ParseError>().flatMap(
 final Parser<ParseError, SExpr> _implicitBinder = position<ParseError>()
     .flatMap(
       (start) => _sym('{')
-          .skipThen(_ident)
+          .skipThen(_identWithSpan)
           .flatMap(
             (name) => _sym(':')
                 .skipThen(_expr)
@@ -560,16 +611,18 @@ final Parser<ParseError, SExpr> _implicitBinder = position<ParseError>()
                                 final kind =
                                     arrow == '=>'
                                         ? SLamKind(
-                                          name,
+                                          name.$1,
                                           domain,
                                           body,
                                           icit: Icit.implicit,
+                                          paramSpan: name.$2,
                                         )
                                         : SPiKind(
-                                          name,
+                                          name.$1,
                                           domain,
                                           body,
                                           icit: Icit.implicit,
+                                          paramSpan: name.$2,
                                         );
                                 return SExpr(kind, span);
                               }),
@@ -722,7 +775,9 @@ final Parser<ParseError, (String, int)> _dotSuffix = _sym(
 /// interaction. The resulting AST shape is identical to what an LR
 /// grammar would produce.
 final Parser<ParseError, SExpr> _identAtom = position<ParseError>().flatMap(
-  (start) => _ident.zip(position<ParseError>()).flatMap((identAndEnd) {
+  (start) => _rawIdent.zip(position<ParseError>()).thenSkip(_ws).flatMap((
+    identAndEnd,
+  ) {
     final name = identAndEnd.$1;
     final identEnd = identAndEnd.$2;
     final bareIdent = SExpr(SIdentKind(name), DoxaSpan(start, identEnd));
@@ -900,7 +955,7 @@ Parser<ParseError, List<SFunTypeParam>> _funTypeParamGroup(
   bool isImplicit,
 ) => _sym(open)
     .skipThen(
-      _ident
+      _identWithSpan
           .flatMap<SFunTypeParam>(
             (name) => _sym(
               ':',
@@ -916,10 +971,11 @@ Parser<ParseError, List<SFunTypeParam>> _funTypeParamGroup(
                 constraints = cs;
               }
               return SFunTypeParam(
-                name,
+                name.$1,
                 kind,
                 isImplicit: isImplicit,
                 constraints: constraints,
+                span: name.$2,
               );
             }),
           )
@@ -962,11 +1018,14 @@ final Parser<ParseError, List<SFunTypeParam>> _funTypeParams =
         .map((groups) => [for (final g in groups) ...g]);
 
 /// Value parameters: `( name ':' expr (',' name ':' expr)* )` or `()`.
-final Parser<ParseError, List<(String, SExpr)>> _valueParams = _sym('(')
+final Parser<ParseError, List<(String, SExpr, DoxaSpan)>> _valueParams = _sym(
+      '(',
+    )
     .skipThen(
-      _ident
-          .flatMap<(String, SExpr)>(
-            (name) => _sym(':').skipThen(_expr).map((t) => (name, t)),
+      _identWithSpan
+          .flatMap<(String, SExpr, DoxaSpan)>(
+            (name) =>
+                _sym(':').skipThen(_expr).map((t) => (name.$1, t, name.$2)),
           )
           .sepBy(_sym(','))
           .optional
@@ -1008,18 +1067,20 @@ Parser<ParseError, SFunKind> _mkFunBody(bool isOpaque) => _ident.flatMap(
           .flatMap(
             (ret) => _structAnn.flatMap(
               (structAnn) => _terminationBy.flatMap(
-                (tby) => (_sym('=').skipThen(_expr) | _blockExpr).map(
-                  (body) => SFunKind(
+                (tby) => (_sym('=').skipThen(_expr) | _blockExpr).map((body) {
+                  final params = ps ?? const <(String, SExpr, DoxaSpan)>[];
+                  return SFunKind(
                     name,
                     tps,
-                    ps ?? const [],
+                    [for (final param in params) (param.$1, param.$2)],
                     ret,
                     body,
                     isOpaque: isOpaque,
                     structAnn: structAnn,
                     terminationBy: tby,
-                  ),
-                ),
+                    paramSpans: [for (final param in params) param.$3],
+                  );
+                }),
               ),
             ),
           ),
@@ -1079,10 +1140,12 @@ final Parser<ParseError, SCtorDecl> _ctorDecl = position<ParseError>().flatMap(
 /// Separator between constructors in a `data` body: `|` or `;`.
 final Parser<ParseError, String> _ctorSep = _sym('|') | _sym(';');
 
-final Parser<ParseError, List<SCtorDecl>> _ctorList = _sym('{')
-    .skipThen(_ctorDecl.sepBy(_ctorSep))
-    .thenSkip(_ctorSep.optional)
-    .thenSkip(_sym('}'));
+final Parser<ParseError, ({List<SCtorDecl> ctors, int bodyEnd})> _ctorList =
+    _sym('{')
+        .skipThen(_ctorDecl.sepBy(_ctorSep))
+        .thenSkip(_ctorSep.optional)
+        .zip(string('}').zip(position<ParseError>()).thenSkip(_ws))
+        .map((pair) => (ctors: pair.$1, bodyEnd: pair.$2.$2));
 
 /// Walk a Pi chain to find the rightmost expression (the result type).
 SExpr _resultType(SExpr expr) {
@@ -1155,17 +1218,25 @@ final Parser<ParseError, SDataKind> _dataBody = _ident.flatMap(
     (tps) => _sym(':')
         .skipThen(_expr)
         .flatMap(
-          (signature) => _ctorList.map((ctors) {
+          (signature) => _ctorList.map((body) {
             final resolvedTps = tps ?? const <(String, SExpr?)>[];
-            if (_isProductForm(ctors, name)) {
+            if (_isProductForm(body.ctors, name)) {
               return SDataKind(
                 name,
                 resolvedTps,
                 signature,
-                _desugarProduct(ctors, name, resolvedTps),
+                _desugarProduct(body.ctors, name, resolvedTps),
+                productFields: body.ctors,
+                bodyEnd: body.bodyEnd,
               );
             }
-            return SDataKind(name, resolvedTps, signature, ctors);
+            return SDataKind(
+              name,
+              resolvedTps,
+              signature,
+              body.ctors,
+              bodyEnd: body.bodyEnd,
+            );
           }),
         ),
   ),
@@ -1297,18 +1368,22 @@ final Parser<ParseError, SClassMethod> _classMethod = position<ParseError>()
           ),
     );
 
-SExpr _buildMethodPi(String name, List<(String, SExpr)> params, SExpr retType) {
+SExpr _buildMethodPi(
+  String name,
+  List<(String, SExpr, DoxaSpan)> params,
+  SExpr retType,
+) {
   var ty = retType;
   const span = DoxaSpan.synthetic;
   for (final p in params.reversed) {
-    ty = SExpr(SPiKind(p.$1, p.$2, ty), span);
+    ty = SExpr(SPiKind(p.$1, p.$2, ty, paramSpan: p.$3), span);
   }
   return ty;
 }
 
 Parser<ParseError, SClassMethod> _buildMethodBody(
   String name,
-  List<(String, SExpr)> params,
+  List<(String, SExpr, DoxaSpan)> params,
   SExpr retType,
   SExpr? defaultBody,
   int start,
@@ -1407,6 +1482,11 @@ final Parser<ParseError, List<SDecl>> _programDecls = defer(
   () => _decl
       .flatMap((first) => _programDecls.map((rest) => [first, ...rest]))
       .or(_ws.skipThen(eof()).map((_) => <SDecl>[])),
+);
+
+/// A leading sequence of complete imports, without an EOF requirement.
+final Parser<ParseError, List<SDecl>> _leadingImports = _ws.skipThen(
+  _importDecl.many,
 );
 
 /// A program: leading whitespace, declarations, eof.

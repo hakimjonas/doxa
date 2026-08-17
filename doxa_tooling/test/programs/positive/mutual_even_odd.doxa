@@ -1,19 +1,19 @@
 // Mutual inductive types Even / Odd via `data ... and data ...`: all block
 // names are in scope during every ctor's signature, and positivity spans the
 // whole block (no sibling may appear in a strictly-negative position).
-data Even : Type {
-  ezero : Even;
-  esucc : Odd -> Even;
-} and data Odd : Type {
-  osucc : Even -> Odd;
+data Even: Type {
+  ezero: Even;
+  esucc: Odd -> Even;
+} and data Odd: Type {
+  osucc: Even -> Odd;
 }
 
-val zero_ : Even = ezero
+val zero_: Even = ezero
 
-val one_ : Odd = osucc ezero
+val one_: Odd = osucc ezero
 
-val two_ : Even = esucc one_
+val two_: Even = esucc one_
 
-val three_ : Odd = osucc two_
+val three_: Odd = osucc two_
 
-val four_ : Even = esucc three_
+val four_: Even = esucc three_

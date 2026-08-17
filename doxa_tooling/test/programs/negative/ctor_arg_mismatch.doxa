@@ -1,14 +1,14 @@
 // A constructor applied to an argument of the wrong type should
 // fire TypeMismatch (not a parse or resolution error). Here `succ`
 // expects a Nat but we pass it a Bool.
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-data Bool : Type {
-  true_ : Bool;
-  false_ : Bool;
+data Bool: Type {
+  true_: Bool;
+  false_: Bool;
 }
 
-val wrong : Nat = succ true_
+val wrong: Nat = succ true_

@@ -1,0 +1,4 @@
+data Toggle: Type {
+  on: Toggle;
+  off: Toggle;
+}

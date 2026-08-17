@@ -206,6 +206,9 @@ final class SLamKind extends SExprKind {
   /// The parameter name.
   final String param;
 
+  /// The source span of [param], or [DoxaSpan.synthetic] for generated binders.
+  final DoxaSpan paramSpan;
+
   /// The parameter's type annotation, or null when unannotated.
   final SExpr? domain;
 
@@ -221,18 +224,21 @@ final class SLamKind extends SExprKind {
     this.domain,
     this.body, {
     this.icit = Icit.explicit,
+    this.paramSpan = DoxaSpan.synthetic,
   });
 
   @override
   bool operator ==(Object other) =>
       other is SLamKind &&
       other.param == param &&
+      other.paramSpan == paramSpan &&
       other.domain == domain &&
       other.body == body &&
       other.icit == icit;
 
   @override
-  int get hashCode => Object.hash('SLamKind', param, domain, body, icit);
+  int get hashCode =>
+      Object.hash('SLamKind', param, paramSpan, domain, body, icit);
 
   @override
   String toString() =>
@@ -250,6 +256,9 @@ final class SLamKind extends SExprKind {
 final class SLetKind extends SExprKind {
   /// The name of the bound variable.
   final String param;
+
+  /// The source span of [param], or [DoxaSpan.synthetic] for generated binders.
+  final DoxaSpan paramSpan;
 
   /// The optional type annotation (or return type for [isRec]).
   final SExpr? domain;
@@ -271,12 +280,14 @@ final class SLetKind extends SExprKind {
     this.bound,
     this.body, {
     this.isRec = false,
+    this.paramSpan = DoxaSpan.synthetic,
   });
 
   @override
   bool operator ==(Object other) =>
       other is SLetKind &&
       other.param == param &&
+      other.paramSpan == paramSpan &&
       other.domain == domain &&
       other.bound == bound &&
       other.body == body &&
@@ -284,7 +295,7 @@ final class SLetKind extends SExprKind {
 
   @override
   int get hashCode =>
-      Object.hash('SLetKind', param, domain, bound, body, isRec);
+      Object.hash('SLetKind', param, paramSpan, domain, bound, body, isRec);
 
   @override
   String toString() =>
@@ -296,6 +307,9 @@ final class SLetKind extends SExprKind {
 final class SPiKind extends SExprKind {
   /// The parameter name, or null for a non-dependent arrow.
   final String? param;
+
+  /// The source span of [param], or [DoxaSpan.synthetic] when unavailable.
+  final DoxaSpan paramSpan;
 
   /// The domain type.
   final SExpr domain;
@@ -312,18 +326,21 @@ final class SPiKind extends SExprKind {
     this.domain,
     this.codomain, {
     this.icit = Icit.explicit,
+    this.paramSpan = DoxaSpan.synthetic,
   });
 
   @override
   bool operator ==(Object other) =>
       other is SPiKind &&
       other.param == param &&
+      other.paramSpan == paramSpan &&
       other.domain == domain &&
       other.codomain == codomain &&
       other.icit == icit;
 
   @override
-  int get hashCode => Object.hash('SPiKind', param, domain, codomain, icit);
+  int get hashCode =>
+      Object.hash('SPiKind', param, paramSpan, domain, codomain, icit);
 
   @override
   String toString() =>
@@ -765,6 +782,9 @@ final class SFunKind extends SDeclKind {
   /// Value parameters, each with a required type annotation.
   final List<(String, SExpr)> params;
 
+  /// Source spans for [params], in the same order.
+  final List<DoxaSpan> paramSpans;
+
   /// The declared return type.
   final SExpr returnType;
 
@@ -796,6 +816,7 @@ final class SFunKind extends SDeclKind {
     this.isOpaque = false,
     this.structAnn,
     this.terminationBy,
+    this.paramSpans = const [],
   });
 
   @override
@@ -804,6 +825,7 @@ final class SFunKind extends SDeclKind {
       other.name == name &&
       other.typeParams == typeParams &&
       other.params == params &&
+      other.paramSpans == paramSpans &&
       other.returnType == returnType &&
       other.body == body &&
       other.isOpaque == isOpaque &&
@@ -816,6 +838,7 @@ final class SFunKind extends SDeclKind {
     name,
     typeParams,
     params,
+    paramSpans,
     returnType,
     body,
     isOpaque,
@@ -841,6 +864,9 @@ final class SFunTypeParam {
   /// The parameter's source name.
   final String name;
 
+  /// The source span of [name], or [DoxaSpan.synthetic] for generated params.
+  final DoxaSpan span;
+
   /// Optional kind annotation (`Type`, `Type 1`, etc.). Null when
   /// the user wrote `[A]` / `{A}` without a colon.
   final SExpr? kind;
@@ -858,6 +884,7 @@ final class SFunTypeParam {
     this.kind, {
     required this.isImplicit,
     this.constraints = const [],
+    this.span = DoxaSpan.synthetic,
   });
 
   @override
@@ -1011,13 +1038,34 @@ final class SDataKind extends SDeclKind {
   /// Constructor declarations in source order.
   final List<SCtorDecl> ctors;
 
+  /// Original fields when this declaration used product form.
+  ///
+  /// The parser still puts the generated `mk` constructor in [ctors] so that
+  /// elaboration and name resolution keep their constructor-only view. The
+  /// formatter uses this field to retain the product declaration spelling.
+  final List<SCtorDecl>? productFields;
+
+  /// Offset immediately after the closing brace of the declaration body.
+  ///
+  /// Parser spans include trailing whitespace and comments. The formatter uses
+  /// this offset to distinguish comments inside a data body from comments
+  /// before the following declaration.
+  final int? bodyEnd;
+
   /// Creates a data-type declaration.
-  const SDataKind(this.name, this.typeParams, this.signature, this.ctors);
+  const SDataKind(
+    this.name,
+    this.typeParams,
+    this.signature,
+    this.ctors, {
+    this.productFields,
+    this.bodyEnd,
+  });
 
   @override
   String toString() =>
       'SDataKind($name, typeParams: $typeParams, signature: $signature, '
-      'ctors: $ctors)';
+      'ctors: $ctors${productFields == null ? "" : ", productFields: $productFields"})';
 }
 
 /// A single constructor declaration inside an [SDataKind].

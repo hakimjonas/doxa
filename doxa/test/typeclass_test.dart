@@ -83,8 +83,8 @@ void main() {
     });
 
     test('STypeclassKind with superclass', () {
-      final superRef = SExpr(SIdentKind('Eq'), DoxaSpan.synthetic);
-      final tc = STypeclassKind('Ord', [('A', null)], [], superclass: superRef);
+      const superRef = SExpr(SIdentKind('Eq'), DoxaSpan.synthetic);
+      const tc = STypeclassKind('Ord', [('A', null)], [], superclass: superRef);
       // superclass is tested via the parser test above.
       expect(tc.name, 'Ord');
     });

@@ -1,0 +1,95 @@
+<idea-plugin>
+  <id>com.doxa.lang</id>
+  <name>Doxa</name>
+  <vendor url="https://github.com/hakimjonas/doxa">Doxa</vendor>
+
+  <description><![CDATA[
+    Language support for Doxa, a dependently typed proof checker.
+    Provides diagnostics, hover, go-to-definition, completion,
+    formatting, code lens, and syntax highlighting via the
+    Doxa language server. Requires IntelliJ Platform 2025.1-compatible IDEs.
+  ]]></description>
+
+  <depends>com.intellij.modules.platform</depends>
+  <depends>com.intellij.modules.lang</depends>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <notificationGroup id="Doxa Language Server" displayType="BALLOON"/>
+  </extensions>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <fileType
+        name="Doxa"
+        language="Doxa"
+        extensions="doxa"
+        implementationClass="doxa.lang.DoxaFileType"/>
+
+    <lang.parserDefinition
+        language="Doxa"
+        implementationClass="doxa.lang.DoxaParserDefinition"/>
+
+    <applicationService
+        serviceImplementation="doxa.lang.DoxaSettings"/>
+
+    <applicationConfigurable
+        parentId="language"
+        instance="doxa.lang.DoxaConfigurable"
+        id="doxa.lang.DoxaConfigurable"
+        displayName="Doxa"/>
+
+    <externalAnnotator
+        language="Doxa"
+        implementationClass="doxa.lang.DoxaExternalAnnotator"/>
+
+    <platform.backend.documentation.targetProvider
+        implementation="doxa.lang.DoxaDocumentationProvider"/>
+
+    <completion.contributor
+        language="Doxa"
+        implementationClass="doxa.lang.DoxaCompletionContributor"/>
+
+    <gotoDeclarationHandler
+        implementation="doxa.lang.DoxaGotoDeclarationHandler"/>
+
+    <lang.findUsagesProvider
+        language="Doxa"
+        implementationClass="doxa.lang.DoxaFindUsagesProvider"/>
+
+    <formattingService
+        implementation="doxa.lang.DoxaFormattingService"/>
+
+    <lang.commenter
+        language="Doxa"
+        implementationClass="doxa.lang.DoxaCommenter"/>
+
+    <lang.braceMatcher
+        language="Doxa"
+        implementationClass="doxa.lang.DoxaBraceMatcher"/>
+
+    <lang.foldingBuilder
+        language="Doxa"
+        implementationClass="doxa.lang.DoxaFoldingBuilder"/>
+
+    <lang.psiStructureViewFactory
+        language="Doxa"
+        implementationClass="doxa.lang.DoxaStructureViewFactory"/>
+
+    <highlightVisitor
+        implementation="doxa.lang.DoxaHighlightVisitor"/>
+  </extensions>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <renameHandler
+        implementation="doxa.lang.DoxaRenameHandler"/>
+
+    <codeInsight.inlayProvider
+        language="Doxa"
+        implementationClass="doxa.lang.DoxaInlayHintProvider"/>
+  </extensions>
+
+  <projectListeners>
+    <listener
+        class="doxa.lang.DoxaProjectListener"
+        topic="com.intellij.openapi.project.ProjectManagerListener"/>
+  </projectListeners>
+</idea-plugin>

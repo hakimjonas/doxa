@@ -1,11 +1,11 @@
 // Rejected (NonExhaustiveMatch): the match on `Nat` covers only `zero`,
 // omitting the `succ` arm, with no wildcard.
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 // `succ` is missing, only `zero` is covered and no wildcard.
 
-fun bad(n: Nat) : Nat = match n {
+fun bad(n: Nat): Nat = match n {
   case zero => zero
 }

@@ -1,3 +1,3 @@
 // K combinator: the constant function over two types and two values,
 // returning the first value (return type depends on the first type arg).
-fun k[A: Type, B: Type](x: A, y: B) : A = x
+fun k[A: Type, B: Type](x: A, y: B): A = x

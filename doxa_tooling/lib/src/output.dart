@@ -9,7 +9,6 @@ library;
 import 'dart:convert';
 
 import 'package:doxa/doxa.dart';
-import 'package:doxa/doxa.dart' show DoxaSpan;
 
 /// The result of checking a Doxa source file.
 sealed class CheckOutput {
@@ -39,11 +38,16 @@ final class CheckSuccess extends CheckOutput {
   /// had no identifier references (e.g. a parse error).
   final List<SemInfo> semInfo;
 
+  /// Resolved import state that can be reused on subsequent checks
+  /// to avoid re-processing transitive imports on every edit.
+  final dynamic imports;
+
   /// Creates a success result.
   const CheckSuccess({
     required this.declarations,
     required this.count,
     this.semInfo = const [],
+    this.imports,
   });
 
   @override

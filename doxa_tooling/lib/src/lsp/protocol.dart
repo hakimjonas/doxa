@@ -131,16 +131,21 @@ final class LspPublishDiagnosticsParams {
   /// The diagnostics to publish.
   final List<LspDiagnostic> diagnostics;
 
+  /// Version of the document that produced these diagnostics.
+  final int? version;
+
   /// Creates a publish-diagnostics params object.
   const LspPublishDiagnosticsParams({
     required this.uri,
     required this.diagnostics,
+    this.version,
   });
 
   /// Serialise to a JSON-compatible map.
   Map<String, dynamic> toJson() => {
     'uri': uri,
     'diagnostics': [for (final d in diagnostics) d.toJson()],
+    if (version != null) 'version': version,
   };
 }
 
@@ -257,7 +262,19 @@ enum LspSemanticTokenType {
   modifier,
 
   /// `namespace` (0)
-  namespace;
+  namespace,
+
+  /// `comment` (19)
+  comment,
+
+  /// `number` (21)
+  number,
+
+  /// `string` (18)
+  string,
+
+  /// `operator` (24)
+  operator_;
 
   /// The string representation for the legend.
   String get label => switch (this) {
@@ -272,6 +289,10 @@ enum LspSemanticTokenType {
     LspSemanticTokenType.keyword => 'keyword',
     LspSemanticTokenType.modifier => 'modifier',
     LspSemanticTokenType.namespace => 'namespace',
+    LspSemanticTokenType.comment => 'comment',
+    LspSemanticTokenType.number => 'number',
+    LspSemanticTokenType.string => 'string',
+    LspSemanticTokenType.operator_ => 'operator',
   };
 
   /// The index in the legend array.
@@ -320,46 +341,112 @@ final class LspCompletionList {
 
 /// Symbol kind (mirrors LSP SymbolKind).
 enum LspSymbolKind {
+  /// A file.
   file(1),
+
+  /// A module.
   module(2),
+
+  /// A namespace.
   namespace(3),
+
+  /// A package.
   package(4),
+
+  /// A class.
   class_(5),
+
+  /// A method.
   method(6),
+
+  /// A property.
   property(7),
+
+  /// A field.
   field(8),
+
+  /// A constructor.
   constructor(9),
+
+  /// An enumeration.
   enum_(10),
+
+  /// An interface.
   interface(11),
+
+  /// A function.
   function(12),
+
+  /// A variable.
   variable(13),
+
+  /// A constant.
   constant(14),
+
+  /// A string.
   string(15),
+
+  /// A number.
   number(16),
+
+  /// A boolean.
   boolean(17),
+
+  /// An array.
   array(18),
+
+  /// An object.
   object(19),
+
+  /// An object key.
   key(20),
+
+  /// A null value.
   null_(21),
+
+  /// An enumeration member.
   enumMember(22),
+
+  /// A structure.
   struct(23),
+
+  /// An event.
   event(24),
+
+  /// An operator.
   operator_(25),
+
+  /// A type parameter.
   typeParameter(26);
 
+  /// The LSP integer value.
   final int value;
+
+  /// Creates a symbol kind.
   const LspSymbolKind(this.value);
 }
 
 /// A document symbol returned by `textDocument/documentSymbol`.
 final class LspDocumentSymbol {
+  /// The display name.
   final String name;
+
+  /// Optional type or detail text.
   final String? detail;
+
+  /// The LSP symbol kind.
   final LspSymbolKind kind;
+
+  /// Full declaration range.
   final LspRange range;
+
+  /// Range selecting the declaration name.
   final LspRange selectionRange;
+
+  /// Nested document symbols.
   final List<LspDocumentSymbol>? children;
 
+  /// Creates a document symbol.
   const LspDocumentSymbol({
     required this.name,
     this.detail,
@@ -369,6 +456,7 @@ final class LspDocumentSymbol {
     this.children,
   });
 
+  /// Serialise to a JSON-compatible map.
   Map<String, dynamic> toJson() => {
     'name': name,
     if (detail != null) 'detail': detail,
@@ -381,16 +469,23 @@ final class LspDocumentSymbol {
 
 /// Signature help result for `textDocument/signatureHelp`.
 final class LspSignatureHelp {
+  /// Candidate signatures.
   final List<LspSignatureInformation> signatures;
+
+  /// Selected signature index.
   final int? activeSignature;
+
+  /// Selected parameter index.
   final int? activeParameter;
 
+  /// Creates signature help.
   const LspSignatureHelp({
     required this.signatures,
     this.activeSignature,
     this.activeParameter,
   });
 
+  /// Serialise to a JSON-compatible map.
   Map<String, dynamic> toJson() => {
     'signatures': [for (final s in signatures) s.toJson()],
     if (activeSignature != null) 'activeSignature': activeSignature,
@@ -400,16 +495,23 @@ final class LspSignatureHelp {
 
 /// A single signature in a signature help result.
 final class LspSignatureInformation {
+  /// Rendered signature label.
   final String label;
+
+  /// Optional signature documentation.
   final String? documentation;
+
+  /// Parameter descriptions.
   final List<LspParameterInformation>? parameters;
 
+  /// Creates signature information.
   const LspSignatureInformation({
     required this.label,
     this.documentation,
     this.parameters,
   });
 
+  /// Serialise to a JSON-compatible map.
   Map<String, dynamic> toJson() => {
     'label': label,
     if (documentation != null) 'documentation': documentation,
@@ -420,11 +522,16 @@ final class LspSignatureInformation {
 
 /// A parameter in a signature information.
 final class LspParameterInformation {
+  /// Rendered parameter label.
   final String label;
+
+  /// Optional parameter documentation.
   final String? documentation;
 
+  /// Creates parameter information.
   const LspParameterInformation({required this.label, this.documentation});
 
+  /// Serialise to a JSON-compatible map.
   Map<String, dynamic> toJson() => {
     'label': label,
     if (documentation != null) 'documentation': documentation,
@@ -433,12 +540,19 @@ final class LspParameterInformation {
 
 /// A code lens showing a declaration's type inline in the editor.
 final class LspCodeLens {
+  /// Range where the lens is shown.
   final LspRange range;
+
+  /// Command associated with the lens.
   final LspCommand? command;
+
+  /// Opaque client data.
   final Map<String, dynamic>? data;
 
+  /// Creates a code lens.
   const LspCodeLens({required this.range, this.command, this.data});
 
+  /// Serialise to a JSON-compatible map.
   Map<String, dynamic> toJson() => {
     'range': range.toJson(),
     if (command != null) 'command': command!.toJson(),
@@ -448,19 +562,62 @@ final class LspCodeLens {
 
 /// A command to execute for a code lens.
 final class LspCommand {
+  /// User-visible command title.
   final String title;
+
+  /// Command identifier.
   final String command;
+
+  /// Command arguments.
   final List<dynamic>? arguments;
 
+  /// Creates a command.
   const LspCommand({
     required this.title,
     required this.command,
     this.arguments,
   });
 
+  /// Serialise to a JSON-compatible map.
   Map<String, dynamic> toJson() => {
     'title': title,
     'command': command,
     if (arguments != null) 'arguments': arguments,
+  };
+}
+
+/// A folding range as defined by LSP.
+final class LspFoldingRange {
+  /// Start line (0-based).
+  final int startLine;
+
+  /// End line (0-based).
+  final int endLine;
+
+  /// Optional kind: `"comment"`, `"imports"`, or `"region"`.
+  final String? kind;
+
+  /// Optional start character.
+  final int? startCharacter;
+
+  /// Optional end character.
+  final int? endCharacter;
+
+  /// Creates a folding range.
+  const LspFoldingRange({
+    required this.startLine,
+    required this.endLine,
+    this.kind,
+    this.startCharacter,
+    this.endCharacter,
+  });
+
+  /// Serialise to a JSON-compatible map.
+  Map<String, dynamic> toJson() => {
+    'startLine': startLine,
+    'endLine': endLine,
+    if (startCharacter != null) 'startCharacter': startCharacter,
+    if (endCharacter != null) 'endCharacter': endCharacter,
+    if (kind != null) 'kind': kind,
   };
 }

@@ -1,30 +1,35 @@
 // Block expressions: `{ val x: T = e; ...; result }` local bindings that
 // scope over the rest of the block and desugar to nested TLet.
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-fun idNat(x: Nat) : Nat = x
+fun idNat(x: Nat): Nat = x
 // Single binding.
 
-val one : Nat = {
+val one: Nat = {
   val n: Nat = zero;
   succ n
-  }// Multiple bindings; later binding references an earlier one.
+  }
+// Multiple bindings; later binding references an earlier one.
 
-val three : Nat = {
+val three: Nat = {
   val a: Nat = succ zero;
   val b: Nat = succ a;
   succ b
-  }// Block as a (parenthesized) function argument.
+  }
+// Block as a (parenthesized) function argument.
 
-val two : Nat = idNat ({
-  val n: Nat = zero;
-  succ (succ n)
-  })// Block as a function body.
+val two: Nat =
+  idNat
+    ({
+      val n: Nat = zero;
+      succ (succ n)
+      })
+// Block as a function body.
 
-fun double(x: Nat) : Nat {
+fun double(x: Nat): Nat {
   val y: Nat = x;
   succ (succ y)
 }

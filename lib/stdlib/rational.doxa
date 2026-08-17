@@ -2,6 +2,6 @@
 // This is a first cut using normalized pairs (no quotient types).
 import "int_base.doxa"
 
-data Rat : Type {
-  mk : Int -> Nat -> Rat;
+data Rat: Type {
+  mk: Int -> Nat -> Rat;
 }

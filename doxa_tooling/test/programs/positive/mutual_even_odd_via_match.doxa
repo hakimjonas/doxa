@@ -1,28 +1,28 @@
 // Mutual structural recursion: `isEven` and `isOdd` each match on their arg
 // `n` and cross-call on the strict sub-term `m`, satisfying the block-wide
 // structural rule.
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-data Bool : Type {
-  true_ : Bool;
-  false_ : Bool;
+data Bool: Type {
+  true_: Bool;
+  false_: Bool;
 }
 
-fun isEven(n: Nat) : Bool = match n {
+fun isEven(n: Nat): Bool = match n {
   case zero => true_
   case succ m => isOdd m
-}and isOdd(n: Nat) : Bool = match n {
+} and isOdd(n: Nat): Bool = match n {
   case zero => false_
   case succ m => isEven m
 }
 
-val two : Nat = succ (succ zero)
+val two: Nat = succ (succ zero)
 
-val three : Nat = succ two
+val three: Nat = succ two
 
-val t : Bool = isEven two
+val t: Bool = isEven two
 
-val f : Bool = isEven three
+val f: Bool = isEven three

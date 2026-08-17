@@ -1,31 +1,32 @@
 // Boolean values and basic operations.
 //
 // Standalone: no imports, self-contained `Bool` definition.
-data Bool : Type {
-  true_ : Bool;
-  false_ : Bool;
+data Bool: Type {
+  true_: Bool;
+  false_: Bool;
 }
 
-fun and_(a: Bool, b: Bool) : Bool = match a {
+fun and_(a: Bool, b: Bool): Bool = match a {
   case true_ => b
   case false_ => false_
 }
 
-fun or_(a: Bool, b: Bool) : Bool = match a {
+fun or_(a: Bool, b: Bool): Bool = match a {
   case true_ => true_
   case false_ => b
 }
 
-fun not_(a: Bool) : Bool = match a {
+fun not_(a: Bool): Bool = match a {
   case true_ => false_
   case false_ => true_
-}// `if_{A}(b, t, f)`: selects `t` when `b` is true_, `f` otherwise.
+}
+// `if_{A}(b, t, f)`: selects `t` when `b` is true_, `f` otherwise.
 // A is implicit; pattern unification solves it from `t`'s inferred
 // type. Both branches are evaluated eagerly, Doxa has no built-in
 // laziness. For control-flow-as-laziness, wrap branches in
 // `(_: Unit) => ...` and apply to unit.
 
-fun if_{A: Type}(b: Bool, t: A, f: A) : A = match b {
+fun if_{A: Type}(b: Bool, t: A, f: A): A = match b {
   case true_ => t
   case false_ => f
 }

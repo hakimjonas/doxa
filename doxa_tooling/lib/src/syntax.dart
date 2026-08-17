@@ -18,6 +18,7 @@ import 'package:rumil_tokens/rumil_tokens.dart'
         NumberLit,
         Punctuation,
         Operator,
+        Identifier,
         Whitespace,
         Plain,
         Spanned;
@@ -282,6 +283,7 @@ DoxaToken tokenKind(Token t) => switch (t) {
   TypeName _ => _typeNameKind(t.text),
   Comment _ => DoxaToken.comment,
   NumberLit _ => DoxaToken.number,
+  Identifier _ => DoxaToken.ident,
   Punctuation _ => _punctKind(t.text),
   Operator _ => _punctKind(t.text),
   Whitespace _ => DoxaToken.whitespace,
@@ -380,16 +382,16 @@ const Set<DoxaSyntax> reparsableKinds = {
 /// Returns `true` when [token] is a simple token that can be updated
 /// in-place during incremental reparse (Tier 1).
 ///
-/// Simple tokens are those whose text never affects the parse tree
-/// structure: comments, whitespace, identifiers, numbers.
+/// Simple tokens are candidates for in-place updates. The caller must still
+/// retokenize the edited region and verify that its class and boundaries stay
+/// unchanged before taking the token-level path.
 /// Keywords and sorts are NOT simple because changing `val` to `fun`
 /// could change the declaration kind.
 bool isSimpleToken(DoxaToken token) => switch (token) {
   DoxaToken.comment ||
   DoxaToken.whitespace ||
   DoxaToken.ident ||
-  DoxaToken.number ||
-  DoxaToken.error => true,
+  DoxaToken.number => true,
   _ => false,
 };
 

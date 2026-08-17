@@ -46,9 +46,14 @@ final class SemInfo {
 
   /// The span of the declaration site, when known.
   ///
-  /// Null for local variables (the elaborator does not currently
-  /// track binder-spans) and for implicit parameters.
+  /// Null for synthetic local binders and implicit parameters.
   final DoxaSpan? defSpan;
+
+  /// URI-like file path containing [defSpan] when it comes from an import.
+  ///
+  /// Null means the declaration belongs to the document being checked or is a
+  /// compiler-provided declaration without source.
+  final String? defFile;
 
   /// Creates a semantic-info entry for one identifier occurrence.
   const SemInfo({
@@ -57,6 +62,7 @@ final class SemInfo {
     required this.kind,
     required this.type,
     this.defSpan,
+    this.defFile,
   });
 
   /// Serialise this entry to a JSON-compatible map.
@@ -67,5 +73,6 @@ final class SemInfo {
     'type': type,
     if (defSpan != null && !defSpan!.isSynthetic)
       'defSpan': {'start': defSpan!.start, 'end': defSpan!.end},
+    if (defFile != null) 'defFile': defFile,
   };
 }

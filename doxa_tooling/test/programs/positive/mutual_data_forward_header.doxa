@@ -1,13 +1,13 @@
 // Mutual-data header forward reference: A's header mentions B (declared
 // after it), so headers must be elaborated in dependency order, not source
 // order.
-data A : B -> Type {
-  ca : (b: B) -> A b;
-} and data B : Type {
-  cb : B;
+data A: B -> Type {
+  ca: (b: B) -> A b;
+} and data B: Type {
+  cb: B;
 }
 // Smoke check: construct an A instance indexed on a B.
 
-val b : B = cb
+val b: B = cb
 
-val a : A b = ca b
+val a: A b = ca b

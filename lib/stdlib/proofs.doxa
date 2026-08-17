@@ -29,11 +29,34 @@ import "vec.doxa"
 // definitionally equal to the implicit versions, they just pass
 // types positionally.
 
-val sym_e : (A: Type) -> (x: A) -> (y: A) -> Eq A x y -> Eq A y x = (A: Type) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b a) x y ((z: A) => refl z) p
+val sym_e: (A: Type) -> (x: A) -> (y: A) -> Eq A x y -> Eq A y x =
+  (A: Type) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec
+    A
+    ((a: A) => (b: A) => (_: Eq A a b) => Eq A b a)
+    x
+    y
+    ((z: A) => refl z)
+    p
 
-val trans_e : (A: Type) -> (x: A) -> (y: A) -> (z: A) -> Eq A x y -> Eq A y z -> Eq A x z = (A: Type) => (x: A) => (y: A) => (z: A) => (p: Eq A x y) => (q: Eq A y z) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq A b z -> Eq A a z) x y ((w: A) => (r: Eq A w z) => r) p q
+val trans_e: (A: Type) -> (x: A) -> (y: A) -> (z: A) -> Eq A x y -> Eq A y z -> Eq A x z =
+  (A: Type) => (x: A) => (y: A) => (z: A) => (p: Eq A x y) => (q: Eq A y z) => Eq.rec
+    A
+    ((a: A) => (b: A) => (_: Eq A a b) => Eq A b z -> Eq A a z)
+    x
+    y
+    ((w: A) => (r: Eq A w z) => r)
+    p
+    q
 
-val cong_e : (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x y -> Eq B (f x) (f y) = (A: Type) => (B: Type) => (f: A -> B) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) x y ((z: A) => refl (f z)) p
+val cong_e: (A: Type)
+-> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x y -> Eq B (f x) (f y) =
+  (A: Type) => (B: Type) => (f: A -> B) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec
+    A
+    ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b))
+    x
+    y
+    ((z: A) => refl (f z))
+    p
 // --- Nat-domain proofs (implicit style) -----------------------------------
 //
 // These proofs compose `cong`/`trans`/`sym` in implicit style.
@@ -44,27 +67,211 @@ val cong_e : (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x
 // carry the same source match, one captured under a β-reduced env
 // and one not, and they must still be recognised as equal.
 
-val plus_zero : (n: Nat) -> Eq Nat (plus n zero) n = Nat.ind ((k: Nat) => Eq Nat (plus k zero) k) (refl zero) ((m: Nat) => (ih: Eq Nat (plus m zero) m) => cong ((k: Nat) => succ k) ih)
+val plus_zero: (n: Nat) -> Eq Nat (plus n zero) n =
+  Nat.ind
+    ((k: Nat) => Eq Nat (plus k zero) k)
+    (refl zero)
+    ((m: Nat) => (ih: Eq Nat (plus m zero) m) => cong ((k: Nat) => succ k) ih)
 
-val plus_succ : (m: Nat) -> (n: Nat) -> Eq Nat (plus m (succ n)) (succ (plus m n)) = (m: Nat) => Nat.ind ((k: Nat) => (n: Nat) -> Eq Nat (plus k (succ n)) (succ (plus k n))) ((n: Nat) => refl (succ n)) ((k: Nat) => (ih: (n: Nat) -> Eq Nat (plus k (succ n)) (succ (plus k n))) => (n: Nat) => cong ((x: Nat) => succ x) (ih n)) m
+val plus_succ: (m: Nat) -> (n: Nat) -> Eq Nat (plus m (succ n)) (succ (plus m n)) =
+  (m: Nat) => Nat.ind
+    ((k: Nat) => (n: Nat) -> Eq Nat (plus k (succ n)) (succ (plus k n)))
+    ((n: Nat) => refl (succ n))
+    ((k: Nat) => (ih: (n: Nat) -> Eq Nat (plus k (succ n)) (succ (plus k n))) => (n: Nat) => cong
+      ((x: Nat) => succ x)
+      (ih n))
+    m
 
-val plus_comm : (m: Nat) -> (n: Nat) -> Eq Nat (plus m n) (plus n m) = (m: Nat) => Nat.ind ((k: Nat) => (n: Nat) -> Eq Nat (plus k n) (plus n k)) ((n: Nat) => sym_e Nat (plus n zero) n (plus_zero n)) ((k: Nat) => (ih: (n: Nat) -> Eq Nat (plus k n) (plus n k)) => (n: Nat) => trans_e Nat (succ (plus k n)) (succ (plus n k)) (plus n (succ k)) (cong_e Nat Nat ((x: Nat) => succ x) (plus k n) (plus n k) (ih n)) (sym_e Nat (plus n (succ k)) (succ (plus n k)) (plus_succ n k))) m
+val plus_comm: (m: Nat) -> (n: Nat) -> Eq Nat (plus m n) (plus n m) =
+  (m: Nat) => Nat.ind
+    ((k: Nat) => (n: Nat) -> Eq Nat (plus k n) (plus n k))
+    ((n: Nat) => sym_e Nat (plus n zero) n (plus_zero n))
+    ((k: Nat) => (ih: (n: Nat) -> Eq Nat (plus k n) (plus n k)) => (n: Nat) => trans_e
+      Nat
+      (succ (plus k n))
+      (succ (plus n k))
+      (plus n (succ k))
+      (cong_e Nat Nat ((x: Nat) => succ x) (plus k n) (plus n k) (ih n))
+      (sym_e Nat (plus n (succ k)) (succ (plus n k)) (plus_succ n k)))
+    m
 
-val mult_zero : (n: Nat) -> Eq Nat (mult n zero) zero = Nat.ind ((k: Nat) => Eq Nat (mult k zero) zero) (refl zero) ((m: Nat) => (ih: Eq Nat (mult m zero) zero) => ih)
+val mult_zero: (n: Nat) -> Eq Nat (mult n zero) zero =
+  Nat.ind
+    ((k: Nat) => Eq Nat (mult k zero) zero)
+    (refl zero)
+    ((m: Nat) => (ih: Eq Nat (mult m zero) zero) => ih)
 
-val mult_one : (n: Nat) -> Eq Nat (mult n (succ zero)) n = Nat.ind ((k: Nat) => Eq Nat (mult k (succ zero)) k) (refl zero) ((m: Nat) => (ih: Eq Nat (mult m (succ zero)) m) => cong ((k: Nat) => succ k) ih)
+val mult_one: (n: Nat) -> Eq Nat (mult n (succ zero)) n =
+  Nat.ind
+    ((k: Nat) => Eq Nat (mult k (succ zero)) k)
+    (refl zero)
+    ((m: Nat) => (ih: Eq Nat (mult m (succ zero)) m) => cong ((k: Nat) => succ k) ih)
 
-val plus_assoc : (m: Nat) -> (n: Nat) -> (p: Nat) -> Eq Nat (plus (plus m n) p) (plus m (plus n p)) = (m: Nat) => Nat.ind ((k: Nat) => (n: Nat) -> (p: Nat) -> Eq Nat (plus (plus k n) p) (plus k (plus n p))) ((n: Nat) => (p: Nat) => refl (plus n p)) ((k: Nat) => (ih: (n: Nat) -> (p: Nat) -> Eq Nat (plus (plus k n) p) (plus k (plus n p))) => (n: Nat) => (p: Nat) => cong ((x: Nat) => succ x) (ih n p)) m
+val plus_assoc: (m: Nat) -> (n: Nat) -> (p: Nat) -> Eq Nat (plus (plus m n) p) (plus m (plus n p)) =
+  (m: Nat) => Nat.ind
+    ((k: Nat) => (n: Nat) -> (p: Nat) -> Eq Nat (plus (plus k n) p) (plus k (plus n p)))
+    ((n: Nat) => (p: Nat) => refl (plus n p))
+    ((k: Nat) => (ih: (n: Nat) -> (p: Nat) -> Eq Nat (plus (plus k n) p) (plus k (plus n p))) => (n: Nat) => (p: Nat) => cong
+      ((x: Nat) => succ x)
+      (ih n p))
+    m
 
-val mult_succ_right : (m: Nat) -> (n: Nat) -> Eq Nat (mult m (succ n)) (plus m (mult m n)) = (m: Nat) => Nat.ind ((k: Nat) => (n: Nat) -> Eq Nat (mult k (succ n)) (plus k (mult k n))) ((n: Nat) => refl zero) ((k: Nat) => (ih: (n: Nat) -> Eq Nat (mult k (succ n)) (plus k (mult k n))) => (n: Nat) => trans_e Nat (mult (succ k) (succ n)) (plus (succ n) (plus k (mult k n))) (plus (succ k) (plus n (mult k n))) (trans_e Nat (mult (succ k) (succ n)) (plus (succ n) (mult k (succ n))) (plus (succ n) (plus k (mult k n))) (refl (plus (succ n) (mult k (succ n)))) (cong ((w: Nat) => plus (succ n) w) (ih n))) (trans_e Nat (plus (succ n) (plus k (mult k n))) (plus (succ (plus n k)) (mult k n)) (plus (succ k) (plus n (mult k n))) (trans_e Nat (plus (succ n) (plus k (mult k n))) (plus (plus (succ n) k) (mult k n)) (plus (succ (plus n k)) (mult k n)) (sym_e Nat (plus (plus (succ n) k) (mult k n)) (plus (succ n) (plus k (mult k n))) (plus_assoc (succ n) k (mult k n))) (refl (plus (succ (plus n k)) (mult k n)))) (trans_e Nat (plus (succ (plus n k)) (mult k n)) (plus (succ (plus k n)) (mult k n)) (plus (succ k) (plus n (mult k n))) (cong_e Nat Nat ((z: Nat) => plus z (mult k n)) (succ (plus n k)) (succ (plus k n)) (cong ((x: Nat) => succ x) (plus_comm n k))) (trans_e Nat (plus (succ (plus k n)) (mult k n)) (plus (plus (succ k) n) (mult k n)) (plus (succ k) (plus n (mult k n))) (refl (plus (plus (succ k) n) (mult k n))) (plus_assoc (succ k) n (mult k n)))))) m
+val mult_succ_right: (m: Nat) -> (n: Nat) -> Eq Nat (mult m (succ n)) (plus m (mult m n)) =
+  (m: Nat) => Nat.ind
+    ((k: Nat) => (n: Nat) -> Eq Nat (mult k (succ n)) (plus k (mult k n)))
+    ((n: Nat) => refl zero)
+    ((k: Nat) => (ih: (n: Nat) -> Eq Nat (mult k (succ n)) (plus k (mult k n))) => (n: Nat) => trans_e
+      Nat
+      (mult (succ k) (succ n))
+      (plus (succ n) (plus k (mult k n)))
+      (plus (succ k) (plus n (mult k n)))
+      (trans_e
+        Nat
+        (mult (succ k) (succ n))
+        (plus (succ n) (mult k (succ n)))
+        (plus (succ n) (plus k (mult k n)))
+        (refl (plus (succ n) (mult k (succ n))))
+        (cong ((w: Nat) => plus (succ n) w) (ih n)))
+      (trans_e
+        Nat
+        (plus (succ n) (plus k (mult k n)))
+        (plus (succ (plus n k)) (mult k n))
+        (plus (succ k) (plus n (mult k n)))
+        (trans_e
+          Nat
+          (plus (succ n) (plus k (mult k n)))
+          (plus (plus (succ n) k) (mult k n))
+          (plus (succ (plus n k)) (mult k n))
+          (sym_e
+            Nat
+            (plus (plus (succ n) k) (mult k n))
+            (plus (succ n) (plus k (mult k n)))
+            (plus_assoc (succ n) k (mult k n)))
+          (refl (plus (succ (plus n k)) (mult k n))))
+        (trans_e
+          Nat
+          (plus (succ (plus n k)) (mult k n))
+          (plus (succ (plus k n)) (mult k n))
+          (plus (succ k) (plus n (mult k n)))
+          (cong_e
+            Nat
+            Nat
+            ((z: Nat) => plus z (mult k n))
+            (succ (plus n k))
+            (succ (plus k n))
+            (cong ((x: Nat) => succ x) (plus_comm n k)))
+          (trans_e
+            Nat
+            (plus (succ (plus k n)) (mult k n))
+            (plus (plus (succ k) n) (mult k n))
+            (plus (succ k) (plus n (mult k n)))
+            (refl (plus (plus (succ k) n) (mult k n)))
+            (plus_assoc (succ k) n (mult k n))))))
+    m
 
-val mult_comm : (m: Nat) -> (n: Nat) -> Eq Nat (mult m n) (mult n m) = (m: Nat) => Nat.ind ((k: Nat) => (n: Nat) -> Eq Nat (mult k n) (mult n k)) ((n: Nat) => sym_e Nat (mult n zero) zero (mult_zero n)) ((k: Nat) => (ih: (n: Nat) -> Eq Nat (mult k n) (mult n k)) => (n: Nat) => trans_e Nat (mult (succ k) n) (plus n (mult k n)) (mult n (succ k)) (refl (plus n (mult k n))) (trans_e Nat (plus n (mult k n)) (plus n (mult n k)) (mult n (succ k)) (cong_e Nat Nat ((z: Nat) => plus n z) (mult k n) (mult n k) (ih n)) (sym_e Nat (mult n (succ k)) (plus n (mult n k)) (mult_succ_right n k)))) m
+val mult_comm: (m: Nat) -> (n: Nat) -> Eq Nat (mult m n) (mult n m) =
+  (m: Nat) => Nat.ind
+    ((k: Nat) => (n: Nat) -> Eq Nat (mult k n) (mult n k))
+    ((n: Nat) => sym_e Nat (mult n zero) zero (mult_zero n))
+    ((k: Nat) => (ih: (n: Nat) -> Eq Nat (mult k n) (mult n k)) => (n: Nat) => trans_e
+      Nat
+      (mult (succ k) n)
+      (plus n (mult k n))
+      (mult n (succ k))
+      (refl (plus n (mult k n)))
+      (trans_e
+        Nat
+        (plus n (mult k n))
+        (plus n (mult n k))
+        (mult n (succ k))
+        (cong_e Nat Nat ((z: Nat) => plus n z) (mult k n) (mult n k) (ih n))
+        (sym_e Nat (mult n (succ k)) (plus n (mult n k)) (mult_succ_right n k))))
+    m
 
-val mult_2 : (n: Nat) -> Eq Nat (mult (succ (succ zero)) n) (plus n n) = (n: Nat) => trans_e Nat (mult (succ (succ zero)) n) (plus n (mult (succ zero) n)) (plus n n) (refl (plus n (mult (succ zero) n))) (cong ((z: Nat) => plus n z) (trans_e Nat (mult (succ zero) n) (mult n (succ zero)) n (mult_comm (succ zero) n) (mult_one n)))
+val mult_2: (n: Nat) -> Eq Nat (mult (succ (succ zero)) n) (plus n n) =
+  (n: Nat) => trans_e
+    Nat
+    (mult (succ (succ zero)) n)
+    (plus n (mult (succ zero) n))
+    (plus n n)
+    (refl (plus n (mult (succ zero) n)))
+    (cong
+      ((z: Nat) => plus n z)
+      (trans_e
+        Nat
+        (mult (succ zero) n)
+        (mult n (succ zero))
+        n
+        (mult_comm (succ zero) n)
+        (mult_one n)))
 
-val mult_plus : (a: Nat) -> (b: Nat) -> (c: Nat) -> Eq Nat (mult (plus a b) c) (plus (mult a c) (mult b c)) = (a: Nat) => Nat.ind ((k: Nat) => (b: Nat) -> (c: Nat) -> Eq Nat (mult (plus k b) c) (plus (mult k c) (mult b c))) ((b: Nat) => (c: Nat) => refl (mult b c)) ((k: Nat) => (ih: (b: Nat) -> (c: Nat) -> Eq Nat (mult (plus k b) c) (plus (mult k c) (mult b c))) => (b: Nat) => (c: Nat) => trans_e Nat (mult (plus (succ k) b) c) (plus c (mult (plus k b) c)) (plus (mult (succ k) c) (mult b c)) (refl (plus c (mult (plus k b) c))) (trans_e Nat (plus c (mult (plus k b) c)) (plus c (plus (mult k c) (mult b c))) (plus (mult (succ k) c) (mult b c)) (cong_e Nat Nat ((x: Nat) => plus c x) (mult (plus k b) c) (plus (mult k c) (mult b c)) (ih b c)) (trans_e Nat (plus c (plus (mult k c) (mult b c))) (plus (plus c (mult k c)) (mult b c)) (plus (mult (succ k) c) (mult b c)) (sym_e Nat (plus (plus c (mult k c)) (mult b c)) (plus c (plus (mult k c) (mult b c))) (plus_assoc c (mult k c) (mult b c))) (refl (plus (plus c (mult k c)) (mult b c)))))) a
+val mult_plus: (a: Nat)
+-> (b: Nat) -> (c: Nat) -> Eq Nat (mult (plus a b) c) (plus (mult a c) (mult b c)) =
+  (a: Nat) => Nat.ind
+    ((k: Nat) => (b: Nat) -> (c: Nat) -> Eq Nat (mult (plus k b) c) (plus (mult k c) (mult b c)))
+    ((b: Nat) => (c: Nat) => refl (mult b c))
+    ((k: Nat) => (ih: (b: Nat)
+    -> (c: Nat) -> Eq Nat (mult (plus k b) c) (plus (mult k c) (mult b c))) => (b: Nat) => (c: Nat) => trans_e
+      Nat
+      (mult (plus (succ k) b) c)
+      (plus c (mult (plus k b) c))
+      (plus (mult (succ k) c) (mult b c))
+      (refl (plus c (mult (plus k b) c)))
+      (trans_e
+        Nat
+        (plus c (mult (plus k b) c))
+        (plus c (plus (mult k c) (mult b c)))
+        (plus (mult (succ k) c) (mult b c))
+        (cong_e
+          Nat
+          Nat
+          ((x: Nat) => plus c x)
+          (mult (plus k b) c)
+          (plus (mult k c) (mult b c))
+          (ih b c))
+        (trans_e
+          Nat
+          (plus c (plus (mult k c) (mult b c)))
+          (plus (plus c (mult k c)) (mult b c))
+          (plus (mult (succ k) c) (mult b c))
+          (sym_e
+            Nat
+            (plus (plus c (mult k c)) (mult b c))
+            (plus c (plus (mult k c) (mult b c)))
+            (plus_assoc c (mult k c) (mult b c)))
+          (refl (plus (plus c (mult k c)) (mult b c))))))
+    a
 
-val mult_assoc : (m: Nat) -> (n: Nat) -> (p: Nat) -> Eq Nat (mult (mult m n) p) (mult m (mult n p)) = (m: Nat) => Nat.ind ((k: Nat) => (n: Nat) -> (p: Nat) -> Eq Nat (mult (mult k n) p) (mult k (mult n p))) ((n: Nat) => (p: Nat) => refl zero) ((k: Nat) => (ih: (n: Nat) -> (p: Nat) -> Eq Nat (mult (mult k n) p) (mult k (mult n p))) => (n: Nat) => (p: Nat) => trans_e Nat (mult (mult (succ k) n) p) (plus (mult n p) (mult (mult k n) p)) (mult (succ k) (mult n p)) (trans_e Nat (mult (mult (succ k) n) p) (mult (plus n (mult k n)) p) (plus (mult n p) (mult (mult k n) p)) (refl (mult (plus n (mult k n)) p)) (mult_plus n (mult k n) p)) (trans_e Nat (plus (mult n p) (mult (mult k n) p)) (plus (mult n p) (mult k (mult n p))) (mult (succ k) (mult n p)) (cong_e Nat Nat ((x: Nat) => plus (mult n p) x) (mult (mult k n) p) (mult k (mult n p)) (ih n p)) (refl (plus (mult n p) (mult k (mult n p)))))) m
+val mult_assoc: (m: Nat) -> (n: Nat) -> (p: Nat) -> Eq Nat (mult (mult m n) p) (mult m (mult n p)) =
+  (m: Nat) => Nat.ind
+    ((k: Nat) => (n: Nat) -> (p: Nat) -> Eq Nat (mult (mult k n) p) (mult k (mult n p)))
+    ((n: Nat) => (p: Nat) => refl zero)
+    ((k: Nat) => (ih: (n: Nat) -> (p: Nat) -> Eq Nat (mult (mult k n) p) (mult k (mult n p))) => (n: Nat) => (p: Nat) => trans_e
+      Nat
+      (mult (mult (succ k) n) p)
+      (plus (mult n p) (mult (mult k n) p))
+      (mult (succ k) (mult n p))
+      (trans_e
+        Nat
+        (mult (mult (succ k) n) p)
+        (mult (plus n (mult k n)) p)
+        (plus (mult n p) (mult (mult k n) p))
+        (refl (mult (plus n (mult k n)) p))
+        (mult_plus n (mult k n) p))
+      (trans_e
+        Nat
+        (plus (mult n p) (mult (mult k n) p))
+        (plus (mult n p) (mult k (mult n p)))
+        (mult (succ k) (mult n p))
+        (cong_e
+          Nat
+          Nat
+          ((x: Nat) => plus (mult n p) x)
+          (mult (mult k n) p)
+          (mult k (mult n p))
+          (ih n p))
+        (refl (plus (mult n p) (mult k (mult n p))))))
+    m
 // --- List-domain proofs ---------------------------------------------------
 //
 // Parametric-type variants of the Nat-domain proofs above, in natural
@@ -72,18 +279,74 @@ val mult_assoc : (m: Nat) -> (n: Nat) -> (p: Nat) -> Eq Nat (mult (mult m n) p) 
 // type-check via scope-aware TMeta-spine handling; `map_compose` (below)
 // additionally needs guarded delta-reduction.
 
-val append_nil : (A: Type) -> (xs: List A) -> Eq (List A) (append xs nil) xs = (A: Type) => List.ind A ((ys: List A) => Eq (List A) (append ys nil) ys) (refl nil) ((h: A) => (t: List A) => (ih: Eq (List A) (append t nil) t) => cong_e (List A) (List A) ((ts: List A) => cons h ts) (append t nil) t ih)
+val append_nil: (A: Type) -> (xs: List A) -> Eq (List A) (append xs nil) xs =
+  (A: Type) => List.ind
+    A
+    ((ys: List A) => Eq (List A) (append ys nil) ys)
+    (refl nil)
+    ((h: A) => (t: List A) => (ih: Eq (List A) (append t nil) t) => cong_e
+      (List A)
+      (List A)
+      ((ts: List A) => cons h ts)
+      (append t nil)
+      t
+      ih)
 
-val append_assoc : (A: Type) -> (xs: List A) -> (ys: List A) -> (zs: List A) -> Eq (List A) (append (append xs ys) zs) (append xs (append ys zs)) = (A: Type) => List.ind A ((xs: List A) => (ys: List A) -> (zs: List A) -> Eq (List A) (append (append xs ys) zs) (append xs (append ys zs))) ((ys: List A) => (zs: List A) => refl (append ys zs)) ((h: A) => (t: List A) => (ih: (ys: List A) -> (zs: List A) -> Eq (List A) (append (append t ys) zs) (append t (append ys zs))) => (ys: List A) => (zs: List A) => cong_e (List A) (List A) ((ts: List A) => cons h ts) (append (append t ys) zs) (append t (append ys zs)) (ih ys zs))
+val append_assoc: (A: Type)
+-> (xs: List A)
+  -> (ys: List A)
+    -> (zs: List A) -> Eq (List A) (append (append xs ys) zs) (append xs (append ys zs)) =
+  (A: Type) => List.ind
+    A
+    ((xs: List A) => (ys: List A)
+    -> (zs: List A) -> Eq (List A) (append (append xs ys) zs) (append xs (append ys zs)))
+    ((ys: List A) => (zs: List A) => refl (append ys zs))
+    ((h: A) => (t: List A) => (ih: (ys: List A)
+    -> (zs: List A) -> Eq (List A) (append (append t ys) zs) (append t (append ys zs))) => (ys: List
+      A) => (zs: List A) => cong_e
+      (List A)
+      (List A)
+      ((ts: List A) => cons h ts)
+      (append (append t ys) zs)
+      (append t (append ys zs))
+      (ih ys zs))
 // The double-`map` nesting in the statement exercises guarded
 // delta-reduction (SPEC §8.6 fix-reduction): a recursive `fun` stays
 // folded while its decreasing argument is a neutral, so `map t f`
 // remains a depth-portable `TTop(map)` application rather than a
 // stuck value frozen at one depth and re-evaluated at another.
 
-val map_compose : (A: Type) -> (B: Type) -> (C: Type) -> (f: A -> B) -> (g: B -> C) -> (xs: List A) -> Eq (List C) (map (map xs f) g) (map xs ((a: A) => g (f a))) = (A: Type) => (B: Type) => (C: Type) => (f: A -> B) => (g: B -> C) => List.ind A ((xs: List A) => Eq (List C) (map (map xs f) g) (map xs ((a: A) => g (f a)))) (refl nil) ((h: A) => (t: List A) => (ih: Eq (List C) (map (map t f) g) (map t ((a: A) => g (f a)))) => cong_e (List C) (List C) ((ts: List C) => cons (g (f h)) ts) (map (map t f) g) (map t ((a: A) => g (f a))) ih)
+val map_compose: (A: Type)
+-> (B: Type)
+  -> (C: Type)
+    -> (f: A -> B)
+      -> (g: B -> C) -> (xs: List A) -> Eq (List C) (map (map xs f) g) (map xs ((a: A) => g (f a))) =
+  (A: Type) => (B: Type) => (C: Type) => (f: A -> B) => (g: B -> C) => List.ind
+    A
+    ((xs: List A) => Eq (List C) (map (map xs f) g) (map xs ((a: A) => g (f a))))
+    (refl nil)
+    ((h: A) => (t: List A) => (ih: Eq (List C) (map (map t f) g) (map t ((a: A) => g (f a)))) => cong_e
+      (List C)
+      (List C)
+      ((ts: List C) => cons (g (f h)) ts)
+      (map (map t f) g)
+      (map t ((a: A) => g (f a)))
+      ih)
 
-val length_append : (A: Type) -> (xs: List A) -> (ys: List A) -> Eq Nat (length (append xs ys)) (plus (length xs) (length ys)) = (A: Type) => List.ind A ((xs: List A) => (ys: List A) -> Eq Nat (length (append xs ys)) (plus (length xs) (length ys))) ((ys: List A) => refl (length ys)) ((h: A) => (t: List A) => (ih: (ys: List A) -> Eq Nat (length (append t ys)) (plus (length t) (length ys))) => (ys: List A) => cong_e Nat Nat ((k: Nat) => succ k) (length (append t ys)) (plus (length t) (length ys)) (ih ys))
+val length_append: (A: Type)
+-> (xs: List A) -> (ys: List A) -> Eq Nat (length (append xs ys)) (plus (length xs) (length ys)) =
+  (A: Type) => List.ind
+    A
+    ((xs: List A) => (ys: List A) -> Eq Nat (length (append xs ys)) (plus (length xs) (length ys)))
+    ((ys: List A) => refl (length ys))
+    ((h: A) => (t: List A) => (ih: (ys: List A)
+    -> Eq Nat (length (append t ys)) (plus (length t) (length ys))) => (ys: List A) => cong_e
+      Nat
+      Nat
+      ((k: Nat) => succ k)
+      (length (append t ys))
+      (plus (length t) (length ys))
+      (ih ys))
 // --- Refutation: distinct constructors are not equal --------------------
 //
 // These prove negations, not equations: from an impossible equality we
@@ -93,23 +356,39 @@ val length_append : (A: Type) -> (xs: List A) -> (ys: List A) -> Eq Nat (length 
 // at the other. Transporting the provable case across the bogus equality
 // (via Eq.rec) lands in `False`.
 
-data False : Prop {
-  
+data False: Prop {
+
 }
 
-fun isZero(n: Nat) : Prop = match n {
+fun isZero(n: Nat): Prop = match n {
   case zero => Eq Nat zero zero
   case succ k => False
 }
 
-fun isTrue(b: Bool) : Prop = match b {
+fun isTrue(b: Bool): Prop = match b {
   case true_ => Eq Bool true_ true_
   case false_ => False
 }
 
-val succ_ne_zero : (n: Nat) -> Eq Nat (succ n) zero -> False = (n: Nat) => (p: Eq Nat (succ n) zero) => Eq.rec Nat ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => isZero b -> isZero a) (succ n) zero ((z: Nat) => (h: isZero z) => h) p (refl zero)
+val succ_ne_zero: (n: Nat) -> Eq Nat (succ n) zero -> False =
+  (n: Nat) => (p: Eq Nat (succ n) zero) => Eq.rec
+    Nat
+    ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => isZero b -> isZero a)
+    (succ n)
+    zero
+    ((z: Nat) => (h: isZero z) => h)
+    p
+    (refl zero)
 
-val true_ne_false : Eq Bool true_ false_ -> False = (p: Eq Bool true_ false_) => Eq.rec Bool ((a: Bool) => (b: Bool) => (_: Eq Bool a b) => isTrue a -> isTrue b) true_ false_ ((z: Bool) => (h: isTrue z) => h) p (refl true_)
+val true_ne_false: Eq Bool true_ false_ -> False =
+  (p: Eq Bool true_ false_) => Eq.rec
+    Bool
+    ((a: Bool) => (b: Bool) => (_: Eq Bool a b) => isTrue a -> isTrue b)
+    true_
+    false_
+    ((z: Bool) => (h: isTrue z) => h)
+    p
+    (refl true_)
 // --- Theorems about an indexed family -----------------------------------
 //
 // `Vec[A] n` is length-indexed: the length lives in the type. These prove
@@ -118,22 +397,78 @@ val true_ne_false : Eq Bool true_ false_ -> False = (p: Eq Bool true_ false_) =>
 // This is the part that requires elaboration, indexed-family recursion,
 // and dependent motives to cohere, beyond merely computing with the type.
 
-val vlength_index : (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) n = (A: Type) => (n: Nat) => (v: Vec A n) => Vec.ind A ((m: Nat) => (w: Vec A m) => Eq Nat (vlength w) m) n (refl zero) ((k: Nat) => (x: A) => (rest: Vec A k) => (ih: Eq Nat (vlength rest) k) => cong ((j: Nat) => succ j) ih) v
+val vlength_index: (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) n =
+  (A: Type) => (n: Nat) => (v: Vec A n) => Vec.ind
+    A
+    ((m: Nat) => (w: Vec A m) => Eq Nat (vlength w) m)
+    n
+    (refl zero)
+    ((k: Nat) => (x: A) => (rest: Vec A k) => (ih: Eq Nat (vlength rest) k) => cong
+      ((j: Nat) => succ j)
+      ih)
+    v
 // succ_inj: succ is injective
 
-val succ_inj : (a: Nat) -> (b: Nat) -> Eq Nat (succ a) (succ b) -> Eq Nat a b = (a: Nat) => (b: Nat) => (p: Eq Nat (succ a) (succ b)) => cong_e Nat Nat ((n: Nat) => match n {
-  case zero => zero
-  case succ n_ => n_
-}) (succ a) (succ b) p// --- Well-founded induction for Nat -----------------------------------------
+val succ_inj: (a: Nat) -> (b: Nat) -> Eq Nat (succ a) (succ b) -> Eq Nat a b =
+  (a: Nat) => (b: Nat) => (p: Eq Nat (succ a) (succ b)) => cong_e
+    Nat
+    Nat
+    ((n: Nat) => match n {
+      case zero => zero
+      case succ n_ => n_
+    })
+    (succ a)
+    (succ b)
+    p
+// --- Well-founded induction for Nat -----------------------------------------
 
-fun strong_ind_impl_help(P: Nat -> Prop, step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n, k: Nat, n: Nat, h: Lt k n, ind: (n: Nat) -> P n) : P k {struct h} = match h {
+fun strong_ind_impl_help(P: Nat -> Prop, step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n, k: Nat, n: Nat, h: Lt
+  k
+  n, ind: (n: Nat) -> P n): P k {struct h} = match h {
   case lt_succ k_ => ind k_
   case lt_trans a b c p q => strong_ind_impl_help P step a b p ind
-}// strong_ind_impl: well-founded induction on n, desugared via fuel.
+}
+// strong_ind_impl: well-founded induction on n, desugared via fuel.
 
-fun strong_ind_impl(n: Nat, P: Nat -> Prop, step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n) : P n termination_by (n) = match n {
-  case zero => step zero (Nat.ind ((m: Nat) => (k: Nat) -> Lt k m -> P k) ((k: Nat) => (h: Lt k zero) => False.rec ((_: False) => P k) (Lt.rec ((a: Nat) => (b: Nat) => (_: Lt a b) => Eq Nat b zero -> False) k zero ((n_: Nat) => (eq: Eq Nat (succ n_) zero) => succ_ne_zero n_ eq) ((a: Nat) => (b: Nat) => (c: Nat) => (_: Lt a b) => (_: Lt b c) => (_: Eq Nat b zero -> False) => (ih2: Eq Nat c zero -> False) => (eq: Eq Nat c zero) => ih2 eq) h (refl zero))) ((n_: Nat) => (ih: (j: Nat) -> Lt j n_ -> P j) => (k: Nat) => (h: Lt k (succ n_)) => strong_ind_impl_help P step k (succ n_) h ((m: Nat) => strong_ind_impl m P step)) zero)
-  case succ n_ => step (succ n_) ((k: Nat) => (h: Lt k (succ n_)) => strong_ind_impl_help P step k (succ n_) h ((m: Nat) => strong_ind_impl m P step))
+fun strong_ind_impl(n: Nat, P: Nat -> Prop, step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n): P
+  n termination_by n = match n {
+  case zero => step
+    zero
+    (Nat.ind
+      ((m: Nat) => (k: Nat) -> Lt k m -> P k)
+      ((k: Nat) => (h: Lt k zero) => False.rec
+        ((_: False) => P k)
+        (Lt.rec
+          ((a: Nat) => (b: Nat) => (_: Lt a b) => Eq Nat b zero -> False)
+          k
+          zero
+          ((n_: Nat) => (eq: Eq Nat (succ n_) zero) => succ_ne_zero n_ eq)
+          ((a: Nat) => (b: Nat) => (c: Nat) => (_: Lt a b) => (_: Lt b c) => (_: Eq Nat b zero
+          -> False) => (ih2: Eq Nat c zero -> False) => (eq: Eq Nat c zero) => ih2 eq)
+          h
+          (refl zero)))
+      ((n_: Nat) => (ih: (j: Nat) -> Lt j n_ -> P j) => (k: Nat) => (h: Lt k (succ n_)) => strong_ind_impl_help
+        P
+        step
+        k
+        (succ n_)
+        h
+        ((m: Nat) => strong_ind_impl m P step))
+      zero)
+  case succ n_ => step
+    (succ n_)
+    ((k: Nat) => (h: Lt k (succ n_)) => strong_ind_impl_help
+      P
+      step
+      k
+      (succ n_)
+      h
+      ((m: Nat) => strong_ind_impl m P step))
 }
 
-val strong_ind : (P: Nat -> Prop) -> ((n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n) -> (n: Nat) -> P n = (P: Nat -> Prop) => (step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n) => (n: Nat) => strong_ind_impl n P step
+val strong_ind: (P: Nat -> Prop)
+-> ((n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n) -> (n: Nat) -> P n =
+  (P: Nat -> Prop) => (step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n) => (n: Nat) => strong_ind_impl
+    n
+    P
+    step

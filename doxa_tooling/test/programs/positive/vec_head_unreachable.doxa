@@ -1,22 +1,22 @@
 // The coverage checker permits omitting a constructor arm that index
 // refinement forces unreachable: a match on `Vec[A] (succ n)` may drop the
 // `vnil` arm (vnil has index zero, and zero != succ n).
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-data Vec[A: Type] : Nat -> Type {
-  vnil : Vec A zero;
-  vcons : (n: Nat) -> A -> Vec A n -> Vec A (succ n);
+data Vec[A: Type]: Nat -> Type {
+  vnil: Vec A zero;
+  vcons: (n: Nat) -> A -> Vec A n -> Vec A (succ n);
 }
 // Match only the vcons case; vnil is forced unreachable by the (succ n)
 // index, so the coverage check doesn't demand a vnil arm.
 
-fun firstNat(n: Nat, v: Vec Nat (succ n)) : Nat = match v {
+fun firstNat(n: Nat, v: Vec Nat (succ n)): Nat = match v {
   case vcons m_ x xs => x
 }
 
-val sample : Vec Nat (succ zero) = vcons zero zero vnil
+val sample: Vec Nat (succ zero) = vcons zero zero vnil
 
-val head : Nat = firstNat zero sample
+val head: Nat = firstNat zero sample

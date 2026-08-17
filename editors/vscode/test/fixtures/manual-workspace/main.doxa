@@ -1,0 +1,5 @@
+import "dependency.doxa"
+
+val current: Status = ready
+
+fun preserve(status: Status): Status = keep status

@@ -24,49 +24,80 @@ import "../lib/stdlib/vec.doxa"
 // Congruence: equal inputs give equal `f`-images. The body matches on
 // the proof and rebuilds a bare `refl`.
 
-fun cong{A: Type, B: Type, x: A, y: A}(f: A -> B, p: Eq A x y) : Eq B (f x) (f y) = match p {
+fun cong{A: Type, B: Type, x: A, y: A}(f: A -> B, p: Eq A x y): Eq B (f x) (f y) = match p {
   case refl a => refl (f a)
-}// --- Values (inferred constructor type arguments) --------------------------
+}
+// --- Values (inferred constructor type arguments) --------------------------
 
-val one : Nat = succ zero
+val one: Nat = succ zero
 
-val two : Nat = succ one
+val two: Nat = succ one
 
-val sample : List Nat = cons one (cons two nil)
+val sample: List Nat = cons one (cons two nil)
 // --- Proofs ----------------------------------------------------------------
 // `plus zero n` reduces to `n` definitionally (plus recurses on its
 // first argument), so the proof is a bare reflexivity.
 
-val plus_zero_left : (n: Nat) -> Eq Nat (plus zero n) n = (n: Nat) => refl n
+val plus_zero_left: (n: Nat) -> Eq Nat (plus zero n) n = (n: Nat) => refl n
 // `plus n zero = n` needs induction: `n` is the recursion variable, so
 // it does not reduce. Proven with the dependent eliminator `Nat.ind`.
 
-val plus_zero_right : (n: Nat) -> Eq Nat (plus n zero) n = Nat.ind ((k: Nat) => Eq Nat (plus k zero) k) (refl zero) ((m: Nat) => (ih: Eq Nat (plus m zero) m) => cong ((k: Nat) => succ k) ih)
+val plus_zero_right: (n: Nat) -> Eq Nat (plus n zero) n =
+  Nat.ind
+    ((k: Nat) => Eq Nat (plus k zero) k)
+    (refl zero)
+    ((m: Nat) => (ih: Eq Nat (plus m zero) m) => cong ((k: Nat) => succ k) ih)
 // length distributes over append:
 //   length (append xs ys) = plus (length xs) (length ys)
 // by induction on the first list.
 
-val length_append : (A: Type) -> (xs: List A) -> (ys: List A) -> Eq Nat (length (append xs ys)) (plus (length xs) (length ys)) = (A: Type) => List.ind A ((zs: List A) => (ys: List A) -> Eq Nat (length (append zs ys)) (plus (length zs) (length ys))) ((ys: List A) => refl (length ys)) ((h: A) => (t: List A) => (ih: (ys: List A) -> Eq Nat (length (append t ys)) (plus (length t) (length ys))) => (ys: List A) => cong ((k: Nat) => succ k) (ih ys))
+val length_append: (A: Type)
+-> (xs: List A) -> (ys: List A) -> Eq Nat (length (append xs ys)) (plus (length xs) (length ys)) =
+  (A: Type) => List.ind
+    A
+    ((zs: List A) => (ys: List A) -> Eq Nat (length (append zs ys)) (plus (length zs) (length ys)))
+    ((ys: List A) => refl (length ys))
+    ((h: A) => (t: List A) => (ih: (ys: List A)
+    -> Eq Nat (length (append t ys)) (plus (length t) (length ys))) => (ys: List A) => cong
+      ((k: Nat) => succ k)
+      (ih ys))
 // Proofs can also refute. `False` is the empty type (no constructors);
 // a value of it cannot exist. From the impossible equality `succ n = zero`
 // we derive `False`, so the logic says "no", not only "these are equal".
 
-data False : Prop {
-  
+data False: Prop {
+
 }
 // A predicate provable at zero, absurd at succ. Transporting the zero
 // case across `succ n = zero` (with Eq.rec) lands in False.
 
-fun isZero(n: Nat) : Prop = match n {
+fun isZero(n: Nat): Prop = match n {
   case zero => Eq Nat zero zero
   case succ k => False
 }
 
-val succ_ne_zero : (n: Nat) -> Eq Nat (succ n) zero -> False = (n: Nat) => (p: Eq Nat (succ n) zero) => Eq.rec Nat ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => isZero b -> isZero a) (succ n) zero ((z: Nat) => (h: isZero z) => h) p (refl zero)
+val succ_ne_zero: (n: Nat) -> Eq Nat (succ n) zero -> False =
+  (n: Nat) => (p: Eq Nat (succ n) zero) => Eq.rec
+    Nat
+    ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => isZero b -> isZero a)
+    (succ n)
+    zero
+    ((z: Nat) => (h: isZero z) => h)
+    p
+    (refl zero)
 // Indexed families carry data in their types. `Vec[A] n` is a list whose
 // length `n` is part of its type. The theorem below is proved about that
 // index: the runtime length of a vector equals the index its type
 // carries. The proof uses `Vec.ind`, the dependent eliminator whose
 // motive ranges over both the index and the vector.
 
-val vlength_index : (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) n = (A: Type) => (n: Nat) => (v: Vec A n) => Vec.ind A ((m: Nat) => (w: Vec A m) => Eq Nat (vlength w) m) n (refl zero) ((k: Nat) => (x: A) => (rest: Vec A k) => (ih: Eq Nat (vlength rest) k) => cong ((j: Nat) => succ j) ih) v
+val vlength_index: (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) n =
+  (A: Type) => (n: Nat) => (v: Vec A n) => Vec.ind
+    A
+    ((m: Nat) => (w: Vec A m) => Eq Nat (vlength w) m)
+    n
+    (refl zero)
+    ((k: Nat) => (x: A) => (rest: Vec A k) => (ih: Eq Nat (vlength rest) k) => cong
+      ((j: Nat) => succ j)
+      ih)
+    v

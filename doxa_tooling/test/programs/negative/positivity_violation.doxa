@@ -1,6 +1,6 @@
 // Rejected (positivity violation): `Bad` occurs in a strictly-negative
 // position in its own constructor, which would let reduction diverge
 // and break soundness.
-data Bad : Type {
-  bad : (Bad -> Bad) -> Bad;
+data Bad: Type {
+  bad: (Bad -> Bad) -> Bad;
 }

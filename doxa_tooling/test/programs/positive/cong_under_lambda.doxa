@@ -1,13 +1,15 @@
 // Regression: implicit-arg insertion for `cong` called inside a lambda body
 // must see the lambda binder's real type, not a placeholder, so pattern
 // unification solves the implicits correctly.
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-fun cong{A: Type, B: Type, x: A, y: A}(f: A -> B, p: Eq A x y) : Eq B (f x) (f y) = Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) x y ((z: A) => refl (f z)) p
+fun cong{A: Type, B: Type, x: A, y: A}(f: A -> B, p: Eq A x y): Eq B (f x) (f y) =
+  Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) x y ((z: A) => refl (f z)) p
 // Lambda body uses implicit cong; binder `ih : Eq[Nat] zero zero` must
 // propagate to cong's unification.
 
-val wrap : Eq Nat zero zero -> Eq Nat (succ zero) (succ zero) = (ih: Eq Nat zero zero) => cong ((k: Nat) => succ k) ih
+val wrap: Eq Nat zero zero -> Eq Nat (succ zero) (succ zero) =
+  (ih: Eq Nat zero zero) => cong ((k: Nat) => succ k) ih

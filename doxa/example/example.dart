@@ -1,4 +1,6 @@
 /// Doxa kernel example: load and type-check a simple proof.
+library;
+
 import 'package:doxa/src/elab.dart';
 import 'package:doxa/src/parse.dart';
 import 'package:doxa/src/surface.dart';

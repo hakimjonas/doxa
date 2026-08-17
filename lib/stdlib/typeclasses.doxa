@@ -10,7 +10,7 @@ typeclass Semigroup[A: Type] {
 }
 
 impl Semigroup[Nat] {
-  fun combine(x: Nat, y: Nat) : Nat = plus x y;
+  fun combine(x: Nat, y: Nat): Nat = plus x y;
 }
 
 typeclass Monoid[A: Type] {
@@ -19,15 +19,15 @@ typeclass Monoid[A: Type] {
 }
 
 impl Monoid[Nat] {
-  fun combine(x: Nat, y: Nat) : Nat = plus x y;
-  fun empty() : Nat = zero;
+  fun combine(x: Nat, y: Nat): Nat = plus x y;
+  fun empty(): Nat = zero;
 }
 
 typeclass DecEq[A: Type] {
   fun decEq(x: A, y: A): Bool;
 }
 
-fun natDecEq(x: Nat, y: Nat) : Bool = match x {
+fun natDecEq(x: Nat, y: Nat): Bool = match x {
   case zero => match y {
     case zero => true_
     case succ _ => false_
@@ -39,7 +39,7 @@ fun natDecEq(x: Nat, y: Nat) : Bool = match x {
 }
 
 impl DecEq[Nat] {
-  fun decEq(x: Nat, y: Nat) : Bool = natDecEq x y;
+  fun decEq(x: Nat, y: Nat): Bool = natDecEq x y;
 }
 
 typeclass Group[A: Type] {
@@ -49,21 +49,21 @@ typeclass Group[A: Type] {
 }
 
 impl Group[Int] {
-  fun combine(x: Int, y: Int) : Int = intPlus x y;
-  fun empty() : Int = pos zero;
-  fun inv(x: Int) : Int = intNeg x;
+  fun combine(x: Int, y: Int): Int = intPlus x y;
+  fun empty(): Int = pos zero;
+  fun inv(x: Int): Int = intNeg x;
 }
 
 impl Semigroup[Int] {
-  fun combine(x: Int, y: Int) : Int = intPlus x y;
+  fun combine(x: Int, y: Int): Int = intPlus x y;
 }
 
 impl Monoid[Int] {
-  fun combine(x: Int, y: Int) : Int = intPlus x y;
-  fun empty() : Int = pos zero;
+  fun combine(x: Int, y: Int): Int = intPlus x y;
+  fun empty(): Int = pos zero;
 }
 
-fun intDecEq(x: Int, y: Int) : Bool = match x {
+fun intDecEq(x: Int, y: Int): Bool = match x {
   case pos n => match y {
     case pos m => natDecEq n m
     case neg _ => false_
@@ -75,5 +75,5 @@ fun intDecEq(x: Int, y: Int) : Bool = match x {
 }
 
 impl DecEq[Int] {
-  fun decEq(x: Int, y: Int) : Bool = intDecEq x y;
+  fun decEq(x: Int, y: Int): Bool = intDecEq x y;
 }

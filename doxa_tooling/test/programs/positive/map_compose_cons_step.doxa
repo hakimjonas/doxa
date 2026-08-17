@@ -1,18 +1,44 @@
 // Regression: the cons step of `map_compose` in isolation. Recursive `fun`s
 // must stay folded on a neutral decreasing argument so the stuck `map`
 // doesn't freeze into a meta-typed expected type.
-data List[A: Type] : Type {
-  nil : List A;
-  cons : A -> List A -> List A;
+data List[A: Type]: Type {
+  nil: List A;
+  cons: A -> List A -> List A;
 }
 
-fun map{A: Type, B: Type}(xs: List A, f: A -> B) : List B = match xs {
+fun map{A: Type, B: Type}(xs: List A, f: A -> B): List B = match xs {
   case nil => nil
   case cons h t => cons (f h) (map t f)
 }
 
-val cong_e : (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x y -> Eq B (f x) (f y) = (A: Type) => (B: Type) => (f: A -> B) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec A ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b)) x y ((z: A) => refl (f z)) p
+val cong_e: (A: Type)
+-> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x y -> Eq B (f x) (f y) =
+  (A: Type) => (B: Type) => (f: A -> B) => (x: A) => (y: A) => (p: Eq A x y) => Eq.rec
+    A
+    ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b))
+    x
+    y
+    ((z: A) => refl (f z))
+    p
 // The map_compose cons step as a standalone goal (no List.ind motive
 // wrapping): both sides are concrete cons-reductions.
 
-val cons_step_direct : (A: Type) -> (B: Type) -> (C: Type) -> (f: A -> B) -> (g: B -> C) -> (h: A) -> (t: List A) -> Eq (List C) (map (map t f) g) (map t ((a: A) => g (f a))) -> Eq (List C) (map (map (cons h t) f) g) (map (cons h t) ((a: A) => g (f a))) = (A: Type) => (B: Type) => (C: Type) => (f: A -> B) => (g: B -> C) => (h: A) => (t: List A) => (ih: Eq (List C) (map (map t f) g) (map t ((a: A) => g (f a)))) => cong_e (List C) (List C) ((ts: List C) => cons (g (f h)) ts) (map (map t f) g) (map t ((a: A) => g (f a))) ih
+val cons_step_direct: (A: Type)
+-> (B: Type)
+  -> (C: Type)
+    -> (f: A -> B)
+      -> (g: B -> C)
+        -> (h: A)
+          -> (t: List A)
+            -> Eq (List C) (map (map t f) g) (map t ((a: A) => g (f a)))
+              -> Eq (List C) (map (map (cons h t) f) g) (map (cons h t) ((a: A) => g (f a))) =
+  (A: Type) => (B: Type) => (C: Type) => (f: A -> B) => (g: B -> C) => (h: A) => (t: List A) => (ih: Eq
+    (List C)
+    (map (map t f) g)
+    (map t ((a: A) => g (f a)))) => cong_e
+    (List C)
+    (List C)
+    ((ts: List C) => cons (g (f h)) ts)
+    (map (map t f) g)
+    (map t ((a: A) => g (f a)))
+    ih

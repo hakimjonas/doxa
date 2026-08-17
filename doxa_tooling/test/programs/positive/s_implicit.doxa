@@ -1,18 +1,18 @@
 // S combinator in implicit style: pattern unification solves all three type
 // parameters from the explicit arguments' inferred types.
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
 }
 
-fun s{A: Type, B: Type, C: Type}(f: A -> B -> C, g: A -> B, x: A) : C = f x (g x)
+fun s{A: Type, B: Type, C: Type}(f: A -> B -> C, g: A -> B, x: A): C = f x (g x)
 // Check: s with concrete function arguments.
 
-val plus1 : Nat -> Nat = (n: Nat) => succ n
+val plus1: Nat -> Nat = (n: Nat) => succ n
 
-val dup : Nat -> Nat = (n: Nat) => succ (succ n)
+val dup: Nat -> Nat = (n: Nat) => succ (succ n)
 // f must have shape Nat -> Nat -> Nat, so use addConst rather than plus1.
 
-fun addConst(x: Nat, y: Nat) : Nat = succ x
+fun addConst(x: Nat, y: Nat): Nat = succ x
 
-val result : Nat = s addConst plus1 zero
+val result: Nat = s addConst plus1 zero

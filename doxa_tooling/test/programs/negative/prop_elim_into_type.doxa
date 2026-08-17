@@ -1,18 +1,18 @@
 // Rejected: matching on a Prop-sorted scrutinee (`PT`, two ctors) to
 // produce a Type-sorted value is illegal (SPEC §8.2); with proof
 // irrelevance it would let distinct proofs compute to distinct values.
-data Bool : Type {
-  t : Bool;
-  f : Bool;
+data Bool: Type {
+  t: Bool;
+  f: Bool;
 }
 
-data PT : Prop {
-  p1 : PT;
-  p2 : PT;
+data PT: Prop {
+  p1: PT;
+  p2: PT;
 }
 // Scrutinee lives in Prop, result type `Bool` lives in Type.
 
-fun leak(x: PT) : Bool = match x {
+fun leak(x: PT): Bool = match x {
   case p1 => t
   case p2 => f
 }

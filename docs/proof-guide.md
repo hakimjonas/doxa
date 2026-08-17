@@ -1,24 +1,24 @@
-# Doxa proof guide -- sqrt(2) is irrational on Nat
+# Doxa proof guide: the Nat descent for sqrt(2)
 
 ## Overview
 
-The proof shows that n^2 = 2*m^2 forces n to be zero. This is the
-arithmetic core of the classical proof that sqrt(2) is irrational.
-The proof works directly on Nat by parity and well-founded induction,
-without fractions or coprimality.
+The theorem `sqrt2` proves that `square n = 2 * square m` implies
+`n = zero` for natural numbers `n` and `m`. This is the descent lemma
+used in the standard irrationality proof for sqrt(2). The development
+uses parity and induction on `Nat`, without fractions or coprimality.
 
-The lemmas are in two files:
+The relevant declarations are in three files:
 
-- `lib/stdlib/proofs.doxa` -- arithmetic lemmas (mult_succ_right,
-  mult_comm, mult_2, mult_plus, mult_assoc, plus_assoc, plus_comm,
-  plus_succ, plus_zero, plus_one)
-- `lib/stdlib/case_study.doxa` -- parity lemmas, Lt, nat_wf, and the
-  sqrt2 theorem
+- `lib/stdlib/proofs.doxa` contains the arithmetic and equality lemmas,
+  plus `strong_ind`.
+- `lib/stdlib/case_study.doxa` contains the parity lemmas, the
+  accessibility proof `nat_wf`, and `sqrt2`.
+- `lib/stdlib/nat.doxa` defines `Lt`.
 
 ## 1. Arithmetic lemmas (proofs.doxa)
 
-These five lemmas follow the induction-on-first-argument pattern of
-the existing plus_comm and plus_assoc:
+These five lemmas extend the existing `plus_comm` and `plus_assoc`
+proofs:
 
 - mult_succ_right m n -- mult m (succ n) = plus m (mult m n)
 - mult_comm m n -- mult m n = mult n m
@@ -26,7 +26,8 @@ the existing plus_comm and plus_assoc:
 - mult_plus a b c -- mult (plus a b) c = plus (mult a c) (mult b c)
 - mult_assoc m n p -- mult (mult m n) p = mult m (mult n p)
 
-All verified: doxa check lib/stdlib/proofs.doxa reports 61 declarations.
+`proofs.doxa` also contains list, vector, refutation, and strong-induction
+lemmas.
 
 ## 2. Parity lemmas (case_study.doxa)
 
@@ -35,7 +36,7 @@ All verified: doxa check lib/stdlib/proofs.doxa reports 61 declarations.
 The even function computes parity by structural recursion:
 
 ```
-fun even(n: Nat) : Bool = match n {
+fun even(n: Nat): Bool = match n {
   case zero => true_
   case succ n_ => match even n_ {
     case true_ => false_
@@ -47,7 +48,7 @@ fun even(n: Nat) : Bool = match n {
 A helper parity_flip_b expresses the recurrence:
 
 ```
-val parity_flip_b : Bool -> Bool = (b: Bool) => match b {
+fun parity_flip_b(b: Bool): Bool = match b {
   case true_ => false_
   case false_ => true_
 }
@@ -70,9 +71,8 @@ val even_plus_parity : (a: Nat) -> (b: Nat) ->
   Eq Bool (even (plus a b)) (parity_comb (even a) (even b))
 ```
 
-where parity_comb p q = true_ iff p == q.  The proof uses induction
-on a with Bool.ind for propositional case analysis on neutral Boolean
-values in the step case.
+`parity_comb p q` is `true_` when `p` and `q` have the same value. The
+proof uses induction on `a` and `Bool.ind` in the Boolean helper lemma.
 
 ### even_square_eq
 
@@ -92,15 +92,17 @@ If n^2 = 2*m^2 then n is even:
 
 ```
 val sqrt2_parity : (n: Nat) -> (m: Nat) ->
-  Eq Nat (square n) (mult 2 (square m)) -> Eq Bool (even n) true_
+  Eq Nat (square n) (mult two (square m)) -> Eq Bool (even n) true_
 ```
 
-Proof: even (mult 2 (square m)) = true_ by even_double, transport
-across h_eq, then apply even_square_implies_even.
+The proof rewrites `mult two (square m)` to `plus (square m) (square m)`,
+uses `even_double`, transports along the equality hypothesis, and applies
+`even_square_implies_even`.
 
-## 3. Lt and nat_wf
+## 3. Lt and induction
 
-The well-founded ordering used by the sqrt2 descent.
+`Lt` is the strict ordering used by the accessibility proof and the
+strong-induction principle:
 
 ```
 data Lt : Nat -> Nat -> Prop {
@@ -109,76 +111,53 @@ data Lt : Nat -> Nat -> Prop {
 }
 ```
 
-The well-foundedness proof uses mutual structural recursion.  nat_wf n
-returns Acc[Nat] R n where R = ((x: Nat) => (y: Nat) => Lt x y).
-The zero case uses Lt.rec to refute Lt y zero; the succ k case
-delegates to nat_wf_help.
+The `nat_wf` and `nat_wf_help` definitions in `case_study.doxa` use
+mutual structural recursion. `nat_wf n` returns
+`Acc Nat ((x: Nat) => (y: Nat) => Lt x y) n`. Its zero case eliminates
+`Lt y zero`; its successor case delegates to `nat_wf_help`.
 
-nat_wf_help(k, y, h: Lt y (succ k)) returns Acc ... y with {struct h},
-recursing on the structure of h.  The lt_succ case calls nat_wf y_;
-the lt_trans case recurses on the second sub-proof.
+`nat_wf_help k y h` recurses structurally on `h`. In the `lt_succ` case
+it calls `nat_wf`; in the `lt_trans` case it extracts the accessibility
+continuation from the recursive result and applies it to the first
+ordering proof.
+
+The final theorem uses `strong_ind` from `proofs.doxa`. Its induction
+step receives a proof of the theorem at every strictly smaller natural
+number.
 
 ## 4. Algebraic lemmas
 
 - half n -- floor division by 2 (structural recursion)
 - lt_succ_right n m h -- if Lt n m then Lt n (succ m) (via lt_trans)
-- even_implies_double n h -- if even n = true_ then n = 2 * half n
-  (proved by induction on n)
-- mult_2_inj a b h -- if 2*a = 2*b then a = b (induction on a with
-  case analysis on b, using succ_ne_zero)
 - mult_4_eq a -- 4*a = 2*(2*a) (via mult_assoc)
+- mult_two_succ n -- 2*(succ n) = succ (succ (2*n))
+- mult_2_inj a b h -- if 2*a = 2*b then a = b
 - square_double p -- (2*p)^2 = 4*p^2 (using mult_assoc, mult_comm)
-- lt_half_succ k -- succ k < 2 * succ k (via lt_trans and lt_succ_right)
+- lt_succ_mono a b h -- if Lt a b then Lt (succ a) (succ b)
+- even_implies_double n h -- if even n = true_ then n = 2 * half n
+- lt_succ_t_mult_two_t t -- succ t < 2 * succ t
+- lt_t_succ_k t k h -- if succ k = 2*t then t < succ k
 
 ## 5. sqrt2 theorem
 
-Given h_eq: square n = 2 * square m, prove n = zero.  Uses
-Acc[Nat].rec (well-founded induction via nat_wf).  The proof
-proceeds by cases on n:
+Given `h_eq: Eq Nat (square n) (mult two (square m))`, the theorem proves
+`Eq Nat n zero`. It applies `strong_ind` to `n` and first obtains
+`Eq Nat n (mult two (half n))` from `sqrt2_parity`. Writing `t = half n`
+and `u = half m`, algebraic rewriting and `mult_2_inj` derive
+`Eq Nat (square t) (mult two (square u))`.
 
-- n = zero: refl zero
-- n = succ k:
-  - k = zero: contradiction via succ_ne_zero (algebra shows
-    square 1 = 2 * square m implies 1 = 0)
-  - k = succ p:
-    - sqrt2_parity gives even (succ (succ p)) = true_
-    - Hence even p = true_ (by even_succ_succ_eq_even)
-    - even_implies_double gives p = 2 * half p
-    - Algebraic manipulation: square (succ (succ p)) =
-      4 * square (succ (half p)) (via square_succ_algebra,
-      eq_p_double, and square_double)
-    - Combined with h_eq, this gives 4 * square (succ (half p)) =
-      2 * square m, so 2 * square (succ (half p)) = square m
-      (by mult_2_inj)
-    - lt_half_succ gives Lt (succ (half p)) (succ k) = x
-    - The IH (from Acc.rec) applied to succ (half p) and
-      the derived equality gives succ (half p) = zero
-    - Contradiction via succ_ne_zero
+The final case analysis is on `t`:
+
+- If `t = zero`, `Eq Nat n (mult two t)` yields `Eq Nat n zero`.
+- If `t = succ v`, `lt_t_succ_k` and the equation for `n` establish
+  `Lt (succ v) n`. The induction hypothesis applied to the displayed
+  equality gives `Eq Nat (succ v) zero`, which `succ_ne_zero` refutes.
 
 ## 6. Verification
 
 ```
-doxa check lib/stdlib/proofs.doxa      # 61 declarations
+doxa_tooling/build/doxa check lib/stdlib/proofs.doxa      # 82 declarations
+doxa_tooling/build/doxa check lib/stdlib/case_study.doxa  # 128 declarations
 ```
 
-The parity lemmas through sqrt2_parity type-check (83 declarations).
-The Lt definition and nat_wf mutual block have indexed-pattern
-unification constraints that require kernel-level indexed pattern
-support (the lt_trans case needs to open the recursive Acc call
-and apply the lt_succ_right lemma to connect the indices).
-
-All 452 kernel tests and 520 tooling tests pass (modulo the single
-`case_study.doxa` entry in `stdlib_test` for the incomplete sections).
-
-## 7. Next steps
-
-- Fix the `Lt.rec` type in the nat_wf zero case: the auto-synthesised
-  recursor for an indexed Prop-sorted data type may need the type
-  arguments passed explicitly before the motive.
-- Fix the `lt_trans` branch in nat_wf_help: the recursive call
-  returns `Acc ... m`, which must be pattern-matched to extract
-  the continuation and applied to `p1 : Lt y_ m` to produce
-  `Acc ... y_`.
-- Add the algebraic lemmas (half, even_implies_double, mult_2_inj,
-  mult_4_eq, square_double, lt_half_succ) and the sqrt2 theorem
-  once the nat_wf foundation is solid.
+Both files type-check with the current CLI.

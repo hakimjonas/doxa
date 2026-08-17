@@ -5,14 +5,34 @@ on:
     tags: ['v*']
 
 jobs:
-  release:
+  # --- Build and publish Dart packages ---
+  publish-dart:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
+      id-token: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Build native binaries
+        working-directory: ./doxa_tooling
+        run: |
+          mkdir -p /tmp/doxa-bin
+          dart compile exe bin/doxa.dart -o /tmp/doxa-bin/doxa-linux-x64
+          cp /tmp/doxa-bin/doxa-linux-x64 /tmp/doxa-bin/doxa
+          tar -czf /tmp/doxa-bin/doxa-linux-x64.tar.gz -C /tmp/doxa-bin doxa-linux-x64
+
+      - name: Publish to pub.dev (doxa kernel)
+        run: |
+          dart pub publish --directory doxa/ --force || true
+
+      - name: Publish to pub.dev (doxa_tooling)
+        run: |
+          dart pub publish --directory doxa_tooling/ --force || true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -22,7 +42,43 @@ jobs:
             Doxa ${{ github.ref_name }} — a dependently typed proof checker.
 
             See [CHANGELOG.md](CHANGELOG.md) for details.
+          files: /tmp/doxa-bin/doxa-linux-x64.tar.gz
           draft: false
-          prerelease: true
+          prerelease: false
+
+  # --- Publish VSCode extension ---
+  publish-vscode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install + build + publish
+        working-directory: ./editors/vscode
+        run: |
+          npm ci
+          npm run esbuild
+          npx @vscode/vsce publish --packagePath $(ls *.vsix 2>/dev/null) || true
+
+  # --- Publish JetBrains plugin ---
+  publish-jetbrains:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: temurin
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and publish
+        working-directory: ./editors/jetbrains
+        run: |
+          ./gradlew publishPlugin
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JETBRAINS_MARKETPLACE_TOKEN: ${{ secrets.JETBRAINS_MARKETPLACE_TOKEN }}

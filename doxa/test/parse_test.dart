@@ -309,6 +309,27 @@ void main() {
       final r = unwrap(parseProgram('val x = y val z = w'));
       expect(r.decls, hasLength(2));
     });
+
+    test('missing declaration body reports one expression expectation', () {
+      final result = parseProgram('val value : Type =\n');
+
+      expect(result, isA<Failure<ParseError, SProgram>>());
+      final failure = result as Failure<ParseError, SProgram>;
+      expect(failure.furthest.offset, 'val value : Type =\n'.length);
+      expect(
+        failure.errors.whereType<CustomError>().map((error) => error.message),
+        contains('expected an expression'),
+      );
+    });
+
+    test('reads leading imports before a later incomplete declaration', () {
+      final imports = parseLeadingImports(
+        'import "dependency.doxa"\nval value : Type =\n',
+      );
+
+      expect(imports, hasLength(1));
+      expect((imports.single.kind as SImportKind).path, 'dependency.doxa');
+    });
   });
 
   group('comments and whitespace', () {
@@ -339,6 +360,11 @@ void main() {
       expect(r.span, const DoxaSpan(0, 5));
     });
 
+    test('ident span excludes trailing whitespace', () {
+      final r = unwrap(parseExpr('hello '));
+      expect(r.span, const DoxaSpan(0, 5));
+    });
+
     test('application span covers both subterms', () {
       final r = unwrap(parseExpr('f x'));
       expect(r.span.start, 0);
@@ -349,6 +375,21 @@ void main() {
       final r = unwrap(parseExpr('(x: A) => x'));
       expect(r.span.start, 0);
       expect(r.span.end, 11);
+    });
+
+    test('binder spans cover identifier tokens', () {
+      final lambda = unwrap(parseExpr('(x: A) => x')).kind as SLamKind;
+      final pi = unwrap(parseExpr('(x: A) -> x')).kind as SPiKind;
+      final fun =
+          unwrap(
+                parseProgram('fun id[A: Type](value: A) : A = value'),
+              ).decls.single.kind
+              as SFunKind;
+
+      expect(lambda.paramSpan, const DoxaSpan(1, 2));
+      expect(pi.paramSpan, const DoxaSpan(1, 2));
+      expect(fun.typeParams.single.span, const DoxaSpan(7, 8));
+      expect(fun.paramSpans.single, const DoxaSpan(16, 21));
     });
   });
 }

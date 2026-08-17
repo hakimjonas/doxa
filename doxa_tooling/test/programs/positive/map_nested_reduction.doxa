@@ -1,17 +1,39 @@
 // Reduction soundness for nested `map` over `cons`: `map (cons h t) f`
 // ι-reduces to `cons (f h) (map t f)`, and nested/composed maps reduce
 // likewise once the decreasing argument is canonical.
-data List[A: Type] : Type {
-  nil : List A;
-  cons : A -> List A -> List A;
+data List[A: Type]: Type {
+  nil: List A;
+  cons: A -> List A -> List A;
 }
 
-fun map{A: Type, B: Type}(xs: List A, f: A -> B) : List B = match xs {
+fun map{A: Type, B: Type}(xs: List A, f: A -> B): List B = match xs {
   case nil => nil
   case cons h t => cons (f h) (map t f)
-}// RHS of map_compose's cons step reduces to the expected head/tail.
+}
+// RHS of map_compose's cons step reduces to the expected head/tail.
 
-val rhs_reduces : (A: Type) -> (B: Type) -> (C: Type) -> (f: A -> B) -> (g: B -> C) -> (h: A) -> (t: List A) -> Eq (List C) (map (cons h t) ((a: A) => g (f a))) (cons (g (f h)) (map t ((a: A) => g (f a)))) = (A: Type) => (B: Type) => (C: Type) => (f: A -> B) => (g: B -> C) => (h: A) => (t: List A) => refl (cons (g (f h)) (map t ((a: A) => g (f a))))
+val rhs_reduces: (A: Type)
+-> (B: Type)
+  -> (C: Type)
+    -> (f: A -> B)
+      -> (g: B -> C)
+        -> (h: A)
+          -> (t: List A)
+            -> Eq
+                (List C)
+                (map (cons h t) ((a: A) => g (f a)))
+                (cons (g (f h)) (map t ((a: A) => g (f a)))) =
+  (A: Type) => (B: Type) => (C: Type) => (f: A -> B) => (g: B -> C) => (h: A) => (t: List A) => refl
+    (cons (g (f h)) (map t ((a: A) => g (f a))))
 // LHS of map_compose's cons step reduces to the expected head/tail.
 
-val lhs_reduces : (A: Type) -> (B: Type) -> (C: Type) -> (f: A -> B) -> (g: B -> C) -> (h: A) -> (t: List A) -> Eq (List C) (map (map (cons h t) f) g) (cons (g (f h)) (map (map t f) g)) = (A: Type) => (B: Type) => (C: Type) => (f: A -> B) => (g: B -> C) => (h: A) => (t: List A) => refl (cons (g (f h)) (map (map t f) g))
+val lhs_reduces: (A: Type)
+-> (B: Type)
+  -> (C: Type)
+    -> (f: A -> B)
+      -> (g: B -> C)
+        -> (h: A)
+          -> (t: List A)
+            -> Eq (List C) (map (map (cons h t) f) g) (cons (g (f h)) (map (map t f) g)) =
+  (A: Type) => (B: Type) => (C: Type) => (f: A -> B) => (g: B -> C) => (h: A) => (t: List A) => refl
+    (cons (g (f h)) (map (map t f) g))

@@ -1,0 +1,72 @@
+{
+  "name": "doxa",
+  "displayName": "Doxa",
+  "description": "Doxa language support — syntax highlighting, bracket matching, and LSP-powered diagnostics, hover, go-to-definition, and completion",
+  "version": "0.8.2",
+  "publisher": "doxa-lang",
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hakimjonas/doxa"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "keywords": [
+    "doxa",
+    "proof-checker",
+    "dependent-types",
+    "cic"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "doxa",
+        "aliases": ["Doxa", "doxa"],
+        "extensions": [".doxa"],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/doxa-icon.svg",
+          "dark": "./icons/doxa-icon.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "doxa",
+        "scopeName": "source.doxa",
+        "path": "./syntaxes/doxa.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Doxa",
+      "properties": {
+        "doxa.server.path": {
+          "type": "string",
+          "default": "doxa",
+          "description": "Path to the Doxa language server binary."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run esbuild",
+    "esbuild": "node esbuild.js",
+    "package": "vsce package",
+    "test": "node test/extension.test.js",
+    "manual:open": "code test/fixtures/manual-workspace",
+    "lint": "echo 'no linter configured'"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^2.22.0",
+    "esbuild": "^0.19.0"
+  }
+}

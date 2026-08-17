@@ -5,7 +5,6 @@
 /// processes.
 library;
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -24,18 +23,23 @@ final class LspReader {
         final termIdx = _findHeaderTerminator(_buffer);
         if (termIdx == -1) break;
 
-        final header = utf8.decode(_buffer.sublist(0, termIdx));
+        final header = utf8.decode(
+          _buffer.sublist(0, termIdx),
+          allowMalformed: true,
+        );
         _buffer.removeRange(0, termIdx + 4);
 
-        const prefix = 'Content-Length: ';
-        final startIdx = header.indexOf(prefix);
-        if (startIdx != -1) {
-          final lenStart = startIdx + prefix.length;
-          // The \r\n\r\n terminator has been stripped, so the header
-          // is just the Content-Length line. Parse to end of string.
+        _contentLength = -1;
+        for (final line in header.split('\r\n')) {
+          final separator = line.indexOf(':');
+          if (separator < 0) continue;
+          final name = line.substring(0, separator).trim().toLowerCase();
+          if (name != 'content-length') continue;
           _contentLength =
-              int.tryParse(header.substring(lenStart).trim()) ?? -1;
+              int.tryParse(line.substring(separator + 1).trim()) ?? -1;
+          break;
         }
+        if (_contentLength <= 0) continue;
         _headerDone = true;
       }
 
@@ -44,10 +48,16 @@ final class LspReader {
 
         final bodyBytes = _buffer.sublist(0, _contentLength);
         _buffer.removeRange(0, _contentLength);
-        final body = utf8.decode(bodyBytes);
+        final body = utf8.decode(bodyBytes, allowMalformed: true);
         _headerDone = false;
         _contentLength = -1;
-        result.add(jsonDecode(body) as Map<String, dynamic>);
+        try {
+          final decoded = jsonDecode(body);
+          if (decoded is Map<String, dynamic>) result.add(decoded);
+        } on FormatException {
+          // A malformed frame must not terminate the long-lived server. The
+          // next complete frame can still be decoded from the input stream.
+        }
       } else {
         break;
       }
@@ -71,6 +81,7 @@ final class LspReader {
 /// Send an LSP message to stdout.
 void sendLspMessage(Map<String, dynamic> message) {
   final body = jsonEncode(message);
-  final framed = 'Content-Length: ${body.length}\r\n\r\n$body';
-  stdout.write(framed);
+  final bodyBytes = utf8.encode(body);
+  stdout.add(utf8.encode('Content-Length: ${bodyBytes.length}\r\n\r\n'));
+  stdout.add(bodyBytes);
 }

@@ -7,19 +7,17 @@ on:
     branches: ['**']
 
 jobs:
-  test:
+  # --- Dart kernel + tooling ---
+  doxa-core:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-      - name: Setup Dart
-        uses: dart-lang/setup-dart@v1
+      - uses: dart-lang/setup-dart@v1
         with:
           sdk: stable
 
-      - name: Install dependencies (doxa core)
+      - name: Install dependencies (doxa kernel)
         working-directory: ./doxa
         run: dart pub get
 
@@ -27,7 +25,7 @@ jobs:
         working-directory: ./doxa_tooling
         run: dart pub get
 
-      - name: Analyze (doxa core)
+      - name: Analyze (doxa kernel)
         working-directory: ./doxa
         run: dart analyze --no-fatal-warnings
 
@@ -35,7 +33,10 @@ jobs:
         working-directory: ./doxa_tooling
         run: dart analyze --no-fatal-warnings
 
-      - name: Test (doxa core)
+      - name: Format check (Dart)
+        run: dart format --set-exit-if-changed doxa/ doxa_tooling/
+
+      - name: Test (doxa kernel)
         working-directory: ./doxa
         run: dart test
 
@@ -43,16 +44,15 @@ jobs:
         working-directory: ./doxa_tooling
         run: dart test
 
-      - name: Format check (Dart)
-        run: dart format --set-exit-if-changed doxa/ doxa_tooling/
-
       - name: Build doxa CLI
         working-directory: ./doxa_tooling
         run: dart compile exe bin/doxa.dart -o /tmp/doxa
 
-      - name: doxa fmt --check (all .doxa files)
+      - name: doxa fmt --check (all parseable .doxa files)
         run: |
-          for f in $(find lib/stdlib example doxa_tooling/test/programs -name '*.doxa' -type f); do
+          for f in $(find lib/stdlib example doxa_tooling/test/programs -name '*.doxa' -type f \
+            ! -path 'doxa_tooling/test/programs/negative/block_no_result.doxa' \
+            ! -path 'doxa_tooling/test/programs/negative/parse_error.doxa'); do
             /tmp/doxa fmt --check "$f" || exit 1
           done
 
@@ -72,15 +72,112 @@ jobs:
         working-directory: ./doxa_tooling
         run: dart compile wasm web/doxa_check.dart -o web/doxa_check.wasm
 
-      - name: Check pub.dev score (doxa)
+  # --- VSCode extension ---
+  vscode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        working-directory: ./editors/vscode
+        run: npm ci
+
+      - name: Test extension adapter
+        working-directory: ./editors/vscode
+        run: npm test
+
+      - name: Bundle with esbuild
+        working-directory: ./editors/vscode
+        run: npm run esbuild
+
+      - name: Package extension
+        working-directory: ./editors/vscode
+        run: npx @vscode/vsce package --no-dependencies
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: doxa-vscode
+          path: editors/vscode/*.vsix
+
+  # --- JetBrains plugin ---
+  jetbrains:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install dependencies (doxa kernel)
         working-directory: ./doxa
+        run: dart pub get
+
+      - name: Install dependencies (doxa_tooling)
+        working-directory: ./doxa_tooling
+        run: dart pub get
+
+      - name: Build doxa CLI
+        working-directory: ./doxa_tooling
+        run: dart compile exe bin/doxa.dart -o /tmp/doxa
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: temurin
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test plugin against Doxa LSP
+        working-directory: ./editors/jetbrains
+        env:
+          DOXA_EXECUTABLE: /tmp/doxa
+        run: ./gradlew test buildPlugin
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: doxa-jetbrains
+          path: editors/jetbrains/build/distributions/*.zip
+
+  # --- pana score ---
+  pub-score:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: pana score (doxa kernel)
         run: |
           dart pub global activate pana
-          pana . --no-warning --exit-code-threshold 0 2>&1 | tail -20
+          pana doxa/ --no-warning --exit-code-threshold 0 2>&1 | tail -20
 
-      - name: Check pub.dev score (doxa_tooling)
-        working-directory: ./doxa_tooling
+      - name: pana score (doxa_tooling)
         run: |
-          # pana needs doxa published to pub.dev first.
-          # Once doxa is published, remove --source path.
-          pana . --no-warning --source path --exit-code-threshold 0 2>&1 | tail -20 || true
+          pana doxa_tooling/ --no-warning --source path --exit-code-threshold 0 2>&1 | tail -20 || true
+
+  # Preserve the branch-protection context while requiring every CI job.
+  test:
+    needs: [doxa-core, vscode, jetbrains, pub-score]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify CI jobs
+        env:
+          DOXA_CORE_RESULT: ${{ needs['doxa-core'].result }}
+          VSCODE_RESULT: ${{ needs.vscode.result }}
+          JETBRAINS_RESULT: ${{ needs.jetbrains.result }}
+          PUB_SCORE_RESULT: ${{ needs['pub-score'].result }}
+        run: |
+          test "$DOXA_CORE_RESULT" = success
+          test "$VSCODE_RESULT" = success
+          test "$JETBRAINS_RESULT" = success
+          test "$PUB_SCORE_RESULT" = success

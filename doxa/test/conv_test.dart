@@ -335,7 +335,7 @@ data Nat : Type { zero : Nat; succ : Nat -> Nat; }
     });
 
     test('succ_injective propositional proof type-checks', () {
-      final src = '''
+      const src = '''
 data Eq[A: Type] : A -> A -> Prop {
   refl : (x: A) -> Eq[A] x x;
 }
