@@ -732,12 +732,21 @@ final class LspHandler {
     Map<String, dynamic> params,
   ) {
     final result = _buildResult(id, params, (offset) {
-      final target = _symbolTargetAt(offset, includeLocal: true);
-      if (target == null) return null;
       final context = params['context'] as Map<String, dynamic>?;
       final includeDeclaration =
           context?['includeDeclaration'] as bool? ?? true;
-      return _referencesFor(target, includeDeclaration: includeDeclaration);
+      final target = _symbolTargetAt(offset, includeLocal: true);
+      final scopeRefs = _dataScopeReferencesAt(
+        offset,
+        includeDeclaration: includeDeclaration,
+      );
+      if (target == null && scopeRefs == null) return null;
+      final locations = <LspLocation>[
+        if (target != null)
+          ..._referencesFor(target, includeDeclaration: includeDeclaration),
+        ...?scopeRefs,
+      ];
+      return _mergeReferenceLocations(locations);
     });
     return {
       'jsonrpc': '2.0',
@@ -761,8 +770,16 @@ final class LspHandler {
     }
     final result = _buildResult(id, params, (offset) {
       final target = _symbolTargetAt(offset);
-      if (target == null) return null;
-      final refs = _referencesFor(target);
+      final scopeRefs = _dataScopeReferencesAt(
+        offset,
+        includeDeclaration: true,
+        renameSafe: true,
+      );
+      if (target == null && scopeRefs == null) return null;
+      final refs = _mergeReferenceLocations(<LspLocation>[
+        if (target != null) ..._referencesFor(target),
+        ...?scopeRefs,
+      ]);
       if (refs.isEmpty) return null;
       // Build text edits grouped by the document containing each reference.
       final changes = <String, List<LspTextEdit>>{};
@@ -1252,6 +1269,24 @@ final class LspHandler {
     return locations;
   }
 
+  List<LspLocation> _mergeReferenceLocations(List<LspLocation> locations) {
+    final result = <LspLocation>[];
+    final seen = <String>{};
+    for (final location in locations) {
+      final range = location.range;
+      final key =
+          '${location.uri}:${range.start.line}:${range.start.character}:'
+          '${range.end.line}:${range.end.character}';
+      if (seen.add(key)) result.add(location);
+    }
+    result.sort((a, b) {
+      final byUri = a.uri.compareTo(b.uri);
+      if (byUri != 0) return byUri;
+      return a.range.start.line.compareTo(b.range.start.line);
+    });
+    return result;
+  }
+
   String _spanKey(_IndexedDocument document, DoxaSpan span) =>
       '${_canonicalDocumentUri(document.uri)}:${span.start}:${span.end}';
 
@@ -1260,13 +1295,29 @@ final class LspHandler {
 
   LspRange? _renameRangeAt(int offset) {
     final target = _symbolTargetAt(offset);
-    if (target == null) return null;
-    final info = _infoAt(offset) ?? _infoAt(offset - 1);
-    final span =
-        info == null
-            ? _definitionNameSpan(target, _activeIndexedDocument!)
-            : _referenceNameSpan(info, target.name, _documentText);
-    return span == null ? null : _rangeForSpan(span);
+    if (target != null) {
+      final info = _infoAt(offset) ?? _infoAt(offset - 1);
+      final span =
+          info == null
+              ? _definitionNameSpan(target, _activeIndexedDocument!)
+              : _referenceNameSpan(info, target.name, _documentText);
+      return span == null ? null : _rangeForSpan(span);
+    }
+    final scopeRefs = _dataScopeReferencesAt(
+      offset,
+      includeDeclaration: true,
+      renameSafe: true,
+    );
+    if (scopeRefs == null) return null;
+    var start = offset;
+    while (start > 0 && _isIdentChar(_documentText, start - 1)) {
+      start--;
+    }
+    var end = offset;
+    while (end < _documentText.length && _isIdentChar(_documentText, end)) {
+      end++;
+    }
+    return _rangeForSpan(DoxaSpan(start, end));
   }
 
   LspRange _rangeForSpan(DoxaSpan span, [String? text]) {
@@ -1828,29 +1879,191 @@ final class LspHandler {
     Failure<ParseError, SProgram>() => const <SDecl>[],
   };
 
-  _DataScope? _dataScopeContaining(SDecl decl, int offset) {
-    if (offset < decl.span.start || offset >= decl.span.end) return null;
-    return switch (decl.kind) {
-      final SDataKind data => _dataScopeOf(decl.span, data),
-      SDataBlockKind(:final members) => () {
-        for (final member in members) {
-          if (offset >= member.span.start && offset < member.span.end) {
-            return _dataScopeOf(member.span, member.data);
+  /// Surface references for names in data declarations: the data name, ctor
+  /// names, and type-level binder names. Each identifier use resolves to the
+  /// nearest preceding name position of the same word; uses with no local
+  /// binder resolve to the declaration of the same name elsewhere in the file.
+  /// For the data and ctor names, term-level uses (SemInfo) are merged in as
+  /// well, across all open documents.
+  List<LspLocation>? _dataScopeReferencesAt(
+    int offset, {
+    required bool includeDeclaration,
+    bool renameSafe = false,
+  }) {
+    final word = _wordAt(offset);
+    if (word == null || word.isEmpty) return null;
+    final decls = _parsedDecls();
+    _DataScope? containing;
+    for (final decl in decls) {
+      containing = _dataScopeContaining(decl, offset);
+      if (containing != null) break;
+    }
+    final declarationScopes = <_DataScope>[];
+    for (final decl in decls) {
+      for (final scope in _dataScopesFor(decl)) {
+        if (_isDataScopeDeclarationName(word, scope)) {
+          declarationScopes.add(scope);
+        }
+      }
+    }
+    int? targetPosition;
+    _DataScope? targetScope;
+    if (containing != null) {
+      final occurrences =
+          containing.nameOccurrences.where((o) => o.name == word).toList();
+      final uses = containing.identUses.where((u) => u.name == word).toList();
+      final namePosition =
+          occurrences
+              .where((o) => offset >= o.start && offset < o.start + word.length)
+              .map((o) => o.start)
+              .firstOrNull;
+      if (namePosition != null) {
+        targetPosition = namePosition;
+        targetScope = containing;
+      } else {
+        final useStart =
+            uses
+                .where(
+                  (u) => offset >= u.start && offset < u.start + word.length,
+                )
+                .map((u) => u.start)
+                .firstOrNull;
+        if (useStart != null) {
+          final positions = [for (final o in occurrences) o.start]..sort();
+          final owner = _nearestPreceding(positions, useStart);
+          if (owner != null) {
+            targetPosition = owner;
+            targetScope = containing;
+          } else if (declarationScopes.isNotEmpty) {
+            targetPosition = declarationScopes.first.namePositions[word];
+            targetScope = declarationScopes.first;
           }
         }
-        return null;
-      }(),
-      _ => null,
-    };
+      }
+    } else if (declarationScopes.isNotEmpty) {
+      targetPosition = declarationScopes.first.namePositions[word];
+      targetScope = declarationScopes.first;
+    }
+    if (targetPosition == null || targetScope == null) return null;
+    final targetIsDeclarationName = _isDataScopeDeclarationName(
+      word,
+      targetScope,
+    );
+    if (renameSafe && !targetIsDeclarationName) return null;
+    final result = <LspLocation>[];
+    final seen = <String>{};
+    if (includeDeclaration) {
+      result.add(_locationForScopeWord(targetPosition, word));
+      seen.add('$_documentUri:$targetPosition');
+    }
+    final targetPositions = [
+      for (final o in targetScope.nameOccurrences.where((o) => o.name == word))
+        o.start,
+    ]..sort();
+    for (final use in targetScope.identUses.where((u) => u.name == word)) {
+      final owner = _nearestPreceding(targetPositions, use.start);
+      if (owner != targetPosition || !seen.add('$_documentUri:${use.start}')) {
+        continue;
+      }
+      result.add(_locationForScopeWord(use.start, word));
+    }
+    if (targetIsDeclarationName) {
+      for (final decl in decls) {
+        for (final scope in _dataScopesFor(decl)) {
+          if (scope.declSpan == targetScope.declSpan) continue;
+          final otherPositions = [
+            for (final o in scope.nameOccurrences.where((o) => o.name == word))
+              o.start,
+          ]..sort();
+          for (final use in scope.identUses.where((u) => u.name == word)) {
+            if (_nearestPreceding(otherPositions, use.start) != null) {
+              continue;
+            }
+            if (seen.add('$_documentUri:${use.start}')) {
+              result.add(_locationForScopeWord(use.start, word));
+            }
+          }
+        }
+      }
+      final kind =
+          word == targetScope.data.name
+              ? SemInfoKind.dataType
+              : SemInfoKind.constructor;
+      final defSpan =
+          word == targetScope.data.name
+              ? targetScope.declSpan
+              : targetScope.data.ctors.firstWhere((c) => c.name == word).span;
+      final definitionUri = _canonicalDocumentUri(_documentUri);
+      for (final document in _indexedDocuments()) {
+        for (final info in document.success.semInfo) {
+          if (info.kind != kind || info.defSpan != defSpan) continue;
+          if (_definitionUriFor(info, document) != definitionUri) continue;
+          final reference = _referenceNameSpan(info, word, document.text);
+          if (reference == null || !seen.add(_spanKey(document, reference))) {
+            continue;
+          }
+          result.add(_locationForSpan(reference, document));
+        }
+      }
+    }
+    if (result.isEmpty) return null;
+    result.sort((a, b) {
+      final byUri = a.uri.compareTo(b.uri);
+      if (byUri != 0) return byUri;
+      return a.range.start.line.compareTo(b.range.start.line);
+    });
+    return result;
+  }
+
+  bool _isDataScopeDeclarationName(String word, _DataScope scope) =>
+      word == scope.data.name ||
+      scope.data.ctors.any((ctor) => ctor.name == word);
+
+  int? _nearestPreceding(List<int> positions, int offset) {
+    for (final position in positions.reversed) {
+      if (position < offset) return position;
+    }
+    return null;
+  }
+
+  LspLocation _locationForScopeWord(int start, String word) {
+    final pos = _positionIn(_documentText, start);
+    final endPos = _positionIn(_documentText, start + word.length);
+    return LspLocation(
+      uri: _documentUri,
+      range: LspRange(
+        start: LspPosition(line: pos.line - 1, character: pos.column - 1),
+        end: LspPosition(line: endPos.line - 1, character: endPos.column - 1),
+      ),
+    );
+  }
+
+  List<_DataScope> _dataScopesFor(SDecl decl) => switch (decl.kind) {
+    final SDataKind data => [_dataScopeOf(decl.span, data)],
+    SDataBlockKind(:final members) => [
+      for (final member in members) _dataScopeOf(member.span, member.data),
+    ],
+    _ => const [],
+  };
+
+  _DataScope? _dataScopeContaining(SDecl decl, int offset) {
+    for (final scope in _dataScopesFor(decl)) {
+      if (offset >= scope.declSpan.start && offset < scope.declSpan.end) {
+        return scope;
+      }
+    }
+    return null;
   }
 
   _DataScope _dataScopeOf(DoxaSpan declSpan, SDataKind data) {
     final positions = <String, int>{};
     final binderTypes = <String, String>{};
     final idents = <({String name, int start})>[];
+    final occurrences = <({String name, int start})>[];
     final dataNameOffset = _documentText.indexOf(data.name, declSpan.start);
     if (dataNameOffset >= declSpan.start && dataNameOffset < declSpan.end) {
       positions[data.name] = dataNameOffset;
+      occurrences.add((name: data.name, start: dataNameOffset));
     }
     final headerStart =
         dataNameOffset < 0 ? declSpan.start : dataNameOffset + data.name.length;
@@ -1860,7 +2073,10 @@ final class LspHandler {
             : data.signature.span.start;
     for (final (paramName, paramType) in data.typeParams) {
       final pos = _documentText.indexOf(paramName, headerStart);
-      if (pos >= headerStart && pos < headerEnd) positions[paramName] = pos;
+      if (pos >= headerStart && pos < headerEnd) {
+        positions[paramName] = pos;
+        occurrences.add((name: paramName, start: pos));
+      }
       if (paramType != null && !paramType.span.isSynthetic) {
         binderTypes[paramName] = _documentText.substring(
           paramType.span.start,
@@ -1868,23 +2084,42 @@ final class LspHandler {
         );
       }
     }
-    _walkExpr(data.signature, positions, binderTypes, idents);
+    _walkExpr(data.signature, positions, binderTypes, idents, occurrences);
     for (final (_, paramType) in data.typeParams) {
       if (paramType != null) {
-        _walkExpr(paramType, positions, binderTypes, idents);
+        _walkExpr(paramType, positions, binderTypes, idents, occurrences);
       }
     }
+    for (final field in data.productFields ?? const <SCtorDecl>[]) {
+      final nameOffset = _documentText.indexOf(field.name, field.span.start);
+      if (nameOffset >= field.span.start && nameOffset < field.span.end) {
+        positions[field.name] = nameOffset;
+        occurrences.add((name: field.name, start: nameOffset));
+      }
+      if (!field.type.span.isSynthetic) {
+        binderTypes[field.name] = _documentText.substring(
+          field.type.span.start,
+          field.type.span.end,
+        );
+      }
+      _walkExpr(field.type, positions, binderTypes, idents, occurrences);
+    }
     for (final ctor in data.ctors) {
+      if (ctor.span.isSynthetic) continue;
       final ctorNameOffset = _documentText.indexOf(ctor.name, ctor.span.start);
       if (ctorNameOffset >= ctor.span.start && ctorNameOffset < ctor.span.end) {
         positions[ctor.name] = ctorNameOffset;
+        occurrences.add((name: ctor.name, start: ctorNameOffset));
       }
-      _walkExpr(ctor.type, positions, binderTypes, idents);
+      _walkExpr(ctor.type, positions, binderTypes, idents, occurrences);
     }
     return _DataScope(
       namePositions: positions,
       binderTypes: binderTypes,
       identUses: idents,
+      nameOccurrences: occurrences,
+      data: data,
+      declSpan: declSpan,
     );
   }
 
@@ -1893,30 +2128,45 @@ final class LspHandler {
     Map<String, int> positions,
     Map<String, String> binderTypes,
     List<({String name, int start})> idents,
+    List<({String name, int start})> occurrences,
   ) {
     switch (expr.kind) {
       case SIdentKind(:final name):
         idents.add((name: name, start: expr.span.start));
       case SDotKind(:final qualifier):
-        _walkExpr(qualifier, positions, binderTypes, idents);
+        _walkExpr(qualifier, positions, binderTypes, idents, occurrences);
       case SAppKind(:final fn, :final arg):
-        _walkExpr(fn, positions, binderTypes, idents);
-        _walkExpr(arg, positions, binderTypes, idents);
+        _walkExpr(fn, positions, binderTypes, idents, occurrences);
+        _walkExpr(arg, positions, binderTypes, idents, occurrences);
       case SLamKind(:final param, :final paramSpan, :final domain, :final body):
-        _addDataScopeBinder(param, paramSpan, domain, positions, binderTypes);
+        _addDataScopeBinder(
+          param,
+          paramSpan,
+          domain,
+          positions,
+          binderTypes,
+          occurrences,
+        );
         if (domain != null) {
-          _walkExpr(domain, positions, binderTypes, idents);
+          _walkExpr(domain, positions, binderTypes, idents, occurrences);
         }
-        _walkExpr(body, positions, binderTypes, idents);
+        _walkExpr(body, positions, binderTypes, idents, occurrences);
       case SPiKind(
         :final param,
         :final paramSpan,
         :final domain,
         :final codomain,
       ):
-        _addDataScopeBinder(param, paramSpan, domain, positions, binderTypes);
-        _walkExpr(domain, positions, binderTypes, idents);
-        _walkExpr(codomain, positions, binderTypes, idents);
+        _addDataScopeBinder(
+          param,
+          paramSpan,
+          domain,
+          positions,
+          binderTypes,
+          occurrences,
+        );
+        _walkExpr(domain, positions, binderTypes, idents, occurrences);
+        _walkExpr(codomain, positions, binderTypes, idents, occurrences);
       case SLetKind(
         :final param,
         :final paramSpan,
@@ -1924,26 +2174,35 @@ final class LspHandler {
         :final bound,
         :final body,
       ):
-        _addDataScopeBinder(param, paramSpan, domain, positions, binderTypes);
+        _addDataScopeBinder(
+          param,
+          paramSpan,
+          domain,
+          positions,
+          binderTypes,
+          occurrences,
+        );
         if (domain != null) {
-          _walkExpr(domain, positions, binderTypes, idents);
+          _walkExpr(domain, positions, binderTypes, idents, occurrences);
         }
-        _walkExpr(bound, positions, binderTypes, idents);
-        _walkExpr(body, positions, binderTypes, idents);
+        _walkExpr(bound, positions, binderTypes, idents, occurrences);
+        _walkExpr(body, positions, binderTypes, idents, occurrences);
       case SMatchKind(:final scrutinee, :final motive):
-        _walkExpr(scrutinee, positions, binderTypes, idents);
-        if (motive != null) _walkExpr(motive, positions, binderTypes, idents);
+        _walkExpr(scrutinee, positions, binderTypes, idents, occurrences);
+        if (motive != null) {
+          _walkExpr(motive, positions, binderTypes, idents, occurrences);
+        }
       case SQuotKind(:final carrier, :final relation):
-        _walkExpr(carrier, positions, binderTypes, idents);
-        _walkExpr(relation, positions, binderTypes, idents);
+        _walkExpr(carrier, positions, binderTypes, idents, occurrences);
+        _walkExpr(relation, positions, binderTypes, idents, occurrences);
       case SQuotMkKind(:final arg):
-        _walkExpr(arg, positions, binderTypes, idents);
+        _walkExpr(arg, positions, binderTypes, idents, occurrences);
       case SQuotLiftKind(:final fn, :final proof):
-        _walkExpr(fn, positions, binderTypes, idents);
-        _walkExpr(proof, positions, binderTypes, idents);
+        _walkExpr(fn, positions, binderTypes, idents, occurrences);
+        _walkExpr(proof, positions, binderTypes, idents, occurrences);
       case SIntersectionKind(:final constraints):
         for (final constraint in constraints) {
-          _walkExpr(constraint, positions, binderTypes, idents);
+          _walkExpr(constraint, positions, binderTypes, idents, occurrences);
         }
       case STypeKind() || SPropKind() || SSPropKind() || SByKind():
         break;
@@ -1956,9 +2215,11 @@ final class LspHandler {
     SExpr? domain,
     Map<String, int> positions,
     Map<String, String> binderTypes,
+    List<({String name, int start})> occurrences,
   ) {
     if (param == null || paramSpan.isSynthetic) return;
     positions[param] = paramSpan.start;
+    occurrences.add((name: param, start: paramSpan.start));
     if (domain != null && !domain.span.isSynthetic) {
       binderTypes[param] = _documentText.substring(
         domain.span.start,
@@ -2060,10 +2321,16 @@ final class _DataScope {
   final Map<String, int> namePositions;
   final Map<String, String> binderTypes;
   final List<({String name, int start})> identUses;
+  final List<({String name, int start})> nameOccurrences;
+  final SDataKind data;
+  final DoxaSpan declSpan;
 
   const _DataScope({
     required this.namePositions,
     required this.binderTypes,
     required this.identUses,
+    required this.nameOccurrences,
+    required this.data,
+    required this.declSpan,
   });
 }

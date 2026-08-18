@@ -971,6 +971,260 @@ void main() {
       expect(binderContents, contains('B : A -> Type'));
     });
 
+    test('finds type-level references inside data declarations', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/sigma-references.doxa';
+      const source =
+          'data Sigma[A: Type]: (A -> Type) -> Type {\n'
+          '  pair: (B: A -> Type) -> (x: A) -> B x -> Sigma A B;\n'
+          '}\n';
+      handler.handle(_didOpen(uri, source));
+      final lines = source.split('\n');
+
+      List<(int, int)> referencesAt(
+        int line,
+        int character, {
+        bool includeDeclaration = true,
+      }) {
+        final result = handler.handle(
+          _linePositionRequest(
+            1,
+            'textDocument/references',
+            uri,
+            line,
+            character,
+            context: {'includeDeclaration': includeDeclaration},
+          ),
+        );
+        return [
+          for (final Object? location in result!['result'] as List<dynamic>)
+            (() {
+              final range =
+                  (location as Map<String, dynamic>)['range']
+                      as Map<String, dynamic>;
+              final start = range['start'] as Map<String, dynamic>;
+              return (start['line'] as int, start['character'] as int);
+            })(),
+        ];
+      }
+
+      final dataLine = lines[0];
+      final sigmaName = dataLine.indexOf('Sigma');
+      final aParam = dataLine.indexOf('A');
+      final ctorLine = lines[1];
+      final bParam = ctorLine.indexOf('B');
+      final xParam = ctorLine.indexOf('x');
+      final aUse = ctorLine.indexOf('A', 1);
+      final bUse = ctorLine.indexOf('B', bParam + 1);
+      final xUse = ctorLine.indexOf('x', xParam + 1);
+      final sigmaUse = ctorLine.indexOf('Sigma');
+      final aUse2 = ctorLine.indexOf('A', aUse + 1);
+      final aUse3 = ctorLine.indexOf('A', aUse2 + 1);
+      final bUse2 = ctorLine.indexOf('B', bUse + 1);
+
+      expect(
+        referencesAt(1, bParam),
+        unorderedEquals([(1, bParam), (1, bUse), (1, bUse2)]),
+      );
+      expect(
+        referencesAt(1, bUse2),
+        unorderedEquals([(1, bParam), (1, bUse), (1, bUse2)]),
+      );
+      expect(referencesAt(1, xUse), unorderedEquals([(1, xParam), (1, xUse)]));
+      expect(
+        referencesAt(1, aUse3),
+        unorderedEquals([
+          (0, aParam),
+          (0, dataLine.indexOf('A', aParam + 1)),
+          (1, aUse),
+          (1, aUse2),
+          (1, aUse3),
+        ]),
+      );
+      expect(
+        referencesAt(1, sigmaUse),
+        unorderedEquals([(0, sigmaName), (1, sigmaUse)]),
+      );
+      expect(
+        referencesAt(0, sigmaName),
+        unorderedEquals([(0, sigmaName), (1, sigmaUse)]),
+      );
+      expect(referencesAt(1, bParam, includeDeclaration: false), [
+        (1, bUse),
+        (1, bUse2),
+      ]);
+      expect(referencesAt(1, sigmaUse, includeDeclaration: false), [
+        (1, sigmaUse),
+      ]);
+    });
+    test('finds term-level uses of data and constructor names', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/ctor-references.doxa';
+      const source =
+          'data Bool2: Type {\n'
+          '  true2: Bool2;\n'
+          '}\n'
+          'data Wrap: Type {\n'
+          '  w: Bool2;\n'
+          '}\n'
+          'fun yes(): Bool2 = true2\n';
+      handler.handle(_didOpen(uri, source));
+      final lines = source.split('\n');
+
+      List<(int, int)> referencesAt(int line, int character) {
+        final result = handler.handle(
+          _linePositionRequest(
+            1,
+            'textDocument/references',
+            uri,
+            line,
+            character,
+          ),
+        );
+        return [
+          for (final Object? location in result!['result'] as List<dynamic>)
+            (() {
+              final range =
+                  (location as Map<String, dynamic>)['range']
+                      as Map<String, dynamic>;
+              final start = range['start'] as Map<String, dynamic>;
+              return (start['line'] as int, start['character'] as int);
+            })(),
+        ];
+      }
+
+      final bool2Name = lines[0].indexOf('Bool2');
+      final bool2TypeUse = lines[1].indexOf('Bool2');
+      final true2Name = lines[1].indexOf('true2');
+      final wrapField = lines[4].indexOf('w');
+      final wrapUse = lines[4].indexOf('Bool2');
+      final bool2TermUse = lines[6].indexOf('Bool2');
+      final true2TermUse = lines[6].indexOf('true2');
+
+      expect(referencesAt(4, wrapField), unorderedEquals([(4, wrapField)]));
+
+      expect(
+        referencesAt(0, bool2Name),
+        unorderedEquals([
+          (0, bool2Name),
+          (1, bool2TypeUse),
+          (4, wrapUse),
+          (6, bool2TermUse),
+        ]),
+      );
+      expect(
+        referencesAt(1, bool2TypeUse),
+        unorderedEquals([
+          (0, bool2Name),
+          (1, bool2TypeUse),
+          (4, wrapUse),
+          (6, bool2TermUse),
+        ]),
+      );
+      expect(
+        referencesAt(4, wrapUse),
+        unorderedEquals([
+          (0, bool2Name),
+          (1, bool2TypeUse),
+          (4, wrapUse),
+          (6, bool2TermUse),
+        ]),
+      );
+      expect(
+        referencesAt(6, bool2TermUse),
+        unorderedEquals([
+          (0, bool2Name),
+          (1, bool2TypeUse),
+          (4, wrapUse),
+          (6, bool2TermUse),
+        ]),
+      );
+      expect(
+        referencesAt(1, true2Name),
+        unorderedEquals([(1, true2Name), (6, true2TermUse)]),
+      );
+      expect(
+        referencesAt(6, true2TermUse),
+        unorderedEquals([(1, true2Name), (6, true2TermUse)]),
+      );
+    });
+
+    test('renames data declarations from type and term positions', () {
+      const uri = 'file:///workspace/ctor-rename.doxa';
+      const source =
+          'data Bool2: Type {\n'
+          '  true2: Bool2;\n'
+          '}\n'
+          'fun yes(): Bool2 = true2\n';
+      final lines = source.split('\n');
+      final bool2Name = lines[0].indexOf('Bool2');
+      final bool2TypeUse = lines[1].indexOf('Bool2');
+      final bool2TermUse = lines[3].indexOf('Bool2');
+
+      final handler = LspHandler();
+      handler.handle(_didOpen(uri, source));
+      final prepared = handler.handle(
+        _linePositionRequest(
+          2,
+          'textDocument/prepareRename',
+          uri,
+          1,
+          bool2TypeUse,
+        ),
+      );
+      expect(prepared!['result'], {
+        'start': {'line': 1, 'character': bool2TypeUse},
+        'end': {'line': 1, 'character': bool2TypeUse + 'Bool2'.length},
+      });
+
+      final rename = handler.handle(
+        _linePositionRequest(
+          2,
+          'textDocument/rename',
+          uri,
+          1,
+          bool2TypeUse,
+          newName: 'Bool3',
+        ),
+      );
+      final changes =
+          (rename!['result'] as Map<String, dynamic>)['changes']
+              as Map<String, dynamic>;
+      final edits = changes[uri] as List<dynamic>;
+      expect(edits, hasLength(3));
+      expect(
+        [
+          for (final edit in edits)
+            ((edit as Map<String, dynamic>)['range']
+                as Map<String, dynamic>)['start'],
+        ],
+        unorderedEquals([
+          {'line': 0, 'character': bool2Name},
+          {'line': 1, 'character': bool2TypeUse},
+          {'line': 3, 'character': bool2TermUse},
+        ]),
+      );
+
+      final binderHandler = LspHandler();
+      const binderSource =
+          'data Sigma[A: Type]: (A -> Type) -> Type {\n'
+          '  pair: (B: A -> Type) -> (x: A) -> B x -> Sigma A B;\n'
+          '}\n';
+      binderHandler.handle(
+        _didOpen('file:///workspace/binder.doxa', binderSource),
+      );
+      final binderPrepare = binderHandler.handle(
+        _linePositionRequest(
+          2,
+          'textDocument/prepareRename',
+          'file:///workspace/binder.doxa',
+          1,
+          binderSource.split('\n')[1].indexOf('B'),
+        ),
+      );
+      expect(binderPrepare!['result'], isNull);
+    });
+
     test('returns imported files for import declarations', () {
       final directory = Directory.systemTemp.createTempSync('doxa-lsp-');
       addTearDown(() => directory.deleteSync(recursive: true));
@@ -1360,14 +1614,18 @@ Map<String, dynamic> _linePositionRequest(
   String method,
   String uri,
   int line,
-  int character,
-) => {
+  int character, {
+  Map<String, dynamic>? context,
+  String? newName,
+}) => {
   'jsonrpc': '2.0',
   'id': id,
   'method': method,
   'params': {
     'textDocument': {'uri': uri},
     'position': {'line': line, 'character': character},
+    if (context != null) 'context': context,
+    if (newName != null) 'newName': newName,
   },
 };
 
