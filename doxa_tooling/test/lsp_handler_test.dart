@@ -246,28 +246,31 @@ void main() {
       );
     });
 
-    test('excludes generated data eliminators from document symbols', () {
-      final handler = LspHandler();
-      const uri = 'file:///workspace/status.doxa';
-      const source =
-          'data Status : Type {\n'
-          '  ready : Status;\n'
-          '  blocked : Status;\n'
-          '}\n'
-          '\n'
-          'fun keep(status: Status) : Status = status\n';
-      handler.handle(_didOpen(uri, source));
+    test(
+      'includes constructors and excludes generated eliminators from document symbols',
+      () {
+        final handler = LspHandler();
+        const uri = 'file:///workspace/status.doxa';
+        const source =
+            'data Status : Type {\n'
+            '  ready : Status;\n'
+            '  blocked : Status;\n'
+            '}\n'
+            '\n'
+            'fun keep(status: Status) : Status = status\n';
+        handler.handle(_didOpen(uri, source));
 
-      final result = handler.handle(
-        _request(1, 'textDocument/documentSymbol', uri),
-      );
+        final result = handler.handle(
+          _request(1, 'textDocument/documentSymbol', uri),
+        );
 
-      final symbols = result!['result'] as List<dynamic>;
-      expect(
-        symbols.map((symbol) => (symbol as Map<String, dynamic>)['name']),
-        ['Status', 'keep'],
-      );
-    });
+        final symbols = result!['result'] as List<dynamic>;
+        expect(
+          symbols.map((symbol) => (symbol as Map<String, dynamic>)['name']),
+          ['Status', 'ready', 'blocked', 'keep'],
+        );
+      },
+    );
 
     test('provides signature help for whitespace application', () {
       final handler = LspHandler();
@@ -852,6 +855,120 @@ void main() {
         'line': 7,
         'character': '  '.length,
       });
+    });
+
+    test('resolves imports through symlinked documents', () {
+      final directory = Directory.systemTemp.createTempSync(
+        'doxa-lsp-symlink-',
+      );
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final lib = Directory('${directory.path}/lib')..createSync();
+      final nat = File('${lib.path}/nat.doxa')..writeAsStringSync(
+        'data Nat : Type { zero : Nat; succ : Nat -> Nat; }\n',
+      );
+      final sigma = Directory('${lib.path}/sigma')..createSync();
+      final link = Link('${sigma.path}/entry.doxa')..createSync('../nat.doxa');
+      final handler = LspHandler();
+      handler.handle(_didOpen(link.uri.toString(), 'import "nat.doxa"\n'));
+
+      final result = handler.handle(
+        _linePositionRequest(
+          1,
+          'textDocument/definition',
+          link.uri.toString(),
+          0,
+          'import "'.length,
+        ),
+      );
+
+      expect(result!['result'], isNotNull, reason: result.toString());
+      final location = result['result'] as Map<String, dynamic>;
+      expect(location['uri'], nat.uri.toString());
+    });
+
+    test('navigates data-scope type-level names', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/sigma.doxa';
+      const source =
+          'data Sigma[A: Type]: (A -> Type) -> Type {\n'
+          '  pair: (B: A -> Type) -> (x: A) -> B x -> Sigma A B;\n'
+          '}\n';
+      handler.handle(_didOpen(uri, source));
+      final lines = source.split('\n');
+
+      void expectDefinition(
+        int line,
+        int character,
+        int expectedLine,
+        int expectedCharacter,
+      ) {
+        final result = handler.handle(
+          _linePositionRequest(
+            1,
+            'textDocument/definition',
+            uri,
+            line,
+            character,
+          ),
+        );
+        final location = result!['result'] as Map<String, dynamic>;
+        expect(location['range'], isNotNull, reason: result.toString());
+        expect(
+          (location['range'] as Map<String, dynamic>)['start'],
+          {'line': expectedLine, 'character': expectedCharacter},
+          reason: result.toString(),
+        );
+      }
+
+      final dataLine = lines[0];
+      final sigmaName = dataLine.indexOf('Sigma');
+      final aParam = dataLine.indexOf('A');
+      final ctorLine = lines[1];
+      final pairName = ctorLine.indexOf('pair');
+      final bParam = ctorLine.indexOf('B');
+      final xParam = ctorLine.indexOf('x');
+      final aUse = ctorLine.indexOf('A', 1);
+      final bUse = ctorLine.indexOf('B', bParam + 1);
+      final xUse = ctorLine.indexOf('x', xParam + 1);
+      final sigmaUse = ctorLine.indexOf('Sigma');
+
+      expectDefinition(1, sigmaUse, 0, sigmaName);
+      expectDefinition(1, aUse, 0, aParam);
+      expectDefinition(1, bUse, 1, bParam);
+      expectDefinition(1, xUse, 1, xParam);
+      expectDefinition(1, pairName, 1, pairName);
+      expectDefinition(0, aParam, 0, aParam);
+      expectDefinition(0, sigmaName, 0, sigmaName);
+    });
+
+    test('hovers data-scope type-level names', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/sigma.doxa';
+      const source =
+          'data Sigma[A: Type]: (A -> Type) -> Type {\n'
+          '  pair: (B: A -> Type) -> (x: A) -> B x -> Sigma A B;\n'
+          '}\n';
+      handler.handle(_didOpen(uri, source));
+      final lines = source.split('\n');
+
+      final ctorLine = lines[1];
+      final pairName = ctorLine.indexOf('pair');
+      final bUse = ctorLine.indexOf('B', 8);
+      final result = handler.handle(
+        _linePositionRequest(1, 'textDocument/hover', uri, 1, pairName),
+      );
+      expect(result!['result'], isNotNull, reason: result.toString());
+      final contents =
+          (result['result'] as Map<String, dynamic>)['contents'] as String;
+      expect(contents, contains('pair : '));
+
+      final binderHover = handler.handle(
+        _linePositionRequest(2, 'textDocument/hover', uri, 1, bUse),
+      );
+      expect(binderHover!['result'], isNotNull, reason: binderHover.toString());
+      final binderContents =
+          (binderHover['result'] as Map<String, dynamic>)['contents'] as String;
+      expect(binderContents, contains('B : A -> Type'));
     });
 
     test('returns imported files for import declarations', () {

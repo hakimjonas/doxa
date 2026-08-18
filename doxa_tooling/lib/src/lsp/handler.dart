@@ -448,7 +448,19 @@ final class LspHandler {
     final builtin =
         info == null && declaration == null ? _builtinHoverAt(offset) : null;
     if (info == null && declaration == null && builtin == null) {
-      return {'jsonrpc': '2.0', 'id': id, 'result': null};
+      final scopeHover = _dataScopeHoverAt(offset);
+      if (scopeHover == null) {
+        return {'jsonrpc': '2.0', 'id': id, 'result': null};
+      }
+      final pos = _positionAt(offset);
+      final result = LspHover(
+        contents: scopeHover,
+        range: LspRange(
+          start: LspPosition(line: pos.line - 1, character: pos.column - 1),
+          end: LspPosition(line: pos.line - 1, character: pos.column - 1),
+        ),
+      );
+      return {'jsonrpc': '2.0', 'id': id, 'result': result.toJson()};
     }
     final pos = _positionAt(offset);
     final result = LspHover(
@@ -483,7 +495,7 @@ final class LspHandler {
           info == null ? _importedDefinitionAt(offset) : null;
       if (importedDefinition != null) return importedDefinition;
       final defSpan = info?.defSpan ?? _declarationAt(offset)?.span;
-      if (defSpan == null) return null;
+      if (defSpan == null) return _dataScopeDefinitionAt(offset);
       final importState = _cachedImports?.importState;
       final defFile =
           info == null
@@ -492,10 +504,11 @@ final class LspHandler {
                   info.defFile;
       final defText = defFile == null ? _documentText : _sourceTextFor(defFile);
       if (defText == null) return null;
-      final defOffset =
-          info == null
-              ? defSpan.start
-              : _definitionNameOffset(defText, defSpan, info.name);
+      final defOffset = _definitionNameOffset(
+        defText,
+        defSpan,
+        info?.name ?? _wordAt(offset) ?? '',
+      );
       final defPos = _positionIn(defText, defOffset);
       return LspLocation(
         uri: defFile == null ? _documentUri : Uri.file(defFile).toString(),
@@ -617,6 +630,7 @@ final class LspHandler {
         for (final declaration in _lastSuccess!.declarations)
           declaration.name: switch (declaration.kind) {
             'data' => LspSemanticTokenType.type_,
+            'ctor' => LspSemanticTokenType.enumMember,
             'fun' => LspSemanticTokenType.function,
             _ => LspSemanticTokenType.variable,
           },
@@ -790,6 +804,7 @@ final class LspHandler {
       );
       final kind = switch (decl.kind) {
         'data' => LspSymbolKind.struct,
+        'ctor' => LspSymbolKind.enumMember,
         'type' => LspSymbolKind.interface,
         'fun' => LspSymbolKind.function,
         'typeclass' => LspSymbolKind.class_,
@@ -1339,6 +1354,7 @@ final class LspHandler {
   SemInfoKind? _semanticKindForDeclaration(DeclInfo declaration) =>
       switch (declaration.kind) {
         'data' || 'typeclass' => SemInfoKind.dataType,
+        'ctor' => SemInfoKind.constructor,
         'val' || 'fun' || 'type' => SemInfoKind.topBinding,
         _ => null,
       };
@@ -1704,7 +1720,14 @@ final class LspHandler {
       }
       final kind = declaration.kind;
       if (kind is! SImportKind) return null;
-      final sourcePath = Uri.parse(_documentUri).toFilePath();
+      // Resolve relative to the document's canonical path so imports follow
+      // a symlink to its target directory, matching the checker's
+      // ImportResolver (which canonicalizes every file path it reads).
+      final documentPath = Uri.parse(_documentUri).toFilePath();
+      final sourcePath =
+          File(documentPath).existsSync()
+              ? File(documentPath).resolveSymbolicLinksSync()
+              : documentPath;
       final target = File(Uri.file(sourcePath).resolve(kind.path).toFilePath());
       final targetPath =
           target.existsSync()
@@ -1719,6 +1742,248 @@ final class LspHandler {
       );
     }
     return null;
+  }
+
+  /// Resolve identifiers inside a data declaration's own type-level scope.
+  ///
+  /// Elaboration emits no [SemInfo] for type-level positions, so the data
+  /// name, its constructors, and the binder names of ctor signatures are
+  /// invisible to hover/definition. This parses the document and resolves
+  /// against the surface AST: a word at offset counts when it is one of
+  /// the declaration's own name positions, a binder name position, or an
+  /// identifier occurrence inside one of the declared types.
+  LspLocation? _dataScopeDefinitionAt(int offset) {
+    final word = _wordAt(offset);
+    if (word == null || word.isEmpty) return null;
+    for (final decl in _parsedDecls()) {
+      final scope = _dataScopeContaining(decl, offset);
+      if (scope == null) continue;
+      final scopeDef = scope.namePositions[word];
+      if (scopeDef != null &&
+          offset >= scopeDef &&
+          offset < scopeDef + word.length) {
+        return _locationAt(scopeDef);
+      }
+      if (scope.identUses.any(
+        (use) =>
+            use.name == word &&
+            offset >= use.start &&
+            offset < use.start + word.length,
+      )) {
+        final def = scope.namePositions[word];
+        if (def != null) return _locationAt(def);
+        final declaration = _declarationNamed(word);
+        if (declaration != null) {
+          final nameOffset = _documentText.indexOf(
+            word,
+            declaration.span.start,
+          );
+          if (nameOffset >= declaration.span.start &&
+              nameOffset < declaration.span.end) {
+            return _locationAt(nameOffset);
+          }
+        }
+      }
+      return null;
+    }
+    return null;
+  }
+
+  /// Hover contents for type-level names in a data declaration's scope.
+  ///
+  /// Shows the declaration type for data/ctor names and the annotated
+  /// domain slice for binder names.
+  String? _dataScopeHoverAt(int offset) {
+    final word = _wordAt(offset);
+    if (word == null || word.isEmpty) return null;
+    for (final decl in _parsedDecls()) {
+      final scope = _dataScopeContaining(decl, offset);
+      if (scope == null) continue;
+      final scopeDef = scope.namePositions[word];
+      final isNamePosition =
+          scopeDef != null &&
+          offset >= scopeDef &&
+          offset < scopeDef + word.length;
+      final isIdentUse = scope.identUses.any(
+        (use) =>
+            use.name == word &&
+            offset >= use.start &&
+            offset < use.start + word.length,
+      );
+      if (!isNamePosition && !isIdentUse) return null;
+      final declaration = _declarationNamed(word);
+      if (declaration != null && declaration.type != null) {
+        return '```doxa\n$word : ${declaration.type}\n```';
+      }
+      final typeSlice = scope.binderTypes[word];
+      if (typeSlice != null) return '```doxa\n$word : $typeSlice\n```';
+      return null;
+    }
+    return null;
+  }
+
+  List<SDecl> _parsedDecls() => switch (parseProgram(_documentText)) {
+    Success<ParseError, SProgram>(:final value) ||
+    Partial<ParseError, SProgram>(:final value) => value.decls,
+    Failure<ParseError, SProgram>() => const <SDecl>[],
+  };
+
+  _DataScope? _dataScopeContaining(SDecl decl, int offset) {
+    if (offset < decl.span.start || offset >= decl.span.end) return null;
+    return switch (decl.kind) {
+      final SDataKind data => _dataScopeOf(decl.span, data),
+      SDataBlockKind(:final members) => () {
+        for (final member in members) {
+          if (offset >= member.span.start && offset < member.span.end) {
+            return _dataScopeOf(member.span, member.data);
+          }
+        }
+        return null;
+      }(),
+      _ => null,
+    };
+  }
+
+  _DataScope _dataScopeOf(DoxaSpan declSpan, SDataKind data) {
+    final positions = <String, int>{};
+    final binderTypes = <String, String>{};
+    final idents = <({String name, int start})>[];
+    final dataNameOffset = _documentText.indexOf(data.name, declSpan.start);
+    if (dataNameOffset >= declSpan.start && dataNameOffset < declSpan.end) {
+      positions[data.name] = dataNameOffset;
+    }
+    final headerStart =
+        dataNameOffset < 0 ? declSpan.start : dataNameOffset + data.name.length;
+    final headerEnd =
+        data.signature.span.isSynthetic
+            ? declSpan.end
+            : data.signature.span.start;
+    for (final (paramName, paramType) in data.typeParams) {
+      final pos = _documentText.indexOf(paramName, headerStart);
+      if (pos >= headerStart && pos < headerEnd) positions[paramName] = pos;
+      if (paramType != null && !paramType.span.isSynthetic) {
+        binderTypes[paramName] = _documentText.substring(
+          paramType.span.start,
+          paramType.span.end,
+        );
+      }
+    }
+    _walkExpr(data.signature, positions, binderTypes, idents);
+    for (final (_, paramType) in data.typeParams) {
+      if (paramType != null) {
+        _walkExpr(paramType, positions, binderTypes, idents);
+      }
+    }
+    for (final ctor in data.ctors) {
+      final ctorNameOffset = _documentText.indexOf(ctor.name, ctor.span.start);
+      if (ctorNameOffset >= ctor.span.start && ctorNameOffset < ctor.span.end) {
+        positions[ctor.name] = ctorNameOffset;
+      }
+      _walkExpr(ctor.type, positions, binderTypes, idents);
+    }
+    return _DataScope(
+      namePositions: positions,
+      binderTypes: binderTypes,
+      identUses: idents,
+    );
+  }
+
+  void _walkExpr(
+    SExpr expr,
+    Map<String, int> positions,
+    Map<String, String> binderTypes,
+    List<({String name, int start})> idents,
+  ) {
+    switch (expr.kind) {
+      case SIdentKind(:final name):
+        idents.add((name: name, start: expr.span.start));
+      case SDotKind(:final qualifier):
+        _walkExpr(qualifier, positions, binderTypes, idents);
+      case SAppKind(:final fn, :final arg):
+        _walkExpr(fn, positions, binderTypes, idents);
+        _walkExpr(arg, positions, binderTypes, idents);
+      case SLamKind(:final param, :final paramSpan, :final domain, :final body):
+        _addDataScopeBinder(param, paramSpan, domain, positions, binderTypes);
+        if (domain != null) {
+          _walkExpr(domain, positions, binderTypes, idents);
+        }
+        _walkExpr(body, positions, binderTypes, idents);
+      case SPiKind(
+        :final param,
+        :final paramSpan,
+        :final domain,
+        :final codomain,
+      ):
+        _addDataScopeBinder(param, paramSpan, domain, positions, binderTypes);
+        _walkExpr(domain, positions, binderTypes, idents);
+        _walkExpr(codomain, positions, binderTypes, idents);
+      case SLetKind(
+        :final param,
+        :final paramSpan,
+        :final domain,
+        :final bound,
+        :final body,
+      ):
+        _addDataScopeBinder(param, paramSpan, domain, positions, binderTypes);
+        if (domain != null) {
+          _walkExpr(domain, positions, binderTypes, idents);
+        }
+        _walkExpr(bound, positions, binderTypes, idents);
+        _walkExpr(body, positions, binderTypes, idents);
+      case SMatchKind(:final scrutinee, :final motive):
+        _walkExpr(scrutinee, positions, binderTypes, idents);
+        if (motive != null) _walkExpr(motive, positions, binderTypes, idents);
+      case SQuotKind(:final carrier, :final relation):
+        _walkExpr(carrier, positions, binderTypes, idents);
+        _walkExpr(relation, positions, binderTypes, idents);
+      case SQuotMkKind(:final arg):
+        _walkExpr(arg, positions, binderTypes, idents);
+      case SQuotLiftKind(:final fn, :final proof):
+        _walkExpr(fn, positions, binderTypes, idents);
+        _walkExpr(proof, positions, binderTypes, idents);
+      case SIntersectionKind(:final constraints):
+        for (final constraint in constraints) {
+          _walkExpr(constraint, positions, binderTypes, idents);
+        }
+      case STypeKind() || SPropKind() || SSPropKind() || SByKind():
+        break;
+    }
+  }
+
+  void _addDataScopeBinder(
+    String? param,
+    DoxaSpan paramSpan,
+    SExpr? domain,
+    Map<String, int> positions,
+    Map<String, String> binderTypes,
+  ) {
+    if (param == null || paramSpan.isSynthetic) return;
+    positions[param] = paramSpan.start;
+    if (domain != null && !domain.span.isSynthetic) {
+      binderTypes[param] = _documentText.substring(
+        domain.span.start,
+        domain.span.end,
+      );
+    }
+  }
+
+  DeclInfo? _declarationNamed(String name) {
+    if (_lastSuccess == null) return null;
+    for (final declaration in _lastSuccess!.declarations) {
+      if (declaration.name == name) return declaration;
+    }
+    return null;
+  }
+
+  LspLocation _locationAt(int offset) {
+    final pos = _positionIn(_documentText, offset);
+    return LspLocation(
+      uri: _documentUri,
+      range: LspRange(
+        start: LspPosition(line: pos.line - 1, character: pos.column - 1),
+        end: LspPosition(line: pos.line - 1, character: pos.column - 1),
+      ),
+    );
   }
 
   LspLocation? _importedDefinitionAt(int offset) {
@@ -1784,4 +2049,21 @@ final class LspHandler {
     final offset = _offsetFromParams(params);
     return builder(offset);
   }
+}
+
+/// Type-level scope of a data declaration as parsed from the document:
+/// the declaration's own name positions (data name, ctor names, binder
+/// names, innermost binder winning), the source slice of each binder's
+/// annotated type, and every identifier occurrence inside the declared
+/// types (including param constraints and ctor signatures).
+final class _DataScope {
+  final Map<String, int> namePositions;
+  final Map<String, String> binderTypes;
+  final List<({String name, int start})> identUses;
+
+  const _DataScope({
+    required this.namePositions,
+    required this.binderTypes,
+    required this.identUses,
+  });
 }
