@@ -30,6 +30,7 @@ export 'src/elab.dart'
         elabExprInScope,
         checkDeclResult,
         declNames,
+        ctorSignatureTerm,
         ClassInfo,
         ImportState,
         TopBinding,

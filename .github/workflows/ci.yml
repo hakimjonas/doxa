@@ -15,7 +15,10 @@ jobs:
 
       - uses: dart-lang/setup-dart@v1
         with:
-          sdk: stable
+          # Pinned to the local dev SDK (3.13.1): formatter output differs between Dart
+          # releases, so an unpinned `stable` breaks the format gate whenever a
+          # new Dart ships. Bump together with local SDK upgrades.
+          sdk: 3.13.1
 
       - name: Install dependencies (doxa kernel)
         working-directory: ./doxa
@@ -112,7 +115,7 @@ jobs:
 
       - uses: dart-lang/setup-dart@v1
         with:
-          sdk: stable
+          sdk: 3.13.1
 
       - name: Install dependencies (doxa kernel)
         working-directory: ./doxa
@@ -153,7 +156,7 @@ jobs:
 
       - uses: dart-lang/setup-dart@v1
         with:
-          sdk: stable
+          sdk: 3.13.1
 
       - name: pana score (doxa kernel)
         run: |

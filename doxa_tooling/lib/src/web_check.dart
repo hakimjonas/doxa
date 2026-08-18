@@ -454,6 +454,15 @@ _SessionDecl _processDeclaration(SourceFile file, SDecl decl, _State state) {
               type: prettyTerm(d.sort, outerDepth: 0),
               span: d.span,
             ),
+        for (final d in data)
+          for (final c in d.ctors)
+            if (sourceNames.contains(c.name))
+              DeclInfo(
+                name: c.name,
+                kind: 'ctor',
+                type: prettyTerm(ctorSignatureTerm(d, c), outerDepth: 0),
+                span: c.span,
+              ),
         for (final b in bindings)
           if (sourceNames.contains(b.name))
             DeclInfo(

@@ -1715,7 +1715,7 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       for (final d in state.topEnv.dataDecls) {
         for (final c in d.ctors) {
           if (c.name == name) {
-            final sigTerm = _ctorSignatureTerm(d, c);
+            final sigTerm = ctorSignatureTerm(d, c);
             final sigValue = eval(sigTerm, state.ctx.env);
             _recordSemInfo(
               state,
@@ -1798,7 +1798,7 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
         for (final d in state.topEnv.dataDecls) {
           for (final c in d.ctors) {
             if (c.name == name) {
-              final sigTerm = _ctorSignatureTerm(d, c);
+              final sigTerm = ctorSignatureTerm(d, c);
               final sigValue = eval(sigTerm, state.ctx.env);
               _recordSemInfo(
                 state,
@@ -2509,7 +2509,7 @@ Term _dataSignatureTerm(DataDecl d) {
 /// chain, param `i` sits at de Bruijn index
 /// `args.length + (params.length - 1 - i)`, i.e. `args.length` for
 /// `params[p-1]` and `args.length + p - 1` for `params[0]`.
-Term _ctorSignatureTerm(DataDecl d, CtorDecl c) {
+Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
   final paramCount = d.params.length;
   final argCount = c.args.length;
   final resultArgs = <Term>[
