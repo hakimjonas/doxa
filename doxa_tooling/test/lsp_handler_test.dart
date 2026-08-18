@@ -913,11 +913,10 @@ void main() {
         );
         final location = result!['result'] as Map<String, dynamic>;
         expect(location['range'], isNotNull, reason: result.toString());
-        expect(
-          (location['range'] as Map<String, dynamic>)['start'],
-          {'line': expectedLine, 'character': expectedCharacter},
-          reason: result.toString(),
-        );
+        expect((location['range'] as Map<String, dynamic>)['start'], {
+          'line': expectedLine,
+          'character': expectedCharacter,
+        }, reason: result.toString());
       }
 
       final dataLine = lines[0];

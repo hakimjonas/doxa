@@ -16,7 +16,8 @@ jobs:
 
       - uses: dart-lang/setup-dart@v1
         with:
-          sdk: stable
+          # Pinned to the local dev SDK (see ci.yml).
+          sdk: 3.13.1
 
       - name: Build native binaries
         working-directory: ./doxa_tooling
