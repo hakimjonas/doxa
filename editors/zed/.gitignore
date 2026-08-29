@@ -1,2 +1,6 @@
 /target/
 Cargo.lock
+
+# Dev-extension build artifacts written by Zed
+/extension.wasm
+/grammars/

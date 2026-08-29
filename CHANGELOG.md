@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fixed the Zed extension's language-server launch. Zed resolves extension
+  server commands relative to the extension work directory, so the previous
+  bare `doxa` command failed to start ("No such file or directory" in
+  `Zed.log`). The extension now asks the worktree for the absolute path of
+  `doxa` and falls back to `~/.local/bin/doxa` and `~/.pub-cache/bin/doxa`.
 - Added a `doxa/proofState` server notification. After every document check
   the language server reports one entry per `by { ... }` block: the span,
   whether the block proved its goal, and the open goals with their binder

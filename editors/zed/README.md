@@ -15,7 +15,18 @@ dependently typed proof checker.
 
 ## Installing the language server
 
-The extension starts the `doxa` binary from your PATH. Install one:
+Zed resolves extension language-server commands relative to the extension
+work directory, so the extension locates the `doxa` binary itself, in this
+order:
+
+1. The worktree's `PATH`, as Zed sees it.
+2. `$HOME/.local/bin/doxa`, for binaries you place there manually or with
+   an install script.
+3. `$HOME/.pub-cache/bin/doxa`, where `dart pub global activate` installs
+   executables.
+
+If none of these exists, the extension reports an error naming the install
+options:
 
 - Download a native binary from the
   [doxa releases](https://github.com/hakimjonas/doxa/releases)
