@@ -1,0 +1,13 @@
+name = "Doxa"
+grammar = "doxa"
+path_suffixes = ["doxa"]
+line_comments = ["// "]
+block_comment = ["/* ", " */"]
+word_characters = ["_"]
+tab_size = 2
+
+brackets = [
+  { start = "(", end = ")", close = true, newline = false },
+  { start = "[", end = "]", close = true, newline = false },
+  { start = "{", end = "}", close = true, newline = true },
+]

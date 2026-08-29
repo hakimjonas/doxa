@@ -1,0 +1,15 @@
+id = "doxa"
+name = "Doxa"
+version = "0.8.2"
+schema_version = 1
+authors = ["Hakim Jonas Ghoula <hakim@ghoula.net>"]
+description = "Doxa language support: syntax highlighting via tree-sitter and LSP-powered diagnostics, hover, and navigation"
+repository = "https://github.com/hakimjonas/doxa"
+
+[grammars.doxa]
+repository = "https://github.com/hakimjonas/tree-sitter-doxa"
+rev = "05c6852acd25517b966a47cb4b306c30e9fda73d"
+
+[language_servers.doxa-lsp]
+name = "Doxa Language Server"
+languages = ["Doxa"]
