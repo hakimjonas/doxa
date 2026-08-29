@@ -15,8 +15,9 @@
 - Declared the JetBrains support policy: the plugin is developed and tested
   against IntelliJ IDEA Community Edition and other IDEs built on IntelliJ
   Platform 2025.1; commercial IDEs work as-is but are untested.
-- The release workflow builds native binaries on three runners (linux-x64,
-  linux-arm64, macos-arm64) and attaches them to the GitHub release.
+- The release workflow builds native binaries on five runners (linux-x64,
+  linux-arm64, macos-arm64, macos-x64, windows-x64) and attaches them, with a
+  `checksums.txt` file, to the GitHub release.
 
 ## 0.8.2
 

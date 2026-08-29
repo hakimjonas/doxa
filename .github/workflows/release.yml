@@ -8,9 +8,7 @@ jobs:
   # --- Build native binaries for each target platform ---
   #
   # dart compile exe targets the host platform, so each target needs
-  # its own runner. macos-x64 was dropped: the macos-13 runner image
-  # is retired and x64 macOS images now only exist as paid large
-  # runners.
+  # its own runner. The matrix matches the lambe release matrix.
   build-binaries:
     strategy:
       fail-fast: false
@@ -22,6 +20,11 @@ jobs:
             target: linux-arm64
           - os: macos-latest
             target: macos-arm64
+          - os: macos-15-intel
+            target: macos-x64
+          - os: windows-latest
+            target: windows-x64
+            exe: .exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -34,18 +37,13 @@ jobs:
 
       - name: Build native binary
         working-directory: ./doxa_tooling
-        run: |
-          mkdir -p dist
-          dart compile exe bin/doxa.dart -o dist/doxa-${{ matrix.target }}
-
-      - name: Package binary
-        run: tar -czf doxa-${{ matrix.target }}.tar.gz -C doxa_tooling/dist doxa-${{ matrix.target }}
+        run: dart compile exe bin/doxa.dart -o dist/doxa-${{ matrix.target }}${{ matrix.exe }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: doxa-${{ matrix.target }}
-          path: doxa-${{ matrix.target }}.tar.gz
+          path: doxa_tooling/dist/doxa-${{ matrix.target }}${{ matrix.exe }}
 
   # --- Build and publish Dart packages ---
   publish-dart:
@@ -69,6 +67,14 @@ jobs:
           pattern: doxa-*
           merge-multiple: true
 
+      - name: Generate checksums.txt
+        run: |
+          cd release-binaries
+          # One SHA256 per line, sha256sum format, covering every
+          # downloaded binary including the Windows .exe.
+          sha256sum doxa-* > checksums.txt
+          cat checksums.txt
+
       - name: Publish to pub.dev (doxa kernel)
         run: |
           dart pub publish --directory doxa/ --force || true
@@ -85,7 +91,8 @@ jobs:
             Doxa ${{ github.ref_name }} — a dependently typed proof checker.
 
             See [CHANGELOG.md](CHANGELOG.md) for details.
-          files: release-binaries/*.tar.gz
+          files: |
+            release-binaries/*
           draft: false
           prerelease: false
 
