@@ -52,6 +52,12 @@ val zeroPlus: (n: Nat) -> Eq[Nat] (plus zero n) n =
 The VS Code extension is in [`editors/vscode/`](editors/vscode/). Build and
 package it with the commands in that directory's `package.json`.
 
+The Zed extension is in [`editors/zed/`](editors/zed/). It uses the
+tree-sitter grammar generated from the declarative IR in
+[`tool/grammar/`](tool/grammar/) (see
+[tree-sitter-doxa](https://github.com/hakimjonas/tree-sitter-doxa)) and
+starts the language server from PATH.
+
 The JetBrains plugin is in [`editors/jetbrains/`](editors/jetbrains/). Build it
 with `./gradlew buildPlugin` using JDK 21 or later. The plugin is developed and
 tested against IntelliJ IDEA Community Edition and other IDEs built on
@@ -64,7 +70,8 @@ editor-client configuration is in [`contrib/README.md`](contrib/README.md).
 doxa/              kernel library package
 doxa_tooling/      CLI, formatter, REPL, LSP, and browser entry point
 lib/stdlib/        checked Doxa standard-library sources
-editors/           VS Code and JetBrains extensions
+editors/           VS Code, Zed, and JetBrains extensions
+tool/grammar/      declarative grammar IR and tree-sitter generator script
 contrib/           generic-editor client configurations
 example/           small checked Doxa program
 ```

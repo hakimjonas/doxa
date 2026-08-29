@@ -15,6 +15,15 @@
 - Declared the JetBrains support policy: the plugin is developed and tested
   against IntelliJ IDEA Community Edition and other IDEs built on IntelliJ
   Platform 2025.1; commercial IDEs work as-is but are untested.
+- Added a Zed extension (`editors/zed/`): tree-sitter grammar pinned by
+  revision, highlighting, bracket, indentation, and outline queries, and
+  the Doxa language server started from PATH.
+- Added `tool/grammar/`: the Doxa surface grammar as a declarative
+  `rumil_grammars` IR plus `generate.sh`, which lowers it to
+  `grammar.json`, regenerates the tree-sitter parser in the
+  tree-sitter-doxa repository, runs the corpus tests, and syncs the
+  query files. The parser in `doxa/lib/src/parse.dart` remains
+  authoritative.
 - The release workflow builds native binaries on five runners (linux-x64,
   linux-arm64, macos-arm64, macos-x64, windows-x64) and attaches them, with a
   `checksums.txt` file, to the GitHub release.
