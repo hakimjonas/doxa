@@ -53,8 +53,10 @@ The VS Code extension is in [`editors/vscode/`](editors/vscode/). Build and
 package it with the commands in that directory's `package.json`.
 
 The JetBrains plugin is in [`editors/jetbrains/`](editors/jetbrains/). Build it
-with `./gradlew buildPlugin` using JDK 21 or later. Generic editor-client
-configuration is in [`contrib/README.md`](contrib/README.md).
+with `./gradlew buildPlugin` using JDK 21 or later. The plugin is developed and
+tested against IntelliJ IDEA Community Edition and other IDEs built on
+IntelliJ Platform 2025.1; commercial IDEs work as-is but are untested. Generic
+editor-client configuration is in [`contrib/README.md`](contrib/README.md).
 
 ## Layout
 

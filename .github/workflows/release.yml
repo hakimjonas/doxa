@@ -5,8 +5,51 @@ on:
     tags: ['v*']
 
 jobs:
+  # --- Build native binaries for each target platform ---
+  #
+  # dart compile exe targets the host platform, so each target needs
+  # its own runner. macos-x64 was dropped: the macos-13 runner image
+  # is retired and x64 macOS images now only exist as paid large
+  # runners.
+  build-binaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+          - os: macos-latest
+            target: macos-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          # Pinned to the local dev SDK (see ci.yml), so the binaries
+          # match CI-verified behavior.
+          sdk: 3.13.1
+
+      - name: Build native binary
+        working-directory: ./doxa_tooling
+        run: |
+          mkdir -p dist
+          dart compile exe bin/doxa.dart -o dist/doxa-${{ matrix.target }}
+
+      - name: Package binary
+        run: tar -czf doxa-${{ matrix.target }}.tar.gz -C doxa_tooling/dist doxa-${{ matrix.target }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: doxa-${{ matrix.target }}
+          path: doxa-${{ matrix.target }}.tar.gz
+
   # --- Build and publish Dart packages ---
   publish-dart:
+    needs: [build-binaries]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -19,13 +62,12 @@ jobs:
           # Pinned to the local dev SDK (see ci.yml).
           sdk: 3.13.1
 
-      - name: Build native binaries
-        working-directory: ./doxa_tooling
-        run: |
-          mkdir -p /tmp/doxa-bin
-          dart compile exe bin/doxa.dart -o /tmp/doxa-bin/doxa-linux-x64
-          cp /tmp/doxa-bin/doxa-linux-x64 /tmp/doxa-bin/doxa
-          tar -czf /tmp/doxa-bin/doxa-linux-x64.tar.gz -C /tmp/doxa-bin doxa-linux-x64
+      - name: Download binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-binaries
+          pattern: doxa-*
+          merge-multiple: true
 
       - name: Publish to pub.dev (doxa kernel)
         run: |
@@ -43,7 +85,7 @@ jobs:
             Doxa ${{ github.ref_name }} — a dependently typed proof checker.
 
             See [CHANGELOG.md](CHANGELOG.md) for details.
-          files: /tmp/doxa-bin/doxa-linux-x64.tar.gz
+          files: release-binaries/*.tar.gz
           draft: false
           prerelease: false
 

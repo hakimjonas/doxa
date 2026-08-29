@@ -8,6 +8,9 @@
     Provides diagnostics, hover, go-to-definition, completion,
     formatting, code lens, and syntax highlighting via the
     Doxa language server. Requires IntelliJ Platform 2025.1-compatible IDEs.
+    Developed and tested against IntelliJ IDEA Community Edition and other
+    IDEs built on IntelliJ Platform 2025.1. Commercial IDEs (IntelliJ IDEA
+    Ultimate, PyCharm Professional, and similar) work as-is but are untested.
   ]]></description>
 
   <depends>com.intellij.modules.platform</depends>

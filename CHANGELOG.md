@@ -12,6 +12,11 @@
   elaboration finishes, on success and on failure.
 - The VS Code extension shows the open goals for the block under the cursor
   in a webview panel (`Doxa: Show Proof State`).
+- Declared the JetBrains support policy: the plugin is developed and tested
+  against IntelliJ IDEA Community Edition and other IDEs built on IntelliJ
+  Platform 2025.1; commercial IDEs work as-is but are untested.
+- The release workflow builds native binaries on three runners (linux-x64,
+  linux-arm64, macos-arm64) and attaches them to the GitHub release.
 
 ## 0.8.2
 
