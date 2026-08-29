@@ -1,0 +1,2139 @@
+{
+  "name": "doxa",
+  "elem": "char",
+  "word": "identifier",
+  "rules": {
+    "source_file": {
+      "kind": "repeat",
+      "content": {
+        "kind": "ref",
+        "name": "_declaration"
+      }
+    },
+    "_declaration": {
+      "kind": "choice",
+      "members": [
+        {
+          "kind": "ref",
+          "name": "import_declaration"
+        },
+        {
+          "kind": "ref",
+          "name": "val_declaration"
+        },
+        {
+          "kind": "ref",
+          "name": "type_alias"
+        },
+        {
+          "kind": "ref",
+          "name": "theorem_declaration"
+        },
+        {
+          "kind": "ref",
+          "name": "fun_block"
+        },
+        {
+          "kind": "ref",
+          "name": "data_block"
+        },
+        {
+          "kind": "ref",
+          "name": "typeclass_declaration"
+        },
+        {
+          "kind": "ref",
+          "name": "impl_declaration"
+        }
+      ]
+    },
+    "fun_block": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "ref",
+          "name": "fun_declaration"
+        },
+        {
+          "kind": "repeat",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": "and"
+              },
+              {
+                "kind": "choice",
+                "members": [
+                  {
+                    "kind": "ref",
+                    "name": "fun_member"
+                  },
+                  {
+                    "kind": "ref",
+                    "name": "data_declaration"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "data_block": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "ref",
+          "name": "data_declaration"
+        },
+        {
+          "kind": "repeat",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": "and"
+              },
+              {
+                "kind": "choice",
+                "members": [
+                  {
+                    "kind": "ref",
+                    "name": "fun_declaration"
+                  },
+                  {
+                    "kind": "ref",
+                    "name": "data_declaration"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "import_declaration": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "import"
+        },
+        {
+          "kind": "field",
+          "name": "path",
+          "content": {
+            "kind": "ref",
+            "name": "import_path"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "import_items"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": "as"
+              },
+              {
+                "kind": "field",
+                "name": "alias",
+                "content": {
+                  "kind": "ref",
+                  "name": "identifier"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "import_items": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "{"
+        },
+        {
+          "kind": "ref",
+          "name": "identifier"
+        },
+        {
+          "kind": "repeat",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": ","
+              },
+              {
+                "kind": "ref",
+                "name": "identifier"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "}"
+        }
+      ]
+    },
+    "import_path": {
+      "kind": "token",
+      "content": {
+        "kind": "pattern",
+        "value": "\"[^\"]*\""
+      }
+    },
+    "val_declaration": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "lit",
+            "value": "opaque"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "val"
+        },
+        {
+          "kind": "field",
+          "name": "name",
+          "content": {
+            "kind": "ref",
+            "name": "identifier"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": ":"
+              },
+              {
+                "kind": "field",
+                "name": "type",
+                "content": {
+                  "kind": "ref",
+                  "name": "_expr"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "="
+        },
+        {
+          "kind": "field",
+          "name": "body",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        }
+      ]
+    },
+    "type_alias": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "type"
+        },
+        {
+          "kind": "field",
+          "name": "name",
+          "content": {
+            "kind": "ref",
+            "name": "identifier"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "="
+        },
+        {
+          "kind": "field",
+          "name": "body",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        }
+      ]
+    },
+    "theorem_declaration": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "theorem"
+        },
+        {
+          "kind": "field",
+          "name": "name",
+          "content": {
+            "kind": "ref",
+            "name": "identifier"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": ":"
+              },
+              {
+                "kind": "field",
+                "name": "type",
+                "content": {
+                  "kind": "ref",
+                  "name": "_expr"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "kind": "choice",
+          "members": [
+            {
+              "kind": "lit",
+              "value": ":="
+            },
+            {
+              "kind": "lit",
+              "value": "="
+            }
+          ]
+        },
+        {
+          "kind": "field",
+          "name": "proof",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        }
+      ]
+    },
+    "fun_declaration": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "lit",
+            "value": "opaque"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "fun"
+        },
+        {
+          "kind": "field",
+          "name": "name",
+          "content": {
+            "kind": "ref",
+            "name": "identifier"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "_type_parameters"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "value_parameters"
+          }
+        },
+        {
+          "kind": "seq",
+          "elements": [
+            {
+              "kind": "lit",
+              "value": ":"
+            },
+            {
+              "kind": "field",
+              "name": "return_type",
+              "content": {
+                "kind": "ref",
+                "name": "_expr"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "struct_annotation"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "termination_by"
+          }
+        },
+        {
+          "kind": "choice",
+          "members": [
+            {
+              "kind": "seq",
+              "elements": [
+                {
+                  "kind": "lit",
+                  "value": "="
+                },
+                {
+                  "kind": "field",
+                  "name": "body",
+                  "content": {
+                    "kind": "ref",
+                    "name": "_expr"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "body",
+              "content": {
+                "kind": "ref",
+                "name": "block_expr"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "_type_parameters": {
+      "kind": "choice",
+      "members": [
+        {
+          "kind": "ref",
+          "name": "explicit_type_parameters"
+        },
+        {
+          "kind": "ref",
+          "name": "implicit_type_parameters"
+        }
+      ]
+    },
+    "explicit_type_parameters": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "["
+        },
+        {
+          "kind": "ref",
+          "name": "_comma_sep_type_binders"
+        },
+        {
+          "kind": "lit",
+          "value": "]"
+        }
+      ]
+    },
+    "implicit_type_parameters": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "{"
+        },
+        {
+          "kind": "ref",
+          "name": "_comma_sep_type_binders"
+        },
+        {
+          "kind": "lit",
+          "value": "}"
+        }
+      ]
+    },
+    "_comma_sep_type_binders": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "ref",
+          "name": "type_binder"
+        },
+        {
+          "kind": "repeat",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": ","
+              },
+              {
+                "kind": "ref",
+                "name": "type_binder"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "type_binder": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "field",
+          "name": "name",
+          "content": {
+            "kind": "ref",
+            "name": "identifier"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": ":"
+              },
+              {
+                "kind": "field",
+                "name": "type",
+                "content": {
+                  "kind": "ref",
+                  "name": "_expr"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "value_parameters": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "("
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "_comma_sep_value_binders"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": ")"
+        }
+      ]
+    },
+    "_comma_sep_value_binders": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "ref",
+          "name": "value_binder"
+        },
+        {
+          "kind": "repeat",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": ","
+              },
+              {
+                "kind": "ref",
+                "name": "value_binder"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "value_binder": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "field",
+          "name": "name",
+          "content": {
+            "kind": "ref",
+            "name": "_binder_name"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": ":"
+        },
+        {
+          "kind": "field",
+          "name": "type",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        }
+      ]
+    },
+    "_binder_name": {
+      "kind": "choice",
+      "members": [
+        {
+          "kind": "ref",
+          "name": "identifier"
+        },
+        {
+          "kind": "lit",
+          "value": "_"
+        }
+      ]
+    },
+    "struct_annotation": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "{"
+        },
+        {
+          "kind": "lit",
+          "value": "struct"
+        },
+        {
+          "kind": "field",
+          "name": "param",
+          "content": {
+            "kind": "ref",
+            "name": "identifier"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "}"
+        }
+      ]
+    },
+    "termination_by": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "termination_by"
+        },
+        {
+          "kind": "field",
+          "name": "measure",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        }
+      ]
+    },
+    "data_declaration": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "data"
+        },
+        {
+          "kind": "field",
+          "name": "name",
+          "content": {
+            "kind": "ref",
+            "name": "identifier"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "_type_parameters"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": ":"
+              },
+              {
+                "kind": "field",
+                "name": "signature",
+                "content": {
+                  "kind": "ref",
+                  "name": "_expr"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "{"
+        },
+        {
+          "kind": "repeat",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "ref",
+                "name": "constructor"
+              },
+              {
+                "kind": "choice",
+                "members": [
+                  {
+                    "kind": "lit",
+                    "value": ";"
+                  },
+                  {
+                    "kind": "lit",
+                    "value": "|"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "constructor"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "}"
+        }
+      ]
+    },
+    "constructor": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "field",
+          "name": "name",
+          "content": {
+            "kind": "ref",
+            "name": "identifier"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": ":"
+        },
+        {
+          "kind": "field",
+          "name": "type",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        }
+      ]
+    },
+    "typeclass_declaration": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "typeclass"
+        },
+        {
+          "kind": "field",
+          "name": "name",
+          "content": {
+            "kind": "ref",
+            "name": "identifier"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "_type_parameters"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": ":"
+              },
+              {
+                "kind": "field",
+                "name": "superclass",
+                "content": {
+                  "kind": "ref",
+                  "name": "_expr"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "{"
+        },
+        {
+          "kind": "repeat",
+          "content": {
+            "kind": "ref",
+            "name": "class_method"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "}"
+        }
+      ]
+    },
+    "class_method": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "fun"
+        },
+        {
+          "kind": "field",
+          "name": "name",
+          "content": {
+            "kind": "ref",
+            "name": "identifier"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "_type_parameters"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "value_parameters"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": ":"
+        },
+        {
+          "kind": "field",
+          "name": "return_type",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": "="
+              },
+              {
+                "kind": "field",
+                "name": "body",
+                "content": {
+                  "kind": "ref",
+                  "name": "_expr"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "lit",
+            "value": ";"
+          }
+        }
+      ]
+    },
+    "impl_declaration": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "impl"
+        },
+        {
+          "kind": "field",
+          "name": "name",
+          "content": {
+            "kind": "ref",
+            "name": "identifier"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "["
+        },
+        {
+          "kind": "ref",
+          "name": "_comma_sep_exprs"
+        },
+        {
+          "kind": "lit",
+          "value": "]"
+        },
+        {
+          "kind": "lit",
+          "value": "{"
+        },
+        {
+          "kind": "repeat",
+          "content": {
+            "kind": "ref",
+            "name": "impl_method"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "}"
+        }
+      ]
+    },
+    "impl_method": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "fun"
+        },
+        {
+          "kind": "field",
+          "name": "name",
+          "content": {
+            "kind": "ref",
+            "name": "identifier"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "_type_parameters"
+          }
+        },
+        {
+          "kind": "ref",
+          "name": "value_parameters"
+        },
+        {
+          "kind": "lit",
+          "value": ":"
+        },
+        {
+          "kind": "field",
+          "name": "return_type",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "="
+        },
+        {
+          "kind": "field",
+          "name": "body",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "lit",
+            "value": ";"
+          }
+        }
+      ]
+    },
+    "_expr": {
+      "kind": "choice",
+      "members": [
+        {
+          "kind": "ref",
+          "name": "lambda_expr"
+        },
+        {
+          "kind": "ref",
+          "name": "pi_type"
+        },
+        {
+          "kind": "ref",
+          "name": "arrow_type"
+        },
+        {
+          "kind": "ref",
+          "name": "match_expression"
+        },
+        {
+          "kind": "ref",
+          "name": "by_block"
+        },
+        {
+          "kind": "ref",
+          "name": "block_expr"
+        },
+        {
+          "kind": "ref",
+          "name": "quot_expression"
+        },
+        {
+          "kind": "ref",
+          "name": "mk_expression"
+        },
+        {
+          "kind": "ref",
+          "name": "lift_expression"
+        },
+        {
+          "kind": "ref",
+          "name": "intersection_type"
+        },
+        {
+          "kind": "ref",
+          "name": "application"
+        },
+        {
+          "kind": "ref",
+          "name": "_chain"
+        },
+        {
+          "kind": "ref",
+          "name": "sort"
+        }
+      ]
+    },
+    "lambda_expr": {
+      "kind": "prec",
+      "value": 2,
+      "content": {
+        "kind": "seq",
+        "elements": [
+          {
+            "kind": "ref",
+            "name": "_parameters"
+          },
+          {
+            "kind": "lit",
+            "value": "=>"
+          },
+          {
+            "kind": "field",
+            "name": "body",
+            "content": {
+              "kind": "ref",
+              "name": "_expr"
+            }
+          }
+        ]
+      }
+    },
+    "pi_type": {
+      "kind": "prec",
+      "value": 2,
+      "content": {
+        "kind": "seq",
+        "elements": [
+          {
+            "kind": "ref",
+            "name": "_parameters"
+          },
+          {
+            "kind": "lit",
+            "value": "->"
+          },
+          {
+            "kind": "field",
+            "name": "codomain",
+            "content": {
+              "kind": "ref",
+              "name": "_expr"
+            }
+          }
+        ]
+      }
+    },
+    "_parameters": {
+      "kind": "choice",
+      "members": [
+        {
+          "kind": "ref",
+          "name": "_explicit_parameters"
+        },
+        {
+          "kind": "ref",
+          "name": "_implicit_parameters"
+        }
+      ]
+    },
+    "_explicit_parameters": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "("
+        },
+        {
+          "kind": "ref",
+          "name": "_comma_sep_parameters"
+        },
+        {
+          "kind": "lit",
+          "value": ")"
+        }
+      ]
+    },
+    "_implicit_parameters": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "{"
+        },
+        {
+          "kind": "ref",
+          "name": "_comma_sep_parameters"
+        },
+        {
+          "kind": "lit",
+          "value": "}"
+        }
+      ]
+    },
+    "_comma_sep_parameters": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "ref",
+          "name": "parameter"
+        },
+        {
+          "kind": "repeat",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": ","
+              },
+              {
+                "kind": "ref",
+                "name": "parameter"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "parameter": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "field",
+          "name": "name",
+          "content": {
+            "kind": "ref",
+            "name": "_binder_name"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": ":"
+              },
+              {
+                "kind": "field",
+                "name": "type",
+                "content": {
+                  "kind": "ref",
+                  "name": "_expr"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "arrow_type": {
+      "kind": "prec_right",
+      "value": 1,
+      "content": {
+        "kind": "seq",
+        "elements": [
+          {
+            "kind": "field",
+            "name": "domain",
+            "content": {
+              "kind": "choice",
+              "members": [
+                {
+                  "kind": "ref",
+                  "name": "application"
+                },
+                {
+                  "kind": "ref",
+                  "name": "_chain"
+                },
+                {
+                  "kind": "ref",
+                  "name": "sort"
+                },
+                {
+                  "kind": "ref",
+                  "name": "parenthesized_expression"
+                }
+              ]
+            }
+          },
+          {
+            "kind": "lit",
+            "value": "->"
+          },
+          {
+            "kind": "field",
+            "name": "codomain",
+            "content": {
+              "kind": "ref",
+              "name": "_expr"
+            }
+          }
+        ]
+      }
+    },
+    "match_expression": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "match"
+        },
+        {
+          "kind": "field",
+          "name": "scrutinee",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": "returning"
+              },
+              {
+                "kind": "field",
+                "name": "motive",
+                "content": {
+                  "kind": "ref",
+                  "name": "_expr"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "{"
+        },
+        {
+          "kind": "repeat",
+          "content": {
+            "kind": "ref",
+            "name": "match_arm"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "}"
+        }
+      ]
+    },
+    "match_arm": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "case"
+        },
+        {
+          "kind": "ref",
+          "name": "_pattern"
+        },
+        {
+          "kind": "lit",
+          "value": "=>"
+        },
+        {
+          "kind": "field",
+          "name": "body",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        }
+      ]
+    },
+    "_pattern": {
+      "kind": "choice",
+      "members": [
+        {
+          "kind": "lit",
+          "value": "_"
+        },
+        {
+          "kind": "seq",
+          "elements": [
+            {
+              "kind": "field",
+              "name": "constructor",
+              "content": {
+                "kind": "ref",
+                "name": "identifier"
+              }
+            },
+            {
+              "kind": "repeat",
+              "content": {
+                "kind": "ref",
+                "name": "_binder_name"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "by_block": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "by"
+        },
+        {
+          "kind": "lit",
+          "value": "{"
+        },
+        {
+          "kind": "ref",
+          "name": "tactic_alternative"
+        },
+        {
+          "kind": "repeat",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": "|"
+              },
+              {
+                "kind": "ref",
+                "name": "tactic_alternative"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "}"
+        }
+      ]
+    },
+    "tactic_alternative": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "ref",
+          "name": "tactic"
+        },
+        {
+          "kind": "repeat",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": ";"
+              },
+              {
+                "kind": "ref",
+                "name": "tactic"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "tactic": {
+      "kind": "choice",
+      "members": [
+        {
+          "kind": "seq",
+          "elements": [
+            {
+              "kind": "lit",
+              "value": "intro"
+            },
+            {
+              "kind": "optional",
+              "content": {
+                "kind": "ref",
+                "name": "_binder_name"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "seq",
+          "elements": [
+            {
+              "kind": "lit",
+              "value": "exact"
+            },
+            {
+              "kind": "ref",
+              "name": "_expr"
+            }
+          ]
+        },
+        {
+          "kind": "seq",
+          "elements": [
+            {
+              "kind": "lit",
+              "value": "apply"
+            },
+            {
+              "kind": "ref",
+              "name": "_expr"
+            }
+          ]
+        },
+        {
+          "kind": "lit",
+          "value": "refl"
+        },
+        {
+          "kind": "seq",
+          "elements": [
+            {
+              "kind": "lit",
+              "value": "rewrite"
+            },
+            {
+              "kind": "ref",
+              "name": "_expr"
+            }
+          ]
+        },
+        {
+          "kind": "seq",
+          "elements": [
+            {
+              "kind": "lit",
+              "value": "induction"
+            },
+            {
+              "kind": "ref",
+              "name": "_binder_name"
+            }
+          ]
+        },
+        {
+          "kind": "lit",
+          "value": "trivial"
+        }
+      ]
+    },
+    "block_expr": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "{"
+        },
+        {
+          "kind": "repeat",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "ref",
+                "name": "local_val"
+              },
+              {
+                "kind": "lit",
+                "value": ";"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "field",
+          "name": "result",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "}"
+        }
+      ]
+    },
+    "local_val": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "val"
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "lit",
+            "value": "rec"
+          }
+        },
+        {
+          "kind": "field",
+          "name": "name",
+          "content": {
+            "kind": "ref",
+            "name": "identifier"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "value_parameters"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": ":"
+              },
+              {
+                "kind": "field",
+                "name": "type",
+                "content": {
+                  "kind": "ref",
+                  "name": "_expr"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "kind": "lit",
+          "value": "="
+        },
+        {
+          "kind": "field",
+          "name": "value",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        }
+      ]
+    },
+    "quot_expression": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "Quot"
+        },
+        {
+          "kind": "lit",
+          "value": "("
+        },
+        {
+          "kind": "field",
+          "name": "carrier",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": ","
+        },
+        {
+          "kind": "field",
+          "name": "relation",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": ")"
+        }
+      ]
+    },
+    "mk_expression": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "mk"
+        },
+        {
+          "kind": "field",
+          "name": "value",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        }
+      ]
+    },
+    "lift_expression": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "lift"
+        },
+        {
+          "kind": "lit",
+          "value": "("
+        },
+        {
+          "kind": "field",
+          "name": "function",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": ","
+        },
+        {
+          "kind": "field",
+          "name": "proof",
+          "content": {
+            "kind": "ref",
+            "name": "_expr"
+          }
+        },
+        {
+          "kind": "lit",
+          "value": ")"
+        }
+      ]
+    },
+    "intersection_type": {
+      "kind": "prec_left",
+      "value": 3,
+      "content": {
+        "kind": "seq",
+        "elements": [
+          {
+            "kind": "field",
+            "name": "left",
+            "content": {
+              "kind": "choice",
+              "members": [
+                {
+                  "kind": "ref",
+                  "name": "application"
+                },
+                {
+                  "kind": "ref",
+                  "name": "_chain"
+                },
+                {
+                  "kind": "ref",
+                  "name": "sort"
+                },
+                {
+                  "kind": "ref",
+                  "name": "parenthesized_expression"
+                }
+              ]
+            }
+          },
+          {
+            "kind": "repeat",
+            "content": {
+              "kind": "seq",
+              "elements": [
+                {
+                  "kind": "lit",
+                  "value": "&"
+                },
+                {
+                  "kind": "field",
+                  "name": "right",
+                  "content": {
+                    "kind": "choice",
+                    "members": [
+                      {
+                        "kind": "ref",
+                        "name": "application"
+                      },
+                      {
+                        "kind": "ref",
+                        "name": "_chain"
+                      },
+                      {
+                        "kind": "ref",
+                        "name": "sort"
+                      },
+                      {
+                        "kind": "ref",
+                        "name": "parenthesized_expression"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "application": {
+      "kind": "prec_left",
+      "value": 8,
+      "content": {
+        "kind": "seq",
+        "elements": [
+          {
+            "kind": "ref",
+            "name": "_application_head"
+          },
+          {
+            "kind": "oneOrMore",
+            "content": {
+              "kind": "ref",
+              "name": "_app_arg"
+            }
+          }
+        ]
+      }
+    },
+    "_application_head": {
+      "kind": "choice",
+      "members": [
+        {
+          "kind": "ref",
+          "name": "_chain"
+        },
+        {
+          "kind": "ref",
+          "name": "sort"
+        },
+        {
+          "kind": "ref",
+          "name": "lift_expression"
+        }
+      ]
+    },
+    "_app_arg": {
+      "kind": "choice",
+      "members": [
+        {
+          "kind": "ref",
+          "name": "_chain"
+        },
+        {
+          "kind": "ref",
+          "name": "sort"
+        },
+        {
+          "kind": "ref",
+          "name": "parenthesized_expression"
+        }
+      ]
+    },
+    "_chain": {
+      "kind": "prec_left",
+      "value": 9,
+      "content": {
+        "kind": "seq",
+        "elements": [
+          {
+            "kind": "ref",
+            "name": "_chain_base"
+          },
+          {
+            "kind": "repeat",
+            "content": {
+              "kind": "ref",
+              "name": "_chain_suffix"
+            }
+          }
+        ]
+      }
+    },
+    "_chain_base": {
+      "kind": "choice",
+      "members": [
+        {
+          "kind": "ref",
+          "name": "identifier"
+        },
+        {
+          "kind": "ref",
+          "name": "parenthesized_expression"
+        }
+      ]
+    },
+    "_chain_suffix": {
+      "kind": "choice",
+      "members": [
+        {
+          "kind": "ref",
+          "name": "bracket_arguments"
+        },
+        {
+          "kind": "seq",
+          "elements": [
+            {
+              "kind": "lit",
+              "value": "."
+            },
+            {
+              "kind": "ref",
+              "name": "identifier"
+            }
+          ]
+        }
+      ]
+    },
+    "bracket_arguments": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "["
+        },
+        {
+          "kind": "ref",
+          "name": "_comma_sep_exprs"
+        },
+        {
+          "kind": "lit",
+          "value": "]"
+        }
+      ]
+    },
+    "_comma_sep_exprs": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "ref",
+          "name": "_expr"
+        },
+        {
+          "kind": "repeat",
+          "content": {
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "lit",
+                "value": ","
+              },
+              {
+                "kind": "ref",
+                "name": "_expr"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "parenthesized_expression": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "("
+        },
+        {
+          "kind": "ref",
+          "name": "_comma_sep_exprs"
+        },
+        {
+          "kind": "lit",
+          "value": ")"
+        }
+      ]
+    },
+    "sort": {
+      "kind": "choice",
+      "members": [
+        {
+          "kind": "ref",
+          "name": "_universe_type"
+        },
+        {
+          "kind": "lit",
+          "value": "Prop"
+        },
+        {
+          "kind": "lit",
+          "value": "SProp"
+        }
+      ]
+    },
+    "_universe_type": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "lit",
+          "value": "Type"
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "number"
+          }
+        }
+      ]
+    },
+    "identifier": {
+      "kind": "token",
+      "content": {
+        "kind": "pattern",
+        "value": "[a-zA-Z_][a-zA-Z0-9_]*"
+      }
+    },
+    "number": {
+      "kind": "token",
+      "content": {
+        "kind": "pattern",
+        "value": "[0-9]+"
+      }
+    },
+    "line_comment": {
+      "kind": "token",
+      "content": {
+        "kind": "seq",
+        "elements": [
+          {
+            "kind": "lit",
+            "value": "//"
+          },
+          {
+            "kind": "pattern",
+            "value": "[^\\n]*"
+          }
+        ]
+      }
+    },
+    "fun_member": {
+      "kind": "seq",
+      "elements": [
+        {
+          "kind": "field",
+          "name": "name",
+          "content": {
+            "kind": "ref",
+            "name": "identifier"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "_type_parameters"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "value_parameters"
+          }
+        },
+        {
+          "kind": "seq",
+          "elements": [
+            {
+              "kind": "lit",
+              "value": ":"
+            },
+            {
+              "kind": "field",
+              "name": "return_type",
+              "content": {
+                "kind": "ref",
+                "name": "_expr"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "struct_annotation"
+          }
+        },
+        {
+          "kind": "optional",
+          "content": {
+            "kind": "ref",
+            "name": "termination_by"
+          }
+        },
+        {
+          "kind": "choice",
+          "members": [
+            {
+              "kind": "seq",
+              "elements": [
+                {
+                  "kind": "lit",
+                  "value": "="
+                },
+                {
+                  "kind": "field",
+                  "name": "body",
+                  "content": {
+                    "kind": "ref",
+                    "name": "_expr"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "body",
+              "content": {
+                "kind": "ref",
+                "name": "block_expr"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "extras": [
+    {
+      "kind": "pattern",
+      "value": "\\s"
+    },
+    {
+      "kind": "ref",
+      "name": "line_comment"
+    },
+    {
+      "kind": "ref",
+      "name": "block_comment"
+    }
+  ],
+  "externals": [
+    "block_comment"
+  ],
+  "conflicts": [
+    [
+      "_binder_name",
+      "_chain_base"
+    ],
+    [
+      "_app_arg",
+      "_chain_base"
+    ],
+    [
+      "intersection_type",
+      "_chain_base"
+    ],
+    [
+      "type_binder",
+      "constructor"
+    ]
+  ]
+}
