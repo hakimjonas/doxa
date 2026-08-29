@@ -175,6 +175,7 @@ final class _SessionDecl {
   final List<DeclInfo> declarations;
   final List<SemInfo> semInfo;
   final List<CheckError> errors;
+  final List<ProofStateBlock> proofState;
 
   const _SessionDecl({
     required this.sourceSlice,
@@ -186,6 +187,7 @@ final class _SessionDecl {
     this.declarations = const [],
     this.semInfo = const [],
     this.errors = const [],
+    this.proofState = const [],
   });
 
   _SessionDecl withDeclarations(List<DeclInfo> next) => _SessionDecl(
@@ -198,6 +200,7 @@ final class _SessionDecl {
     declarations: next,
     semInfo: semInfo,
     errors: errors,
+    proofState: proofState,
   );
 }
 
@@ -344,8 +347,13 @@ String _parseFailureMessage(Failure<ParseError, Object?> failure) {
     records.add(record);
   }
   final errors = [for (final record in records) ...record.errors];
+  final proofState = [for (final record in records) ...record.proofState]
+    ..sort((a, b) => a.span.start.compareTo(b.span.start));
   if (errors.isNotEmpty) {
-    return (output: CheckFailure(errors: errors), records: records);
+    return (
+      output: CheckFailure(errors: errors, proofState: proofState),
+      records: records,
+    );
   }
 
   final completedRecords = [
@@ -374,6 +382,7 @@ String _parseFailureMessage(Failure<ParseError, Object?> failure) {
           state.dataDecls.length -
           imports.preludeDeclCount,
       semInfo: semInfo,
+      proofState: proofState,
       imports: imports,
     ),
     records: completedRecords,
@@ -414,6 +423,10 @@ _SessionDecl _processDeclaration(SourceFile file, SDecl decl, _State state) {
     STypeclassKind _ => 'typeclass',
     SImplKind _ => 'impl',
   };
+  // Collect proof-state snapshots for the declaration's `by` blocks.
+  // The sink is owned by this call so the snapshots survive a failed
+  // elaboration (TacticFailed records its open goals first).
+  final proofState = <ProofStateBlock>[];
   try {
     final sourceNames = declNames(decl);
     final produced = elabDecl(
@@ -425,6 +438,7 @@ _SessionDecl _processDeclaration(SourceFile file, SDecl decl, _State state) {
         state.importState,
       ),
       decl,
+      proofStateSink: proofState,
     );
     final data = produced.dataDecls;
     final bindings = checkDeclResult(
@@ -445,6 +459,7 @@ _SessionDecl _processDeclaration(SourceFile file, SDecl decl, _State state) {
       classRegistry: produced.classRegistry,
       namespaceBindings: produced.namespaceBindings,
       semInfo: produced.metas?.semInfos ?? const [],
+      proofState: _sortedProofState(proofState),
       declarations: [
         for (final d in data)
           if (sourceNames.contains(d.name))
@@ -502,6 +517,7 @@ _SessionDecl _processDeclaration(SourceFile file, SDecl decl, _State state) {
           span: span.isSynthetic ? null : span,
         ),
       ],
+      proofState: _sortedProofState(proofState),
     );
   } on ElabError catch (e) {
     final reportSource = state.importState.sourceFileFor(e.span) ?? file;
@@ -509,8 +525,17 @@ _SessionDecl _processDeclaration(SourceFile file, SDecl decl, _State state) {
       sourceSlice: slice,
       span: decl.span,
       errors: [_elabCheckError(reportSource, reportSource, e)],
+      proofState: _sortedProofState(proofState),
     );
   }
+}
+
+/// Sort proof-state snapshots into document order for stable output.
+List<ProofStateBlock> _sortedProofState(List<ProofStateBlock> blocks) {
+  if (blocks.length < 2) return List.unmodifiable(blocks);
+  final sorted = [...blocks]
+    ..sort((a, b) => a.span.start.compareTo(b.span.start));
+  return List.unmodifiable(sorted);
 }
 
 CheckError _elabCheckError(

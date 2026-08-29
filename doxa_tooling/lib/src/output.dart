@@ -38,6 +38,11 @@ final class CheckSuccess extends CheckOutput {
   /// had no identifier references (e.g. a parse error).
   final List<SemInfo> semInfo;
 
+  /// Proof-state snapshots for the `by { ... }` blocks in the source,
+  /// sorted by span start. One snapshot per block; unchanged
+  /// declarations retain their snapshots across incremental rechecks.
+  final List<ProofStateBlock> proofState;
+
   /// Resolved import state that can be reused on subsequent checks
   /// to avoid re-processing transitive imports on every edit.
   final dynamic imports;
@@ -47,6 +52,7 @@ final class CheckSuccess extends CheckOutput {
     required this.declarations,
     required this.count,
     this.semInfo = const [],
+    this.proofState = const [],
     this.imports,
   });
 
@@ -56,8 +62,27 @@ final class CheckSuccess extends CheckOutput {
     'declarations': [for (final d in declarations) d.toJson()],
     'count': count,
     if (semInfo.isNotEmpty) 'semInfo': [for (final s in semInfo) s.toJson()],
+    if (proofState.isNotEmpty)
+      'proofState': [for (final b in proofState) proofStateBlockToJson(b)],
   };
 }
+
+/// Serialise a [ProofStateBlock] to a JSON-compatible map. Spans are
+/// byte offsets, consistent with the other structured output.
+Map<String, dynamic> proofStateBlockToJson(ProofStateBlock block) => {
+  'span': {'start': block.span.start, 'end': block.span.end},
+  'solved': block.solved,
+  'goals': [
+    for (final goal in block.goals)
+      {
+        'context': [
+          for (final binder in goal.context)
+            {'name': binder.name, 'type': binder.type},
+        ],
+        'target': goal.target,
+      },
+  ],
+};
 
 /// Per-declaration summary.
 final class DeclInfo {
@@ -154,8 +179,13 @@ final class CheckFailure extends CheckOutput {
   /// The individual errors (one per declaration that failed).
   final List<CheckError> errors;
 
+  /// Proof-state snapshots for the `by { ... }` blocks in the source,
+  /// sorted by span start. Blocks whose declaration failed still
+  /// contribute the goals recorded before the failure.
+  final List<ProofStateBlock> proofState;
+
   /// Creates a failure result.
-  const CheckFailure({required this.errors});
+  const CheckFailure({required this.errors, this.proofState = const []});
 
   /// Joined message text (backward compat).
   String get message => errors.map((e) => e.message).join('\n\n');
@@ -182,5 +212,7 @@ final class CheckFailure extends CheckOutput {
   Map<String, dynamic> toJson() => {
     'status': 'failure',
     'errors': [for (final e in errors) e.toJson()],
+    if (proofState.isNotEmpty)
+      'proofState': [for (final b in proofState) proofStateBlockToJson(b)],
   };
 }

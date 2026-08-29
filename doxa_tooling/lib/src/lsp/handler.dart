@@ -89,6 +89,12 @@ final class LspHandler {
   /// Request IDs that have been cancelled via $/cancelRequest.
   final Set<int> _cancelledIds = {};
 
+  /// Optional intercept for server-initiated notifications. When null,
+  /// notifications are framed to stdout via [sendLspMessage]. Protocol
+  /// tests set this to capture notifications without spawning a server
+  /// process.
+  void Function(Map<String, dynamic> message)? onNotification;
+
   /// Enables persistent-LSP timing output on stderr for local diagnosis.
   static final _traceTiming =
       Platform.environment['DOXA_LSP_TRACE_TIMING'] == '1';
@@ -1585,6 +1591,12 @@ final class LspHandler {
         }
         _publishDiagnostics(diagnostics);
     }
+    // Publish the proof state for the document's `by` blocks after
+    // every check, success or failure.
+    _sendProofState(switch (output) {
+      CheckSuccess(:final proofState) => proofState,
+      CheckFailure(:final proofState) => proofState,
+    });
     if (_traceTiming) {
       final session = _checkSession;
       stderr.writeln(
@@ -1653,6 +1665,25 @@ final class LspHandler {
     }
   }
 
+  /// Send a server-initiated notification.
+  void _sendNotification(String method, Map<String, dynamic> params) {
+    final msg = {'jsonrpc': '2.0', 'method': method, 'params': params};
+    final sink = onNotification;
+    if (sink != null) {
+      sink(msg);
+      return;
+    }
+    try {
+      sendLspMessage(msg);
+    } catch (e) {
+      // Silently drop notifications on transport failure.
+      // This can happen in piped mode due to a Dart runtime
+      // contention issue between stdin.readLineSync and
+      // stdout.write. The initialize/hover/definition handlers
+      // will still work on the next stdin read cycle.
+    }
+  }
+
   /// Send a `textDocument/publishDiagnostics` notification.
   void _publishDiagnostics(List<LspDiagnostic> diagnostics) {
     final params = LspPublishDiagnosticsParams(
@@ -1660,20 +1691,58 @@ final class LspHandler {
       diagnostics: diagnostics,
       version: _activeDocument?.version,
     );
-    final msg = {
-      'jsonrpc': '2.0',
-      'method': 'textDocument/publishDiagnostics',
-      'params': params.toJson(),
+    _sendNotification('textDocument/publishDiagnostics', params.toJson());
+  }
+
+  /// Send a `doxa/proofState` notification after a document check.
+  ///
+  /// The payload carries one entry per `by { ... }` block in the
+  /// document, with the open goals (binder context and expected type)
+  /// or an empty goal list when the block proved its goal. Positions
+  /// are UTF-16 code units, consistent with the declared
+  /// `positionEncoding`.
+  ///
+  /// The notification is sent unconditionally rather than gated on
+  /// initializationOptions: the VS Code extension is currently the
+  /// only client and consumes the method to drive its proof-state
+  /// panel. If a second client that does not know the method appears,
+  /// gate this on its initializationOptions.
+  void _sendProofState(List<ProofStateBlock> blocks) {
+    final document = _activeDocument;
+    if (document == null) return;
+    final source = SourceFile(filename: document.uri, text: document.text);
+    final params = {
+      'uri': document.uri,
+      'version': document.version,
+      'blocks': [
+        for (final block in blocks)
+          if (!block.span.isSynthetic)
+            {
+              'span': {
+                'start': _lspPosition(source, block.span.start),
+                'end': _lspPosition(source, block.span.end),
+              },
+              'solved': block.solved,
+              'goals': [
+                for (final goal in block.goals)
+                  {
+                    'context': [
+                      for (final binder in goal.context)
+                        {'name': binder.name, 'type': binder.type},
+                    ],
+                    'target': goal.target,
+                  },
+              ],
+            },
+      ],
     };
-    try {
-      sendLspMessage(msg);
-    } catch (e) {
-      // Silently drop diagnostics on transport failure.
-      // This can happen in piped mode due to a Dart runtime
-      // contention issue between stdin.readLineSync and
-      // stdout.write. The initialize/hover/definition handlers
-      // will still work on the next stdin read cycle.
-    }
+    _sendNotification('doxa/proofState', params);
+  }
+
+  /// Convert a byte offset into a 0-based LSP position (UTF-16).
+  Map<String, int> _lspPosition(SourceFile source, int offset) {
+    final pos = source.positionAt(offset);
+    return {'line': pos.line - 1, 'character': pos.column - 1};
   }
 
   /// Look up the [SemInfo] at a given byte [offset].

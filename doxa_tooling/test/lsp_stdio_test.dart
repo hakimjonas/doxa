@@ -45,7 +45,9 @@ void main() {
         },
       });
 
-      final diagnostics = await server.nextMessage();
+      final diagnostics = await server.nextMessageWhere(
+        (m) => m['method'] == 'textDocument/publishDiagnostics',
+      );
       expect(diagnostics['method'], 'textDocument/publishDiagnostics');
       expect((diagnostics['params'] as Map<String, dynamic>)['uri'], uri);
       expect((diagnostics['params'] as Map<String, dynamic>)['version'], 7);
@@ -55,7 +57,7 @@ void main() {
       );
 
       server.send({'jsonrpc': '2.0', 'id': 2, 'method': 'shutdown'});
-      expect(await server.nextMessage(), {
+      expect(await server.nextMessageWhere((m) => m['id'] == 2), {
         'jsonrpc': '2.0',
         'id': 2,
         'result': null,
@@ -84,7 +86,9 @@ void main() {
           },
         });
 
-        final notification = await server.nextMessage();
+        final notification = await server.nextMessageWhere(
+          (m) => m['method'] == 'textDocument/publishDiagnostics',
+        );
         final diagnostics =
             (notification['params'] as Map<String, dynamic>)['diagnostics']
                 as List<dynamic>;
@@ -132,11 +136,27 @@ void main() {
         addTearDown(server.dispose);
 
         server.send(_didOpen(main.uri.toString(), main.readAsStringSync()));
-        expect(_diagnostics(await server.nextMessage()), isEmpty);
+        expect(
+          _diagnostics(
+            await server.nextMessageWhere(
+              (m) => m['method'] == 'textDocument/publishDiagnostics',
+            ),
+          ),
+          isEmpty,
+        );
 
         server.send(_didOpen(dependency.uri.toString(), unsavedDependency));
-        expect(_diagnostics(await server.nextMessage()), isEmpty);
-        final staleMain = await server.nextMessage();
+        expect(
+          _diagnostics(
+            await server.nextMessageWhere(
+              (m) => m['method'] == 'textDocument/publishDiagnostics',
+            ),
+          ),
+          isEmpty,
+        );
+        final staleMain = await server.nextMessageWhere(
+          (m) => m['method'] == 'textDocument/publishDiagnostics',
+        );
         expect(
           (staleMain['params'] as Map<String, dynamic>)['uri'],
           main.uri.toString(),
@@ -155,8 +175,17 @@ void main() {
             'textDocument': {'uri': dependency.uri.toString()},
           },
         });
-        expect(_diagnostics(await server.nextMessage()), isEmpty);
-        final restoredMain = await server.nextMessage();
+        expect(
+          _diagnostics(
+            await server.nextMessageWhere(
+              (m) => m['method'] == 'textDocument/publishDiagnostics',
+            ),
+          ),
+          isEmpty,
+        );
+        final restoredMain = await server.nextMessageWhere(
+          (m) => m['method'] == 'textDocument/publishDiagnostics',
+        );
         expect(
           (restoredMain['params'] as Map<String, dynamic>)['uri'],
           main.uri.toString(),
@@ -217,12 +246,22 @@ final class _LspServer {
     process.stdin.add(utf8.encode(message));
   }
 
-  Future<Map<String, dynamic>> nextMessage() async {
-    final hasMessage = await _messages.moveNext().timeout(
-      const Duration(seconds: 10),
-    );
-    if (!hasMessage) throw StateError('LSP server closed stdout');
-    return _messages.current;
+  Future<Map<String, dynamic>> nextMessage() async =>
+      nextMessageWhere((_) => true);
+
+  /// Next message matching [predicate], skipping any other messages in
+  /// between (the server interleaves notifications such as
+  /// `doxa/proofState` with responses and diagnostics).
+  Future<Map<String, dynamic>> nextMessageWhere(
+    bool Function(Map<String, dynamic>) predicate,
+  ) async {
+    while (true) {
+      final hasMessage = await _messages.moveNext().timeout(
+        const Duration(seconds: 10),
+      );
+      if (!hasMessage) throw StateError('LSP server closed stdout');
+      if (predicate(_messages.current)) return _messages.current;
+    }
   }
 
   Future<void> dispose() async {

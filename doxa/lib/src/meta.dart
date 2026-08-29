@@ -28,6 +28,7 @@
 library;
 
 import 'ctx.dart';
+import 'proof_state.dart';
 import 'sem_info.dart';
 import 'term.dart';
 import 'value.dart';
@@ -141,6 +142,16 @@ final class MetaContext {
   /// [MetaContext] is installed on the [Ctx] used during elaboration.
   /// Null by default; set to a mutable list to enable collection.
   List<SemInfo>? semInfos;
+
+  /// Proof-state snapshots for `by { ... }` tactic blocks, recorded by
+  /// the tactic elaborator as each block finishes.
+  ///
+  /// Mirrors the [semInfos] collection pattern: null by default; set
+  /// to a mutable list by callers of `elabDecl` that want collection
+  /// (the LSP pipeline). Each entry is an immutable snapshot, so the
+  /// list is append-only and survives the solve-once mutation of the
+  /// entries themselves.
+  List<ProofStateBlock>? proofStateSink;
 
   /// Creates an empty metavariable context.
   MetaContext();

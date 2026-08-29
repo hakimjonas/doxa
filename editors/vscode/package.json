@@ -1,7 +1,7 @@
 {
   "name": "doxa",
   "displayName": "Doxa",
-  "description": "Doxa language support — syntax highlighting, bracket matching, and LSP-powered diagnostics, hover, go-to-definition, and completion",
+  "description": "Doxa language support — syntax highlighting, bracket matching, and LSP-powered diagnostics, hover, go-to-definition, completion, and interactive proof state",
   "version": "0.8.2",
   "publisher": "doxa-lang",
   "license": "GPL-3.0-or-later",
@@ -24,6 +24,13 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "doxa.proofState.show",
+        "title": "Show Proof State",
+        "category": "Doxa"
+      }
+    ],
     "languages": [
       {
         "id": "doxa",

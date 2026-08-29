@@ -64,6 +64,7 @@ export 'src/elab.dart'
 export 'src/parse.dart';
 export 'src/surface.dart';
 export 'src/pretty.dart';
+export 'src/proof_state.dart';
 export 'src/report.dart';
 export 'src/source.dart';
 export 'src/sem_info.dart';

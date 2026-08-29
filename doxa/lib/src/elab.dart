@@ -34,6 +34,7 @@ import 'eval.dart';
 import 'meta.dart';
 import 'parse.dart' show parseProgram;
 import 'pretty.dart';
+import 'proof_state.dart';
 import 'registry.dart';
 import 'sem_info.dart';
 import 'source.dart';
@@ -1447,10 +1448,18 @@ typedef DeclResult =
 
 /// Elaborate a single declaration in the context of [topEnv].
 ///
+/// When [proofStateSink] is non-null, every `by { ... }` block in the
+/// declaration records an immutable [ProofStateBlock] snapshot into it
+/// as its elaboration finishes (see [MetaContext.proofStateSink]).
+///
 /// Raises [DuplicateDeclaration], [UnresolvedName],
 /// [RecursionNotYetSupported], [DataSortNotASort], or
 /// [CtorResultShapeMismatch] on the usual elaboration errors.
-DeclResult elabDecl(TopEnv topEnv, SDecl decl) => _elabDecl(topEnv, decl);
+DeclResult elabDecl(
+  TopEnv topEnv,
+  SDecl decl, {
+  List<ProofStateBlock>? proofStateSink,
+}) => _elabDecl(topEnv, decl, proofStateSink: proofStateSink);
 
 /// Extract all names defined by a declaration, for poison tracking /
 /// diagnostic contexts.
@@ -1497,6 +1506,14 @@ Set<String> declNames(SDecl decl) {
 ///
 /// Creates a fresh goal meta, compiles the tactic steps, and runs them.
 /// If no alternative succeeds, throws [TacticFailed].
+///
+/// On both outcomes (a solution returned, or every alternative
+/// exhausted) an immutable proof-state snapshot is recorded into the
+/// declaration's [MetaContext.proofStateSink] when the pipeline
+/// requested collection: the unsolved goal metas with their binder
+/// contexts and expected types. A block whose tactics closed every
+/// goal snapshots as solved; a block that leaves holes snapshots its
+/// open goals even though the check may pass.
 Term _elabTacticBlock(
   _ElabState state,
   SByKind kind,
@@ -1509,24 +1526,71 @@ Term _elabTacticBlock(
   }
   // Create a fresh meta for the goal type.
   final goalMetaId = metas.freshTermMeta(expected, state.ctx);
-  // Try each alternative in order.
+  // Try each alternative in order. Metas allocated by a failed
+  // attempt are abandoned; only the last attempt's allocation range
+  // contributes goals to the snapshot.
+  var attemptStart = metas.length;
+  var lastEst = state;
   for (final alt in kind.steps) {
+    attemptStart = metas.length;
     final tstate = TacticState(metas, state.ctx, goalMetaId);
-    final result = _runTacticSteps(alt, tstate, state);
+    final (result, newEst) = _runTacticSteps(alt, tstate, state);
+    lastEst = newEst;
     if (result is TacticOk) {
       try {
-        return metas.solutionOf(goalMetaId);
+        final term = metas.solutionOf(goalMetaId);
+        _recordProofState(metas, span, goalMetaId, attemptStart, lastEst);
+        return term;
       } catch (_) {
         continue;
       }
     }
   }
+  _recordProofState(metas, span, goalMetaId, attemptStart, lastEst);
   throw TacticFailed('tactic block: no alternative succeeded', span);
+}
+
+/// Record a proof-state snapshot for a `by` block, when the pipeline
+/// requested collection. The snapshot pairs each unsolved goal meta
+/// with the binder context in scope at its creation.
+void _recordProofState(
+  MetaContext metas,
+  DoxaSpan span,
+  int rootMetaId,
+  int attemptStart,
+  _ElabState est,
+) {
+  final sink = metas.proofStateSink;
+  if (sink == null) return;
+  sink.add(
+    captureProofStateBlock(
+      metas: metas,
+      span: span,
+      rootMetaId: rootMetaId,
+      rangeStart: attemptStart,
+      binderNames: _localScopeNames(est.names),
+    ),
+  );
+}
+
+/// Drain a [_LocalScope] into an innermost-first name list, aligned
+/// position-for-position with the parallel [Ctx] chain.
+List<String> _localScopeNames(_LocalScope scope) {
+  final names = <String>[];
+  var s = scope;
+  while (s is _LocalCons) {
+    names.add(s.name_);
+    s = s.rest;
+  }
+  return names;
 }
 
 /// Run a sequence of tactic steps, using [_ElabState] for expression
 /// elaboration so local binders introduced by `intro` are visible.
-TacticResult _runTacticSteps(
+///
+/// Returns the result paired with the elaborator state after the last
+/// successful step (its name scope mirrors the tactic context).
+(TacticResult, _ElabState) _runTacticSteps(
   List<STacticStep> steps,
   TacticState tstate,
   _ElabState est,
@@ -1574,10 +1638,10 @@ TacticResult _runTacticSteps(
         );
         currentEst = newEst;
       case TacticFail():
-        return result;
+        return (result, currentEst);
     }
   }
-  return TacticOk(const TType(LLevel(0)), currentTstate.metas);
+  return (TacticOk(const TType(LLevel(0)), currentTstate.metas), currentEst);
 }
 
 (TacticResult, _ElabState) _runIntro(
@@ -3414,7 +3478,11 @@ String? _flattenDottedIdent(SExpr expr) {
 /// [topEnv]; raises [UnresolvedName] on any free identifier in the
 /// declaration's body that is neither locally bound nor a name defined
 /// earlier in [topEnv].
-DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
+DeclResult _elabDecl(
+  TopEnv topEnv,
+  SDecl decl, {
+  List<ProofStateBlock>? proofStateSink,
+}) {
   _checkDuplicate(topEnv, decl);
   final kind = decl.kind;
   // Per-declaration MetaContext, fresh per call: `insert'` and
@@ -3423,7 +3491,10 @@ DeclResult _elabDecl(TopEnv topEnv, SDecl decl) {
   // the check-time Ctx so the kernel's `_Infer(TMeta)` path
   // resolves solutions back to their solved terms.
   // Also enable semantic metadata collection.
-  final metas = MetaContext()..semInfos = <SemInfo>[];
+  final metas =
+      MetaContext()
+        ..semInfos = <SemInfo>[]
+        ..proofStateSink = proofStateSink;
   switch (kind) {
     case SValKind(:final name, :final type, :final body):
       final Term bodyTerm;

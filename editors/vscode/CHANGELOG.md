@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added the Doxa Proof State panel: open goals for the `by { ... }` block
+  under the cursor, updated from the server's `doxa/proofState`
+  notification without a round-trip on cursor movement
+- Registered the `Doxa: Show Proof State` command
+
 ## 0.8.2
 
 - User-configurable language server path (`doxa.server.path` setting)

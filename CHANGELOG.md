@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Added a `doxa/proofState` server notification. After every document check
+  the language server reports one entry per `by { ... }` block: the span,
+  whether the block proved its goal, and the open goals with their binder
+  context and expected type. Positions are UTF-16.
+- Added kernel support for proof-state snapshots: `elabDecl` accepts a
+  `proofStateSink`, and each `by` block records an immutable
+  `ProofStateBlock` (new export `package:doxa/doxa.dart`) as its
+  elaboration finishes, on success and on failure.
+- The VS Code extension shows the open goals for the block under the cursor
+  in a webview panel (`Doxa: Show Proof State`).
+
 ## 0.8.2
 
 - Fixed duplicate-declaration diagnostics when an imported path is resolved
