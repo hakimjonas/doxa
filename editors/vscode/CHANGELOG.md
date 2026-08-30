@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.3 — 2026-08-30
 
 - Added the Doxa Proof State panel: open goals for the `by { ... }` block
   under the cursor, updated from the server's `doxa/proofState`

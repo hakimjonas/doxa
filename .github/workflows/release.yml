@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 jobs:
   # --- Build native binaries for each target platform ---
@@ -26,6 +27,9 @@ jobs:
             target: windows-x64
             exe: .exe
     runs-on: ${{ matrix.os }}
+    # Tag pushes only: a manual dispatch publishes the VS Code
+    # extension, not fresh binaries or releases.
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v7
 
@@ -49,6 +53,7 @@ jobs:
   publish-dart:
     needs: [build-binaries]
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     permissions:
       contents: write
       id-token: write
@@ -106,16 +111,24 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install + build + publish
+      - name: Install dependencies
         working-directory: ./editors/vscode
+        run: npm ci
+
+      - name: Package and publish
+        working-directory: ./editors/vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
-          npm ci
-          npm run esbuild
-          npx @vscode/vsce publish --packagePath $(ls *.vsix 2>/dev/null) || true
+          npx @vscode/vsce package
+          npx @vscode/vsce publish
 
   # --- Publish JetBrains plugin ---
   publish-jetbrains:
     runs-on: ubuntu-latest
+    # Tag pushes only: publication waits for the marketplace token; a
+    # manual dispatch is reserved for the VS Code extension.
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v7
 
@@ -129,6 +142,10 @@ jobs:
       - name: Build and publish
         working-directory: ./editors/jetbrains
         run: |
+          if [ -z "$JETBRAINS_MARKETPLACE_TOKEN" ]; then
+            echo "JETBRAINS_MARKETPLACE_TOKEN not set; skipping plugin publication."
+            exit 0
+          fi
           ./gradlew publishPlugin
         env:
           JETBRAINS_MARKETPLACE_TOKEN: ${{ secrets.JETBRAINS_MARKETPLACE_TOKEN }}

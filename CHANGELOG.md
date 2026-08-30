@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.3 (2026-08-30)
+
 - Fixed the Zed extension's language-server launch. Zed resolves extension
   server commands relative to the extension work directory, so the previous
   bare `doxa` command failed to start ("No such file or directory" in

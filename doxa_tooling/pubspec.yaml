@@ -3,7 +3,7 @@ description: >-
   Tooling infrastructure for the Doxa proof checker: tokenizer, concrete
   syntax tree, structured check output, semantic metadata, REPL, and
   LSP language server.
-version: 0.8.2
+version: 0.8.3
 license: GPL-3.0-or-later
 repository: https://github.com/hakimjonas/doxa
 homepage: https://github.com/hakimjonas/doxa

@@ -54,6 +54,8 @@ and editor extensions read from it:
 | `editors/vscode/package.json` | `"version": "<VERSION>"` |
 | `editors/jetbrains/gradle.properties` | `pluginVersion = <VERSION>` |
 | `doxa_tooling/lib/src/lsp/handler.dart` | `serverInfo.version` |
+| `editors/zed/extension.toml` | `version = "<VERSION>"` |
+| `editors/zed/Cargo.toml` | `version = "<VERSION>"` |
 
 When bumping the version, update `VERSION` and all of the above. CI verifies
 they stay in sync.
