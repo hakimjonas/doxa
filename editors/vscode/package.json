@@ -3,7 +3,7 @@
   "displayName": "Doxa",
   "description": "Doxa language support — syntax highlighting, bracket matching, and LSP-powered diagnostics, hover, go-to-definition, completion, and interactive proof state",
   "version": "0.8.3",
-  "publisher": "doxa-lang",
+  "publisher": "ardaprojectorg",
   "license": "GPL-3.0-or-later",
   "icon": "icons/doxa-icon.png",
   "repository": {
