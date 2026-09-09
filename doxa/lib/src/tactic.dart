@@ -214,6 +214,8 @@ TacticResult refl(TacticState s) {
   try {
     final inferred = infer(s.ctx, reflTerm);
     if (conv(s.ctx.level, inferred, goalType, s: s) is ConvOk) {
+      // Leaf tactic: solve the goal itself, matching `exact` and `apply`.
+      s.metas.solve(s.currentMeta, reflTerm);
       return TacticOk(reflTerm, s.metas);
     }
   } catch (_) {}
@@ -504,17 +506,19 @@ TacticResult trivial(TacticState s) {
   var idx = 0;
   while (currentCtx is CCons) {
     final c = currentCtx;
-    try {
-      if (conv(s.ctx.level, c.type, s.goalType, s: s) is ConvOk) {
-        final term = TBound(idx);
-        try {
-          final inferred = infer(s.ctx, term);
-          if (conv(s.ctx.level, inferred, s.goalType, s: s) is ConvOk) {
-            return TacticOk(term, s.metas);
-          }
-        } catch (_) {}
-      }
-    } catch (_) {}
+      try {
+        if (conv(s.ctx.level, c.type, s.goalType, s: s) is ConvOk) {
+          final term = TBound(idx);
+          try {
+            final inferred = infer(s.ctx, term);
+            if (conv(s.ctx.level, inferred, s.goalType, s: s) is ConvOk) {
+              // Leaf tactic: solve the goal itself, matching `exact`.
+              s.metas.solve(s.currentMeta, term);
+              return TacticOk(term, s.metas);
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
     currentCtx = c.rest;
     idx++;
   }

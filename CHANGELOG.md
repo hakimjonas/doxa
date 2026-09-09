@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Fixed leaf tactics leaving the goal unsolved: a `by { ... }` block ending
+  in `refl` or `trivial` failed with "tactic block: no alternative succeeded"
+  even when the produced proof term checked, because `refl` and `trivial`
+  returned the term without solving the current goal meta (unlike `exact`
+  and `apply`, which solve it themselves). Both now solve the current goal,
+  matching the leaf-tactic convention.
+- Synced `doxa_tooling`'s `rumil`/`rumil_tokens` constraints to `^0.11.0` to
+  match the kernel, unblocking `dart pub global activate` from the path.
+
 ## 0.8.3 (2026-08-30)
 
 - Fixed the Zed extension's language-server launch. Zed resolves extension
