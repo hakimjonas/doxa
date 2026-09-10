@@ -23,5 +23,20 @@ import 'package:doxa_tooling/src/web_check.dart';
 external set _doxaCheck(JSFunction f);
 
 void main() {
-  _doxaCheck = ((JSString src) => checkSourceJson(src.toDart).toJS).toJS;
+  _doxaCheck =
+      ((JSString src) {
+        try {
+          return checkSourceJson(src.toDart).toJS;
+        } on Object catch (e) {
+          final detail = e
+              .toString()
+              .replaceAll('"', "'")
+              .replaceAll('\n', ' ');
+          final clipped =
+              detail.length > 300 ? detail.substring(0, 300) : detail;
+          return '{"status":"failure","errors":[{"kind":"internal_error",'
+                  '"line":1,"column":1,"message":"checker threw: $clipped"}]}'
+              .toJS;
+        }
+      }).toJS;
 }
