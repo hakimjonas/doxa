@@ -286,6 +286,27 @@ String _parseFailureMessage(Failure<ParseError, Object?> failure) {
       isStdlibPreludePath(file.filename)
           ? const PreludeData([], [], {})
           : loadPrelude();
+
+  // The browser build (dart2wasm) has no dart:io, and ImportResolver
+  // canonicalizes every path through File, which throws
+  // "Unsupported operation: _Namespace" there. A program with no import
+  // declarations needs none of that: the prelude alone is the baseline.
+  // Short-circuit so the web path never touches the filesystem. The
+  // resulting cache is identical to the resolver's for this case.
+  if (!program.decls.any((decl) => decl.kind is SImportKind)) {
+    return (
+      cache: CachedImports(
+        bindings: prelude.bindings,
+        dataDecls: prelude.dataDecls,
+        namespaceBindings: prelude.namespaceBindings,
+        classRegistry: const {},
+        preludeDeclCount: prelude.bindings.length + prelude.dataDecls.length,
+        importState: ImportState()..currentImportPath = file.filename,
+      ),
+      failure: null,
+    );
+  }
+
   final importState = ImportState()..currentImportPath = file.filename;
   final resolver = ImportResolver(
     importState,
