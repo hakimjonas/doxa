@@ -83,4 +83,27 @@ void main() {
       );
     }
   });
+
+  test(
+    'doxa_tooling depends on the matching kernel without a path override',
+    () {
+      final pubspec = _read('../doxa_tooling/pubspec.yaml');
+      final dependency = RegExp(
+        r'^\s*doxa:\s*(\^[0-9]+\.[0-9]+\.[0-9]+)\s*$',
+        multiLine: true,
+      ).firstMatch(pubspec);
+      expect(dependency, isNotNull, reason: 'missing doxa dependency');
+      expect(dependency!.group(1), '^$version');
+      expect(
+        pubspec,
+        isNot(contains('dependency_overrides:')),
+        reason: 'the published pubspec must not carry a local override',
+      );
+    },
+  );
+
+  test('package-local changelogs mention the release', () {
+    expect(_read('../doxa/CHANGELOG.md'), contains('## $version'));
+    expect(_read('../doxa_tooling/CHANGELOG.md'), contains('## $version'));
+  });
 }

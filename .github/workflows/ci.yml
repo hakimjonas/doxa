@@ -24,6 +24,11 @@ jobs:
         working-directory: ./doxa
         run: dart pub get
 
+      - name: Use the local doxa kernel
+        working-directory: ./doxa_tooling
+        run: |
+          printf 'dependency_overrides:\n  doxa:\n    path: ../doxa\n' > pubspec_overrides.yaml
+
       - name: Install dependencies (doxa_tooling)
         working-directory: ./doxa_tooling
         run: dart pub get
@@ -121,6 +126,11 @@ jobs:
         working-directory: ./doxa
         run: dart pub get
 
+      - name: Use the local doxa kernel
+        working-directory: ./doxa_tooling
+        run: |
+          printf 'dependency_overrides:\n  doxa:\n    path: ../doxa\n' > pubspec_overrides.yaml
+
       - name: Install dependencies (doxa_tooling)
         working-directory: ./doxa_tooling
         run: dart pub get
@@ -163,6 +173,15 @@ jobs:
           dart pub global activate pana
           pana doxa/ --no-warning --exit-code-threshold 0 2>&1 | tail -20
 
+      - name: Use the local doxa kernel
+        working-directory: ./doxa_tooling
+        run: |
+          printf 'dependency_overrides:\n  doxa:\n    path: ../doxa\n' > pubspec_overrides.yaml
+
+      # Pre-release only: hosted doxa 0.8.4 does not exist until the
+      # release workflow publishes the kernel. This check is non-fatal;
+      # release.yml runs pana against the hosted packages after both
+      # publishes.
       - name: pana score (doxa_tooling)
         run: |
           pana doxa_tooling/ --no-warning --source path --exit-code-threshold 0 2>&1 | tail -20 || true

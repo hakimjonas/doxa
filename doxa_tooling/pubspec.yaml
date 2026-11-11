@@ -12,7 +12,7 @@ environment:
   sdk: ^3.7.0
 
 dependencies:
-  doxa: ^0.8.2
+  doxa: ^0.8.4
   rumil: ^0.11.0
   rumil_tokens: ^0.11.0
 
@@ -22,7 +22,3 @@ executables:
 dev_dependencies:
   test: ^1.31.0
   lints: ^6.0.0
-
-dependency_overrides:
-  doxa:
-    path: ../doxa

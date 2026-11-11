@@ -58,7 +58,11 @@ and editor extensions read from it:
 | `editors/zed/Cargo.toml` | `version = "<VERSION>"` |
 
 When bumping the version, update `VERSION` and all of the above. CI verifies
-they stay in sync.
+they stay in sync. `doxa_tooling` depends on `doxa` at the same version; local
+development uses a gitignored `doxa_tooling/pubspec_overrides.yaml` with a path
+override, which CI and the release binary build generate before `dart pub get`.
+The published pubspec carries no override. `version_sync_test.dart` checks the
+mirrors, the dependency constraint, and the absence of a published override.
 
 ## Prose and documentation
 

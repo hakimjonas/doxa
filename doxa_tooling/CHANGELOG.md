@@ -8,6 +8,8 @@
   mirrors.
 - Updated the tutorial and proof-guide status for the rejected surfaces and
   the completed sqrt2 proof.
+- Depends on `doxa ^0.8.4`. The local path override moved to the gitignored
+  `pubspec_overrides.yaml`; the published pubspec has no override.
 
 ## 0.8.2
 

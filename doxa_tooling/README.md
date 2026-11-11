@@ -13,3 +13,15 @@ From a source checkout:
 ```sh
 dart run bin/doxa.dart check ../example/proofs.doxa
 ```
+
+Local development uses a path override. Create `doxa_tooling/pubspec_overrides.yaml`:
+
+```yaml
+dependency_overrides:
+  doxa:
+    path: ../doxa
+```
+
+The file is gitignored. CI and the release binary build generate it before
+`dart pub get`. The published pubspec depends on the matching `doxa` version
+and carries no override.

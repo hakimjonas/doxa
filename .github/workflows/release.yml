@@ -39,6 +39,12 @@ jobs:
           # match CI-verified behavior.
           sdk: 3.13.1
 
+      - name: Install tooling dependencies against the local kernel
+        working-directory: ./doxa_tooling
+        run: |
+          printf 'dependency_overrides:\n  doxa:\n    path: ../doxa\n' > pubspec_overrides.yaml
+          dart pub get
+
       - name: Build native binary
         working-directory: ./doxa_tooling
         run: dart compile exe bin/doxa.dart -o dist/doxa-${{ matrix.target }}${{ matrix.exe }}
@@ -82,11 +88,19 @@ jobs:
 
       - name: Publish to pub.dev (doxa kernel)
         run: |
-          dart pub publish --directory doxa/ --force || true
+          dart pub publish --directory doxa/ --force
 
       - name: Publish to pub.dev (doxa_tooling)
         run: |
-          dart pub publish --directory doxa_tooling/ --force || true
+          dart pub publish --directory doxa_tooling/ --force
+
+      # Run immediately after both publishes. If pub.dev's package index
+      # has not caught up, rerun the job; do not remove this gate.
+      - name: pana score (published)
+        run: |
+          dart pub global activate pana
+          pana doxa/ --source hosted --exit-code-threshold 0
+          pana doxa_tooling/ --source hosted --exit-code-threshold 0
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

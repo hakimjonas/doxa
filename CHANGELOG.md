@@ -42,6 +42,9 @@
   matching the leaf-tactic convention.
 - Synced `doxa_tooling`'s `rumil`/`rumil_tokens` constraints to `^0.11.0` to
   match the kernel, unblocking `dart pub global activate` from the path.
+- `doxa_tooling` depends on `doxa ^0.8.4`. The local path override moved to
+  the gitignored `pubspec_overrides.yaml`, which CI and the release binary
+  build generate before `dart pub get`; the published pubspec has no override.
 
 ## 0.8.3 (2026-08-30)
 
