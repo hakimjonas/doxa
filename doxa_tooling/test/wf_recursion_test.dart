@@ -357,5 +357,33 @@ val acc_ih_iota:
       final r = runSource(src);
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
+
+    test('Tree.rec selects the nodeT method and preserves the spine', () {
+      // Two constructors put nodeT at method index 1. The IH-use
+      // comparison checks that the iota step keeps the full head spine
+      // and returns the recursive call on `f x`.
+      const src = '''
+import "../lib/stdlib/nat.doxa"
+data Tree[A: Type]: Type {
+  leafT: Tree A;
+  nodeT: (x: A) -> ((y: A) -> Tree A) -> Tree A;
+}
+val tree_count: (t: Tree Nat) -> Nat =
+  (t: Tree Nat) => Tree.rec Nat ((_: Tree Nat) => Nat)
+    zero
+    ((x: Nat) => (f: (y: Nat) -> Tree Nat) =>
+      (ih: (y: Nat) -> Nat) => succ (ih x))
+    t
+val tree_use: (x: Nat) -> (f: (y: Nat) -> Tree Nat) -> Nat =
+  (x: Nat) => (f: (y: Nat) -> Tree Nat) => tree_count (nodeT x f)
+val tree_expected: (x: Nat) -> (f: (y: Nat) -> Tree Nat) -> Nat =
+  (x: Nat) => (f: (y: Nat) -> Tree Nat) => succ (tree_count (f x))
+val tree_iota: (x: Nat) -> (f: (y: Nat) -> Tree Nat) ->
+  Eq Nat (tree_use x f) (tree_expected x f) =
+  (x: Nat) => (f: (y: Nat) -> Tree Nat) => refl (tree_expected x f)
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
   });
 }

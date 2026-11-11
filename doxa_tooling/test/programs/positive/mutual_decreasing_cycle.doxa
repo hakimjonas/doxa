@@ -1,0 +1,20 @@
+// Accepted: in a mutual block, `isEven (succ m)` calls `isOdd (succ m)`
+// with the same argument, but `isOdd (succ m)` decreases to `isEven m`.
+// The cycle decreases as a whole, so the block terminates (SPEC §8.6).
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
+}
+
+data Bool: Type {
+  t_: Bool;
+  f_: Bool;
+}
+
+fun isEven(n: Nat): Bool = match n {
+  case zero => t_
+  case succ m => isOdd n
+} and isOdd(n: Nat): Bool = match n {
+  case zero => f_
+  case succ m => isEven m
+}

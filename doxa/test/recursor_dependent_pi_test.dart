@@ -338,5 +338,34 @@ val acc_ih_iota:
 ''');
       expect(_binding(env, 'acc_ih_iota').name, 'acc_ih_iota');
     });
+
+    test('Tree.rec selects the nodeT method and preserves the spine', () {
+      // Two constructors: the recursor spine has one method per ctor,
+      // and nodeT is method index 1. The function-typed IH must be the
+      // recursive call on `f x`, so the head spine (params, motive,
+      // both methods) must survive the iota step intact.
+      final env = _elabAndCheck('''
+$_eq
+$_nat
+data Tree[A: Type]: Type {
+  leafT: Tree A;
+  nodeT: (x: A) -> ((y: A) -> Tree A) -> Tree A;
+}
+val tree_count: (t: Tree Nat) -> Nat =
+  (t: Tree Nat) => Tree.rec Nat ((_: Tree Nat) => Nat)
+    zero
+    ((x: Nat) => (f: (y: Nat) -> Tree Nat) =>
+      (ih: (y: Nat) -> Nat) => succ (ih x))
+    t
+val tree_use: (x: Nat) -> (f: (y: Nat) -> Tree Nat) -> Nat =
+  (x: Nat) => (f: (y: Nat) -> Tree Nat) => tree_count (nodeT x f)
+val tree_expected: (x: Nat) -> (f: (y: Nat) -> Tree Nat) -> Nat =
+  (x: Nat) => (f: (y: Nat) -> Tree Nat) => succ (tree_count (f x))
+val tree_iota: (x: Nat) -> (f: (y: Nat) -> Tree Nat) ->
+  Eq Nat (tree_use x f) (tree_expected x f) =
+  (x: Nat) => (f: (y: Nat) -> Tree Nat) => refl (tree_expected x f)
+''');
+      expect(_binding(env, 'tree_iota').name, 'tree_iota');
+    });
   });
 }

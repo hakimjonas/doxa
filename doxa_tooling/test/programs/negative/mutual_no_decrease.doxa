@@ -1,0 +1,8 @@
+// Rejected (NonStructuralRecursion): f and g cross-call with the original
+// argument, so no edge decreases and the block cannot terminate.
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
+}
+
+fun f(n: Nat): Nat = g n and g(n: Nat): Nat = f n
