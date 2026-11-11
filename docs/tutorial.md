@@ -411,9 +411,7 @@ error when no instance, or more than one matching instance, is available.
 
 ## 12. Quotient types
 
-`Quot(A, R)` declares the quotient of a carrier type `A` by a relation
-`R : A -> A -> Prop`. Elements are injected with `mk` and functions are
-lifted with `lift(f, proof)`:
+The type former `Quot(A, R)` remains available:
 
 ```doxa
 data Nat : Type {
@@ -425,8 +423,12 @@ val R : Nat -> Nat -> Prop = (x: Nat) => (y: Nat) => Eq[Nat] x y
 val Q : Type = Quot(Nat, R)
 ```
 
-A `lift(f, proof)` requires a proof that `f` respects `R`. The ι-rule
-reduces `lift(f, p)(mk a)` to `f(a)`.
+The surface operations `mk` and `lift` are rejected with
+`QuotientUnsupported`. The elaborator does not check the proof that a
+lifted function respects `R`, so the surface does not offer the
+elimination rule. Use a data type, or encode the quotient with a
+setoid-style relation and transport lemmas, until the lift proof is
+checked.
 
 ---
 

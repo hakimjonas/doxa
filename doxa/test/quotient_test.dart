@@ -335,16 +335,20 @@ void main() {
       expect(infer(ctx, term), isA<VType>());
     });
 
-    test('elaborate mk expression', () {
+    test('elaborate mk expression is rejected', () {
       final e = _parse('mk Type');
-      final term = elabExpr(TopEnv.empty, e);
-      expect(term, isA<TQuotMk>());
+      expect(
+        () => elabExpr(TopEnv.empty, e),
+        throwsA(isA<QuotientUnsupported>()),
+      );
     });
 
-    test('elaborate lift expression', () {
+    test('elaborate lift expression is rejected', () {
       final e = _parse('lift(Type, (x: Type) => x)');
-      final term = elabExpr(TopEnv.empty, e);
-      expect(term, isA<TQuotLift>());
+      expect(
+        () => elabExpr(TopEnv.empty, e),
+        throwsA(isA<QuotientUnsupported>()),
+      );
     });
 
     test('Quot.mk is recognized as mk keyword', () {

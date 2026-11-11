@@ -443,6 +443,18 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
       sb.writeln(
         '  recursions. Use structural recursion, or `Acc.rec` with `nat_wf`.',
       );
+    case QuotientUnsupported(:final span):
+      sb.writeln(
+        "${c.error('error')}: quotient construction and elimination are not supported",
+      );
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  `mk` and `lift` are rejected until the kernel checks the lift',
+      );
+      sb.writeln(
+        '  compatibility proof. `Quot(A, R)` still forms a type; use a data type',
+      );
+      sb.writeln('  or a setoid-style encoding.');
     case TacticFailed(:final message, :final span):
       sb.writeln("${c.error('error')}: tactic failed");
       sb.write(source.formatContext(span, color: c));

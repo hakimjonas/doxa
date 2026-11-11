@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Rejected the quotient surface operations `mk` and `lift` with
+  `QuotientUnsupported`. `Quot(A, R)` still forms a type; the construction
+  and elimination are unavailable until the kernel checks the lift
+  compatibility proof. The internal `TQuot`/`VQuot` primitives remain for
+  kernel tests and are not user-reachable.
 - Rejected every `termination_by` annotation with
   `TerminationByUnsupported`. The measure was never checked, and the
   single-parameter fuel desugaring could accept non-terminating recursion.

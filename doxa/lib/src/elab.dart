@@ -171,6 +171,21 @@ final class TerminationByUnsupported extends ElabError {
   String toString() => 'TerminationByUnsupported: fun $funName';
 }
 
+/// The quotient construction (`mk`) or elimination (`lift`) surface was
+/// used. `Quot(A, R)` still forms a type; the operations are rejected
+/// until the kernel checks the lift compatibility proof.
+final class QuotientUnsupported extends ElabError {
+  /// The source span of the offending expression.
+  @override
+  final DoxaSpan span;
+
+  /// Creates a quotient-unsupported error.
+  const QuotientUnsupported(this.span);
+
+  @override
+  String toString() => 'QuotientUnsupported';
+}
+
 /// A `match` expression has no ctor case AND no explicit `returning`
 /// clause, so the elaborator cannot determine the scrutinee's inductive
 /// type. Elaboration requires *either* at least one constructor
@@ -2273,18 +2288,11 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       final resultV = carrierV is VType ? VType(carrierV.level) : _vType0;
       return (quotTerm, resultV);
 
-    case SQuotMkKind(:final arg):
-      // TQuotMk cannot be inferred in isolation; we need the expected
-      // quotient type. Fall back to inferring the arg and wrapping in
-      // a generic VQuot placeholder.
-      final (argT, argV) = _inferExpr(state, arg);
-      return (TQuotMk(argT), VQuot(argV, const VProp()));
+    case SQuotMkKind():
+      throw QuotientUnsupported(expr.span);
 
-    case SQuotLiftKind(:final fn, :final proof):
-      final (fnT, fnV) = _inferExpr(state, fn);
-      final (proofT, proofV) = _inferExpr(state, proof);
-      // We need the quotient to apply the lift to. Create a placeholder.
-      return (TQuotLift(const TType(_l0), fnT, proofT), _vType0);
+    case SQuotLiftKind():
+      throw QuotientUnsupported(expr.span);
 
     case SIntersectionKind(:final constraints):
       throw UnresolvedName(
