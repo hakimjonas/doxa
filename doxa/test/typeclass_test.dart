@@ -123,4 +123,23 @@ void main() {
       expect(topEnv.bindings.first.name, 'id');
     });
   });
+
+  group('Typeclass surface rejection', () {
+    test('typeclass declaration is rejected', () {
+      expect(
+        () =>
+            elabProgram(pp('typeclass Eq[A] { fun equals(x: A, y: A): Bool }')),
+        throwsA(isA<TypeclassUnsupported>()),
+      );
+    });
+
+    test('impl declaration is rejected', () {
+      expect(
+        () => elabProgram(
+          pp('impl Eq[Int] { fun equals(x: Int, y: Int): Bool = true }'),
+        ),
+        throwsA(isA<TypeclassUnsupported>()),
+      );
+    });
+  });
 }

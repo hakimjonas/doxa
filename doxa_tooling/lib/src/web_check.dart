@@ -733,6 +733,7 @@ String _elabErrorKind(ElabError error) => switch (error) {
   StructAnnotationNotFound _ => 'struct_annotation_not_found',
   TerminationByUnsupported _ => 'termination_by_unsupported',
   QuotientUnsupported _ => 'quotient_unsupported',
+  TypeclassUnsupported _ => 'typeclass_unsupported',
   TacticFailed _ => 'tactic_failed',
   TacticIncomplete _ => 'tactic_incomplete',
   NoInstanceFound _ => 'no_instance_found',

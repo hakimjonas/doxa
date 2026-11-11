@@ -380,15 +380,10 @@ for a non-indexed data type with one constructor.
 
 ## 11. Typeclasses
 
-`typeclass` declares a class with named methods, and `impl` provides an
-instance:
+The `typeclass` and `impl` declarations are rejected with
+`TypeclassUnsupported`:
 
 ```doxa
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
-}
-
 typeclass Default[A: Type] {
   fun default(): A;
 }
@@ -396,16 +391,22 @@ typeclass Default[A: Type] {
 impl Default[Nat] {
   fun default(): Nat = zero;
 }
-
-fun useDefault[A: Default](x: A): A = x
-
-val example : Nat = useDefault[Nat] zero
 ```
 
-Functions can constrain type parameters with class requirements using
-`[A: ClassName]`. At a call such as `useDefault[Nat] zero`, the checker
-fills the hidden class argument from the registered instances. It reports an
-error when no instance, or more than one matching instance, is available.
+The parser and formatter accept this syntax, but the elaborator stops
+before adding either declaration to scope. The resolver does not thread
+class dictionaries, search instances recursively, or project methods.
+
+Use a record type with explicit dictionary arguments, or a plain data
+type:
+
+```doxa
+data Default[A: Type] : Type {
+  default : A;
+}
+
+val natDefault : Default[Nat] = Default.mk zero
+```
 
 ---
 

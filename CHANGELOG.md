@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Rejected `typeclass` and `impl` declarations with `TypeclassUnsupported`.
+  The resolver does not thread class dictionaries, search instances
+  recursively, or project methods. The parser, formatter, AST, and internal
+  class registry remain for a future implementation; the stdlib typeclass
+  demo and `Typeclass` package are removed.
 - Rejected the quotient surface operations `mk` and `lift` with
   `QuotientUnsupported`. `Quot(A, R)` still forms a type; the construction
   and elimination are unavailable until the kernel checks the lift

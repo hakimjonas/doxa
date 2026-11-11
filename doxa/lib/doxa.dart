@@ -57,6 +57,7 @@ export 'src/elab.dart'
         StructAnnotationNotFound,
         TerminationByUnsupported,
         QuotientUnsupported,
+        TypeclassUnsupported,
         TacticFailed,
         TacticIncomplete,
         NoInstanceFound,

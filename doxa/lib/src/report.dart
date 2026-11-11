@@ -455,6 +455,23 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
         '  compatibility proof. `Quot(A, R)` still forms a type; use a data type',
       );
       sb.writeln('  or a setoid-style encoding.');
+    case TypeclassUnsupported(:final span):
+      sb.writeln(
+        "${c.error('error')}: typeclass declarations and instances are not supported",
+      );
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  The `typeclass` and `impl` surface is rejected: the resolver does not',
+      );
+      sb.writeln(
+        '  thread class dictionaries, search instances recursively, or project',
+      );
+      sb.writeln(
+        '  methods. The parser and formatter still handle the syntax. Use a record',
+      );
+      sb.writeln(
+        '  type with explicit dictionary arguments, or a plain data type.',
+      );
     case TacticFailed(:final message, :final span):
       sb.writeln("${c.error('error')}: tactic failed");
       sb.write(source.formatContext(span, color: c));

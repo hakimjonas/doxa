@@ -801,12 +801,12 @@ void main() {
       final intBase = File('../lib/stdlib/int_base.doxa').absolute;
       final intBaseSource = intBase.readAsStringSync();
       final intBaseUri = intBase.uri.toString();
-      final typeclasses = File('../lib/stdlib/typeclasses.doxa').absolute;
-      final typeclassesSource = typeclasses.readAsStringSync();
-      final typeclassesUri = typeclasses.uri.toString();
+      final consumer = File('../lib/stdlib/int.doxa').absolute;
+      final consumerSource = consumer.readAsStringSync();
+      final consumerUri = consumer.uri.toString();
       final handler = LspHandler();
       handler.handle(_didOpen(intBaseUri, intBaseSource));
-      handler.handle(_didOpen(typeclassesUri, typeclassesSource));
+      handler.handle(_didOpen(consumerUri, consumerSource));
 
       final falseDefinition = handler.handle(
         _linePositionRequest(
@@ -817,13 +817,25 @@ void main() {
           '  case neg _ => '.length,
         ),
       );
+      // Use `pos zero` in int.doxa; point at `zero`, which is defined
+      // in the imported nat.doxa.
+      final consumerLines = consumerSource.split('\n');
+      final posZeroLine = consumerLines.indexWhere(
+        (l) => l.contains('pos zero'),
+      );
+      expect(posZeroLine, greaterThanOrEqualTo(0));
+      final posZero = consumerLines[posZeroLine];
+      final zeroCharacter = posZero.indexOf(
+        'zero',
+        posZero.indexOf('pos zero') + 'pos '.length,
+      );
       final zeroDefinition = handler.handle(
         _linePositionRequest(
           2,
           'textDocument/definition',
-          typeclassesUri,
-          52,
-          '  fun empty() : Int = pos '.length,
+          consumerUri,
+          posZeroLine,
+          zeroCharacter,
         ),
       );
 
@@ -1313,7 +1325,7 @@ void main() {
       File('${directory.path}/nat.doxa').writeAsStringSync(
         'data Nat : Type { zero : Nat; succ : Nat -> Nat; }\n',
       );
-      final root = File('${directory.path}/typeclasses.doxa');
+      final root = File('${directory.path}/consumer.doxa');
       const source =
           'import "bool.doxa"\n'
           'import "nat.doxa"\n'

@@ -186,6 +186,21 @@ final class QuotientUnsupported extends ElabError {
   String toString() => 'QuotientUnsupported';
 }
 
+/// A `typeclass` or `impl` declaration was supplied. The resolver does
+/// not thread dictionaries, search instances recursively, or project
+/// methods, so the surface is rejected until those features exist.
+final class TypeclassUnsupported extends ElabError {
+  /// The source span of the declaration.
+  @override
+  final DoxaSpan span;
+
+  /// Creates a typeclass-unsupported error.
+  const TypeclassUnsupported(this.span);
+
+  @override
+  String toString() => 'TypeclassUnsupported';
+}
+
 /// A `match` expression has no ctor case AND no explicit `returning`
 /// clause, so the elaborator cannot determine the scrutinee's inductive
 /// type. Elaboration requires *either* at least one constructor
@@ -3819,24 +3834,11 @@ DeclResult _elabDecl(
         namespaceBindings: const {},
       );
 
-    case STypeclassKind(
-      :final name,
-      :final typeParams,
-      :final methods,
-      :final superclass,
-    ):
-      return _elabTypeclass(
-        topEnv,
-        decl.span,
-        name,
-        typeParams,
-        methods,
-        superclass,
-        metas: metas,
-      );
+    case STypeclassKind():
+      throw TypeclassUnsupported(decl.span);
 
-    case SImplKind(:final typeclassRef, :final members):
-      return _elabImpl(topEnv, decl.span, typeclassRef, members, metas: metas);
+    case SImplKind():
+      throw TypeclassUnsupported(decl.span);
   }
 }
 
@@ -3875,6 +3877,7 @@ SExpr _buildMethodPiType(
 /// `typeclass Eq[A] { fun equals(x: A, y: A): Bool }`
 /// ↓
 /// `data Eq[A] : Type { mk : (equals: (x: A) -> (y: A) -> Bool) -> Eq[A] }`
+// ignore: unused_element
 DeclResult _elabTypeclass(
   TopEnv topEnv,
   DoxaSpan span,
@@ -3966,6 +3969,7 @@ DeclResult _elabTypeclass(
 ///
 /// Desugars to a `val` binding whose value is the `mk(...)` constructor
 /// applied to the method implementations.
+// ignore: unused_element
 DeclResult _elabImpl(
   TopEnv topEnv,
   DoxaSpan span,
