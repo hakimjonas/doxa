@@ -6901,7 +6901,7 @@ _Step _checkMatchArmStep(
   var teleEnv = const ENil() as Env;
   // Inject params into teleEnv (innermost-first: params[p-1] at
   // TBound(0), params[0] at TBound(p-1)).
-  for (var i = paramsV.length - 1; i >= 0; i--) {
+  for (var i = 0; i < paramsV.length; i++) {
     teleEnv = teleEnv.extend(paramsV[i]);
   }
   var armCtx = ctx;

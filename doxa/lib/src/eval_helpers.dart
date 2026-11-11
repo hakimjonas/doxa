@@ -36,7 +36,7 @@ bool _ctorReachable(
     return true;
   }
   var teleEnv = const ENil() as Env;
-  for (var i = paramsV.length - 1; i >= 0; i--) {
+  for (var i = 0; i < paramsV.length; i++) {
     teleEnv = teleEnv.extend(paramsV[i]);
   }
   for (var j = 0; j < ctor.args.length; j++) {

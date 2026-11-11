@@ -3401,7 +3401,7 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
           }
           var teleEnv = const ENil() as Env;
           Env enrichedTeleEnv = teleEnv;
-          for (var i = paramsV.length - 1; i >= 0; i--) {
+          for (var i = 0; i < paramsV.length; i++) {
             teleEnv = teleEnv.extend(paramsV[i]);
             enrichedTeleEnv = enrichedTeleEnv.extend(paramsV[i]);
           }
