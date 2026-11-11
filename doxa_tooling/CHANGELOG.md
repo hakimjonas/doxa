@@ -2,6 +2,8 @@
 
 ## 0.8.4
 
+- Added tooling tests for `Nat` division, modulo, prime, coprime, gcd, and
+  lcm edge cases.
 - Reject `typeclass`, `impl`, `termination_by`, and quotient `mk` / `lift`
   surfaces with dedicated diagnostics.
 - Added a version-sync test across `VERSION` and the package and editor

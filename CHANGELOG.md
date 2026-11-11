@@ -1,22 +1,26 @@
 # Changelog
 
-## Unreleased
+## 0.8.4 (2026-11-12)
 
 - Added `docs/arithmetic.md`, which specifies the `Nat` operations, the
   zero-divisor conventions (`div m zero = zero`, `mod m zero = m`), the
   fuel-based `mod_acc`/`div_acc` bound, arbitrary precision, and the proposed
-  `Int` division conventions. The document records the current `prime`
-  defect: every `n >= 2` returns `true_`.
+  `Int` division conventions.
 - Proved `sub_zero`, `mod_acc_zero`, `mod_zero`, and `div_zero` in
   `lib/stdlib/proofs.doxa`.
-- Added `doxa_tooling/test/nat_div_mod_test.dart`, which checks the division
-  and modulo edge cases by `refl`.
+- Fixed `prime` to start the divisor scan at `n - 2`, so candidates run from
+  `n - 1` down to `2`; composites now return `false_`.
+- Fixed `gcd` to use `m + n` fuel. The previous `m` bound made `gcd 2 3`
+  return `2`, which also corrupted `lcm` and `coprime` for `m < n`.
+- Changed `coprime` to require the gcd to be both at most one and nonzero.
+  `coprime zero zero` is now `false_`.
+- Added `doxa_tooling/test/nat_div_mod_test.dart` and
+  `doxa_tooling/test/nat_prime_test.dart`, which check the division, modulo,
+  prime, coprime, gcd, and lcm edge cases by `refl`.
 - Corrected the v1.0.0 release notes. Quotient `mk`/`lift`, typeclass/impl,
   and `termination_by` are recorded as gated rather than shipped, and the
   universe-polymorphism statements now distinguish concrete levels from
   polymorphism.
-
-## 0.8.4 (2026-11-11)
 
 - Synthesized well-formed recursor types for constructors whose recursive
   argument is a dependent Pi chain. Earlier chain binders are preserved and

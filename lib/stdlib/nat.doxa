@@ -72,7 +72,9 @@ fun mod_acc(k: Nat, m: Nat, n: Nat): Nat = match k {
 
 val mod: (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => mod_acc m m n
 // Greatest common divisor via Euclid's algorithm.  Structurally
-// recursive on the first argument (k is the iteration bound).
+// recursive on the first argument (k is the iteration bound).  The
+// fuel is m + n; Euclid reaches a zero remainder within that many
+// steps, and m alone is not enough when m < n.
 
 fun gcd_acc(k: Nat, m: Nat, n: Nat): Nat = match k {
   case zero => m
@@ -85,7 +87,7 @@ fun gcd_acc(k: Nat, m: Nat, n: Nat): Nat = match k {
 val gcd: (m: Nat) -> (n: Nat) -> Nat =
   (m: Nat) => (n: Nat) => match m {
     case zero => n
-    case succ m_ => gcd_acc m m n
+    case succ m_ => gcd_acc (plus m n) m n
   }
 // Integer division: div m n = floor(m / n), 0 if n = 0.
 // Uses iterated subtraction, structurally recursive on k.
@@ -106,9 +108,10 @@ val div: (m: Nat) -> (n: Nat) -> Nat =
 // Least common multiple: lcm m n = m * n / gcd m n
 
 val lcm: (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => div (mult m n) (gcd m n)
-// Coprime: gcd m n == 1
+// Coprime: gcd m n == 1 (and therefore nonzero).
 
-val coprime: (m: Nat) -> (n: Nat) -> Bool = (m: Nat) => (n: Nat) => leq (gcd m n) (succ zero)
+val coprime: (m: Nat) -> (n: Nat) -> Bool =
+  (m: Nat) => (n: Nat) => and_ (leq (gcd m n) (succ zero)) (lt zero (gcd m n))
 // Divisibility: does d divide n?  True when d > 0 and n % d == 0.
 
 val divides: (d: Nat) -> (n: Nat) -> Bool =
@@ -134,7 +137,7 @@ val prime: (n: Nat) -> Bool =
     case zero => false_
     case succ n_ => match n_ {
       case zero => false_
-      case succ n__ => prime_acc n n
+      case succ n__ => prime_acc n__ n
     }
   }
 // --- Fuel-based fixpoint combinator -------------------------------------------

@@ -47,7 +47,10 @@ jobs:
 
       - name: Build native binary
         working-directory: ./doxa_tooling
-        run: dart compile exe bin/doxa.dart -o dist/doxa-${{ matrix.target }}${{ matrix.exe }}
+        shell: bash
+        run: |
+          mkdir -p dist
+          dart compile exe bin/doxa.dart -o dist/doxa-${{ matrix.target }}${{ matrix.exe }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -88,19 +91,80 @@ jobs:
 
       - name: Publish to pub.dev (doxa kernel)
         run: |
-          dart pub publish --directory doxa/ --force
+          is_published() {
+            local package="$1"
+            local version="$2"
+            local body
+            if ! body="$(curl -fsS "https://pub.dev/api/packages/$package")"; then
+              return 1
+            fi
+            printf '%s' "$body" \
+              | jq -e --arg v "$version" '.versions[] | select(.version == $v)' >/dev/null
+          }
+
+          version="$(cat VERSION)"
+          if is_published doxa "$version"; then
+            echo "doxa $version is already published; skipping."
+          else
+            dart pub publish --directory doxa/ --force
+          fi
 
       - name: Publish to pub.dev (doxa_tooling)
         run: |
-          dart pub publish --directory doxa_tooling/ --force
+          is_published() {
+            local package="$1"
+            local version="$2"
+            local body
+            if ! body="$(curl -fsS "https://pub.dev/api/packages/$package")"; then
+              return 1
+            fi
+            printf '%s' "$body" \
+              | jq -e --arg v "$version" '.versions[] | select(.version == $v)' >/dev/null
+          }
+
+          version="$(cat VERSION)"
+          if is_published doxa_tooling "$version"; then
+            echo "doxa_tooling $version is already published; skipping."
+            exit 0
+          fi
+
+          # The tooling publish resolves doxa from pub.dev. Poll the
+          # kernel index briefly after a fresh publish.
+          for attempt in $(seq 1 12); do
+            if is_published doxa "$version"; then
+              break
+            fi
+            echo "waiting for doxa $version in the pub.dev index (attempt $attempt/12)."
+            sleep 10
+          done
+
+          attempt=1
+          until dart pub publish --directory doxa_tooling/ --force; do
+            if [ "$attempt" -ge 6 ]; then
+              echo "doxa_tooling publish failed after $attempt attempts." >&2
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            echo "doxa_tooling publish failed; retrying in 10s (attempt $attempt/6)."
+            sleep 10
+          done
 
       # Run immediately after both publishes. If pub.dev's package index
       # has not caught up, rerun the job; do not remove this gate.
       - name: pana score (published)
         run: |
           dart pub global activate pana
-          pana doxa/ --source hosted --exit-code-threshold 0
-          pana doxa_tooling/ --source hosted --exit-code-threshold 0
+          attempt=1
+          until pana doxa/ --source hosted --exit-code-threshold 0 \
+            && pana doxa_tooling/ --source hosted --exit-code-threshold 0; do
+            if [ "$attempt" -ge 12 ]; then
+              echo "pana gate failed after $attempt attempts." >&2
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            echo "pana failed; retrying in 10s (attempt $attempt/12)."
+            sleep 10
+          done
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -135,14 +199,20 @@ jobs:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
           npx @vscode/vsce package
+          if [ -z "$VSCE_PAT" ]; then
+            echo "VSCE_PAT not set; packaged the extension but skipped publication."
+            exit 0
+          fi
           npx @vscode/vsce publish
 
   # --- Publish JetBrains plugin ---
   publish-jetbrains:
     runs-on: ubuntu-latest
     # Tag pushes only: publication waits for the marketplace token; a
-    # manual dispatch is reserved for the VS Code extension.
-    if: github.event_name == 'push'
+    # manual dispatch is reserved for the VS Code extension. Set the
+    # SKIP_JETBRAINS_PUBLISH repository variable to true when the
+    # version is already on the marketplace.
+    if: github.event_name == 'push' && vars.SKIP_JETBRAINS_PUBLISH != 'true'
     steps:
       - uses: actions/checkout@v7
 

@@ -17,11 +17,11 @@ unary, so there is no largest value and no overflow.
 | `sub m n` | recursion on `m`, then `n` | truncated subtraction: `m - n`, or `zero` when `m < n` |
 | `div m n` | `div_acc` bounded by `m`; outer match on `n` | floor division: `m / n`; `div m zero = zero` |
 | `mod m n` | `mod_acc` bounded by `m` | remainder: `m % n`; `mod m zero = m` |
-| `gcd m n` | Euclid's algorithm through `gcd_acc` | greatest common divisor; `gcd zero n = n` and `gcd m zero = m` |
+| `gcd m n` | Euclid's algorithm through `gcd_acc`, with fuel `m + n` | greatest common divisor; `gcd zero n = n` and `gcd m zero = m` |
 | `lcm m n` | `div (mult m n) (gcd m n)` | least common multiple; `lcm m zero = zero` |
-| `coprime m n` | `leq (gcd m n) (succ zero)` | true when the gcd is at most one |
+| `coprime m n` | `and_ (leq (gcd m n) (succ zero)) (lt zero (gcd m n))` | true when the gcd is exactly one |
 | `divides d n` | `false_` for `d = zero`, otherwise `leq (mod n d) zero` | true when `d` divides `n` |
-| `prime n` | `prime_acc` | intended primality test; see the defect note below |
+| `prime n` | `prime_acc` | true when `n >= 2` and no `d` with `2 <= d < n` divides `n` |
 
 `leq`, `lt`, `coprime`, `divides`, and `prime` return `Bool`. The relation
 `Lt` and the equality type `Eq` are `Prop`-valued and are used in theorems.
@@ -92,6 +92,10 @@ For `n = zero`, `div` returns `zero` in its outer match and never calls
 the `zero` case of `mod_acc` returns `m`. The fuel bound therefore also
 terminates the zero-divisor case.
 
+`gcd` uses `gcd_acc (plus m n) m n`. Fuel `m` alone is insufficient when
+`m < n`: `gcd 2 3` would return `2`. Euclid reaches a zero remainder within
+`m + n` steps, so the sum is a safe bound.
+
 ### Arbitrary precision
 
 `Nat` and `Int` are inductive types, so their values have no fixed width.
@@ -100,23 +104,29 @@ grows with the numeric value: `Nat` is unary, and `mod`/`div` use iterated
 subtraction, so a computation that would be constant-time on a machine word
 takes time proportional to the quotient or remainder.
 
-### Defect in `prime`
+### Primality
 
-`prime` is intended to return `true_` exactly for `n >= 2` with no divisor
-`d` in `2 <= d < n`. The implementation does not do that. `prime n` calls
-`prime_acc n n`, and the first test in `prime_acc k n` is
-`lt (succ (succ k_)) n` with `k_` one below `k`, which is already above `n`
-when `k = n`. The function therefore returns `true_` before testing any
-divisor. Every `n >= 2` returns `true_`: `prime 4`, `prime 6`, `prime 8`,
-`prime 9`, and `prime 15` all check by `refl`. Fixing `prime` is outside this
-document's scope.
+`prime n` is `false_` for `n = zero` and `n = succ zero`. For
+`n = succ (succ n__)`, it calls `prime_acc n__ n`. Each candidate is
+`succ (succ k_)`, so the candidates run from `n - 1` down to `2`. The guard
+`lt (succ (succ k_)) n` is true for every candidate, `divides` tests each
+candidate, and the `zero` fuel case returns `true_` after the divisors run
+out. The result is `true_` exactly when `n >= 2` and no `d` with
+`2 <= d < n` divides `n`.
 
-### Boundary case in `coprime`
+Checks by `refl`: `prime 2`, `prime 3`, `prime 5`, `prime 7`, `prime 11`,
+and `prime 13` are `true_`; `prime 0`, `prime 1`, `prime 4`, `prime 6`,
+`prime 8`, `prime 9`, and `prime 15` are `false_`. The case study lemmas
+`prime_two`, `not_prime_zero`, and `not_prime_one` still check.
 
-`coprime` is the `leq` test on `gcd`, not a statement that both arguments are
-nonzero. Since `gcd zero zero = zero`, `coprime zero zero = true_`. For every
-other pair the gcd is at least one, so `coprime` matches the usual relation
-on nonzero arguments. The single zero pair is the only exception.
+### Coprimality
+
+`coprime m n` is `and_ (leq (gcd m n) (succ zero)) (lt zero (gcd m n))`.
+The two tests require the gcd to be at most one and nonzero, so the gcd is
+exactly one. `coprime zero zero` is `false_` because `gcd zero zero = zero`.
+`coprime zero one`, `coprime one zero`, `coprime one one`, and
+`coprime two three` are `true_`; `coprime two four` and `coprime three three`
+are `false_`.
 
 ## Integers
 

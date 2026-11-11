@@ -2,6 +2,10 @@
 
 ## 0.8.4
 
+- Specified `Nat` division and modulo in `docs/arithmetic.md` and proved
+  `sub_zero`, `mod_acc_zero`, `mod_zero`, and `div_zero`.
+- Fixed `prime` to test divisors from `n - 1` down to `2`, `gcd` to use
+  `m + n` fuel, and `coprime` to require a nonzero gcd.
 - Recursor type synthesis and iota reduction for dependent Pi constructor
   arguments and function-typed recursive arguments.
 - Constructor data parameters are solved from the expected type in check
