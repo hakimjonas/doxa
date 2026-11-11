@@ -3861,16 +3861,17 @@ Object _drive(
                     topBindings:
                         topBindings ?? const <String, TopBindingEntry>{},
                   );
+                  // f itself is outermost; the head spine sits outside
+                  // the telescope, and the telescope is innermost so
+                  // its raw TBound(0) is the last prior ctor arg.
+                  final fDepth = nPis + teleLen + headLen;
+                  chainEnv = chainEnv.extend(scrutArgs[teleLen]);
+                  for (var h = headLen - 1; h >= 0; h--) {
+                    chainEnv = chainEnv.extend(headSpine[h]);
+                  }
                   for (var k = 0; k < teleLen; k++) {
                     chainEnv = chainEnv.extend(scrutArgs[k]);
                   }
-                  for (var h = 0; h < headLen; h++) {
-                    chainEnv = chainEnv.extend(headSpine[h]);
-                  }
-                  // f itself sits outermost in the extended env; the
-                  // TLam chain adds nPis binders in front of it.
-                  final fDepth = nPis + teleLen + headLen;
-                  chainEnv = chainEnv.extend(scrutArgs[teleLen]);
 
                   // Body: VRec headSpine (f var_0 ... var_{nPis-1}),
                   // with VRec rebuilt from the same spine values.

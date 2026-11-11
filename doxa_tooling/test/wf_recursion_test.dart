@@ -267,5 +267,95 @@ val observe_iota:
       final r = runSource(src);
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
+
+    test('D4.rec applies the function-typed IH', () {
+      // The step applies the IH to `x`, so the identity of the IH is
+      // observable: `ih x` must be `D4.rec ... (f x)`.
+      const src = '''
+import "../lib/stdlib/nat.doxa"
+data D4[A: Type]: Type {
+  mk4: (x: A) -> ((y: A) -> D4 A) -> D4 A;
+}
+val step: (x: Nat) -> (f: (y: Nat) -> D4 Nat) -> ((y: Nat) -> Nat) -> Nat =
+  (x: Nat) => (f: (y: Nat) -> D4 Nat) => (ih: (y: Nat) -> Nat) => succ (ih x)
+val d4_use: (x: Nat) -> (f: (y: Nat) -> D4 Nat) -> Nat =
+  (x: Nat) => (f: (y: Nat) -> D4 Nat) =>
+    D4.rec Nat ((_: D4 Nat) => Nat) step (mk4 x f)
+val d4_expected: (x: Nat) -> (f: (y: Nat) -> D4 Nat) -> Nat =
+  (x: Nat) => (f: (y: Nat) -> D4 Nat) =>
+    succ (D4.rec Nat ((_: D4 Nat) => Nat) step (f x))
+val d4_use_iota: (x: Nat) -> (f: (y: Nat) -> D4 Nat) ->
+  Eq Nat (d4_use x f) (d4_expected x f) =
+  (x: Nat) => (f: (y: Nat) -> D4 Nat) => refl (d4_expected x f)
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('D5.rec applies the dependent function-typed IH', () {
+      // The IH is applied at `x` with `refl x`, so the dependent
+      // domain and the recursive-call body must both line up.
+      const src = '''
+import "../lib/stdlib/nat.doxa"
+data D5[A: Type]: Type {
+  mk5: (x: A) -> ((y: A) -> Eq A y x -> D5 A) -> D5 A;
+}
+val step5: (x: Nat) -> (f: (y: Nat) -> Eq Nat y x -> D5 Nat) ->
+    ((y: Nat) -> (e: Eq Nat y x) -> Nat) -> Nat =
+  (x: Nat) => (f: (y: Nat) -> Eq Nat y x -> D5 Nat) =>
+  (ih: (y: Nat) -> (e: Eq Nat y x) -> Nat) => succ (ih x (refl x))
+val d5_use: (x: Nat) -> (f: (y: Nat) -> Eq Nat y x -> D5 Nat) -> Nat =
+  (x: Nat) => (f: (y: Nat) -> Eq Nat y x -> D5 Nat) =>
+    D5.rec Nat ((_: D5 Nat) => Nat) step5 (mk5 x f)
+val d5_expected: (x: Nat) -> (f: (y: Nat) -> Eq Nat y x -> D5 Nat) -> Nat =
+  (x: Nat) => (f: (y: Nat) -> Eq Nat y x -> D5 Nat) =>
+    succ (D5.rec Nat ((_: D5 Nat) => Nat) step5 (f x (refl x)))
+val d5_use_iota: (x: Nat) -> (f: (y: Nat) -> Eq Nat y x -> D5 Nat) ->
+  Eq Nat (d5_use x f) (d5_expected x f) =
+  (x: Nat) => (f: (y: Nat) -> Eq Nat y x -> D5 Nat) =>
+    refl (d5_expected x f)
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('Acc.rect applies the function-typed IH', () {
+      // The step applies the IH at the constructor's own index and
+      // proof. Acc is Prop-sorted, so the Type-valued motive uses
+      // `Acc.rect`.
+      const src = '''
+import "../lib/stdlib/nat.doxa"
+fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
+val acc_motive:
+  (R: Nat -> Nat -> Prop) -> (x: Nat) -> (v: Acc Nat R x) -> Type =
+  (R: Nat -> Nat -> Prop) => (x: Nat) => (v: Acc Nat R x) =>
+    (r: R x x) -> Nat
+val acc_step:
+  (R: Nat -> Nat -> Prop) -> (x: Nat) ->
+  (f: (y: Nat) -> R y x -> Acc Nat R y) ->
+  (ih: (y: Nat) -> (r: R y x) -> (r2: R y y) -> Nat) ->
+  (r: R x x) -> Nat =
+  (R: Nat -> Nat -> Prop) => (x: Nat) =>
+  (f: (y: Nat) -> R y x -> Acc Nat R y) =>
+  (ih: (y: Nat) -> (r: R y x) -> (r2: R y y) -> Nat) =>
+  (r: R x x) => ih x r r
+val acc_ih: (n: Nat) -> (h: Acc Nat rel n) -> (r: rel n n) -> Nat =
+  (n: Nat) => (h: Acc Nat rel n) =>
+    Acc.rect Nat acc_motive rel n acc_step h
+val acc_expected:
+  (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
+  (r: rel n n) -> Nat =
+  (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => (r: rel n n) =>
+    Acc.rect Nat acc_motive rel n acc_step (f n r) r
+val acc_ih_iota:
+  (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
+  (r: rel n n) ->
+  Eq Nat (acc_ih n (acc_intro rel n f) r) (acc_expected n f r) =
+  (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => (r: rel n n) =>
+    refl (acc_expected n f r)
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
   });
 }
