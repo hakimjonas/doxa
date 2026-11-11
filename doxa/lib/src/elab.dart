@@ -2509,6 +2509,35 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
     return _elabTacticBlock(state, kind, expected, expr.span);
   }
 
+  // 3.6. Constructor application against a matching expected data type.
+  //    Elaborating a constructor application by inference first leaves
+  //    the data parameters as unsolved metas while the explicit
+  //    arguments are checked. When an argument's type mentions such a
+  //    parameter (e.g. `(y: A) -> R y x -> Box3 A R`), the expected
+  //    domain contains a non-pattern meta spine (`?R y x`) that pattern
+  //    unification cannot solve later. Solve the parameters from the
+  //    expected type first, then check the arguments against the
+  //    instantiated Pi domains.
+  if (expected is VData && state.ctx.metas != null) {
+    final ctorApp = _constructorApplication(state, expr);
+    if (ctorApp != null) {
+      final (dataDecl, ctorDecl, head, args) = ctorApp;
+      if (dataDecl.name == expected.name &&
+          args.length == ctorDecl.args.length &&
+          dataDecl.params.length <= expected.args.length) {
+        final checked = _checkCtorApp(
+          state,
+          dataDecl,
+          ctorDecl,
+          head,
+          args,
+          expected,
+        );
+        if (checked != null) return checked;
+      }
+    }
+  }
+
   // 4. Infer-then-conv fallback.
   final (rawTerm, rawInferred) = _inferExpr(state, expr);
   // Insert trailing implicit arguments before converting against the
@@ -2539,6 +2568,134 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
     throw TypeMismatch(inferred, expected, result, level: state.ctx.level);
   }
   return term;
+}
+
+/// If [expr] is a constructor-headed application, return its data
+/// declaration, constructor declaration, and explicit argument
+/// expressions in application order.
+///
+/// Follows the left-deep `.fn` spine only; arguments are returned as
+/// written. Returns null for a non-constructor head, a locally shadowed
+/// name, or a data-type identifier.
+(DataDecl, CtorDecl, SExpr, List<SExpr>)? _constructorApplication(
+  _ElabState state,
+  SExpr expr,
+) {
+  final args = <SExpr>[];
+  var cur = expr;
+  while (cur.kind is SAppKind) {
+    final k = cur.kind as SAppKind;
+    args.add(k.arg);
+    cur = k.fn;
+  }
+  final kind = cur.kind;
+  if (kind is! SIdentKind) return null;
+  final name = kind.name;
+  if (state.lookupLocal(name) != null) return null;
+  if (state.topEnv.lookupData(name) != null) return null;
+  for (final d in state.topEnv.dataDecls) {
+    for (final c in d.ctors) {
+      if (c.name == name) {
+        return (d, c, cur, args.reversed.toList());
+      }
+    }
+  }
+  return null;
+}
+
+/// Check a constructor application against [expected], solving the
+/// data parameters from [expected] before checking the explicit
+/// arguments.
+///
+/// Returns null when parameter unification fails, so the caller can
+/// fall back to the existing infer-then-conv path and preserve its
+/// diagnostics. Argument checking and the final result check throw
+/// [TypeMismatch] on a genuine error.
+Term? _checkCtorApp(
+  _ElabState state,
+  DataDecl dataDecl,
+  CtorDecl ctorDecl,
+  SExpr head,
+  List<SExpr> args,
+  VData expected,
+) {
+  final metas = state.ctx.metas;
+  if (metas == null) return null;
+  final bareT = TConstr(dataDecl.name, ctorDecl.name, const <Term>[]);
+  final sigV = eval(ctorSignatureTerm(dataDecl, ctorDecl), state.ctx.env);
+  final (headT, headV) = _insertImplicits(state, bareT, sigV);
+  if (headT is! TConstr) return null;
+  if (headT.args.length != dataDecl.params.length) return null;
+
+  // Solve each data parameter from the expected type's parameter
+  // prefix. The constructor's result starts with exactly these
+  // parameters; indices follow and are checked after the arguments.
+  // A mismatch means this constructor cannot have the expected type,
+  // so fall back rather than commit to a diagnostic here.
+  for (var i = 0; i < dataDecl.params.length; i++) {
+    final actual = eval(headT.args[i], state.ctx.env);
+    final r = subtype(
+      state.ctx.level,
+      actual,
+      expected.args[i],
+      dataDecls: state.ctx.dataDecls,
+      metas: metas,
+      topBindings: state.ctx.env.topBindings,
+    );
+    if (r is ConvMismatch) return null;
+  }
+
+  // The parameters are solved, so this path is committed. Record the
+  // constructor reference for the LSP, matching the infer path's
+  // SIdentKind case.
+  _recordSemInfo(
+    state,
+    head.span,
+    ctorDecl.name,
+    SemInfoKind.constructor,
+    sigV,
+    ctorDecl.span,
+  );
+
+  // Check the explicit arguments in order against the instantiated
+  // Pi domains, advancing the codomain after each one.
+  var curT = headT;
+  var curV = headV;
+  for (final argExpr in args) {
+    if (curV is! VPi) return null;
+    final argT = _checkExpr(state, argExpr, curV.domain);
+    curT = TConstr(dataDecl.name, ctorDecl.name, [...curT.args, argT]);
+    curV = _evalPiCodomain(state, curV, eval(argT, state.ctx.env));
+  }
+
+  // The constructor's result indices are determined by the checked
+  // arguments. Compare the whole result with the expected type, which
+  // also catches an index mismatch with the same diagnostic the
+  // infer-then-conv path would produce.
+  final result = subtype(
+    state.ctx.level,
+    curV,
+    expected,
+    dataDecls: state.ctx.dataDecls,
+    metas: metas,
+    topBindings: state.ctx.env.topBindings,
+  );
+  if (result is ConvMismatch) {
+    throw TypeMismatch(curV, expected, result, level: state.ctx.level);
+  }
+  return curT;
+}
+
+/// Evaluate a Pi codomain applied to [argV], falling back to the
+/// elaborator's current environment when the closure's captured depth
+/// differs. Mirrors the application path in `_inferExprInner`.
+Value _evalPiCodomain(_ElabState state, VPi pi, Value argV) {
+  try {
+    return eval(pi.codomain.body, pi.codomain.env.extend(argV));
+  } on StateError {
+    final stripped = _stripBodyIsNormal(pi) as VPi;
+    return eval(stripped.codomain.body, state.ctx.env.extend(argV));
+  }
 }
 
 /// Build the Term-level telescope-Pi signature of an inductive-type
