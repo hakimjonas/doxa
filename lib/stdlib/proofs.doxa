@@ -272,6 +272,33 @@ val mult_assoc: (m: Nat) -> (n: Nat) -> (p: Nat) -> Eq Nat (mult (mult m n) p) (
           (ih n p))
         (refl (plus (mult n p) (mult k (mult n p))))))
     m
+// --- Nat subtraction and zero-divisor lemmas ------------------------------
+//
+// The division and modulo functions are specified in `docs/arithmetic.md`.
+// `div m zero` and `mod m zero` are the two zero-divisor conventions; the
+// general `mod_lt` and `div_add_mod` identities are not proved here.
+
+val sub_zero: (m: Nat) -> Eq Nat (sub m zero) m =
+  Nat.ind
+    ((k: Nat) => Eq Nat (sub k zero) k)
+    (refl zero)
+    ((m: Nat) => (ih: Eq Nat (sub m zero) m) => refl (succ m))
+
+val mod_acc_zero: (k: Nat) -> (m: Nat) -> Eq Nat (mod_acc k m zero) m =
+  Nat.ind
+    ((k: Nat) => (m: Nat) -> Eq Nat (mod_acc k m zero) m)
+    ((m: Nat) => refl m)
+    ((k: Nat) => (ih: (m: Nat) -> Eq Nat (mod_acc k m zero) m) => (m: Nat) => trans_e
+      Nat
+      (mod_acc k (sub m zero) zero)
+      (sub m zero)
+      m
+      (ih (sub m zero))
+      (sub_zero m))
+
+val mod_zero: (m: Nat) -> Eq Nat (mod m zero) m = (m: Nat) => mod_acc_zero m m
+
+val div_zero: (m: Nat) -> Eq Nat (div m zero) zero = (m: Nat) => refl zero
 // --- List-domain proofs ---------------------------------------------------
 //
 // Parametric-type variants of the Nat-domain proofs above, in natural

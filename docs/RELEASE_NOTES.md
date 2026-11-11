@@ -67,9 +67,8 @@ impredicative `Prop` sort with definitional proof irrelevance.
 - Block expressions with `val` bindings
 - Tactics: `by { intro; exact; refl; … }`
 - Records with field projection
-- Quotient types: `Quot(A, R)`, `mk`, `lift(f, proof)`
+- Quotient type formation: `Quot(A, R)`
 - SProp for strict proof irrelevance
-- Typeclasses: `typeclass`, `impl`, class-constrained parameters
 
 **Platform**
 - Dart 3.7+, sealed-class ADTs throughout
@@ -89,6 +88,24 @@ impredicative `Prop` sort with definitional proof irrelevance.
 - stdlib files type-checked on every commit
 - All 14 tutorial code blocks verified by automated extraction
 
+## Gated until implemented
+
+The parser and formatter accept these surfaces, but the elaborator rejects
+them with a dedicated error. They are not shipped features:
+
+| Surface | Current status | Error |
+|---|---|---|
+| Quotient construction `mk` and elimination `lift(f, proof)` | `Quot(A, R)` formation is available; the kernel does not check the lift compatibility proof | `QuotientUnsupported` |
+| `typeclass` and `impl` declarations | Parser, formatter, AST, and internal class registry only; the resolver does not thread dictionaries, search instances, or project methods | `TypeclassUnsupported` |
+| `termination_by` | Every annotation is rejected; the measure was never checked | `TerminationByUnsupported` |
+
+## 1.0.0 scope
+
+Three surfaces in this plan are gated rather than implemented. The 1.0.0 scope
+must either complete them (kernel checking for the quotient lift proof,
+dictionary resolution for typeclasses, and a checked termination measure) or
+ship them gated with the diagnostics above. That decision is open.
+
 ## What Doxa does not include
 
 These are design non-goals, not omissions:
@@ -98,12 +115,17 @@ These are design non-goals, not omissions:
 - Classical axioms (LEM, choice, extensionality) baked into the kernel
 - Effects, IO, or mutable state in the object language
 - Extraction to functional programming languages
-- Universe polymorphism (planned future direction)
+- Universe polymorphism over level variables (concrete `Type n` levels and
+  cumulativity are supported)
 
 ## Known limitations
 
-- **Universe polymorphism**: library code is written at concrete levels. A
-  general scheme over universe variables is a planned extension.
+- **Universe polymorphism**: the kernel has a hierarchy of concrete levels
+  (`Type 0 : Type 1 : ...`) with cumulativity, and conversion is strict on
+  levels. It has no quantification over universe variables. Library code is
+  written at concrete levels. `docs/SPEC_COVERAGE.md` lists the level tests
+  under a "Universe polymorphism" heading; those tests exercise concrete
+  levels, not polymorphism.
 - **Mutual-data header independence**: a data declaration's header cannot
   reference a sibling in the same mutual block unless that sibling is
   elaborated first. Meta-variables would resolve this.
@@ -114,9 +136,10 @@ These are design non-goals, not omissions:
 - **Non-indexed dependent-motive inference**: `match` infers the motive for
   indexed families but not for simple types like `Nat` in dependent
   positions. The eliminators `T.ind` and `T.rec` work unconditionally.
-- **Quotient type-inference with `mk`**: defining a `val q : Q = mk x` can
-  interfere with the type inference of `Q` in some contexts. Using the
-  quotient type in argument position avoids this.
+- **Quotient construction and elimination**: `mk` and `lift(f, proof)` are
+  rejected with `QuotientUnsupported`. `Quot(A, R)` formation is available.
+  The kernel does not check the lift compatibility proof, so the elimination
+  rule is not offered.
 
 ## Installation
 
