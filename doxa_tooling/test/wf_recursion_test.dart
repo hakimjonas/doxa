@@ -195,5 +195,77 @@ val acc_eq: (n: Nat) -> Acc Nat rel n -> Eq Nat n n =
       final r = runSource(src);
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
+
+    test('D4.rec, D5.rec, and Acc.rect reduce through iota', () {
+      // Each `refl zero` forces the eliminator to reduce to the method
+      // result. The recursive arguments are function-typed, so the IH
+      // must be a lambda closed over the constructor telescope.
+      const src = '''
+import "../lib/stdlib/nat.doxa"
+data D4[A: Type]: Type {
+  mk4: (x: A) -> ((y: A) -> D4 A) -> D4 A;
+}
+val d4_iota: (f: (y: Nat) -> D4 Nat) ->
+  Eq Nat (D4.rec Nat ((v: D4 Nat) => Nat)
+    ((x: Nat) => (f: (y: Nat) -> D4 Nat) =>
+      (ih: (y: Nat) -> Nat) => zero)
+    (mk4 zero f)) zero =
+  (f: (y: Nat) -> D4 Nat) => refl zero
+data D5[A: Type]: Type {
+  mk5: (x: A) -> ((y: A) -> Eq A y x -> D5 A) -> D5 A;
+}
+val d5_iota: (x: Nat) -> (f: (y: Nat) -> Eq Nat y x -> D5 Nat) ->
+  Eq Nat (D5.rec Nat ((v: D5 Nat) => Nat)
+    ((x: Nat) => (f: (y: Nat) -> Eq Nat y x -> D5 Nat) =>
+      (ih: (y: Nat) -> (e: Eq Nat y x) -> Nat) => zero)
+    (mk5 x f)) zero =
+  (x: Nat) => (f: (y: Nat) -> Eq Nat y x -> D5 Nat) => refl zero
+fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
+val acc_rect_true: (n: Nat) -> Acc Nat rel n -> Nat =
+  (n: Nat) => (h: Acc Nat rel n) => Acc.rect Nat
+    ((R: Nat -> Nat -> Prop) => (x: Nat) => (v: Acc Nat R x) => Nat)
+    rel n
+    ((R: Nat -> Nat -> Prop) => (x: Nat) =>
+      (f: (y: Nat) -> R y x -> Acc Nat R y) =>
+      (ih: (y: Nat) -> (r: R y x) -> Nat) => zero)
+    h
+val acc_rect_iota:
+  (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
+  Eq Nat (acc_rect_true n (acc_intro rel n f)) zero =
+  (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => refl zero
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('the Prop-motive Acc.rec observer reduces', () {
+      // `observe_iota` needs `observe n f` to reduce to zero, which
+      // requires the Acc.rec IH to be the closed lambda
+      // `(y) -> (r) -> Eq Nat y y`.
+      const src = '''
+import "../lib/stdlib/nat.doxa"
+fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
+val acc_true: (n: Nat) -> Acc Nat rel n -> Eq Nat n n =
+  (n: Nat) => (h: Acc Nat rel n) => Acc.rec Nat
+    ((R: Nat -> Nat -> Prop) => (x: Nat) => (v: Acc Nat R x) => Eq Nat x x)
+    rel n
+    ((R: Nat -> Nat -> Prop) => (x: Nat) =>
+      (f: (y: Nat) -> R y x -> Acc Nat R y) =>
+      (ih: (y: Nat) -> (r: R y x) -> Eq Nat y y) => refl x)
+    h
+val observe:
+  (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) -> Nat =
+  (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => Eq.rect Nat
+    ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => Nat)
+    n n ((z: Nat) => zero)
+    (acc_true n (acc_intro rel n f))
+val observe_iota:
+  (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
+  Eq Nat (observe n f) zero =
+  (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => refl zero
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
   });
 }

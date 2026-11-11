@@ -3830,30 +3830,69 @@ Object _drive(
                 }
                 if (piChain.isNotEmpty) {
                   final nPis = piChain.length;
-                  // Build: VRec (f nvar0 ... nvar_{nPis-1}) at value level
-                  // with NVars at levels 0..nPis-1 so quote(nPis, ...) maps
-                  // them to TBound(nPis-1)..TBound(0) respectively.
-                  Value v = scrutArgs[paramCount + subArgIndex];
-                  for (var i = 0; i < nPis; i++) {
-                    v = apply(v, VNeutral(NVar(i)));
+                  // Build the IH as a TLam chain closed over the
+                  // constructor telescope. The previous code evaluated
+                  // the chain in ENil and built its body with neutrals
+                  // at levels 0..nPis-1, which both discarded the
+                  // telescope (unbound outer references) and collided
+                  // with ambient binders at the iota site.
+                  //
+                  // Raw Pi domains are elaborated under the ctor-arg
+                  // scope: params outermost, then prior ctor args. That
+                  // scope extends the empty env in this order:
+                  //   scrutArgs[0 .. teleLen-1]
+                  // so lookup(0) is the last prior ctor arg, matching
+                  // the domains' TBound(0). The new Pi binders are
+                  // introduced by the TLam chain on top of this env,
+                  // so a domain at chain position i sees its earlier
+                  // binders at TBound(0..i-1) and the telescope at
+                  // TBound(i..), exactly the raw term's indices.
+                  final teleLen = paramCount + subArgIndex;
+                  final headLen = headSpine.length;
+                  // Keep the exact DataDecl instance so the TRec in the
+                  // IH body resolves to the same VRec identity.
+                  final registry = dataDecls ?? const <DataDecl>[];
+                  final evalDataDecls =
+                      registry.any((d) => identical(d, dataDecl))
+                          ? registry
+                          : <DataDecl>[dataDecl, ...registry];
+                  Env chainEnv = ENil.withRegistries(
+                    dataDecls: evalDataDecls,
+                    topBindings:
+                        topBindings ?? const <String, TopBindingEntry>{},
+                  );
+                  for (var k = 0; k < teleLen; k++) {
+                    chainEnv = chainEnv.extend(scrutArgs[k]);
                   }
-                  final Value vBody = apply(VRec(dataDecl, headSpine), v);
-                  // Quote the value at level nPis: NVars become TBounds
-                  // with TBound(0) = innermost = NVar(nPis-1).
-                  Term bodyTerm = quote(nPis, vBody);
-                  // Wrap TLams innermost-first (piChain[nPis-1] innermost)
-                  // so TBound(0) = innermost binder variable.
+                  for (var h = 0; h < headLen; h++) {
+                    chainEnv = chainEnv.extend(headSpine[h]);
+                  }
+                  // f itself sits outermost in the extended env; the
+                  // TLam chain adds nPis binders in front of it.
+                  final fDepth = nPis + teleLen + headLen;
+                  chainEnv = chainEnv.extend(scrutArgs[teleLen]);
+
+                  // Body: VRec headSpine (f var_0 ... var_{nPis-1}),
+                  // with VRec rebuilt from the same spine values.
+                  Term bodyTerm = TRec(dataDecl.name);
+                  for (var h = 0; h < headLen; h++) {
+                    bodyTerm = TApp(bodyTerm, TBound(nPis + teleLen + h));
+                  }
+                  Term appliedF = TBound(fDepth);
+                  // Arguments in source order: outermost Pi binder
+                  // first, which is TBound(nPis-1) at the body.
+                  for (var j = 0; j < nPis; j++) {
+                    appliedF = TApp(appliedF, TBound(nPis - 1 - j));
+                  }
+                  bodyTerm = TApp(bodyTerm, appliedF);
+
+                  // Wrap TLams innermost-first (piChain[nPis-1]
+                  // innermost) so TBound(0) is the innermost binder.
                   for (var i = nPis - 1; i >= 0; i--) {
                     final (name, domain) = piChain[i];
                     bodyTerm = TLam(domain, bodyTerm, name: name);
                   }
-                  // Evaluate TLam chain in empty env to get VLam value.
-                  final evalEnv = ENil.withRegistries(
-                    dataDecls: dataDecls ?? const <DataDecl>[],
-                    topBindings:
-                        topBindings ?? const <String, TopBindingEntry>{},
-                  );
-                  ihs[ihs.length - 1] = eval(bodyTerm, evalEnv);
+                  ihs[ihs.length - 1] = eval(bodyTerm, chainEnv);
                 }
               }
             }

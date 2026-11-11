@@ -156,4 +156,94 @@ val acc_eq: (n: Nat) -> Acc Nat rel n -> Eq Nat n n =
       );
     });
   });
+
+  group('iota reduction for function-typed recursive arguments', () {
+    // Each `refl zero` below type-checks only if the eliminator
+    // actually reduces to the method result: the `refl` proof forces
+    // conversion of the recursor application with `zero`.
+
+    test('D4.rec reduces a non-dependent function-typed argument', () {
+      final env = _elabAndCheck('''
+$_eq
+$_nat
+data D4[A: Type]: Type {
+  mk4: (x: A) -> ((y: A) -> D4 A) -> D4 A;
+}
+val d4_iota: (f: (y: Nat) -> D4 Nat) ->
+  Eq Nat (D4.rec Nat ((v: D4 Nat) => Nat)
+    ((x: Nat) => (f: (y: Nat) -> D4 Nat) =>
+      (ih: (y: Nat) -> Nat) => zero)
+    (mk4 zero f)) zero =
+  (f: (y: Nat) -> D4 Nat) => refl zero
+''');
+      expect(_binding(env, 'd4_iota').name, 'd4_iota');
+    });
+
+    test('D5.rec reduces a dependent function-typed argument', () {
+      final env = _elabAndCheck('''
+$_eq
+$_nat
+data D5[A: Type]: Type {
+  mk5: (x: A) -> ((y: A) -> Eq A y x -> D5 A) -> D5 A;
+}
+val d5_iota: (x: Nat) -> (f: (y: Nat) -> Eq Nat y x -> D5 Nat) ->
+  Eq Nat (D5.rec Nat ((v: D5 Nat) => Nat)
+    ((x: Nat) => (f: (y: Nat) -> Eq Nat y x -> D5 Nat) =>
+      (ih: (y: Nat) -> (e: Eq Nat y x) -> Nat) => zero)
+    (mk5 x f)) zero =
+  (x: Nat) => (f: (y: Nat) -> Eq Nat y x -> D5 Nat) => refl zero
+''');
+      expect(_binding(env, 'd5_iota').name, 'd5_iota');
+    });
+
+    test('Acc.rect reduces', () {
+      final env = _elabAndCheck('''
+$_eq
+$_nat
+$_acc
+fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
+val acc_rect_true: (n: Nat) -> Acc Nat rel n -> Nat =
+  (n: Nat) => (h: Acc Nat rel n) => Acc.rect Nat
+    ((R: Nat -> Nat -> Prop) => (x: Nat) => (v: Acc Nat R x) => Nat)
+    rel n
+    ((R: Nat -> Nat -> Prop) => (x: Nat) =>
+      (f: (y: Nat) -> R y x -> Acc Nat R y) =>
+      (ih: (y: Nat) -> (r: R y x) -> Nat) => zero)
+    h
+val acc_rect_iota:
+  (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
+  Eq Nat (acc_rect_true n (acc_intro rel n f)) zero =
+  (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => refl zero
+''');
+      expect(_binding(env, 'acc_rect_iota').name, 'acc_rect_iota');
+    });
+
+    test('the Prop-motive Acc.rec observer reduces', () {
+      final env = _elabAndCheck('''
+$_eq
+$_nat
+$_acc
+fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
+val acc_true: (n: Nat) -> Acc Nat rel n -> Eq Nat n n =
+  (n: Nat) => (h: Acc Nat rel n) => Acc.rec Nat
+    ((R: Nat -> Nat -> Prop) => (x: Nat) => (v: Acc Nat R x) => Eq Nat x x)
+    rel n
+    ((R: Nat -> Nat -> Prop) => (x: Nat) =>
+      (f: (y: Nat) -> R y x -> Acc Nat R y) =>
+      (ih: (y: Nat) -> (r: R y x) -> Eq Nat y y) => refl x)
+    h
+val observe:
+  (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) -> Nat =
+  (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => Eq.rect Nat
+    ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => Nat)
+    n n ((z: Nat) => zero)
+    (acc_true n (acc_intro rel n f))
+val observe_iota:
+  (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
+  Eq Nat (observe n f) zero =
+  (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => refl zero
+''');
+      expect(_binding(env, 'observe_iota').name, 'observe_iota');
+    });
+  });
 }
