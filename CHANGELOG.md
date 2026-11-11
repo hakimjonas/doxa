@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Rejected every `termination_by` annotation with
+  `TerminationByUnsupported`. The measure was never checked, and the
+  single-parameter fuel desugaring could accept non-terminating recursion.
+  The fuel path, its self-call rewriter, and `TerminationByParamNotFound`
+  are removed. Use structural recursion, or `Acc.rec` with `nat_wf`.
+- Parameterized `Acc` by its relation (`data Acc[A: Type, R: A -> A -> Prop]`)
+  and redefined `strong_ind_impl` as `Acc.rec` over `nat_wf` / `nat_wf_help`,
+  now in `proofs.doxa`. `lib/stdlib` no longer uses `termination_by`.
 - Fixed leaf tactics leaving the goal unsolved: a `by { ... }` block ending
   in `refl` or `trivial` failed with "tactic block: no alternative succeeded"
   even when the produced proof term checked, because `refl` and `trivial`

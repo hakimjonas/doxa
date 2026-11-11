@@ -153,30 +153,22 @@ final class StructAnnotationNotFound extends ElabError {
       'named $paramName';
 }
 
-/// The member.
-final class TerminationByParamNotFound extends ElabError {
+/// A `termination_by` annotation was supplied, but there is no checked
+/// measure. The elaborator rejects the annotation; the parser and
+/// formatter still accept the syntax.
+final class TerminationByUnsupported extends ElabError {
   /// The function name.
   final String funName;
 
-  /// The annotated parameter name.
-  final String paramName;
-
-  /// The source span of the annotation.
+  /// The source span of the annotated declaration.
   @override
   final DoxaSpan span;
 
-  /// Creates a termination-by-param-not-found error.
-  const TerminationByParamNotFound(this.funName, this.paramName, this.span);
-
-  /// Human-readable error message.
-  String get message =>
-      'termination_by parameter "$paramName" not found '
-      'in value parameters of fun "$funName"';
+  /// Creates a termination-by-unsupported error.
+  const TerminationByUnsupported(this.funName, this.span);
 
   @override
-  String toString() =>
-      'TerminationByParamNotFound: fun $funName has no value parameter '
-      'named $paramName';
+  String toString() => 'TerminationByUnsupported: fun $funName';
 }
 
 /// A `match` expression has no ctor case AND no explicit `returning`
@@ -3717,20 +3709,6 @@ DeclResult _elabDecl(
       );
 
     case SFunKind():
-      final tby =
-          kind.terminationBy ?? _extractTerminationBy(kind.returnType).tby;
-      if (tby != null && tby.length == 1) {
-        for (final p in tby) {
-          if (_findParamIndex(kind, p) < 0) {
-            throw TerminationByParamNotFound(kind.name, p, decl.span);
-          }
-        }
-        if (kind.structAnn != null &&
-            _findParamIndex(kind, kind.structAnn!) < 0) {
-          throw StructAnnotationNotFound(kind.name, kind.structAnn!, decl.span);
-        }
-        return _desugarFuel(topEnv, decl.span, kind, metas: metas);
-      }
       // A single `fun` is a 1-member mutual block. Delegate to
       // _elabFunBlock so the recursive / non-recursive split,
       // structural-recursion check, self-pre-registration, and
@@ -4390,39 +4368,37 @@ TopBinding _elabFun(
     }
   }
 
+  // Reject every `termination_by` before any body is elaborated. The
+  // annotation has no checked measure, and the former single-parameter
+  // fuel path could accept non-terminating recursion, so all forms are
+  // unsupported until a measure check exists.
+  for (final m in members) {
+    final tby = extractedTby[m]?.tby ?? m.fun.terminationBy;
+    if (tby != null) {
+      throw TerminationByUnsupported(m.fun.name, m.span);
+    }
+  }
+
   // Structural-recursion check. Runs on every member BEFORE we
   // elaborate any body, so a non-structural program fails early
   // with a clean surface-level error and no half-elaborated state.
-  // Members with `termination_by` skip this check (well-founded
-  // recursion doesn't need the structural sub-term check).
   final memberNames = {for (final m in members) m.fun.name};
   final memberDeclIdxs = <String, int>{
     for (final m in members) m.fun.name: _designatedArgIndex(m.fun) ?? 0,
   };
   final unguardedCrossCalls = <_CrossCall>[];
   for (final m in members) {
-    if (m.fun.terminationBy == null && extractedTby[m] == null) {
-      _checkStructuralRecursion(
-        m.fun,
-        memberNames,
-        memberDeclIdxs,
-        callerName: m.fun.name,
-        unguardedCrossCalls: unguardedCrossCalls,
-      );
-    }
+    _checkStructuralRecursion(
+      m.fun,
+      memberNames,
+      memberDeclIdxs,
+      callerName: m.fun.name,
+      unguardedCrossCalls: unguardedCrossCalls,
+    );
     // Validate {struct name} annotation even for non-recursive members.
     if (m.fun.structAnn != null &&
         _findParamIndex(m.fun, m.fun.structAnn!) < 0) {
       throw StructAnnotationNotFound(m.fun.name, m.fun.structAnn!, m.span);
-    }
-    // Validate termination_by parameter names.
-    final tby = extractedTby[m]?.tby ?? m.fun.terminationBy;
-    if (tby != null) {
-      for (final p in tby) {
-        if (_findParamIndex(m.fun, p) < 0) {
-          throw TerminationByParamNotFound(m.fun.name, p, m.span);
-        }
-      }
     }
   }
   _analyzeCrossCallCycles(unguardedCrossCalls, memberNames);
@@ -4433,7 +4409,7 @@ TopBinding _elabFun(
   // (lifting it would require metavariables).
   final preBindings = <TopBinding>[];
   for (final m in members) {
-    final retType = extractedTby[m]?.realRet ?? m.fun.returnType;
+    final retType = m.fun.returnType;
     final typeTerm = _buildFunType(
       topEnv,
       [
@@ -4486,31 +4462,7 @@ TopBinding _elabFun(
   ], topEnv.dataDecls);
   final elaborated = <TopBinding>[];
   for (final m in members) {
-    final fun =
-        extractedTby[m] != null
-            ? SFunKind(
-              m.fun.name,
-              m.fun.typeParams,
-              m.fun.params,
-              extractedTby[m]!.realRet,
-              m.fun.body,
-              isOpaque: m.fun.isOpaque,
-              structAnn: m.fun.structAnn,
-              terminationBy: extractedTby[m]!.tby,
-            )
-            : m.fun;
-    elaborated.add(_elabFun(scratchEnv, m.span, fun, metas: metas));
-    // Mark termination_by bindings as opaque so checkDeclResult
-    // pre-seeds them as stubs during checking.
-    if (fun.terminationBy != null) {
-      elaborated.last = TopBinding(
-        name: elaborated.last.name,
-        type: elaborated.last.type,
-        term: elaborated.last.term,
-        span: elaborated.last.span,
-        isOpaque: true,
-      );
-    }
+    elaborated.add(_elabFun(scratchEnv, m.span, m.fun, metas: metas));
   }
 
   // Decide whether the block contains any actual recursion. If
@@ -6489,498 +6441,5 @@ Value _fieldType(VData dataV, String fieldName, List<DataDecl> dataDecls) {
   }
   throw StateError(
     '_fieldType: record ${dataV.name} has no field named $fieldName',
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Fuel desugaring for termination_by
-// ---------------------------------------------------------------------------
-
-SExpr _replaceSelfCalls(
-  SExpr expr,
-  String originalName,
-  String fuelName,
-  String fuelPatVar,
-  Set<String> shadows,
-) {
-  final kind = expr.kind;
-  switch (kind) {
-    case SAppKind(:final fn, :final arg):
-      if (fn.kind is SIdentKind &&
-          (fn.kind as SIdentKind).name == originalName &&
-          !shadows.contains(originalName)) {
-        final fuelId = SExpr(SIdentKind(fuelName), DoxaSpan.synthetic);
-        final fuelVarId = SExpr(SIdentKind(fuelPatVar), DoxaSpan.synthetic);
-        final walkedArg = _replaceSelfCalls(
-          arg,
-          originalName,
-          fuelName,
-          fuelPatVar,
-          shadows,
-        );
-        return SExpr(
-          SAppKind(
-            SExpr(SAppKind(fuelId, fuelVarId), DoxaSpan.synthetic),
-            walkedArg,
-          ),
-          DoxaSpan.synthetic,
-        );
-      }
-      final walkedFn = _replaceSelfCalls(
-        fn,
-        originalName,
-        fuelName,
-        fuelPatVar,
-        shadows,
-      );
-      final walkedArg = _replaceSelfCalls(
-        arg,
-        originalName,
-        fuelName,
-        fuelPatVar,
-        shadows,
-      );
-      if (walkedFn.kind == fn.kind && walkedArg.kind == arg.kind) return expr;
-      return SExpr(SAppKind(walkedFn, walkedArg), DoxaSpan.synthetic);
-
-    case SLamKind(
-      :final param,
-      :final paramSpan,
-      :final domain,
-      :final body,
-      :final icit,
-    ):
-      final walkedDomain =
-          domain != null
-              ? _replaceSelfCalls(
-                domain,
-                originalName,
-                fuelName,
-                fuelPatVar,
-                shadows,
-              )
-              : null;
-      final newShadows = Set<String>.from(shadows)..add(param);
-      final walkedBody = _replaceSelfCalls(
-        body,
-        originalName,
-        fuelName,
-        fuelPatVar,
-        newShadows,
-      );
-      if (walkedDomain?.kind == domain?.kind && walkedBody.kind == body.kind) {
-        return expr;
-      }
-      return SExpr(
-        SLamKind(
-          param,
-          walkedDomain,
-          walkedBody,
-          icit: icit,
-          paramSpan: paramSpan,
-        ),
-        DoxaSpan.synthetic,
-      );
-
-    case SLetKind(
-      :final param,
-      :final paramSpan,
-      :final domain,
-      :final bound,
-      :final body,
-      :final isRec,
-    ):
-      final walkedDomain =
-          domain != null
-              ? _replaceSelfCalls(
-                domain,
-                originalName,
-                fuelName,
-                fuelPatVar,
-                shadows,
-              )
-              : null;
-      final walkedBound = _replaceSelfCalls(
-        bound,
-        originalName,
-        fuelName,
-        fuelPatVar,
-        shadows,
-      );
-      final newShadows = Set<String>.from(shadows)..add(param);
-      final walkedBody = _replaceSelfCalls(
-        body,
-        originalName,
-        fuelName,
-        fuelPatVar,
-        newShadows,
-      );
-      if (walkedDomain?.kind == domain?.kind &&
-          walkedBound.kind == bound.kind &&
-          walkedBody.kind == body.kind) {
-        return expr;
-      }
-      return SExpr(
-        SLetKind(
-          param,
-          walkedDomain,
-          walkedBound,
-          walkedBody,
-          isRec: isRec,
-          paramSpan: paramSpan,
-        ),
-        DoxaSpan.synthetic,
-      );
-
-    case SPiKind(
-      :final param,
-      :final paramSpan,
-      :final domain,
-      :final codomain,
-      :final icit,
-    ):
-      final walkedDomain = _replaceSelfCalls(
-        domain,
-        originalName,
-        fuelName,
-        fuelPatVar,
-        shadows,
-      );
-      final newShadows =
-          param != null ? (Set<String>.from(shadows)..add(param)) : shadows;
-      final walkedCodomain = _replaceSelfCalls(
-        codomain,
-        originalName,
-        fuelName,
-        fuelPatVar,
-        newShadows,
-      );
-      if (walkedDomain.kind == domain.kind &&
-          walkedCodomain.kind == codomain.kind) {
-        return expr;
-      }
-      return SExpr(
-        SPiKind(
-          param,
-          walkedDomain,
-          walkedCodomain,
-          icit: icit,
-          paramSpan: paramSpan,
-        ),
-        DoxaSpan.synthetic,
-      );
-
-    case SMatchKind(:final scrutinee, :final motive, :final cases):
-      final walkedScrutinee = _replaceSelfCalls(
-        scrutinee,
-        originalName,
-        fuelName,
-        fuelPatVar,
-        shadows,
-      );
-      final walkedMotive =
-          motive != null
-              ? _replaceSelfCalls(
-                motive,
-                originalName,
-                fuelName,
-                fuelPatVar,
-                shadows,
-              )
-              : null;
-      final walkedCases = <SMatchCaseArm>[];
-      var casesChanged = false;
-      for (final c in cases) {
-        switch (c) {
-          case SMatchCase(:final ctor, :final binders, :final body):
-            final newShadows = Set<String>.from(shadows)..addAll(binders);
-            final walkedBody = _replaceSelfCalls(
-              body,
-              originalName,
-              fuelName,
-              fuelPatVar,
-              newShadows,
-            );
-            walkedCases.add(
-              walkedBody.kind == body.kind
-                  ? c
-                  : SMatchCase(ctor, binders, walkedBody, c.span),
-            );
-            if (walkedBody.kind != body.kind) casesChanged = true;
-          case SWildcardCase(:final body):
-            final walkedBody = _replaceSelfCalls(
-              body,
-              originalName,
-              fuelName,
-              fuelPatVar,
-              shadows,
-            );
-            walkedCases.add(
-              walkedBody.kind == body.kind
-                  ? c
-                  : SWildcardCase(walkedBody, c.span),
-            );
-            if (walkedBody.kind != body.kind) casesChanged = true;
-        }
-      }
-      if (walkedScrutinee.kind == scrutinee.kind &&
-          walkedMotive?.kind == motive?.kind &&
-          !casesChanged) {
-        return expr;
-      }
-      return SExpr(
-        SMatchKind(walkedScrutinee, walkedMotive, walkedCases),
-        DoxaSpan.synthetic,
-      );
-
-    case SDotKind(:final qualifier, :final name):
-      final walkedQualifier = _replaceSelfCalls(
-        qualifier,
-        originalName,
-        fuelName,
-        fuelPatVar,
-        shadows,
-      );
-      if (walkedQualifier.kind == qualifier.kind) {
-        return expr;
-      }
-      return SExpr(SDotKind(walkedQualifier, name), DoxaSpan.synthetic);
-
-    case SQuotKind(:final carrier, :final relation):
-      final walkedCarrier = _replaceSelfCalls(
-        carrier,
-        originalName,
-        fuelName,
-        fuelPatVar,
-        shadows,
-      );
-      final walkedRelation = _replaceSelfCalls(
-        relation,
-        originalName,
-        fuelName,
-        fuelPatVar,
-        shadows,
-      );
-      if (walkedCarrier.kind == carrier.kind &&
-          walkedRelation.kind == relation.kind) {
-        return expr;
-      }
-      return SExpr(
-        SQuotKind(walkedCarrier, walkedRelation),
-        DoxaSpan.synthetic,
-      );
-
-    case SQuotMkKind(:final arg):
-      final walkedArg = _replaceSelfCalls(
-        arg,
-        originalName,
-        fuelName,
-        fuelPatVar,
-        shadows,
-      );
-      if (walkedArg.kind == arg.kind) return expr;
-      return SExpr(SQuotMkKind(walkedArg), DoxaSpan.synthetic);
-
-    case SQuotLiftKind(:final fn, :final proof):
-      final walkedFn = _replaceSelfCalls(
-        fn,
-        originalName,
-        fuelName,
-        fuelPatVar,
-        shadows,
-      );
-      final walkedProof = _replaceSelfCalls(
-        proof,
-        originalName,
-        fuelName,
-        fuelPatVar,
-        shadows,
-      );
-      if (walkedFn.kind == fn.kind && walkedProof.kind == proof.kind) {
-        return expr;
-      }
-      return SExpr(SQuotLiftKind(walkedFn, walkedProof), DoxaSpan.synthetic);
-
-    case SIntersectionKind(:final constraints):
-      final walked = <SExpr>[];
-      var changed = false;
-      for (final c in constraints) {
-        final w = _replaceSelfCalls(
-          c,
-          originalName,
-          fuelName,
-          fuelPatVar,
-          shadows,
-        );
-        walked.add(w);
-        if (w.kind != c.kind) changed = true;
-      }
-      if (!changed) return expr;
-      return SExpr(SIntersectionKind(walked), DoxaSpan.synthetic);
-
-    default:
-      return expr;
-  }
-}
-
-DeclResult _desugarFuel(
-  TopEnv topEnv,
-  DoxaSpan span,
-  SFunKind kind, {
-  MetaContext? metas,
-}) {
-  final tbyName =
-      kind.terminationBy?.first ??
-      _extractTerminationBy(kind.returnType).tby!.first;
-  final fuelName = '${kind.name}_fuel';
-  const fuelPatVar = '_f';
-  final cleanRet = _extractTerminationBy(kind.returnType).realRet;
-
-  if (topEnv.spanOf('Nat') == null) {
-    throw UnresolvedName('Nat', span);
-  }
-
-  final rewrittenBody = _replaceSelfCalls(
-    kind.body,
-    kind.name,
-    fuelName,
-    fuelPatVar,
-    const {},
-  );
-
-  final fuelBody = SExpr(
-    SMatchKind(const SExpr(SIdentKind('fuel'), DoxaSpan.synthetic), null, [
-      SMatchCase('zero', const [], kind.body, DoxaSpan.synthetic),
-      SMatchCase('succ', [fuelPatVar], rewrittenBody, DoxaSpan.synthetic),
-    ]),
-    DoxaSpan.synthetic,
-  );
-
-  final fuelKind = SFunKind(
-    fuelName,
-    kind.typeParams,
-    [
-      ('fuel', const SExpr(SIdentKind('Nat'), DoxaSpan.synthetic)),
-      ...kind.params,
-    ],
-    cleanRet,
-    fuelBody,
-    isOpaque: false,
-    structAnn: null,
-    terminationBy: null,
-    paramSpans: [DoxaSpan.synthetic, ...kind.paramSpans],
-  );
-
-  final allBinders = <_FunBinder>[
-    for (final tp in kind.typeParams) ...[
-      _FunBinder(
-        tp.name,
-        tp.kind ?? const SExpr(STypeKind(null), DoxaSpan.synthetic),
-        tp.isImplicit ? Icit.implicit : Icit.explicit,
-        tp.span,
-      ),
-      ..._constraintBinders(tp),
-    ],
-    for (var i = 0; i < kind.params.length; i++)
-      _FunBinder(
-        kind.params[i].$1,
-        kind.params[i].$2,
-        Icit.explicit,
-        i < kind.paramSpans.length ? kind.paramSpans[i] : DoxaSpan.synthetic,
-      ),
-  ];
-
-  final wrapperType = _buildFunType(topEnv, allBinders, cleanRet, metas: metas);
-
-  final fuelAllBinders = <_FunBinder>[
-    const _FunBinder(
-      'fuel',
-      SExpr(SIdentKind('Nat'), DoxaSpan.synthetic),
-      Icit.explicit,
-    ),
-    ...allBinders,
-  ];
-
-  final fuelType = _buildFunType(
-    topEnv,
-    fuelAllBinders,
-    cleanRet,
-    metas: metas,
-  );
-
-  final wrapperPreBinding = TopBinding(
-    name: kind.name,
-    type: wrapperType,
-    term: const TType(_l0),
-    span: span,
-    isOpaque: true,
-  );
-
-  final fuelPreBinding = TopBinding(
-    name: fuelName,
-    type: fuelType,
-    term: const TType(_l0),
-    span: span,
-    isOpaque: false,
-  );
-
-  final scratchEnv = TopEnv([
-    ...topEnv.bindings,
-    wrapperPreBinding,
-    fuelPreBinding,
-  ], topEnv.dataDecls);
-
-  final fuelBinding = _elabFun(scratchEnv, span, fuelKind, metas: metas);
-
-  final decreasingParam = fuelKind.typeParams.length;
-  final arity = fuelKind.typeParams.length + fuelKind.params.length;
-  final fuelBindingGuarded = TopBinding(
-    name: fuelBinding.name,
-    type: fuelBinding.type,
-    term: fuelBinding.term,
-    span: fuelBinding.span,
-    isOpaque: fuelBinding.isOpaque,
-    recDecreasingArg: decreasingParam,
-    recArity: arity,
-  );
-
-  SExpr call = SExpr(SIdentKind(fuelName), DoxaSpan.synthetic);
-  call = SExpr(
-    SAppKind(call, SExpr(SIdentKind(tbyName), DoxaSpan.synthetic)),
-    DoxaSpan.synthetic,
-  );
-  for (final p in kind.params) {
-    call = SExpr(
-      SAppKind(call, SExpr(SIdentKind(p.$1), DoxaSpan.synthetic)),
-      DoxaSpan.synthetic,
-    );
-  }
-
-  final wrapperKind = SFunKind(
-    kind.name,
-    kind.typeParams,
-    kind.params,
-    cleanRet,
-    call,
-    isOpaque: false,
-    structAnn: null,
-    terminationBy: null,
-    paramSpans: kind.paramSpans,
-  );
-
-  final wrapperBinding = _elabFun(scratchEnv, span, wrapperKind, metas: metas);
-
-  final group = CorecursiveGroup([
-    CorecursiveMember(0, fuelKind),
-    CorecursiveMember(1, wrapperKind),
-  ]);
-
-  return (
-    bindings: [fuelBindingGuarded, wrapperBinding],
-    dataDecls: const <DataDecl>[],
-    corecursiveGroup: group,
-    metas: metas,
-    classRegistry: const {},
-    namespaceBindings: const {},
   );
 }

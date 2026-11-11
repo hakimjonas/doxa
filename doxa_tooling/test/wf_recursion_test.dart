@@ -96,32 +96,34 @@ val rec = Acc[Nat].rec
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
-    test('termination_by parsed on simple fun', () {
+    test('termination_by on simple fun is rejected', () {
       const src = '''
 import "../lib/stdlib/nat.doxa"
 fun identity(x : Nat) : Nat termination_by (x) = x
 ''';
       final r = runSource(src);
-      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+      expect(r.code, 1);
+      expect(r.stderr, contains('termination_by is not supported'));
     });
 
-    test('invalid termination_by parameter -> error', () {
+    test('termination_by with an unknown parameter is rejected', () {
       const src = '''
 import "../lib/stdlib/nat.doxa"
 fun f(x : Nat) : Nat termination_by (y) = x
 ''';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(r.stderr, contains('termination_by'));
+      expect(r.stderr, contains('termination_by is not supported'));
     });
 
-    test('termination_by with {struct}', () {
+    test('termination_by with {struct} is rejected', () {
       const src = '''
 import "../lib/stdlib/nat.doxa"
 fun f(x : Nat) : Nat {struct x} termination_by (x) = x
 ''';
       final r = runSource(src);
-      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+      expect(r.code, 1);
+      expect(r.stderr, contains('termination_by is not supported'));
     });
 
     test('structural recursion still works', () {
@@ -136,20 +138,54 @@ fun my_plus(a : Nat, b : Nat) : Nat = match a {
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
-    test('termination_by fun is non-recursive', () {
+    test('termination_by on a non-recursive fun is rejected', () {
       const src = '''
 import "../lib/stdlib/nat.doxa"
 fun helper(m : Nat, n : Nat) : Nat termination_by (m) = plus m (plus m n)
 ''';
       final r = runSource(src);
-      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+      expect(r.code, 1);
+      expect(r.stderr, contains('termination_by is not supported'));
     });
 
-    test('termination_by on fun with no value params errors', () {
+    test('termination_by on a fun with no value params is rejected', () {
       const src = 'fun f(A : Type) : Type termination_by (x) = A';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(r.stderr, contains('termination_by'));
+      expect(r.stderr, contains('termination_by is not supported'));
+    });
+
+    test('termination_by soundness reproducer is rejected', () {
+      // This was accepted by the old single-parameter fuel path and
+      // makes the checker diverge in conversion.
+      const src = '''
+import "../lib/stdlib/nat.doxa"
+fun bad(n: Nat): Eq Nat zero (succ zero) termination_by n = bad (succ n)
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('termination_by is not supported'));
+    });
+
+    test('multi-parameter termination_by is rejected', () {
+      const src = '''
+import "../lib/stdlib/nat.doxa"
+fun f(a: Nat, b: Nat): Nat termination_by a b = f a b
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('termination_by is not supported'));
+    });
+
+    test('mutual-block member with termination_by is rejected', () {
+      const src = '''
+import "../lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat termination_by n = g n
+and g(n: Nat): Nat = f n
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('termination_by is not supported'));
     });
 
     test('strong_ind computes through nat_wf and Acc.rec', () {

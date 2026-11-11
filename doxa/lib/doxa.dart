@@ -55,7 +55,7 @@ export 'src/elab.dart'
         CyclicImport,
         ImportFileNotFound,
         StructAnnotationNotFound,
-        TerminationByParamNotFound,
+        TerminationByUnsupported,
         TacticFailed,
         TacticIncomplete,
         NoInstanceFound,

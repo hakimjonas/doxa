@@ -431,18 +431,18 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
         '  The `{struct name}` annotation must name a value parameter',
       );
       sb.writeln('  of the annotated function.');
-    case TerminationByParamNotFound(
-      :final funName,
-      :final paramName,
-      :final span,
-    ):
-      sb.writeln("${c.error('error')}: termination_by parameter not found");
+    case TerminationByUnsupported(:final span):
+      sb.writeln("${c.error('error')}: termination_by is not supported");
       sb.write(source.formatContext(span, color: c));
-      sb.writeln('  "$funName" has no value parameter named "$paramName".');
       sb.writeln(
-        '  The `termination_by` annotation must name value parameters',
+        '  The `termination_by` annotation is rejected: its measure is not',
       );
-      sb.writeln('  of the annotated function.');
+      sb.writeln(
+        '  checked, and the fuel desugaring can accept non-terminating',
+      );
+      sb.writeln(
+        '  recursions. Use structural recursion, or `Acc.rec` with `nat_wf`.',
+      );
     case TacticFailed(:final message, :final span):
       sb.writeln("${c.error('error')}: tactic failed");
       sb.write(source.formatContext(span, color: c));
