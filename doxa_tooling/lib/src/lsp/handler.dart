@@ -283,7 +283,7 @@ final class LspHandler {
           'full': true,
         },
       },
-      'serverInfo': {'name': 'doxa-lsp', 'version': '0.8.3'},
+      'serverInfo': {'name': 'doxa-lsp', 'version': '0.8.4'},
       'positionEncoding': 'utf-16',
     },
   };

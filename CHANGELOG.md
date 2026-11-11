@@ -1,7 +1,24 @@
 # Changelog
 
-## Unreleased
+## 0.8.4 (2026-11-11)
 
+- Synthesized well-formed recursor types for constructors whose recursive
+  argument is a dependent Pi chain. Earlier chain binders are preserved and
+  outer references are rebased into the method context.
+- Closed the induction hypothesis for function-typed recursive arguments
+  over the constructor telescope and in the data parameter order, so
+  `Acc.rec`, `D4.rec`, and `D5.rec` reduce through their methods.
+- Solved constructor data parameters from the expected type in check mode
+  before checking explicit arguments. An argument type that mentions a
+  value parameter no longer sees an unsolved meta.
+- Built match-arm telescopes in data parameter order at all three sites,
+  which also restores indexed coverage detection for a missed reachable
+  constructor.
+- Parameterized `Acc` by its relation (`data Acc[A: Type, R: A -> A -> Prop]`)
+  and redefined `strong_ind_impl` as `Acc.rec` over `nat_wf` / `nat_wf_help`,
+  now in `proofs.doxa`. `lib/stdlib` no longer uses `termination_by`.
+- Kept the ambient prelude mirror in sync with `lib/stdlib/prelude.doxa`
+  and added a structural sync test for the `Eq` and `Acc` declarations.
 - Rejected `typeclass` and `impl` declarations with `TypeclassUnsupported`.
   The resolver does not thread class dictionaries, search instances
   recursively, or project methods. The parser, formatter, AST, and internal
@@ -17,9 +34,6 @@
   single-parameter fuel desugaring could accept non-terminating recursion.
   The fuel path, its self-call rewriter, and `TerminationByParamNotFound`
   are removed. Use structural recursion, or `Acc.rec` with `nat_wf`.
-- Parameterized `Acc` by its relation (`data Acc[A: Type, R: A -> A -> Prop]`)
-  and redefined `strong_ind_impl` as `Acc.rec` over `nat_wf` / `nat_wf_help`,
-  now in `proofs.doxa`. `lib/stdlib` no longer uses `termination_by`.
 - Fixed leaf tactics leaving the goal unsolved: a `by { ... }` block ending
   in `refl` or `trivial` failed with "tactic block: no alternative succeeded"
   even when the produced proof term checked, because `refl` and `trivial`
