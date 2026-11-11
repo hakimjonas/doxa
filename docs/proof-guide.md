@@ -123,9 +123,9 @@ continuation from the recursive result and applies it to the first
 ordering proof.
 
 The final theorem uses `strong_ind` from `proofs.doxa`.
-`strong_ind_impl` is `Acc.rec` applied to `nat_wf`, not a fuel
-desugaring. Its induction step receives a proof of the theorem at every
-strictly smaller natural number.
+`strong_ind_impl` is a direct `Acc.rec` application to `nat_wf`. Its
+induction step receives a proof of the theorem at every strictly smaller
+natural number.
 
 ## 4. Algebraic lemmas
 
