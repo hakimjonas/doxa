@@ -389,6 +389,35 @@ val true_ne_false: Eq Bool true_ false_ -> False =
     ((z: Bool) => (h: isTrue z) => h)
     p
     (refl true_)
+// --- Well-founded accessibility for Nat -----------------------------------
+//
+// `Acc` takes the relation as a parameter, so accessibility is stated as
+// `Acc Nat lt_rel n`. The constructor supplies only the value and the
+// accessibility function.
+
+fun lt_rel(a: Nat, b: Nat): Prop = Lt a b
+
+fun nat_wf(n: Nat): Acc Nat lt_rel n = match n {
+  case zero => acc_intro
+    zero
+    ((y: Nat) => (h: Lt y zero) => False.rec
+      ((_: False) => Acc Nat lt_rel y)
+      (Lt.rec
+        ((a: Nat) => (b: Nat) => (_: Lt a b) => Eq Nat b zero -> False)
+        y
+        zero
+        ((n_: Nat) => (eq: Eq Nat (succ n_) zero) => succ_ne_zero n_ eq)
+        ((n_: Nat) => (m: Nat) => (k: Nat) => (_: Lt n_ m) => (_: Lt m k) => (_: Eq Nat m zero
+        -> False) => (ih2: Eq Nat k zero -> False) => (eq: Eq Nat k zero) => ih2 eq)
+        h
+        (refl zero)))
+  case succ k => acc_intro (succ k) ((y: Nat) => (h: Lt y (succ k)) => nat_wf_help k y h)
+} and nat_wf_help(k: Nat, y: Nat, h: Lt y (succ k)): Acc Nat lt_rel y {struct h} = match h {
+  case lt_succ y_ => nat_wf y_
+  case lt_trans y_ m _ p1 p2 => match nat_wf_help k m p2 {
+    case acc_intro _ f => f y_ p1
+  }
+}
 // --- Theorems about an indexed family -----------------------------------
 //
 // `Vec[A] n` is length-indexed: the length lives in the type. These prove
@@ -421,50 +450,18 @@ val succ_inj: (a: Nat) -> (b: Nat) -> Eq Nat (succ a) (succ b) -> Eq Nat a b =
     (succ b)
     p
 // --- Well-founded induction for Nat -----------------------------------------
-
-fun strong_ind_impl_help(P: Nat -> Prop, step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n, k: Nat, n: Nat, h: Lt
-  k
-  n, ind: (n: Nat) -> P n): P k {struct h} = match h {
-  case lt_succ k_ => ind k_
-  case lt_trans a b c p q => strong_ind_impl_help P step a b p ind
-}
-// strong_ind_impl: well-founded induction on n, desugared via fuel.
+// strong_ind_impl: well-founded induction on n, via Acc.rec over nat_wf.
 
 fun strong_ind_impl(n: Nat, P: Nat -> Prop, step: (n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n): P
-  n termination_by n = match n {
-  case zero => step
-    zero
-    (Nat.ind
-      ((m: Nat) => (k: Nat) -> Lt k m -> P k)
-      ((k: Nat) => (h: Lt k zero) => False.rec
-        ((_: False) => P k)
-        (Lt.rec
-          ((a: Nat) => (b: Nat) => (_: Lt a b) => Eq Nat b zero -> False)
-          k
-          zero
-          ((n_: Nat) => (eq: Eq Nat (succ n_) zero) => succ_ne_zero n_ eq)
-          ((a: Nat) => (b: Nat) => (c: Nat) => (_: Lt a b) => (_: Lt b c) => (_: Eq Nat b zero
-          -> False) => (ih2: Eq Nat c zero -> False) => (eq: Eq Nat c zero) => ih2 eq)
-          h
-          (refl zero)))
-      ((n_: Nat) => (ih: (j: Nat) -> Lt j n_ -> P j) => (k: Nat) => (h: Lt k (succ n_)) => strong_ind_impl_help
-        P
-        step
-        k
-        (succ n_)
-        h
-        ((m: Nat) => strong_ind_impl m P step))
-      zero)
-  case succ n_ => step
-    (succ n_)
-    ((k: Nat) => (h: Lt k (succ n_)) => strong_ind_impl_help
-      P
-      step
-      k
-      (succ n_)
-      h
-      ((m: Nat) => strong_ind_impl m P step))
-}
+  n =
+  Acc.rec
+    Nat
+    lt_rel
+    ((m: Nat) => (v: Acc Nat lt_rel m) => P m)
+    n
+    ((x: Nat) => (f: (y: Nat) -> lt_rel y x -> Acc Nat lt_rel y) => (ih: (y: Nat)
+    -> (h: lt_rel y x) -> P y) => step x ih)
+    (nat_wf n)
 
 val strong_ind: (P: Nat -> Prop)
 -> ((n: Nat) -> ((k: Nat) -> Lt k n -> P k) -> P n) -> (n: Nat) -> P n =

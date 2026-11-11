@@ -10,9 +10,8 @@ uses parity and induction on `Nat`, without fractions or coprimality.
 The relevant declarations are in three files:
 
 - `lib/stdlib/proofs.doxa` contains the arithmetic and equality lemmas,
-  plus `strong_ind`.
-- `lib/stdlib/case_study.doxa` contains the parity lemmas, the
-  accessibility proof `nat_wf`, and `sqrt2`.
+  the accessibility proof `nat_wf` / `nat_wf_help`, and `strong_ind`.
+- `lib/stdlib/case_study.doxa` contains the parity lemmas and `sqrt2`.
 - `lib/stdlib/nat.doxa` defines `Lt`.
 
 ## 1. Arithmetic lemmas (proofs.doxa)
@@ -111,19 +110,22 @@ data Lt : Nat -> Nat -> Prop {
 }
 ```
 
-The `nat_wf` and `nat_wf_help` definitions in `case_study.doxa` use
-mutual structural recursion. `nat_wf n` returns
-`Acc Nat ((x: Nat) => (y: Nat) => Lt x y) n`. Its zero case eliminates
-`Lt y zero`; its successor case delegates to `nat_wf_help`.
+The `nat_wf` and `nat_wf_help` definitions in `proofs.doxa` use
+mutual structural recursion. `nat_wf n` returns `Acc Nat lt_rel n`,
+where `lt_rel a b = Lt a b`; the relation is a data parameter, and
+`acc_intro` takes the value and the accessibility function. Its zero
+case eliminates `Lt y zero`; its successor case delegates to
+`nat_wf_help`.
 
 `nat_wf_help k y h` recurses structurally on `h`. In the `lt_succ` case
 it calls `nat_wf`; in the `lt_trans` case it extracts the accessibility
 continuation from the recursive result and applies it to the first
 ordering proof.
 
-The final theorem uses `strong_ind` from `proofs.doxa`. Its induction
-step receives a proof of the theorem at every strictly smaller natural
-number.
+The final theorem uses `strong_ind` from `proofs.doxa`.
+`strong_ind_impl` is `Acc.rec` applied to `nat_wf`, not a fuel
+desugaring. Its induction step receives a proof of the theorem at every
+strictly smaller natural number.
 
 ## 4. Algebraic lemmas
 
@@ -156,8 +158,8 @@ The final case analysis is on `t`:
 ## 6. Verification
 
 ```
-doxa_tooling/build/doxa check lib/stdlib/proofs.doxa      # 82 declarations
-doxa_tooling/build/doxa check lib/stdlib/case_study.doxa  # 128 declarations
+doxa_tooling/build/doxa check lib/stdlib/proofs.doxa      # 83 declarations
+doxa_tooling/build/doxa check lib/stdlib/case_study.doxa  # 127 declarations
 ```
 
 Both files type-check with the current CLI.

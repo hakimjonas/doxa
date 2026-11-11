@@ -77,8 +77,8 @@ data Nat: Type {
 ''';
 
 const _acc = '''
-data Acc[A: Type]: (A -> A -> Prop) -> A -> Prop {
-  acc_intro: (R: A -> A -> Prop) -> (x: A) ->
+data Acc[A: Type, R: A -> A -> Prop]: A -> Prop {
+  acc_intro: (x: A) ->
     ((y: A) -> R y x -> Acc A R y) -> Acc A R x;
 }
 ''';
@@ -130,7 +130,7 @@ val r = Acc.rec Nat
 
     test('a fully applied Acc.rec with a Prop motive type-checks', () {
       // Exercises the synthesized IH shape: the IH must be
-      // `(y: Nat) -> (r: R y x) -> P R y (f y r)`, function-shaped over
+      // `(y: Nat) -> (r: rel y x) -> P (f y r)`, function-shaped over
       // the same Pi chain as the recursive argument.
       final env = _elabAndCheck('''
 $_eq
@@ -138,14 +138,12 @@ $_nat
 $_acc
 fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
 val acc_eq: (n: Nat) -> Acc Nat rel n -> Eq Nat n n =
-  (n: Nat) => (h: Acc Nat rel n) => Acc.rec
-    Nat
-    ((R: Nat -> Nat -> Prop) => (x: Nat) => (v: Acc Nat R x) => Eq Nat x x)
-    rel
+  (n: Nat) => (h: Acc Nat rel n) => Acc.rec Nat rel
+    ((x: Nat) => (v: Acc Nat rel x) => Eq Nat x x)
     n
-    ((R: Nat -> Nat -> Prop) => (x: Nat) =>
-      (f: (y: Nat) -> R y x -> Acc Nat R y) =>
-      (ih: (y: Nat) -> (r: R y x) -> Eq Nat y y) =>
+    ((x: Nat) =>
+      (f: (y: Nat) -> rel y x -> Acc Nat rel y) =>
+      (ih: (y: Nat) -> (r: rel y x) -> Eq Nat y y) =>
         refl x)
     h
 ''');
@@ -203,16 +201,16 @@ $_nat
 $_acc
 fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
 val acc_rect_true: (n: Nat) -> Acc Nat rel n -> Nat =
-  (n: Nat) => (h: Acc Nat rel n) => Acc.rect Nat
-    ((R: Nat -> Nat -> Prop) => (x: Nat) => (v: Acc Nat R x) => Nat)
-    rel n
-    ((R: Nat -> Nat -> Prop) => (x: Nat) =>
-      (f: (y: Nat) -> R y x -> Acc Nat R y) =>
-      (ih: (y: Nat) -> (r: R y x) -> Nat) => zero)
+  (n: Nat) => (h: Acc Nat rel n) => Acc.rect Nat rel
+    ((x: Nat) => (v: Acc Nat rel x) => Nat)
+    n
+    ((x: Nat) =>
+      (f: (y: Nat) -> rel y x -> Acc Nat rel y) =>
+      (ih: (y: Nat) -> (r: rel y x) -> Nat) => zero)
     h
 val acc_rect_iota:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
-  Eq Nat (acc_rect_true n (acc_intro rel n f)) zero =
+  Eq Nat (acc_rect_true n (acc_intro n f)) zero =
   (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => refl zero
 ''');
       expect(_binding(env, 'acc_rect_iota').name, 'acc_rect_iota');
@@ -225,19 +223,19 @@ $_nat
 $_acc
 fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
 val acc_true: (n: Nat) -> Acc Nat rel n -> Eq Nat n n =
-  (n: Nat) => (h: Acc Nat rel n) => Acc.rec Nat
-    ((R: Nat -> Nat -> Prop) => (x: Nat) => (v: Acc Nat R x) => Eq Nat x x)
-    rel n
-    ((R: Nat -> Nat -> Prop) => (x: Nat) =>
-      (f: (y: Nat) -> R y x -> Acc Nat R y) =>
-      (ih: (y: Nat) -> (r: R y x) -> Eq Nat y y) => refl x)
+  (n: Nat) => (h: Acc Nat rel n) => Acc.rec Nat rel
+    ((x: Nat) => (v: Acc Nat rel x) => Eq Nat x x)
+    n
+    ((x: Nat) =>
+      (f: (y: Nat) -> rel y x -> Acc Nat rel y) =>
+      (ih: (y: Nat) -> (r: rel y x) -> Eq Nat y y) => refl x)
     h
 val observe:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) -> Nat =
   (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => Eq.rect Nat
     ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => Nat)
     n n ((z: Nat) => zero)
-    (acc_true n (acc_intro rel n f))
+    (acc_true n (acc_intro n f))
 val observe_iota:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
   Eq Nat (observe n f) zero =
@@ -309,30 +307,29 @@ $_nat
 $_acc
 fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
 val acc_motive:
-  (R: Nat -> Nat -> Prop) -> (x: Nat) -> (v: Acc Nat R x) -> Type =
-  (R: Nat -> Nat -> Prop) => (x: Nat) => (v: Acc Nat R x) =>
-    (r: R x x) -> Nat
+  (x: Nat) -> (v: Acc Nat rel x) -> Type =
+  (x: Nat) => (v: Acc Nat rel x) => (r: rel x x) -> Nat
 val acc_step:
-  (R: Nat -> Nat -> Prop) -> (x: Nat) ->
-  (f: (y: Nat) -> R y x -> Acc Nat R y) ->
-  (ih: (y: Nat) -> (r: R y x) -> (r2: R y y) -> Nat) ->
-  (r: R x x) -> Nat =
-  (R: Nat -> Nat -> Prop) => (x: Nat) =>
-  (f: (y: Nat) -> R y x -> Acc Nat R y) =>
-  (ih: (y: Nat) -> (r: R y x) -> (r2: R y y) -> Nat) =>
-  (r: R x x) => ih x r r
+  (x: Nat) ->
+  (f: (y: Nat) -> rel y x -> Acc Nat rel y) ->
+  (ih: (y: Nat) -> (r: rel y x) -> (r2: rel y y) -> Nat) ->
+  (r: rel x x) -> Nat =
+  (x: Nat) =>
+  (f: (y: Nat) -> rel y x -> Acc Nat rel y) =>
+  (ih: (y: Nat) -> (r: rel y x) -> (r2: rel y y) -> Nat) =>
+  (r: rel x x) => ih x r r
 val acc_ih: (n: Nat) -> (h: Acc Nat rel n) -> (r: rel n n) -> Nat =
   (n: Nat) => (h: Acc Nat rel n) =>
-    Acc.rect Nat acc_motive rel n acc_step h
+    Acc.rect Nat rel acc_motive n acc_step h
 val acc_expected:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
   (r: rel n n) -> Nat =
   (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => (r: rel n n) =>
-    Acc.rect Nat acc_motive rel n acc_step (f n r) r
+    Acc.rect Nat rel acc_motive n acc_step (f n r) r
 val acc_ih_iota:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
   (r: rel n n) ->
-  Eq Nat (acc_ih n (acc_intro rel n f) r) (acc_expected n f r) =
+  Eq Nat (acc_ih n (acc_intro n f) r) (acc_expected n f r) =
   (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => (r: rel n n) =>
     refl (acc_expected n f r)
 ''');

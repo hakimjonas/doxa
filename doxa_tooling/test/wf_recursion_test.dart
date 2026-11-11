@@ -76,12 +76,12 @@ val accProp : Prop = Acc[Nat] rel zero
     });
 
     test('acc_intro resolves (arity mismatch means name found)', () {
-      // Bare Acc[Nat].acc_intro produces arity mismatch, which proves
-      // the constructor name resolves correctly.
+      // The parameterized `acc_intro` takes `x` and the accessibility
+      // function. Supplying one explicit argument produces an arity
+      // mismatch, which proves the constructor name resolves.
       const src = '''
 import "../lib/stdlib/nat.doxa"
-fun rel(a: Nat, b: Nat) : Prop = Eq[Nat] a b
-val intro = Acc[Nat].acc_intro rel zero
+val intro = Acc[Nat].acc_intro zero
 ''';
       final r = runSource(src);
       expect(r.stderr, contains('arity mismatch'));
@@ -151,6 +151,23 @@ fun helper(m : Nat, n : Nat) : Nat termination_by (m) = plus m (plus m n)
       expect(r.code, 1);
       expect(r.stderr, contains('termination_by'));
     });
+
+    test('strong_ind computes through nat_wf and Acc.rec', () {
+      // `observed_iota` forces `strong_ind P step zero` through
+      // `nat_wf zero` and Acc.rec to `step zero ... = refl zero`.
+      const src = '''
+import "../lib/stdlib/proofs.doxa"
+fun P(n: Nat): Prop = Eq Nat n n
+fun step(n: Nat, ih: (k: Nat) -> Lt k n -> P k): P n = refl n
+val observed: Nat = Eq.rect Nat
+  ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => Nat)
+  zero zero ((z: Nat) => zero)
+  (strong_ind P step zero)
+val observed_iota: Eq Nat observed zero = refl zero
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
   });
 
   group('dependent Pi constructor arguments', () {
@@ -181,14 +198,12 @@ val racc = Acc.rec Nat
 import "../lib/stdlib/nat.doxa"
 fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
 val acc_eq: (n: Nat) -> Acc Nat rel n -> Eq Nat n n =
-  (n: Nat) => (h: Acc Nat rel n) => Acc.rec
-    Nat
-    ((R: Nat -> Nat -> Prop) => (x: Nat) => (v: Acc Nat R x) => Eq Nat x x)
-    rel
+  (n: Nat) => (h: Acc Nat rel n) => Acc.rec Nat rel
+    ((x: Nat) => (v: Acc Nat rel x) => Eq Nat x x)
     n
-    ((R: Nat -> Nat -> Prop) => (x: Nat) =>
-      (f: (y: Nat) -> R y x -> Acc Nat R y) =>
-      (ih: (y: Nat) -> (r: R y x) -> Eq Nat y y) =>
+    ((x: Nat) =>
+      (f: (y: Nat) -> rel y x -> Acc Nat rel y) =>
+      (ih: (y: Nat) -> (r: rel y x) -> Eq Nat y y) =>
         refl x)
     h
 ''';
@@ -222,16 +237,16 @@ val d5_iota: (x: Nat) -> (f: (y: Nat) -> Eq Nat y x -> D5 Nat) ->
   (x: Nat) => (f: (y: Nat) -> Eq Nat y x -> D5 Nat) => refl zero
 fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
 val acc_rect_true: (n: Nat) -> Acc Nat rel n -> Nat =
-  (n: Nat) => (h: Acc Nat rel n) => Acc.rect Nat
-    ((R: Nat -> Nat -> Prop) => (x: Nat) => (v: Acc Nat R x) => Nat)
-    rel n
-    ((R: Nat -> Nat -> Prop) => (x: Nat) =>
-      (f: (y: Nat) -> R y x -> Acc Nat R y) =>
-      (ih: (y: Nat) -> (r: R y x) -> Nat) => zero)
+  (n: Nat) => (h: Acc Nat rel n) => Acc.rect Nat rel
+    ((x: Nat) => (v: Acc Nat rel x) => Nat)
+    n
+    ((x: Nat) =>
+      (f: (y: Nat) -> rel y x -> Acc Nat rel y) =>
+      (ih: (y: Nat) -> (r: rel y x) -> Nat) => zero)
     h
 val acc_rect_iota:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
-  Eq Nat (acc_rect_true n (acc_intro rel n f)) zero =
+  Eq Nat (acc_rect_true n (acc_intro n f)) zero =
   (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => refl zero
 ''';
       final r = runSource(src);
@@ -246,19 +261,19 @@ val acc_rect_iota:
 import "../lib/stdlib/nat.doxa"
 fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
 val acc_true: (n: Nat) -> Acc Nat rel n -> Eq Nat n n =
-  (n: Nat) => (h: Acc Nat rel n) => Acc.rec Nat
-    ((R: Nat -> Nat -> Prop) => (x: Nat) => (v: Acc Nat R x) => Eq Nat x x)
-    rel n
-    ((R: Nat -> Nat -> Prop) => (x: Nat) =>
-      (f: (y: Nat) -> R y x -> Acc Nat R y) =>
-      (ih: (y: Nat) -> (r: R y x) -> Eq Nat y y) => refl x)
+  (n: Nat) => (h: Acc Nat rel n) => Acc.rec Nat rel
+    ((x: Nat) => (v: Acc Nat rel x) => Eq Nat x x)
+    n
+    ((x: Nat) =>
+      (f: (y: Nat) -> rel y x -> Acc Nat rel y) =>
+      (ih: (y: Nat) -> (r: rel y x) -> Eq Nat y y) => refl x)
     h
 val observe:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) -> Nat =
   (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => Eq.rect Nat
     ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => Nat)
     n n ((z: Nat) => zero)
-    (acc_true n (acc_intro rel n f))
+    (acc_true n (acc_intro n f))
 val observe_iota:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
   Eq Nat (observe n f) zero =
@@ -327,30 +342,29 @@ val d5_use_iota: (x: Nat) -> (f: (y: Nat) -> Eq Nat y x -> D5 Nat) ->
 import "../lib/stdlib/nat.doxa"
 fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
 val acc_motive:
-  (R: Nat -> Nat -> Prop) -> (x: Nat) -> (v: Acc Nat R x) -> Type =
-  (R: Nat -> Nat -> Prop) => (x: Nat) => (v: Acc Nat R x) =>
-    (r: R x x) -> Nat
+  (x: Nat) -> (v: Acc Nat rel x) -> Type =
+  (x: Nat) => (v: Acc Nat rel x) => (r: rel x x) -> Nat
 val acc_step:
-  (R: Nat -> Nat -> Prop) -> (x: Nat) ->
-  (f: (y: Nat) -> R y x -> Acc Nat R y) ->
-  (ih: (y: Nat) -> (r: R y x) -> (r2: R y y) -> Nat) ->
-  (r: R x x) -> Nat =
-  (R: Nat -> Nat -> Prop) => (x: Nat) =>
-  (f: (y: Nat) -> R y x -> Acc Nat R y) =>
-  (ih: (y: Nat) -> (r: R y x) -> (r2: R y y) -> Nat) =>
-  (r: R x x) => ih x r r
+  (x: Nat) ->
+  (f: (y: Nat) -> rel y x -> Acc Nat rel y) ->
+  (ih: (y: Nat) -> (r: rel y x) -> (r2: rel y y) -> Nat) ->
+  (r: rel x x) -> Nat =
+  (x: Nat) =>
+  (f: (y: Nat) -> rel y x -> Acc Nat rel y) =>
+  (ih: (y: Nat) -> (r: rel y x) -> (r2: rel y y) -> Nat) =>
+  (r: rel x x) => ih x r r
 val acc_ih: (n: Nat) -> (h: Acc Nat rel n) -> (r: rel n n) -> Nat =
   (n: Nat) => (h: Acc Nat rel n) =>
-    Acc.rect Nat acc_motive rel n acc_step h
+    Acc.rect Nat rel acc_motive n acc_step h
 val acc_expected:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
   (r: rel n n) -> Nat =
   (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => (r: rel n n) =>
-    Acc.rect Nat acc_motive rel n acc_step (f n r) r
+    Acc.rect Nat rel acc_motive n acc_step (f n r) r
 val acc_ih_iota:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
   (r: rel n n) ->
-  Eq Nat (acc_ih n (acc_intro rel n f) r) (acc_expected n f r) =
+  Eq Nat (acc_ih n (acc_intro n f) r) (acc_expected n f r) =
   (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => (r: rel n n) =>
     refl (acc_expected n f r)
 ''';
