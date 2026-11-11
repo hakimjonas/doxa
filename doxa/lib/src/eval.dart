@@ -7671,20 +7671,17 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
     // ctor.args[0], params...]`. Within argType, elab-TBound(index):
     //   - index < posIdx: ctor.args[posIdx - 1 - index]
     //   - index >= posIdx: param_{paramCount - 1 - (index - posIdx)}
+    //
+    // The returned depth is relative to the method context with no Pi
+    // chain binders in scope.
+    int remapArgTypeDepth(int index) =>
+        index < posIdx
+            ? argDepth(posIdx - 1 - index)
+            : paramDepth(paramCount - 1 - (index - posIdx));
+
     Term remapArgType(Term t) => switch (t) {
-      TBound(:final index) when index < posIdx => TBound(
-        argDepth(posIdx - 1 - index),
-      ),
-      TBound(:final index) => TBound(
-        paramDepth(paramCount - 1 - (index - posIdx)),
-      ),
-      TType() ||
-      TSProp() ||
-      TProp() ||
-      TFree() ||
-      TBound() ||
-      TTop() ||
-      TMeta() => t,
+      TBound(:final index) => TBound(remapArgTypeDepth(index)),
+      TType() || TSProp() || TProp() || TFree() || TTop() || TMeta() => t,
       TApp(:final fn, :final arg) => TApp(remapArgType(fn), remapArgType(arg)),
       TLam() || TPi() || TLet() => t,
       TData(:final name, :final args) => TData(name, [
@@ -7703,6 +7700,93 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
       // not appear inside them under any well-typed shape.
       TMatch() => t,
       TProj() => t,
+    };
+
+    // Rebase a term that was elaborated under `depth` Pi-chain binders
+    // (plus the ctor-arg scope) into the IH builder's context.
+    //
+    // `TBound(k)` with `k < depth` names a Pi-chain binder (the
+    // innermost Pi binder at 0). Those binders keep their positions in
+    // the final term, so the reference is unchanged. `TBound(k)` with
+    // `k >= depth` names an outer binding at source index `k - depth`;
+    // remap that through the ctor telescope and shift it past the
+    // `depth` Pi binders that sit between the term and the method
+    // context. Binders introduced inside the term (nested Pi/Lam/Let)
+    // increase `depth`, so they are treated as local too.
+    //
+    // This is the correction for dependent Pi chains: the previous code
+    // fed every TBound through `remapArgType`, which assumes depth 0, so
+    // a reference to an earlier Pi binder was mistaken for an outer
+    // param. For `(y: A) -> Eq A y y -> ...`, `A` under the y binder is
+    // depth 1 and was remapped to a free `TBound(3)`.
+    Term rebasePiTerm(Term t, int depth) => switch (t) {
+      TBound(:final index) when index < depth => t,
+      TBound(:final index) => TBound(remapArgTypeDepth(index - depth) + depth),
+      TType() ||
+      TSProp() ||
+      TProp() ||
+      TFree() ||
+      TTop() ||
+      TRec() ||
+      TMeta() => t,
+      TApp(:final fn, :final arg) => TApp(
+        rebasePiTerm(fn, depth),
+        rebasePiTerm(arg, depth),
+      ),
+      TPi(:final domain, :final codomain, :final name, :final icit) => TPi(
+        rebasePiTerm(domain, depth),
+        rebasePiTerm(codomain, depth + 1),
+        name: name,
+        icit: icit,
+      ),
+      TLam(:final domain, :final body, :final name, :final icit) => TLam(
+        rebasePiTerm(domain, depth),
+        rebasePiTerm(body, depth + 1),
+        name: name,
+        icit: icit,
+      ),
+      TLet(:final domain, :final bound, :final body, :final name) => TLet(
+        rebasePiTerm(domain, depth),
+        rebasePiTerm(bound, depth),
+        rebasePiTerm(body, depth + 1),
+        name: name,
+      ),
+      TData(:final name, :final args) => TData(name, [
+        for (final a in args) rebasePiTerm(a, depth),
+      ]),
+      TConstr(:final dataName, :final ctorName, :final args) => TConstr(
+        dataName,
+        ctorName,
+        [for (final a in args) rebasePiTerm(a, depth)],
+      ),
+      TMatch(:final scrutinee, :final motive, :final cases) => TMatch(
+        rebasePiTerm(scrutinee, depth),
+        motive == null ? null : rebasePiTerm(motive, depth),
+        [
+          for (final c in cases)
+            TMatchCase(
+              c.ctorName,
+              c.nBinders,
+              rebasePiTerm(c.body, depth + c.nBinders),
+              c.binderNames,
+              span: c.span,
+            ),
+        ],
+      ),
+      TQuot(:final carrier, :final relation) => TQuot(
+        rebasePiTerm(carrier, depth),
+        rebasePiTerm(relation, depth),
+      ),
+      TQuotMk(:final arg) => TQuotMk(rebasePiTerm(arg, depth)),
+      TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
+        rebasePiTerm(quot, depth),
+        rebasePiTerm(fn, depth),
+        rebasePiTerm(proof, depth),
+      ),
+      TProj(:final expr, :final fieldName) => TProj(
+        rebasePiTerm(expr, depth),
+        fieldName,
+      ),
     };
 
     // IH domain = P <sub-indices of a_posIdx> a_posIdx.
@@ -7726,15 +7810,12 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
         final shiftedArgDepth = argDepth(posIdx) + nPis;
         // Build body: P <shifted sub-indices> (f var_nPis-1 ... var_0)
         Term body = TBound(shiftedMotiveDepth);
-        // Sub-indices: shift by nPis via _shiftTBoundPastThreshold.
+        // Sub-indices live under all nPis Pi binders. References to
+        // those binders keep their indices; outer references are
+        // remapped and shifted past the Pi chain.
         for (var k = 0; k < indexCount; k++) {
           final subIdx = baseType.args[paramCount + k];
-          final shifted = _shiftTBoundPastThreshold(
-            subIdx,
-            threshold: 0,
-            shiftBy: nPis,
-          );
-          body = TApp(body, shifted);
+          body = TApp(body, rebasePiTerm(subIdx, nPis));
         }
         // appliedF = f applied to Pi binder variables (innermost-first:
         // outermost binder at TBound(nPis-1), innermost at TBound(0)).
@@ -7743,11 +7824,13 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
           appliedF = TApp(appliedF, TBound(nPis - 1 - i));
         }
         body = TApp(body, appliedF);
-        // Wrap with TPis innermost-first (piChain[0] = outermost).
+        // Wrap with TPis innermost-first. Each domain is checked under
+        // the Pi binders that are still outside it, i.e. the first `i`
+        // binders of the chain, so rebase at depth i.
         Term result = body;
-        for (var i = 0; i < nPis; i++) {
+        for (var i = nPis - 1; i >= 0; i--) {
           final (name, domain) = piChain[i];
-          result = TPi(remapArgType(domain), result, name: name);
+          result = TPi(rebasePiTerm(domain, i), result, name: name);
         }
         return result;
       }

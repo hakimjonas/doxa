@@ -152,4 +152,48 @@ fun helper(m : Nat, n : Nat) : Nat termination_by (m) = plus m (plus m n)
       expect(r.stderr, contains('termination_by'));
     });
   });
+
+  group('dependent Pi constructor arguments', () {
+    test('D6.rec, D7.rec, and Acc.rec Nat type-check', () {
+      // A later Pi domain may reference an earlier Pi binder. The
+      // recursor type must stay closed in both the Pi-chain domains and
+      // the base type's indices.
+      const src = '''
+import "../lib/stdlib/nat.doxa"
+data D6[A: Type]: Type {
+  mk6: ((y: A) -> Eq A y y -> D6 A) -> D6 A;
+}
+data D7[A: Type, B: Type]: Type {
+  mk7: ((x: A) -> (y: B) -> Eq A x x -> Eq B y y -> D7 A B) -> D7 A B;
+}
+val r6 = D6.rec Nat
+val r7 = D7.rec Nat Nat
+val racc = Acc.rec Nat
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('a fully applied Acc.rec with a Prop motive type-checks', () {
+      // The IH is function-shaped over the same Pi chain as acc_intro's
+      // recursive argument.
+      const src = '''
+import "../lib/stdlib/nat.doxa"
+fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
+val acc_eq: (n: Nat) -> Acc Nat rel n -> Eq Nat n n =
+  (n: Nat) => (h: Acc Nat rel n) => Acc.rec
+    Nat
+    ((R: Nat -> Nat -> Prop) => (x: Nat) => (v: Acc Nat R x) => Eq Nat x x)
+    rel
+    n
+    ((R: Nat -> Nat -> Prop) => (x: Nat) =>
+      (f: (y: Nat) -> R y x -> Acc Nat R y) =>
+      (ih: (y: Nat) -> (r: R y x) -> Eq Nat y y) =>
+        refl x)
+    h
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+  });
 }
