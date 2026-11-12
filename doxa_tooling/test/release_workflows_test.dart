@@ -35,6 +35,7 @@ void main() {
   test('release.yml still produces the GitHub release', () {
     expect(release, contains('softprops/action-gh-release'));
     expect(release, contains('checksums.txt'));
+    expect(release, contains('Check VERSION matches the tag'));
   });
 
   test('publish.yml is manual only', () {
@@ -43,9 +44,16 @@ void main() {
   });
 
   test('publish.yml carries the confirmation and hold gates', () {
-    expect(publish, contains('PUBLISH'));
-    expect(publish, contains('ALLOW_PUB_DEV_PUBLISH'));
-    expect(publish, contains('ALLOW_MARKETPLACE_PUBLISH'));
+    expect(publish, contains(r'if [ "${CONFIRM:-}" != "PUBLISH" ]'));
+    expect(
+      publish,
+      contains(r'ALLOW_PUB_DEV: ${{ vars.ALLOW_PUB_DEV_PUBLISH }}'),
+    );
+    expect(
+      publish,
+      contains(r'ALLOW_MARKETPLACE: ${{ vars.ALLOW_MARKETPLACE_PUBLISH }}'),
+    );
+    expect(RegExp(r'needs: \[preflight\]').allMatches(publish).length, 3);
   });
 
   test('neither workflow rewrites or deletes a tag', () {
@@ -53,5 +61,11 @@ void main() {
       expect(workflow, isNot(contains('git push origin :refs/tags')));
       expect(workflow, isNot(contains('--force-with-lease')));
     }
+  });
+
+  test('publish.yml dogfoods lam', () {
+    expect(publish, contains('dart pub global activate lambe 0.14.0'));
+    expect(publish, contains('lam -r'));
+    expect(RegExp(r'\bjq\b').hasMatch(publish), isFalse);
   });
 }

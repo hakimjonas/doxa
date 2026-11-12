@@ -33,6 +33,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Check VERSION matches the tag
+        shell: bash
         run: test "v$(cat VERSION)" = "$GITHUB_REF_NAME"
 
       - uses: dart-lang/setup-dart@v1
