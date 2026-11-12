@@ -2,6 +2,11 @@
 
 ## 0.8.4 (2026-11-12)
 
+Publication status: `doxa` 0.8.4 was published to pub.dev on 2026-11-12 and
+retracted the same day. `doxa_tooling` 0.8.4 was never published. The 0.8.4
+JetBrains plugin was published from the pre-fix build and remains on the
+marketplace; it predates the `prime`, `gcd`, and `coprime` fixes.
+
 - Added `docs/arithmetic.md`, which specifies the `Nat` operations, the
   zero-divisor conventions (`div m zero = zero`, `mod m zero = m`), the
   fuel-based `mod_acc`/`div_acc` bound, arbitrary precision, and the proposed

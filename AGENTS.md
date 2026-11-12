@@ -79,6 +79,32 @@ the kernel's actual behaviour.
 - Do not introduce new lints or warnings. Every `dart analyze` issue is a
   blocker.
 
+## Publishing
+
+Publication is on hold. pub.dev and the two editor marketplaces are external,
+irreversible actions, and doxa is not releaseworthy yet. Do not publish, and do
+not write a plan whose last step is a publish, until the user lifts the hold.
+
+Version bumps, tags, and pushes to GitHub need the user's explicit go-ahead.
+Version bumps additionally update every mirror listed above.
+
+- `.github/workflows/release.yml` runs on a version tag. It checks that
+  `VERSION` matches the tag, builds the five binaries, writes
+  `checksums.txt`, and creates the GitHub release. It must not publish to
+  pub.dev or either marketplace. `release_workflows_test.dart` enforces this.
+- `.github/workflows/publish.yml` is `workflow_dispatch` only. It requires the
+  `tag` input, a typed `PUBLISH` confirmation, and at least one target
+  checkbox. The pub.dev job also requires `ALLOW_PUB_DEV_PUBLISH=true`; the
+  marketplace jobs also require `ALLOW_MARKETPLACE_PUBLISH=true`. Unset means
+  false, so a fresh repository cannot publish.
+- Status: `doxa` 0.8.4 was published to pub.dev on 2026-11-12 and retracted
+  the same day. `doxa_tooling` has never been published. The 0.8.4 JetBrains
+  plugin was published from the pre-fix commit and remains on the
+  marketplace.
+- The bar when the hold is lifted is the one used for the other Dart
+  projects: `pana` 150/160 or better before the publish, 160/160 after, and
+  every gate in the pre-commit checklist green.
+
 ## Pre-commit checklist
 
 Before staging or committing any change, run ALL of these from the
