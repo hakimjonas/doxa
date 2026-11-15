@@ -629,6 +629,84 @@ val sub_add: (m: Nat) -> (n: Nat) -> Eq Bool (leq n m) true_ -> Eq Nat (plus (su
       n)
     m
 
+val leq_self_plus: (v: Nat) -> (X: Nat) -> Eq Bool (leq v (plus X v)) true_ =
+  (v: Nat) => (X: Nat) => Nat.ind
+    ((k: Nat) => Eq Bool (leq v (plus k v)) true_)
+    (leq_refl v)
+    ((k: Nat) => (ih: Eq Bool (leq v (plus k v)) true_) => leq_succ_right v (plus k v) ih)
+    X
+
+fun lt_leq(m: Nat, n: Nat, h: Lt m n): Eq Bool (leq m n) true_ {struct h} = match h {
+  case lt_succ k => leq_succ_right k k (leq_refl k)
+  case lt_trans a b c h1 h2 => leq_trans a b c (lt_leq a b h1) (lt_leq b c h2)
+}
+
+val sub_plus_self: (X: Nat) -> (w: Nat) -> Eq Nat (sub (plus X w) w) X =
+  (X: Nat) => (w: Nat) => Nat.ind
+    ((k: Nat) => Eq Nat (sub (plus X k) k) X)
+    (trans_e
+      Nat
+      (sub (plus X zero) zero)
+      (sub X zero)
+      X
+      (cong_e Nat Nat ((t: Nat) => sub t zero) (plus X zero) X (plus_zero X))
+      (sub_zero X))
+    ((k: Nat) => (ih: Eq Nat (sub (plus X k) k) X) => trans_e
+      Nat
+      (sub (plus X (succ k)) (succ k))
+      (sub (succ (plus X k)) (succ k))
+      X
+      (cong_e
+        Nat
+        Nat
+        ((t: Nat) => sub t (succ k))
+        (plus X (succ k))
+        (succ (plus X k))
+        (plus_succ X k))
+      ih)
+    w
+
+val plus_sub_swap: (A: Nat)
+-> (B: Nat)
+  -> (v: Nat)
+    -> Eq Bool (leq v A) true_
+      -> Eq Bool (leq v B) true_ -> Eq Nat (plus B (sub A v)) (plus A (sub B v)) =
+  (A: Nat) => (B: Nat) => (v: Nat) => (hA: Eq Bool (leq v A) true_) => (hB: Eq Bool (leq v B) true_) => trans_e
+    Nat
+    (plus B (sub A v))
+    (plus (plus (sub B v) v) (sub A v))
+    (plus A (sub B v))
+    (sym_e
+      Nat
+      (plus (plus (sub B v) v) (sub A v))
+      (plus B (sub A v))
+      (cong_e Nat Nat ((t: Nat) => plus t (sub A v)) (plus (sub B v) v) B (sub_add B v hB)))
+    (trans_e
+      Nat
+      (plus (plus (sub B v) v) (sub A v))
+      (plus (sub B v) (plus v (sub A v)))
+      (plus A (sub B v))
+      (plus_assoc (sub B v) v (sub A v))
+      (trans_e
+        Nat
+        (plus (sub B v) (plus v (sub A v)))
+        (plus (sub B v) (plus (sub A v) v))
+        (plus A (sub B v))
+        (cong_e
+          Nat
+          Nat
+          ((t: Nat) => plus (sub B v) t)
+          (plus v (sub A v))
+          (plus (sub A v) v)
+          (plus_comm v (sub A v)))
+        (trans_e
+          Nat
+          (plus (sub B v) (plus (sub A v) v))
+          (plus (sub B v) A)
+          (plus A (sub B v))
+          (cong_e Nat Nat ((t: Nat) => plus (sub B v) t) (plus (sub A v) v) A (sub_add A v hA))
+          (plus_comm (sub B v) A))))
+
 val lt_zero_absurd: (h: Lt zero zero) -> False =
   (h: Lt zero zero) => Lt.rec
     ((a: Nat) => (b: Nat) => (_: Lt a b) => Eq Nat b zero -> False)

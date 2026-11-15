@@ -138,7 +138,7 @@ are `false_`.
 
 ### Order and subtraction lemmas
 
-`lib/stdlib/proofs.doxa` proves eleven lemmas that relate the Boolean
+`lib/stdlib/proofs.doxa` proves fifteen lemmas that relate the Boolean
 comparisons to the `Lt` relation and bound truncated subtraction:
 
 | Lemma | Statement | Bridges |
@@ -147,18 +147,22 @@ comparisons to the `Lt` relation and bound truncated subtraction:
 | `leq_trans` | `leq a b -> leq b c -> leq a c` | transitivity of `leq` |
 | `leq_succ_right` | `leq a b -> leq a (succ b)` | monotonicity of `leq` in its right argument |
 | `leq_succ_true` | `leq m k = false_ -> leq (succ k) m` | a failed `leq` gives `leq` in the opposite direction |
+| `leq_self_plus` | `leq v (plus X v)` | a value is at most a sum with it on the right |
 | `lt_zero_succ` | `Lt zero (succ n)` | zero is below every successor |
 | `lt_succ_mono` | `Lt a b -> Lt (succ a) (succ b)` | monotonicity of `Lt` under `succ` |
 | `lt_of_leq` | `leq m n -> Lt m (succ n)` | the Boolean `leq` to `Lt` |
 | `lt_true_Lt` | `lt m n -> Lt m n` | the Boolean `lt` to `Lt` |
 | `lt_false_leq` | `lt m n = false_ -> leq n m` | a failed `lt` gives `leq` in the opposite direction |
+| `lt_leq` | `Lt m n -> leq m n` | the `Lt` relation to the Boolean `leq` |
 | `leq_sub` | `leq (sub m n) m` | truncated subtraction is at most the minuend |
 | `sub_add` | `leq n m -> plus (sub m n) n = m` | subtraction plus its subtrahend reconstructs the minuend |
+| `sub_plus_self` | `sub (plus X w) w = X` | subtracting the addend recovers the summand |
+| `plus_sub_swap` | `plus B (sub A v) = plus A (sub B v)` | swaps two bounded subtractions across a sum |
 
 The implication arrows abbreviate the full theorem types; a `leq` or `lt`
-premise is the corresponding `Eq Bool ... true_` hypothesis. `lt_succ_mono` is
-declared as a `fun` with a structural recursion on the `Lt` proof; the other
-ten are `val` bindings built from `Nat.ind`.
+premise is the corresponding `Eq Bool ... true_` hypothesis. `lt_succ_mono`
+and `lt_leq` are declared as `fun`s with structural recursion on the `Lt`
+proof; the other thirteen are `val` bindings built from `Nat.ind`.
 
 ## Integers
 
@@ -234,13 +238,15 @@ For `Int`, two Euclidean facts remain planned:
 
 - `intPlus (intMult b (intDiv a b)) (intMod a b) = a` for `b != 0`. The
   nonnegative-dividend half is proved as `intDivMod_pos` (`a = pos n`, any
-  `b`). The negative-dividend cases are still planned.
+  `b`). The two negative-dividend cases are still planned.
 - `0 <= intMod a b < intAbs b` for `b != 0`.
 
 They need `intPlus` associativity, identity, and inverse lemmas, `intMult`
 sign and distributivity lemmas, and an `Int`-order bridge to `intLeq`.
-`int.doxa` now provides `intMult_neg_intNeg` and `intNeg_pos_zero`, the
-ingredients `intDivMod_pos` uses for negative divisors.
+`int.doxa` now provides `intMult_neg_intNeg`, `intMult_pos_intNeg`,
+`intPlusHelp_plus`, and `intDivNeg_shift`, together with `intNeg_pos_zero`.
+`intDivNeg_shift` relates `intDivNegQ` and `intModNegR` to `mult` and `plus`,
+the conversion the negative-dividend cases need.
 
 ## References
 
