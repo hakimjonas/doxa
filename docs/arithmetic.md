@@ -174,19 +174,20 @@ data Int: Type {
 `pos n` represents `n`, `neg n` represents `-(n + 1)`, and zero is `pos zero`.
 The `neg` encoding avoids a second representation of zero. The operations in
 `int_base.doxa` are `intPlus`, `intNeg`, `intSub`, `intMult`, `intLeq`,
-`intAbs` (returning a `Nat`), and `intSign`. There is no integer division or
-modulo.
+`intAbs` (returning a `Nat`), and `intSign`; `int_base.doxa` stays
+operations-only for `Rational`. `int.doxa` adds `intDiv` and `intMod`.
 
-### Proposed division convention
+### Division convention
 
-The recommendation for the future implementation is Euclidean division,
-matching Lean 4's `Int.ediv` and `Int.emod`. For a divisor `b` with
-`b != 0`:
+The implementation uses Euclidean division, matching Lean 4's `Int.ediv` and
+`Int.emod`. For a divisor `b` with `b != 0`:
 
 - `0 <= r < |b|`, where `|b|` is `intAbs b`.
 - `a = b * q + r`.
 
-For `b = 0`, the recommendation is `q = 0` and `r = a`, which matches Lean's
+`intDiv a b` and `intMod a b` reduce to `Nat.div` and `Nat.mod` on the
+magnitudes and adjust the quotient when the remainder is nonzero. For
+`b = 0`, `intDiv a 0 = pos zero` and `intMod a 0 = a`, which matches Lean's
 `Int.ediv`/`Int.emod` and the `Nat` conventions above.
 
 The main alternative is truncated division, rounding toward zero. Its
@@ -197,13 +198,45 @@ operators of C, Java, and Rust use this convention. Coq's `Z.div` and
 the divisor; that convention coincides with Euclidean division only for a
 positive divisor.
 
-The choice belongs to the Int implementation charter. This document records
-the recommendation and does not fix it.
+Concrete checks, with `v = n` written `pos n` and `v = -(n + 1)` written
+`neg n`, so -7 is `neg 6`:
+
+| `a` | `b` | `intDiv a b` | `intMod a b` |
+|---|---|---|---|
+| 7 | 2 | 3 | 1 |
+| -7 | 2 | -4 | 1 |
+| -6 | 2 | -3 | 0 |
+| -5 | 2 | -3 | 1 |
+| 7 | -2 | -3 | 1 |
+| 7 | -3 | -2 | 1 |
+| -7 | -2 | 4 | 1 |
+| -6 | -2 | 3 | 0 |
+| -5 | -2 | 3 | 1 |
+| 6 | 3 | 2 | 0 |
+| -6 | 3 | -2 | 0 |
+| 6 | -3 | -2 | 0 |
+| -6 | -3 | 2 | 0 |
+| 5 | 0 | 0 | 5 |
+| -5 | 0 | 0 | -5 |
+| 0 | 2 | 0 | 0 |
+| 0 | -2 | 0 | 0 |
+| 2 | 2 | 1 | 0 |
+| -2 | -2 | 1 | 0 |
+
+All rows check by `refl`.
 
 ## Open lemmas
 
 Both `mod_lt` and `div_add_mod` are proved in `lib/stdlib/proofs.doxa`. No
 general theorem about the `Nat` arithmetic operations remains open.
+
+For `Int`, two Euclidean facts are planned:
+
+- `intPlus (intMult b (intDiv a b)) (intMod a b) = a` for `b != 0`.
+- `0 <= intMod a b < intAbs b` for `b != 0`.
+
+They need `intPlus` associativity, identity, and inverse lemmas, `intMult`
+sign and distributivity lemmas, and an `Int`-order bridge to `intLeq`.
 
 ## References
 

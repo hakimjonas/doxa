@@ -74,6 +74,51 @@ fun intSign(a: Int): Bool = match a {
   case pos _ => true_
   case neg _ => false_
 }
+// --- Integer division and modulo (Euclidean) ------------------------------
+//
+// For a divisor b with b != 0, `intDiv a b` and `intMod a b` satisfy
+// `a = b * q + r` and `0 <= r < |b|`. For b = 0, `intDiv a 0 = pos zero`
+// and `intMod a 0 = a`, matching the Nat conventions. The definitions
+// reduce to Nat.div and Nat.mod on the magnitudes and adjust the quotient
+// when the remainder is nonzero.
+
+fun intDivNegQ(u: Nat, v: Nat): Nat = match v {
+  case zero => u
+  case succ _ => succ u
+}
+
+fun intModNegR(B: Nat, v: Nat): Nat = match v {
+  case zero => zero
+  case succ _ => sub B v
+}
+
+fun intDiv(a: Int, b: Int): Int = match b {
+  case pos m => match m {
+    case zero => pos zero
+    case succ m_ => match a {
+      case pos n => pos (div n (succ m_))
+      case neg n => intNeg (pos (intDivNegQ (div (succ n) (succ m_)) (mod (succ n) (succ m_))))
+    }
+  }
+  case neg m => match a {
+    case pos n => intNeg (pos (div n (succ m)))
+    case neg n => pos (intDivNegQ (div (succ n) (succ m)) (mod (succ n) (succ m)))
+  }
+}
+
+fun intMod(a: Int, b: Int): Int = match b {
+  case pos m => match m {
+    case zero => a
+    case succ m_ => match a {
+      case pos n => pos (mod n (succ m_))
+      case neg n => pos (intModNegR (succ m_) (mod (succ n) (succ m_)))
+    }
+  }
+  case neg m => match a {
+    case pos n => pos (mod n (succ m))
+    case neg n => pos (intModNegR (succ m) (mod (succ n) (succ m)))
+  }
+}
 // --- Lemmas ---
 // intPlus_comm: a + b = b + a
 
