@@ -2426,12 +2426,14 @@ Term _checkExpr(_ElabState state, SExpr expr, Value expected) {
 Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
   // 0. Auto-`refl`. A bare `refl` (a plain identifier resolving to the
   // prelude's `Eq.refl`) checked against `Eq[A] x y` is sugar for
-  // `refl x` with the type and index inferred, provided `x` and `y`
-  // are definitionally equal. We leave the term as the bare nullary
-  // `TConstr('Eq', 'refl', [])`; the kernel's check-mode auto-refl rule
-  // then fills the `[A, x]` arguments from the expected type. (Routing
-  // val/arm bodies through check mode would otherwise insert the
-  // implicit type argument and strand the explicit `x`.)
+  // `refl x` with the type and index inferred. Emit the full
+  // `TConstr('Eq', 'refl', [A, x])` here rather than the bare nullary
+  // spine: the kernel's check-mode rule would fill the arguments from
+  // the expected type, but the stored term is later re-evaluated by
+  // `_shimState`, where a zero-argument `VConstr('Eq', 'refl')` that
+  // reaches an `Eq.rec`/`Eq.ind` match violates the constructor-arity
+  // invariant. Quoting `A` and `x` from the expected type keeps the
+  // elaborated term self-contained.
   final ek = expr.kind;
   if (ek is SIdentKind &&
       ek.name == 'refl' &&
@@ -2439,7 +2441,9 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
       expected.name == 'Eq' &&
       expected.args.length == 3 &&
       state.topEnv.lookupData('Eq') != null) {
-    return const TConstr('Eq', 'refl', <Term>[]);
+    final aTerm = quote(state.ctx.level, expected.args[0]);
+    final xTerm = quote(state.ctx.level, expected.args[1]);
+    return TConstr('Eq', 'refl', [aTerm, xTerm]);
   }
 
   // 1. Implicit-Pi auto-λ.
