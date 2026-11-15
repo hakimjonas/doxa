@@ -47,9 +47,10 @@ remainder:
 
 - `mod m n < n`, proved as `mod_lt`:
   `(m: Nat) -> (n: Nat) -> Lt zero n -> Lt (mod m n) n`.
-- `plus (mult (div m n) n) (mod m n) = m`, up to commutativity of `mult`.
-  Lean 4 states the same identity as `Nat.div_add_mod`. This identity is
-  *planned*, not proved.
+- `plus (mult (div m n) n) (mod m n) = m`, up to commutativity of `mult`,
+  proved as `div_add_mod`:
+  `(m: Nat) -> (n: Nat) -> Lt zero n -> Eq Nat (plus (mult (div m n) n) (mod m n)) m`.
+  Lean 4 states the same identity as `Nat.div_add_mod`.
 
 Concrete checks:
 
@@ -137,7 +138,7 @@ are `false_`.
 
 ### Order and subtraction lemmas
 
-`lib/stdlib/proofs.doxa` proves eight lemmas that relate the Boolean
+`lib/stdlib/proofs.doxa` proves eleven lemmas that relate the Boolean
 comparisons to the `Lt` relation and bound truncated subtraction:
 
 | Lemma | Statement | Bridges |
@@ -145,16 +146,19 @@ comparisons to the `Lt` relation and bound truncated subtraction:
 | `leq_refl` | `Eq Bool (leq n n) true_` | reflexivity of `leq` |
 | `leq_trans` | `leq a b -> leq b c -> leq a c` | transitivity of `leq` |
 | `leq_succ_right` | `leq a b -> leq a (succ b)` | monotonicity of `leq` in its right argument |
+| `leq_succ_true` | `leq m k = false_ -> leq (succ k) m` | a failed `leq` gives `leq` in the opposite direction |
 | `lt_zero_succ` | `Lt zero (succ n)` | zero is below every successor |
 | `lt_succ_mono` | `Lt a b -> Lt (succ a) (succ b)` | monotonicity of `Lt` under `succ` |
 | `lt_of_leq` | `leq m n -> Lt m (succ n)` | the Boolean `leq` to `Lt` |
 | `lt_true_Lt` | `lt m n -> Lt m n` | the Boolean `lt` to `Lt` |
+| `lt_false_leq` | `lt m n = false_ -> leq n m` | a failed `lt` gives `leq` in the opposite direction |
 | `leq_sub` | `leq (sub m n) m` | truncated subtraction is at most the minuend |
+| `sub_add` | `leq n m -> plus (sub m n) n = m` | subtraction plus its subtrahend reconstructs the minuend |
 
 The implication arrows abbreviate the full theorem types; a `leq` or `lt`
 premise is the corresponding `Eq Bool ... true_` hypothesis. `lt_succ_mono` is
 declared as a `fun` with a structural recursion on the `Lt` proof; the other
-seven are `val` bindings built from `Nat.ind`.
+ten are `val` bindings built from `Nat.ind`.
 
 ## Integers
 
@@ -198,17 +202,8 @@ the recommendation and does not fix it.
 
 ## Open lemmas
 
-One general theorem is not in `lib/stdlib/proofs.doxa`:
-
-- `div_add_mod`: for `n > 0`,
-  `Eq Nat (plus (mult (div m n) n) (mod m n)) m`. A proof can carry the
-  invariant `m = n * q + r` through the `div_acc` loop, or relate `div_acc`
-  and `mod_acc` in one induction. It uses `sub_add`, `lt_false_leq`,
-  `leq_succ_true`, the `div_acc`/`mod_acc` invariant, and `plus_assoc`,
-  `plus_comm`, and `mult_succ_right`.
-
-`lt_false_leq`, `leq_succ_true`, and `sub_add` are verified in the scratch
-work and belong to the following increment.
+Both `mod_lt` and `div_add_mod` are proved in `lib/stdlib/proofs.doxa`. No
+general theorem about the `Nat` arithmetic operations remains open.
 
 ## References
 
