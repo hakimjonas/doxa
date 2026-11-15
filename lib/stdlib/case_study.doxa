@@ -470,17 +470,6 @@ val square_double: (n: Nat) -> Eq Nat (square (mult two n)) (mult four (square n
                 four
                 (trans_e Nat (mult two two) (plus two two) four (mult_2 two) (refl four)))
               (refl (mult four (mult n n))))))))
-// lt_succ_mono: Lt a b → Lt (succ a) (succ b)
-
-fun lt_succ_mono(a: Nat, b: Nat, h: Lt a b): Lt (succ a) (succ b) {struct h} = match h {
-  case lt_succ n => lt_succ (succ n)
-  case lt_trans n m k p1 p2 => lt_trans
-    (succ n)
-    (succ m)
-    (succ k)
-    (lt_succ_mono n m p1)
-    (lt_succ_mono m k p2)
-}
 
 fun even_implies_double(n: Nat, h: Eq Bool (even n) true_): Eq Nat n (mult two (half n)) = go n h and go(n: Nat, h0: Eq
   Bool

@@ -128,6 +128,27 @@ exactly one. `coprime zero zero` is `false_` because `gcd zero zero = zero`.
 `coprime two three` are `true_`; `coprime two four` and `coprime three three`
 are `false_`.
 
+### Order and subtraction lemmas
+
+`lib/stdlib/proofs.doxa` proves eight lemmas that relate the Boolean
+comparisons to the `Lt` relation and bound truncated subtraction:
+
+| Lemma | Statement | Bridges |
+|---|---|---|
+| `leq_refl` | `Eq Bool (leq n n) true_` | reflexivity of `leq` |
+| `leq_trans` | `leq a b -> leq b c -> leq a c` | transitivity of `leq` |
+| `leq_succ_right` | `leq a b -> leq a (succ b)` | monotonicity of `leq` in its right argument |
+| `lt_zero_succ` | `Lt zero (succ n)` | zero is below every successor |
+| `lt_succ_mono` | `Lt a b -> Lt (succ a) (succ b)` | monotonicity of `Lt` under `succ` |
+| `lt_of_leq` | `leq m n -> Lt m (succ n)` | the Boolean `leq` to `Lt` |
+| `lt_true_Lt` | `lt m n -> Lt m n` | the Boolean `lt` to `Lt` |
+| `leq_sub` | `leq (sub m n) m` | truncated subtraction is at most the minuend |
+
+The implication arrows abbreviate the full theorem types; a `leq` or `lt`
+premise is the corresponding `Eq Bool ... true_` hypothesis. `lt_succ_mono` is
+declared as a `fun` with a structural recursion on the `Lt` proof; the other
+seven are `val` bindings built from `Nat.ind`.
+
 ## Integers
 
 `Int` is the inductive type
@@ -174,16 +195,17 @@ Two general theorems are not in `lib/stdlib/proofs.doxa`:
 
 - `mod_lt`: for `n > 0`, `Lt (mod m n) n`. A proof generalises the fuel
   induction over `mod_acc` and shows that the `false_` branch decreases the
-  value until it falls below `n`. It needs interaction lemmas relating `sub`,
-  `lt`, and `leq` that the library does not have.
+  value until it falls below `n`. The remaining gap is the `mod_acc` fuel
+  invariant (`leq m k` with `k = m`) and a bound that turns
+  `leq m (succ k)`, `leq n m`, and `Lt zero n` into `leq (sub m n) k`.
 - `div_add_mod`: for `n > 0`,
   `Eq Nat (plus (mult (div m n) n) (mod m n)) m`. A proof can carry the
   invariant `m = n * q + r` through the `div_acc` loop, or relate `div_acc`
   and `mod_acc` in one induction. It needs the bound from `mod_lt` and the
   distributivity and associativity lemmas for `plus` and `mult`.
 
-Each is estimated at one to two sessions after the missing `sub`/`lt`
-interaction lemmas are added.
+`lt_false_leq`, `leq_succ_true`, and `sub_add` are verified in the scratch
+work and belong to the following increment.
 
 ## References
 

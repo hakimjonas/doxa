@@ -416,6 +416,155 @@ val true_ne_false: Eq Bool true_ false_ -> False =
     ((z: Bool) => (h: isTrue z) => h)
     p
     (refl true_)
+// --- Nat order and subtraction lemmas -------------------------------------
+
+val leq_refl: (n: Nat) -> Eq Bool (leq n n) true_ =
+  (n: Nat) => Nat.ind
+    ((k: Nat) => Eq Bool (leq k k) true_)
+    refl
+    ((k: Nat) => (ih: Eq Bool (leq k k) true_) => ih)
+    n
+
+val lt_zero_succ: (n: Nat) -> Lt zero (succ n) =
+  (n: Nat) => Nat.ind
+    ((k: Nat) => Lt zero (succ k))
+    (lt_succ zero)
+    ((k: Nat) => (ih: Lt zero (succ k)) => lt_trans
+      zero
+      (succ k)
+      (succ (succ k))
+      ih
+      (lt_succ (succ k)))
+    n
+
+fun lt_succ_mono(a: Nat, b: Nat, h: Lt a b): Lt (succ a) (succ b) {struct h} = match h {
+  case lt_succ n => lt_succ (succ n)
+  case lt_trans n m k h1 h2 => lt_trans
+    (succ n)
+    (succ m)
+    (succ k)
+    (lt_succ_mono n m h1)
+    (lt_succ_mono m k h2)
+}
+
+val leq_succ_right: (a: Nat)
+-> (b: Nat) -> Eq Bool (leq a b) true_ -> Eq Bool (leq a (succ b)) true_ =
+  (a: Nat) => (b: Nat) => (h: Eq Bool (leq a b) true_) => Nat.ind
+    ((k: Nat) => (j: Nat) -> Eq Bool (leq j k) true_ -> Eq Bool (leq j (succ k)) true_)
+    ((j: Nat) => Nat.ind
+      ((i: Nat) => Eq Bool (leq i zero) true_ -> Eq Bool (leq i (succ zero)) true_)
+      ((h0: Eq Bool (leq zero zero) true_) => refl)
+      ((i: Nat) => (ih: Eq Bool (leq i zero) true_ -> Eq Bool (leq i (succ zero)) true_) => (h1: Eq
+        Bool
+        (leq (succ i) zero)
+        true_) => False.rec
+        ((_: False) => Eq Bool (leq (succ i) (succ zero)) true_)
+        (true_ne_false (sym_e Bool false_ true_ h1)))
+      j)
+    ((k: Nat) => (ih: (j: Nat) -> Eq Bool (leq j k) true_ -> Eq Bool (leq j (succ k)) true_) => (j: Nat) => Nat.ind
+      ((i: Nat) => Eq Bool (leq i (succ k)) true_ -> Eq Bool (leq i (succ (succ k))) true_)
+      ((h0: Eq Bool (leq zero (succ k)) true_) => refl)
+      ((i: Nat) => (ihi: Eq Bool (leq i (succ k)) true_ -> Eq Bool (leq i (succ (succ k))) true_) => (h1: Eq
+        Bool
+        (leq (succ i) (succ k))
+        true_) => ih i h1)
+      j)
+    b
+    a
+    h
+
+val leq_trans: (a: Nat)
+-> (b: Nat)
+  -> (c: Nat) -> Eq Bool (leq a b) true_ -> Eq Bool (leq b c) true_ -> Eq Bool (leq a c) true_ =
+  (a: Nat) => (b: Nat) => (c: Nat) => (h1: Eq Bool (leq a b) true_) => (h2: Eq Bool (leq b c) true_) => Nat.ind
+    ((k: Nat) => (p: Nat)
+    -> (q: Nat) -> Eq Bool (leq k p) true_ -> Eq Bool (leq p q) true_ -> Eq Bool (leq k q) true_)
+    ((p: Nat) => (q: Nat) => (g1: Eq Bool (leq zero p) true_) => (g2: Eq Bool (leq p q) true_) => refl)
+    ((k: Nat) => (ih: (p: Nat)
+    -> (q: Nat) -> Eq Bool (leq k p) true_ -> Eq Bool (leq p q) true_ -> Eq Bool (leq k q) true_) => (p: Nat) => (q: Nat) => (g1: Eq
+      Bool
+      (leq (succ k) p)
+      true_) => (g2: Eq Bool (leq p q) true_) => Nat.ind
+      ((r: Nat) => Eq Bool (leq (succ k) r) true_
+      -> Eq Bool (leq r q) true_ -> Eq Bool (leq (succ k) q) true_)
+      ((i0: Eq Bool (leq (succ k) zero) true_) => (j0: Eq Bool (leq zero q) true_) => False.rec
+        ((_: False) => Eq Bool (leq (succ k) q) true_)
+        (true_ne_false (sym_e Bool false_ true_ i0)))
+      ((r: Nat) => (ihr: Eq Bool (leq (succ k) r) true_
+      -> Eq Bool (leq r q) true_ -> Eq Bool (leq (succ k) q) true_) => (i1: Eq
+        Bool
+        (leq (succ k) (succ r))
+        true_) => (j1: Eq Bool (leq (succ r) q) true_) => Nat.ind
+        ((s: Nat) => Eq Bool (leq (succ r) s) true_ -> Eq Bool (leq (succ k) s) true_)
+        ((i2: Eq Bool (leq (succ r) zero) true_) => False.rec
+          ((_: False) => Eq Bool (leq (succ k) zero) true_)
+          (true_ne_false (sym_e Bool false_ true_ i2)))
+        ((s: Nat) => (ihs: Eq Bool (leq (succ r) s) true_ -> Eq Bool (leq (succ k) s) true_) => (i2: Eq
+          Bool
+          (leq (succ r) (succ s))
+          true_) => ih r s i1 i2)
+        q
+        j1)
+      p
+      g1
+      g2)
+    a
+    b
+    c
+    h1
+    h2
+
+val leq_sub: (m: Nat) -> (n: Nat) -> Eq Bool (leq (sub m n) m) true_ =
+  (m: Nat) => Nat.ind
+    ((j: Nat) => (n: Nat) -> Eq Bool (leq (sub j n) j) true_)
+    ((n: Nat) => refl)
+    ((j: Nat) => (ih: (n: Nat) -> Eq Bool (leq (sub j n) j) true_) => (n: Nat) => Nat.ind
+      ((i: Nat) => Eq Bool (leq (sub (succ j) i) (succ j)) true_)
+      (leq_refl (succ j))
+      ((i: Nat) => (ihi: Eq Bool (leq (sub (succ j) i) (succ j)) true_) => leq_succ_right
+        (sub j i)
+        j
+        (ih i))
+      n)
+    m
+
+val lt_of_leq: (m: Nat) -> (n: Nat) -> Eq Bool (leq m n) true_ -> Lt m (succ n) =
+  (m: Nat) => (n: Nat) => (h: Eq Bool (leq m n) true_) => Nat.ind
+    ((k: Nat) => (j: Nat) -> Eq Bool (leq j k) true_ -> Lt j (succ k))
+    ((j: Nat) => Nat.ind
+      ((i: Nat) => Eq Bool (leq i zero) true_ -> Lt i (succ zero))
+      ((h0: Eq Bool (leq zero zero) true_) => lt_succ zero)
+      ((i: Nat) => (ih: Eq Bool (leq i zero) true_ -> Lt i (succ zero)) => (h1: Eq
+        Bool
+        (leq (succ i) zero)
+        true_) => False.rec
+        ((_: False) => Lt (succ i) (succ zero))
+        (true_ne_false (sym_e Bool false_ true_ h1)))
+      j)
+    ((k: Nat) => (ih: (j: Nat) -> Eq Bool (leq j k) true_ -> Lt j (succ k)) => (j: Nat) => Nat.ind
+      ((i: Nat) => Eq Bool (leq i (succ k)) true_ -> Lt i (succ (succ k)))
+      ((h0: Eq Bool (leq zero (succ k)) true_) => lt_zero_succ (succ k))
+      ((i: Nat) => (ihi: Eq Bool (leq i (succ k)) true_ -> Lt i (succ (succ k))) => (h1: Eq
+        Bool
+        (leq (succ i) (succ k))
+        true_) => lt_succ_mono i (succ k) (ih i h1))
+      j)
+    n
+    m
+    h
+
+val lt_true_Lt: (m: Nat) -> (n: Nat) -> Eq Bool (lt m n) true_ -> Lt m n =
+  (m: Nat) => (n: Nat) => (h: Eq Bool (lt m n) true_) => Nat.ind
+    ((k: Nat) => Eq Bool (lt m k) true_ -> Lt m k)
+    ((h0: Eq Bool (lt m zero) true_) => False.rec
+      ((_: False) => Lt m zero)
+      (true_ne_false (sym_e Bool false_ true_ h0)))
+    ((k: Nat) => (ih: Eq Bool (lt m k) true_ -> Lt m k) => (h0: Eq Bool (lt m (succ k)) true_) => lt_of_leq
+      m
+      k
+      h0)
+    n
+    h
 // --- Well-founded accessibility for Nat -----------------------------------
 //
 // `Acc` takes the relation as a parameter, so accessibility is stated as
