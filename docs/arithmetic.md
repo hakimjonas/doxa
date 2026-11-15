@@ -45,9 +45,11 @@ mod_zero : (m: Nat) -> Eq Nat (mod m zero) m
 For `n > 0`, `div m n` is floor division and `mod m n` is the corresponding
 remainder:
 
-- `mod m n < n`.
+- `mod m n < n`, proved as `mod_lt`:
+  `(m: Nat) -> (n: Nat) -> Lt zero n -> Lt (mod m n) n`.
 - `plus (mult (div m n) n) (mod m n) = m`, up to commutativity of `mult`.
-  Lean 4 states the same identity as `Nat.div_add_mod`.
+  Lean 4 states the same identity as `Nat.div_add_mod`. This identity is
+  *planned*, not proved.
 
 Concrete checks:
 
@@ -64,8 +66,13 @@ Concrete checks:
 | `div 5 0` | `0` |
 | `mod 5 0` | `5` |
 
-The bounds `mod m n < n` and `div_add_mod` are *planned*, not proved. Their
-proof shapes are described under [Open lemmas](#open-lemmas).
+The `mod_lt` proof generalises the `mod_acc` case split through `Bool.ind`
+with an explicit motive carrying the decision equation
+`Eq Bool (lt m (succ d)) x`. A direct `match` on `lt m n` does not refine a
+goal that mentions the scrutinee, so the equation is threaded as a hypothesis
+instead. `mod_step` and `mod_step_lt` implement the pattern: `mod_step` takes
+the branch, and `mod_step_lt` proves the bound for an arbitrary decision `b`
+by eliminating `b` with the equation in the motive.
 
 ### The fuel-based implementation
 
@@ -191,18 +198,14 @@ the recommendation and does not fix it.
 
 ## Open lemmas
 
-Two general theorems are not in `lib/stdlib/proofs.doxa`:
+One general theorem is not in `lib/stdlib/proofs.doxa`:
 
-- `mod_lt`: for `n > 0`, `Lt (mod m n) n`. A proof generalises the fuel
-  induction over `mod_acc` and shows that the `false_` branch decreases the
-  value until it falls below `n`. The remaining gap is the `mod_acc` fuel
-  invariant (`leq m k` with `k = m`) and a bound that turns
-  `leq m (succ k)`, `leq n m`, and `Lt zero n` into `leq (sub m n) k`.
 - `div_add_mod`: for `n > 0`,
   `Eq Nat (plus (mult (div m n) n) (mod m n)) m`. A proof can carry the
   invariant `m = n * q + r` through the `div_acc` loop, or relate `div_acc`
-  and `mod_acc` in one induction. It needs the bound from `mod_lt` and the
-  distributivity and associativity lemmas for `plus` and `mult`.
+  and `mod_acc` in one induction. It uses `sub_add`, `lt_false_leq`,
+  `leq_succ_true`, the `div_acc`/`mod_acc` invariant, and `plus_assoc`,
+  `plus_comm`, and `mult_succ_right`.
 
 `lt_false_leq`, `leq_succ_true`, and `sub_add` are verified in the scratch
 work and belong to the following increment.

@@ -276,7 +276,7 @@ val mult_assoc: (m: Nat) -> (n: Nat) -> (p: Nat) -> Eq Nat (mult (mult m n) p) (
 //
 // The division and modulo functions are specified in `docs/arithmetic.md`.
 // `div m zero` and `mod m zero` are the two zero-divisor conventions; the
-// general `mod_lt` and `div_add_mod` identities are not proved here.
+// general `div_add_mod` identity is not proved here.
 
 val sub_zero: (m: Nat) -> Eq Nat (sub m zero) m =
   Nat.ind
@@ -565,6 +565,99 @@ val lt_true_Lt: (m: Nat) -> (n: Nat) -> Eq Bool (lt m n) true_ -> Lt m n =
       h0)
     n
     h
+
+val lt_zero_absurd: (h: Lt zero zero) -> False =
+  (h: Lt zero zero) => Lt.rec
+    ((a: Nat) => (b: Nat) => (_: Lt a b) => Eq Nat b zero -> False)
+    zero
+    zero
+    ((n_: Nat) => (eq: Eq Nat (succ n_) zero) => succ_ne_zero n_ eq)
+    ((n_: Nat) => (m: Nat) => (k: Nat) => (_: Lt n_ m) => (_: Lt m k) => (_: Eq Nat m zero -> False) => (ih2: Eq
+      Nat
+      k
+      zero
+    -> False) => (eq: Eq Nat k zero) => ih2 eq)
+    h
+    (refl zero)
+
+val sub_succ_leq: (m: Nat)
+-> (d: Nat) -> (k: Nat) -> Eq Bool (leq m (succ k)) true_ -> Eq Bool (leq (sub m (succ d)) k) true_ =
+  (m: Nat) => Nat.ind
+    ((j: Nat) => (d: Nat)
+    -> (k: Nat) -> Eq Bool (leq j (succ k)) true_ -> Eq Bool (leq (sub j (succ d)) k) true_)
+    ((d: Nat) => (k: Nat) => (h: Eq Bool (leq zero (succ k)) true_) => refl)
+    ((j: Nat) => (ih: (d: Nat)
+    -> (k: Nat) -> Eq Bool (leq j (succ k)) true_ -> Eq Bool (leq (sub j (succ d)) k) true_) => (d: Nat) => (k: Nat) => (h: Eq
+      Bool
+      (leq (succ j) (succ k))
+      true_) => leq_trans (sub j d) j k (leq_sub j d) h)
+    m
+
+fun mod_step(d: Nat, j: Nat, m: Nat, b: Bool): Nat = match b {
+  case true_ => m
+  case false_ => mod_acc j (sub m (succ d)) (succ d)
+}
+
+val mod_step_lt: (d: Nat)
+-> (j: Nat)
+  -> (m: Nat)
+    -> (b: Bool)
+      -> Eq Bool (lt m (succ d)) b
+        -> Eq Bool (leq m (succ j)) true_
+          -> ((m2: Nat) -> Eq Bool (leq m2 j) true_ -> Lt (mod_acc j m2 (succ d)) (succ d))
+            -> Lt (mod_step d j m b) (succ d) =
+  (d: Nat) => (j: Nat) => (m: Nat) => (b: Bool) => (eq: Eq Bool (lt m (succ d)) b) => (h: Eq
+    Bool
+    (leq m (succ j))
+    true_) => (ih: (m2: Nat) -> Eq Bool (leq m2 j) true_ -> Lt (mod_acc j m2 (succ d)) (succ d)) => Bool.ind
+    ((x: Bool) => Eq Bool (lt m (succ d)) x
+    -> Eq Bool (leq m (succ j)) true_
+      -> ((m2: Nat) -> Eq Bool (leq m2 j) true_ -> Lt (mod_acc j m2 (succ d)) (succ d))
+        -> Lt (mod_step d j m x) (succ d))
+    ((e: Eq Bool (lt m (succ d)) true_) => (g: Eq Bool (leq m (succ j)) true_) => (k: (m2: Nat)
+    -> Eq Bool (leq m2 j) true_ -> Lt (mod_acc j m2 (succ d)) (succ d)) => lt_true_Lt m (succ d) e)
+    ((e: Eq Bool (lt m (succ d)) false_) => (g: Eq Bool (leq m (succ j)) true_) => (k: (m2: Nat)
+    -> Eq Bool (leq m2 j) true_ -> Lt (mod_acc j m2 (succ d)) (succ d)) => k
+      (sub m (succ d))
+      (sub_succ_leq m d j g))
+    b
+    eq
+    h
+    ih
+
+val mod_acc_lt_succ: (d: Nat)
+-> (k: Nat) -> (m: Nat) -> Eq Bool (leq m k) true_ -> Lt (mod_acc k m (succ d)) (succ d) =
+  (d: Nat) => (k: Nat) => (m: Nat) => (h: Eq Bool (leq m k) true_) => Nat.ind
+    ((j: Nat) => (m: Nat) -> Eq Bool (leq m j) true_ -> Lt (mod_acc j m (succ d)) (succ d))
+    ((m: Nat) => (h: Eq Bool (leq m zero) true_) => Nat.ind
+      ((i: Nat) => Eq Bool (leq i zero) true_ -> Lt i (succ d))
+      ((h0: Eq Bool (leq zero zero) true_) => lt_zero_succ d)
+      ((i: Nat) => (ih: Eq Bool (leq i zero) true_ -> Lt i (succ d)) => (h1: Eq
+        Bool
+        (leq (succ i) zero)
+        true_) => False.rec
+        ((_: False) => Lt (succ i) (succ d))
+        (true_ne_false (sym_e Bool false_ true_ h1)))
+      m
+      h)
+    ((j: Nat) => (ih: (m: Nat) -> Eq Bool (leq m j) true_ -> Lt (mod_acc j m (succ d)) (succ d)) => (m: Nat) => (h: Eq
+      Bool
+      (leq m (succ j))
+      true_) => mod_step_lt d j m (lt m (succ d)) (refl (lt m (succ d))) h ih)
+    k
+    m
+    h
+
+val mod_lt: (m: Nat) -> (n: Nat) -> Lt zero n -> Lt (mod m n) n =
+  (m: Nat) => (n: Nat) => Nat.ind
+    ((k: Nat) => Lt zero k -> Lt (mod m k) k)
+    ((h: Lt zero zero) => False.rec ((_: False) => Lt (mod m zero) zero) (lt_zero_absurd h))
+    ((k: Nat) => (ih: Lt zero k -> Lt (mod m k) k) => (h: Lt zero (succ k)) => mod_acc_lt_succ
+      k
+      m
+      m
+      (leq_refl m))
+    n
 // --- Well-founded accessibility for Nat -----------------------------------
 //
 // `Acc` takes the relation as a parameter, so accessibility is stated as
