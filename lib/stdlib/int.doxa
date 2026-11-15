@@ -158,3 +158,170 @@ fun intAbs_pos(n: Nat): Eq Nat (intAbs (pos n)) n = refl n
 // intAbs_neg: abs of negative is succ n
 
 fun intAbs_neg(n: Nat): Eq Nat (intAbs (neg n)) (succ n) = refl (succ n)
+
+val intNeg_pos_zero: Eq Int (intNeg (pos zero)) (pos zero) = refl (pos zero)
+
+val intMult_neg_intNeg: (m: Nat)
+-> (u: Nat) -> Eq Int (intMult (neg m) (intNeg (pos u))) (pos (mult (succ m) u)) =
+  (m: Nat) => (u: Nat) => Nat.ind
+    ((k: Nat) => Eq Int (intMult (neg m) (intNeg (pos k))) (pos (mult (succ m) k)))
+    (trans_e
+      Int
+      (intNeg (pos (mult (succ m) zero)))
+      (intNeg (pos zero))
+      (pos (mult (succ m) zero))
+      (cong_e Nat Int ((t: Nat) => intNeg (pos t)) (mult (succ m) zero) zero (mult_zero (succ m)))
+      (trans_e
+        Int
+        (intNeg (pos zero))
+        (pos zero)
+        (pos (mult (succ m) zero))
+        intNeg_pos_zero
+        (sym_e
+          Int
+          (pos (mult (succ m) zero))
+          (pos zero)
+          (cong_e Nat Int ((t: Nat) => pos t) (mult (succ m) zero) zero (mult_zero (succ m))))))
+    ((k: Nat) => (ih: Eq Int (intMult (neg m) (intNeg (pos k))) (pos (mult (succ m) k))) => {
+      val a: Nat = plus (mult m k) m;
+      val l: Nat = succ (plus a k);
+      val t1: Nat = plus a (succ k);
+      val t2: Nat = plus (mult m k) (plus m (succ k));
+      val t3: Nat = plus (plus m (succ k)) (mult m k);
+      val t4: Nat = plus (plus (succ k) m) (mult m k);
+      val t5: Nat = plus (succ k) (plus m (mult m k));
+      val e1: Eq Nat l t1 = sym_e Nat t1 l (plus_succ a k);
+      val e2: Eq Nat t1 t2 = plus_assoc (mult m k) m (succ k);
+      val e3: Eq Nat t2 t3 = plus_comm (mult m k) (plus m (succ k));
+      val e4: Eq Nat t3 t4 = cong_e
+        Nat
+        Nat
+        ((t: Nat) => plus t (mult m k))
+        (plus m (succ k))
+        (plus (succ k) m)
+        (plus_comm m (succ k));
+      val e5: Eq Nat t4 t5 = plus_assoc (succ k) m (mult m k);
+      val e6: Eq Nat t5 (mult (succ m) (succ k)) = sym_e
+        Nat
+        (mult (succ m) (succ k))
+        t5
+        (cong_e
+          Nat
+          Nat
+          ((t: Nat) => plus (succ k) t)
+          (mult m (succ k))
+          (plus m (mult m k))
+          (mult_succ_right m k));
+      val p: Eq Nat l (mult (succ m) (succ k)) = trans_e
+        Nat
+        l
+        t1
+        (mult (succ m) (succ k))
+        e1
+        (trans_e
+          Nat
+          t1
+          t2
+          (mult (succ m) (succ k))
+          e2
+          (trans_e
+            Nat
+            t2
+            t3
+            (mult (succ m) (succ k))
+            e3
+            (trans_e
+              Nat
+              t3
+              t4
+              (mult (succ m) (succ k))
+              e4
+              (trans_e Nat t4 t5 (mult (succ m) (succ k)) e5 e6))));
+      cong_e Nat Int ((t: Nat) => pos t) l (mult (succ m) (succ k)) p
+      })
+    u
+
+val intDivMod_pos_pos: (n: Nat)
+-> (m: Nat)
+  -> Eq
+      Int
+      (intPlus
+        (intMult (pos (succ m)) (intDiv (pos n) (pos (succ m))))
+        (intMod (pos n) (pos (succ m))))
+      (pos n) =
+  (n: Nat) => (m: Nat) => cong_e
+    Nat
+    Int
+    ((k: Nat) => pos k)
+    (plus (mult (succ m) (div n (succ m))) (mod n (succ m)))
+    n
+    (trans_e
+      Nat
+      (plus (mult (succ m) (div n (succ m))) (mod n (succ m)))
+      (plus (mult (div n (succ m)) (succ m)) (mod n (succ m)))
+      n
+      (cong_e
+        Nat
+        Nat
+        ((t: Nat) => plus t (mod n (succ m)))
+        (mult (succ m) (div n (succ m)))
+        (mult (div n (succ m)) (succ m))
+        (mult_comm (succ m) (div n (succ m))))
+      (div_add_mod n (succ m) (lt_zero_succ m)))
+
+val intDivMod_pos_neg: (n: Nat)
+-> (m: Nat)
+  -> Eq Int (intPlus (intMult (neg m) (intDiv (pos n) (neg m))) (intMod (pos n) (neg m))) (pos n) =
+  (n: Nat) => (m: Nat) => {
+    val B: Nat = succ m;
+    val u: Nat = div n B;
+    val v: Nat = mod n B;
+    val e1: Eq Int (intMult (neg m) (intDiv (pos n) (neg m))) (pos (mult B u)) = intMult_neg_intNeg
+      m
+      u;
+    val chain: Eq Nat (plus (mult B u) v) n = trans_e
+      Nat
+      (plus (mult B u) v)
+      (plus (mult u B) v)
+      n
+      (cong_e Nat Nat ((t: Nat) => plus t v) (mult B u) (mult u B) (mult_comm B u))
+      (div_add_mod n B (lt_zero_succ m));
+    val e2: Eq Int (intPlus (pos (mult B u)) (intMod (pos n) (neg m))) (pos n) = cong_e
+      Nat
+      Int
+      ((k: Nat) => pos k)
+      (plus (mult B u) v)
+      n
+      chain;
+    trans_e
+      Int
+      (intPlus (intMult (neg m) (intDiv (pos n) (neg m))) (intMod (pos n) (neg m)))
+      (intPlus (pos (mult B u)) (intMod (pos n) (neg m)))
+      (pos n)
+      (cong_e
+        Int
+        Int
+        ((t: Int) => intPlus t (intMod (pos n) (neg m)))
+        (intMult (neg m) (intDiv (pos n) (neg m)))
+        (pos (mult B u))
+        e1)
+      e2
+    }
+
+val intDivMod_pos: (n: Nat)
+-> (b: Int) -> Eq Int (intPlus (intMult b (intDiv (pos n) b)) (intMod (pos n) b)) (pos n) =
+  (n: Nat) => (b: Int) => Int.ind
+    ((y: Int) => Eq Int (intPlus (intMult y (intDiv (pos n) y)) (intMod (pos n) y)) (pos n))
+    ((m: Nat) => Nat.ind
+      ((k: Nat) => Eq
+        Int
+        (intPlus (intMult (pos k) (intDiv (pos n) (pos k))) (intMod (pos n) (pos k)))
+        (pos n))
+      (refl (pos n))
+      ((k: Nat) => (ih: Eq
+        Int
+        (intPlus (intMult (pos k) (intDiv (pos n) (pos k))) (intMod (pos n) (pos k)))
+        (pos n)) => intDivMod_pos_pos n k)
+      m)
+    ((m: Nat) => intDivMod_pos_neg n m)
+    b

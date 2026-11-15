@@ -230,13 +230,17 @@ All rows check by `refl`.
 Both `mod_lt` and `div_add_mod` are proved in `lib/stdlib/proofs.doxa`. No
 general theorem about the `Nat` arithmetic operations remains open.
 
-For `Int`, two Euclidean facts are planned:
+For `Int`, two Euclidean facts remain planned:
 
-- `intPlus (intMult b (intDiv a b)) (intMod a b) = a` for `b != 0`.
+- `intPlus (intMult b (intDiv a b)) (intMod a b) = a` for `b != 0`. The
+  nonnegative-dividend half is proved as `intDivMod_pos` (`a = pos n`, any
+  `b`). The negative-dividend cases are still planned.
 - `0 <= intMod a b < intAbs b` for `b != 0`.
 
 They need `intPlus` associativity, identity, and inverse lemmas, `intMult`
 sign and distributivity lemmas, and an `Int`-order bridge to `intLeq`.
+`int.doxa` now provides `intMult_neg_intNeg` and `intNeg_pos_zero`, the
+ingredients `intDivMod_pos` uses for negative divisors.
 
 ## References
 
