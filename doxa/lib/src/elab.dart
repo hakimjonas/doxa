@@ -649,6 +649,17 @@ final class OverlappingInstances extends ElabError {
 // ---------------------------------------------------------------------------
 
 /// Metadata about a registered typeclass.
+///
+/// Populated only by the elaborator's class path, which the dispatch
+/// currently bypasses: `typeclass` declarations are rejected with
+/// [TypeclassUnsupported]. Instance resolution in `_insertImplicits`
+/// matches instances by name alone; no dictionary type is checked and
+/// no search is performed. Internal until typeclasses are completed
+/// (1.0 work).
+///
+/// Exported because [TopEnv] carries the registry, but an instance
+/// entry cannot be built through the package's public surface:
+/// [InstanceInfo] is not exported.
 final class ClassInfo {
   /// The typeclass name (e.g. "Eq").
   final String className;
@@ -685,6 +696,12 @@ final class ClassInfo {
 }
 
 /// A registered instance of a typeclass.
+///
+/// Name-matching only: [targetType] is compared against the instance
+/// domain's argument name, and [bindingName] is inserted as a `TTop`
+/// reference. The binding's declared type is never checked at
+/// resolution. Internal until instance search and dictionary checking
+/// are completed (1.0 work); not exported from `package:doxa/doxa.dart`.
 final class InstanceInfo {
   /// The target type name (e.g. "Int").
   final String targetType;

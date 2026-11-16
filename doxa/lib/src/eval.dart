@@ -962,26 +962,6 @@ final class _InferQuotAfterRelationCheck extends _Frame {
   const _InferQuotAfterRelationCheck(this.carrierSort);
 }
 
-/// After inferring [TQuotLift]'s quot type, check it's a VQuot.
-final class _InferQuotLiftHaveQuotType extends _Frame {
-  final Ctx ctx;
-  final Term fn;
-  const _InferQuotLiftHaveQuotType(this.ctx, this.fn);
-}
-
-/// After inferring [TQuotLift]'s fn type, check it's VPi and open codomain.
-final class _InferQuotLiftHaveFnType extends _Frame {
-  final Ctx ctx;
-  final Value quotA;
-  final Value quotR;
-  const _InferQuotLiftHaveFnType(this.ctx, this.quotA, this.quotR);
-}
-
-/// After checking proof, yield the opened codomain value.
-final class _InferQuotLiftAfterProof extends _Frame {
-  const _InferQuotLiftAfterProof();
-}
-
 // --- Term-consuming frames (fired when current step is [_YieldT]) ---
 
 /// After a Pi's domain is quoted, open the codomain closure (by evaluating
@@ -2661,13 +2641,19 @@ Object _drive(
             step = _Infer(ctx, carrier);
             break;
 
+          // Quotient injection and elimination are rejected at the
+          // kernel boundary. `mk` needs a sound typing rule relative to
+          // the quotient type, and `lift`'s compatibility proof is not
+          // checked, so neither term has a rule the kernel can justify.
+          // The surface elaborator gates the syntax
+          // (`QuotientUnsupported`); this is the same rejection for
+          // consumers that build kernel terms directly. Rejection
+          // happens before any subterm is inferred or evaluated.
           case TQuotMk():
-            throw const QuotMkInInferMode();
+            throw const QuotientTermUnsupported('Quot.mk');
 
-          case TQuotLift(:final quot, :final fn):
-            stack.add(_InferQuotLiftHaveQuotType(ctx, fn));
-            step = _Infer(ctx, quot);
-            break;
+          case TQuotLift():
+            throw const QuotientTermUnsupported('Quot.lift');
 
           case TProj(:final expr, :final fieldName):
             // Infer the type of expr, then extract the field's type
@@ -4245,22 +4231,6 @@ Object _drive(
           case _InferQuotAfterRelationCheck(:final carrierSort):
             step = _YieldV(_sortToValue(carrierSort));
 
-          case _InferQuotLiftHaveQuotType(:final ctx, :final fn):
-            if (value is! VQuot) throw NotAQuotient(value);
-            final qV = value;
-            stack.add(_InferQuotLiftHaveFnType(ctx, qV.carrier, qV.relation));
-            step = _Infer(ctx, fn);
-
-          case _InferQuotLiftHaveFnType(:final ctx, quotA: _, quotR: _):
-            final v = value;
-            if (v is! VPi) throw NotAFunction(v);
-            final fresh = VNeutral(NVar(ctx.level));
-            stack.add(const _InferQuotLiftAfterProof());
-            step = _Eval(v.codomain.body, v.codomain.env.extend(fresh));
-
-          case _InferQuotLiftAfterProof():
-            step = _YieldV(value);
-
           case _QPiCod():
           case _QPiBuild():
           case _QPiBuildNormal():
@@ -4591,9 +4561,6 @@ Object _drive(
           case _InferQuotHaveCarrierType():
           case _InferQuotHaveCarrierV():
           case _InferQuotAfterRelationCheck():
-          case _InferQuotLiftHaveQuotType():
-          case _InferQuotLiftHaveFnType():
-          case _InferQuotLiftAfterProof():
             throw StateError(
               'internal: _YieldT on value/conv-expecting frame '
               '${frame.runtimeType}. This indicates a bug in the '
@@ -4745,9 +4712,6 @@ Object _drive(
           case _InferQuotHaveCarrierV():
           case _InferQuotAfterCarrierQuote():
           case _InferQuotAfterRelationCheck():
-          case _InferQuotLiftHaveQuotType():
-          case _InferQuotLiftHaveFnType():
-          case _InferQuotLiftAfterProof():
             throw StateError(
               'internal: _YieldC on non-conv frame '
               '${frame.runtimeType}. This indicates a bug in the '

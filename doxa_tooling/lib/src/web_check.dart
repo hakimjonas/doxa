@@ -708,6 +708,7 @@ String _checkErrorKind(DoxaCheckError error) => switch (error) {
   MatchScrutineeNotInductive _ => 'match_scrutinee_not_inductive',
   IndexedMatchNotExhaustive _ => 'match_not_exhaustive',
   PropEliminationIntoType _ => 'prop_elimination_into_type',
+  QuotientTermUnsupported _ => 'quotient_unsupported',
   NotAQuotient _ => 'not_a_quotient',
   QuotMkInInferMode _ => 'quot_mk_in_infer_mode',
   QuotFnNotRespectingRelation _ => 'quot_fn_not_respecting_relation',
