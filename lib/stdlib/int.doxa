@@ -592,3 +592,155 @@ val intDivMod: (a: Int) -> (b: Int) -> Eq Int (intPlus (intMult b (intDiv a b)) 
     ((n: Nat) => (b: Int) => intDivMod_pos n b)
     ((n: Nat) => (b: Int) => intDivMod_neg n b)
     a
+
+val intPlus_one: (r: Nat) -> Eq Int (intPlus (pos r) (pos (succ zero))) (pos (succ r)) =
+  (r: Nat) => cong_e
+    Nat
+    Int
+    ((t: Nat) => pos t)
+    (plus r (succ zero))
+    (succ r)
+    (trans_e
+      Nat
+      (plus r (succ zero))
+      (succ (plus r zero))
+      (succ r)
+      (plus_succ r zero)
+      (cong_e Nat Nat ((t: Nat) => succ t) (plus r zero) r (plus_zero r)))
+
+val intModNegR_bound: (m: Nat)
+-> (v: Nat) -> Eq Bool (leq (succ (intModNegR (succ m) v)) (succ m)) true_ =
+  (m: Nat) => (v: Nat) => Nat.ind
+    ((i: Nat) => Eq Bool (leq (succ (intModNegR (succ m) i)) (succ m)) true_)
+    (refl true_)
+    ((i: Nat) => (ih: Eq Bool (leq (succ (intModNegR (succ m) i)) (succ m)) true_) => sub_lt_succ
+      m
+      (succ i)
+      (lt_zero_succ i))
+    v
+
+val intMod_nonneg: (a: Int)
+-> (b: Int) -> (Eq Int b (pos zero) -> False) -> Eq Bool (intLeq (pos zero) (intMod a b)) true_ =
+  (a: Int) => (b: Int) => (h: Eq Int b (pos zero) -> False) => Int.ind
+    ((y: Int) => (Eq Int y (pos zero) -> False) -> Eq Bool (intLeq (pos zero) (intMod a y)) true_)
+    ((m: Nat) => Nat.ind
+      ((j: Nat) => (Eq Int (pos j) (pos zero) -> False)
+      -> Eq Bool (intLeq (pos zero) (intMod a (pos j))) true_)
+      ((h0: Eq Int (pos zero) (pos zero) -> False) => False.rec
+        ((_: False) => Eq Bool (intLeq (pos zero) (intMod a (pos zero))) true_)
+        (h0 (refl (pos zero))))
+      ((j: Nat) => (ih: (Eq Int (pos j) (pos zero) -> False)
+      -> Eq Bool (intLeq (pos zero) (intMod a (pos j))) true_) => (h1: Eq
+        Int
+        (pos (succ j))
+        (pos zero)
+      -> False) => Int.ind
+        ((x: Int) => Eq Bool (intLeq (pos zero) (intMod x (pos (succ j)))) true_)
+        ((n: Nat) => refl true_)
+        ((n: Nat) => refl true_)
+        a)
+      m)
+    ((m: Nat) => (h0: Eq Int (neg m) (pos zero) -> False) => Int.ind
+      ((x: Int) => Eq Bool (intLeq (pos zero) (intMod x (neg m))) true_)
+      ((n: Nat) => refl true_)
+      ((n: Nat) => refl true_)
+      a)
+    b
+    h
+
+val intMod_lt: (a: Int)
+-> (b: Int)
+  -> (Eq Int b (pos zero) -> False)
+    -> Eq Bool (intLeq (intPlus (intMod a b) (pos (succ zero))) (pos (intAbs b))) true_ =
+  (a: Int) => (b: Int) => (h: Eq Int b (pos zero) -> False) => Int.ind
+    ((y: Int) => (Eq Int y (pos zero) -> False)
+    -> Eq Bool (intLeq (intPlus (intMod a y) (pos (succ zero))) (pos (intAbs y))) true_)
+    ((m: Nat) => Nat.ind
+      ((j: Nat) => (Eq Int (pos j) (pos zero) -> False)
+      -> Eq
+          Bool
+          (intLeq (intPlus (intMod a (pos j)) (pos (succ zero))) (pos (intAbs (pos j))))
+          true_)
+      ((h0: Eq Int (pos zero) (pos zero) -> False) => False.rec
+        ((_: False) => Eq
+          Bool
+          (intLeq (intPlus (intMod a (pos zero)) (pos (succ zero))) (pos (intAbs (pos zero))))
+          true_)
+        (h0 (refl (pos zero))))
+      ((j: Nat) => (ih: (Eq Int (pos j) (pos zero) -> False)
+      -> Eq
+          Bool
+          (intLeq (intPlus (intMod a (pos j)) (pos (succ zero))) (pos (intAbs (pos j))))
+          true_) => (h1: Eq Int (pos (succ j)) (pos zero) -> False) => Int.ind
+        ((x: Int) => Eq
+          Bool
+          (intLeq
+            (intPlus (intMod x (pos (succ j))) (pos (succ zero)))
+            (pos (intAbs (pos (succ j)))))
+          true_)
+        ((n: Nat) => trans_e
+          Bool
+          (intLeq (intPlus (pos (mod n (succ j))) (pos (succ zero))) (pos (succ j)))
+          (intLeq (pos (succ (mod n (succ j)))) (pos (succ j)))
+          true_
+          (cong_e
+            Int
+            Bool
+            ((t: Int) => intLeq t (pos (succ j)))
+            (intPlus (pos (mod n (succ j))) (pos (succ zero)))
+            (pos (succ (mod n (succ j))))
+            (intPlus_one (mod n (succ j))))
+          (lt_succ_leq (mod n (succ j)) (succ j) (mod_lt n (succ j) (lt_zero_succ j))))
+        ((n: Nat) => trans_e
+          Bool
+          (intLeq
+            (intPlus (pos (intModNegR (succ j) (mod (succ n) (succ j)))) (pos (succ zero)))
+            (pos (succ j)))
+          (intLeq (pos (succ (intModNegR (succ j) (mod (succ n) (succ j))))) (pos (succ j)))
+          true_
+          (cong_e
+            Int
+            Bool
+            ((t: Int) => intLeq t (pos (succ j)))
+            (intPlus (pos (intModNegR (succ j) (mod (succ n) (succ j)))) (pos (succ zero)))
+            (pos (succ (intModNegR (succ j) (mod (succ n) (succ j)))))
+            (intPlus_one (intModNegR (succ j) (mod (succ n) (succ j)))))
+          (intModNegR_bound j (mod (succ n) (succ j))))
+        a)
+      m)
+    ((m: Nat) => (h0: Eq Int (neg m) (pos zero) -> False) => Int.ind
+      ((x: Int) => Eq
+        Bool
+        (intLeq (intPlus (intMod x (neg m)) (pos (succ zero))) (pos (intAbs (neg m))))
+        true_)
+      ((n: Nat) => trans_e
+        Bool
+        (intLeq (intPlus (pos (mod n (succ m))) (pos (succ zero))) (pos (succ m)))
+        (intLeq (pos (succ (mod n (succ m)))) (pos (succ m)))
+        true_
+        (cong_e
+          Int
+          Bool
+          ((t: Int) => intLeq t (pos (succ m)))
+          (intPlus (pos (mod n (succ m))) (pos (succ zero)))
+          (pos (succ (mod n (succ m))))
+          (intPlus_one (mod n (succ m))))
+        (lt_succ_leq (mod n (succ m)) (succ m) (mod_lt n (succ m) (lt_zero_succ m))))
+      ((n: Nat) => trans_e
+        Bool
+        (intLeq
+          (intPlus (pos (intModNegR (succ m) (mod (succ n) (succ m)))) (pos (succ zero)))
+          (pos (succ m)))
+        (intLeq (pos (succ (intModNegR (succ m) (mod (succ n) (succ m))))) (pos (succ m)))
+        true_
+        (cong_e
+          Int
+          Bool
+          ((t: Int) => intLeq t (pos (succ m)))
+          (intPlus (pos (intModNegR (succ m) (mod (succ n) (succ m)))) (pos (succ zero)))
+          (pos (succ (intModNegR (succ m) (mod (succ n) (succ m)))))
+          (intPlus_one (intModNegR (succ m) (mod (succ n) (succ m)))))
+        (intModNegR_bound m (mod (succ n) (succ m))))
+      a)
+    b
+    h

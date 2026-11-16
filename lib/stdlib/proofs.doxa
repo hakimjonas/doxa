@@ -721,6 +721,32 @@ val lt_zero_absurd: (h: Lt zero zero) -> False =
     h
     (refl zero)
 
+val leq_succ_succ: (a: Nat)
+-> (b: Nat) -> Eq Bool (leq a b) true_ -> Eq Bool (leq (succ a) (succ b)) true_ =
+  (a: Nat) => (b: Nat) => (h: Eq Bool (leq a b) true_) => h
+
+fun lt_succ_leq(m: Nat, n: Nat, h: Lt m n): Eq Bool (leq (succ m) n) true_ {struct h} = match h {
+  case lt_succ k => leq_refl (succ k)
+  case lt_trans a b c h1 h2 => leq_trans
+    (succ a)
+    (succ b)
+    c
+    (leq_succ_succ a b (lt_leq a b h1))
+    (lt_succ_leq b c h2)
+}
+
+val sub_lt_succ: (m: Nat)
+-> (w: Nat) -> Lt zero w -> Eq Bool (leq (succ (sub (succ m) w)) (succ m)) true_ =
+  (m: Nat) => (w: Nat) => Nat.ind
+    ((i: Nat) => Lt zero i -> Eq Bool (leq (succ (sub (succ m) i)) (succ m)) true_)
+    ((h: Lt zero zero) => False.rec
+      ((_: False) => Eq Bool (leq (succ (sub (succ m) zero)) (succ m)) true_)
+      (lt_zero_absurd h))
+    ((i: Nat) => (ih: Lt zero i -> Eq Bool (leq (succ (sub (succ m) i)) (succ m)) true_) => (h: Lt
+      zero
+      (succ i)) => leq_sub m i)
+    w
+
 val sub_succ_leq: (m: Nat)
 -> (d: Nat) -> (k: Nat) -> Eq Bool (leq m (succ k)) true_ -> Eq Bool (leq (sub m (succ d)) k) true_ =
   (m: Nat) => Nat.ind
