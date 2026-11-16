@@ -1,0 +1,27 @@
+// Telescope types and a nullary constructor's result index headed by a
+// top-level binding. Both are evaluated while checking an inductive
+// application, so they must resolve through the top-level registry.
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
+}
+
+type Key = Nat
+
+fun idNat(n: Nat): Nat = n
+
+data E: Key -> Type {
+  epack: (k: Key) -> E k;
+}
+
+data F: Nat -> Type {
+  fnil: F (idNat zero);
+}
+
+fun useE(i: Key, e: E i): Key = match e {
+  case epack k => k
+}
+
+val e0: E zero = epack zero
+
+val f0: F zero = fnil

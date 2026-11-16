@@ -3514,7 +3514,14 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
               argNeedsEnrichment.add(j);
             }
           }
-          var teleEnv = const ENil() as Env;
+          // Seed with the state's registries: the ctor's arg types and
+          // result indices may reference top-level bindings (an index
+          // expression like `plus n m`), which `eval` resolves through
+          // `TTop`. A bare `ENil` aborts on those.
+          Env teleEnv = ENil.withRegistries(
+            dataDecls: state.ctx.env.dataDecls,
+            topBindings: state.ctx.env.topBindings,
+          );
           Env enrichedTeleEnv = teleEnv;
           for (var i = 0; i < paramsV.length; i++) {
             teleEnv = teleEnv.extend(paramsV[i]);

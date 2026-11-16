@@ -122,6 +122,7 @@ void main() {
       'auto_refl_mismatch.doxa': 'error: type mismatch',
       'uip_not_statable.doxa': 'error: type mismatch',
       'vec_index_motive_false.doxa': 'error: type mismatch',
+      'computed_index_mismatch.doxa': 'error: type mismatch',
     };
 
     for (final entry in expectations.entries) {
