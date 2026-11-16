@@ -76,8 +76,16 @@ part 'eval_helpers.dart';
 // -------------------------------------------------------------------------
 const _l0 = LLevel(0);
 const _l1 = LLevel(1);
-const _vType0 = VType(_l0);
 const _vType1 = VType(_l1);
+
+/// Classification sentinel for [_inferValueType]'s Pi arm.
+///
+/// That helper is only asked whether the type it returns is
+/// Prop-sorted or SProp-sorted, and neither predicate matches a
+/// [VType]. The level is therefore irrelevant; `Type 0` is chosen so
+/// the value stays a well-formed sort. This is not a type claim and
+/// never leaves the irrelevance check.
+const _vSortTypeSentinel = VType(_l0);
 
 // ===========================================================================
 // Conversion result.
@@ -1239,6 +1247,7 @@ bool _termContainsMeta(Term t) {
       case TMeta():
         return true;
       case TType():
+      case TUnknown():
       case TProp():
       case TSProp():
       case TBound():
@@ -1447,6 +1456,9 @@ Object _drive(
         switch (term) {
           case TType(:final level):
             step = _YieldV(VType(level));
+
+          case TUnknown():
+            step = const _YieldV(VUnknown());
 
           case TProp():
             step = const _YieldV(VProp());
@@ -1768,6 +1780,19 @@ Object _drive(
             step = _YieldC(
               _levelEq(la, lb) ? _ok : _mismatchOrIrrelevance(a, b, dataDecls),
             );
+
+          // VUnknown × VUnknown: the only conversion the unknown
+          // marker admits. It is not a sort, not a Pi, not a data
+          // type: against anything real it stays stuck below.
+          case (VUnknown(), VUnknown()):
+            step = const _YieldC(_ok);
+
+          // VUnknown × anything real (and symmetrically): never
+          // coerced. The marker names the absence of a type, so
+          // claiming it equal to a real type would be a guess.
+          case (VUnknown(), _):
+          case (_, VUnknown()):
+            step = _YieldC(_mismatchOrIrrelevance(a, b, dataDecls));
 
           // Prop × Prop: α-convertible.
           case (VProp(), VProp()):
@@ -2419,7 +2444,9 @@ Object _drive(
             );
             step = _Subtype(de, dg, level);
 
-          // Everything else: fall back to strict equality.
+          // Everything else: fall back to strict equality. That
+          // includes VUnknown, which therefore converts only with
+          // itself: `_Conv` owns the unknown's conversion rule.
           default:
             step = _Conv(got, expected, level);
         }
@@ -2431,6 +2458,9 @@ Object _drive(
         switch (term) {
           case TType(:final level):
             step = _YieldV(VType(_normalizeLevel(LSucc(level))));
+
+          case TUnknown():
+            throw const UnknownTypeReached('infer');
 
           case TProp():
             // Prop : Type 1 (SPEC §8.2).
@@ -2702,11 +2732,9 @@ Object _drive(
         if (term is TMatch) {
           // Check a match by inferring the scrutinee's type, then
           // checking each arm's body against `expected` under the
-          // arm's binder-extended ctx. Motive inference is bounded to
-          // the constant-motive case here, the motive placeholder
-          // emitted by the elaborator (TType(0)) is treated as "use
-          // `expected` as the constant motive". Explicit motives raise
-          // a boundary error.
+          // arm's binder-extended ctx. A match with no explicit motive
+          // (`matchTerm.motive == null`) uses `expected` as the
+          // constant motive. Explicit motives raise a boundary error.
           stack.add(
             _CheckMatchScrutineeType(
               ctx: ctx,
@@ -2987,6 +3015,7 @@ Object _drive(
           case VConstr():
           case VQuot():
           case VQuotMk():
+          case VUnknown():
             throw StateError(
               'apply: attempted to apply a non-function value '
               '(${fn.runtimeType}). Kernel invariant violated.',
@@ -3000,6 +3029,9 @@ Object _drive(
         switch (value) {
           case VType(level: final l):
             step = _YieldT(TType(l));
+
+          case VUnknown():
+            step = const _YieldT(TUnknown());
 
           case VProp():
             step = const _YieldT(TProp());
@@ -4940,6 +4972,10 @@ Value? _inferValueType(Value v, List<DataDecl> dataDecls) {
   switch (v) {
     case VType(:final level):
       return VType(_normalizeLevel(LSucc(level)));
+    case VUnknown():
+      // The type of an unknown value is unknown; irrelevance below
+      // treats it conservatively.
+      return const VUnknown();
     case VProp():
       return _vType1;
     case VSProp():
@@ -4953,14 +4989,15 @@ Value? _inferValueType(Value v, List<DataDecl> dataDecls) {
       // Rather than compute `_piSort(...)` here (which would require
       // re-entering the driver to evaluate sub-terms), we pre-classify
       // via the term walker. If the body is Prop-sorted, return VProp
-      // (sentinel); if SProp-sorted, return VSProp; otherwise VType(0)
-      // (any Type sort suffices, since neither _isPropSorted nor
-      // _isSPropSorted matches VType(_)).
+      // (sentinel); if SProp-sorted, return VSProp; otherwise Type 0.
+      //
+      // See `_vSortTypeSentinel`: the level is irrelevant here, both
+      // callers only ask whether the value is Prop- or SProp-sorted.
       final codBody = v.codomain.body;
       final codDecls = v.codomain.env.dataDecls;
       if (_isPropSortedTerm(codBody, codDecls)) return const VProp();
       if (_isSPropSortedTerm(codBody, codDecls)) return const VSProp();
-      return _vType0;
+      return _vSortTypeSentinel;
     case VData(:final name):
       // The type of a VData (an inductive type applied to its args) is
       // the inductive's declared SORT, VProp or VType(n). This is
@@ -5038,6 +5075,7 @@ bool _isPropSorted(Value type, List<DataDecl> dataDecls) {
     case VQuot():
     case VQuotMk():
     case VQuotLift():
+    case VUnknown():
       // Not a type-value; conservative decline.
       return false;
   }
@@ -5072,6 +5110,7 @@ bool _isSPropSorted(Value type, List<DataDecl> dataDecls) {
     case VQuot():
     case VQuotMk():
     case VQuotLift():
+    case VUnknown():
       return false;
   }
 }
@@ -5270,9 +5309,9 @@ ConvResult? _tryUnify(Value a, Value b, int level, MetaContext metas) {
   // Why this matters: the solution is NOT just a conv-time
   // β-reduction target, the kernel's `_Infer(TMeta(id) → SOLVED →
   // _Infer(solution))` path sort-checks the solution's TLam domains at
-  // every use site. A `TType(0)` placeholder is well-formed only when
-  // the real outer binder happens to be a Type; any non-Type outer
-  // binder (`fun test(n: Nat) = …`) produces
+  // every use site. A fabricated domain (e.g. `TType(0)`) is
+  // well-formed only when the real outer binder happens to be a Type;
+  // any non-Type outer binder (`fun test(n: Nat) = …`) produces
   // `_Check(TBound(outer), VType) → TypeMismatch`. Well-typed solutions
   // are also required by higher-order unification, universe
   // polymorphism (domain sorts aren't discardable), typeclass
@@ -5764,6 +5803,7 @@ Term _renameForSolution(
     }(),
     TBound() => t,
     TType() ||
+    TUnknown() ||
     TSProp() ||
     TProp() ||
     TFree() ||
@@ -6061,6 +6101,7 @@ Term _substArmBody(
       ),
       TBound() => t,
       TType() ||
+      TUnknown() ||
       TSProp() ||
       TProp() ||
       TFree() ||
@@ -6155,6 +6196,7 @@ Term _substArmBody(
       ),
       TBound() => t,
       TType() ||
+      TUnknown() ||
       TSProp() ||
       TProp() ||
       TFree() ||
@@ -6314,7 +6356,13 @@ bool _solutionWellScoped(
   int depth,
 ) {
   switch (t) {
-    case TType() || TSProp() || TProp() || TFree() || TTop() || TRec():
+    case TType() ||
+        TUnknown() ||
+        TSProp() ||
+        TProp() ||
+        TFree() ||
+        TTop() ||
+        TRec():
       return true;
     case TMeta(:final id):
       return id != forbiddenId;
@@ -6423,13 +6471,14 @@ bool _solutionWellScopedUnderCtx(Term t, Ctx localCtx) {
     final (cur, depth) = stack.removeLast();
     switch (cur) {
       case TType() ||
+          TUnknown() ||
           TSProp() ||
           TProp() ||
           TFree() ||
           TTop() ||
           TRec() ||
           TMeta():
-        // TType/TProp/TFree/TTop/TRec: no indices.
+        // TType/TUnknown/TProp/TFree/TTop/TRec: no indices.
         // TMeta: own indices are interpreted via the nested meta's
         // own localCtx; an unsolved TMeta here is legal, the
         // delayed records handle spine-sensitive cases. The
@@ -6614,6 +6663,7 @@ Term _shiftTBoundPastThreshold(
     TBound(:final index) when index >= depth => TBound(index + shiftBy),
     TBound() => t,
     TType() ||
+    TUnknown() ||
     TSProp() ||
     TProp() ||
     TFree() ||
@@ -6686,6 +6736,7 @@ Term _shiftTBoundPastThreshold(
     ),
     TBound() => t,
     TType() ||
+    TUnknown() ||
     TSProp() ||
     TProp() ||
     TFree() ||
@@ -7125,6 +7176,7 @@ Term _substByLevel(Term term, Map<int, Value> substMap, Ctx ctx) {
     }(),
     TBound() => t,
     TType() ||
+    TUnknown() ||
     TSProp() ||
     TProp() ||
     TFree() ||
@@ -7594,6 +7646,7 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
       paramDepthAtInner(paramCount - 1 - (index - argCount - indexCount)),
     ),
     TType() ||
+    TUnknown() ||
     TSProp() ||
     TProp() ||
     TFree() ||
@@ -7721,7 +7774,13 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
 
     Term remapArgType(Term t) => switch (t) {
       TBound(:final index) => TBound(remapArgTypeDepth(index)),
-      TType() || TSProp() || TProp() || TFree() || TTop() || TMeta() => t,
+      TType() ||
+      TUnknown() ||
+      TSProp() ||
+      TProp() ||
+      TFree() ||
+      TTop() ||
+      TMeta() => t,
       TApp(:final fn, :final arg) => TApp(remapArgType(fn), remapArgType(arg)),
       TLam() || TPi() || TLet() => t,
       TData(:final name, :final args) => TData(name, [
@@ -7763,6 +7822,7 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
       TBound(:final index) when index < depth => t,
       TBound(:final index) => TBound(remapArgTypeDepth(index - depth) + depth),
       TType() ||
+      TUnknown() ||
       TSProp() ||
       TProp() ||
       TFree() ||
@@ -8013,6 +8073,7 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
     TBound(:final index) when index < j => t, // ctor arg, unchanged
     TBound(:final index) => TBound(index + paramShift),
     TType() ||
+    TUnknown() ||
     TSProp() ||
     TProp() ||
     TFree() ||

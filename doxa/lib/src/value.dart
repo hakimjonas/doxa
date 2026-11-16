@@ -36,6 +36,18 @@ final class VType extends Value {
   const VType(this.level);
 }
 
+/// The internal unknown value marker.
+///
+/// [VUnknown] is the value-level counterpart of [TUnknown]: the
+/// elaborator's pre-binding stubs evaluate to it, and the expression
+/// shim's local binder placeholders carry it as their type. It
+/// converts only with itself. It is not a sort and not a type: no
+/// kernel rule may treat it as one.
+final class VUnknown extends Value {
+  /// Creates the unknown marker.
+  const VUnknown();
+}
+
 /// The Prop sort (v2).
 ///
 /// `Prop : Type 1` and `Pi` from any sort to `Prop` lands in `Prop`
