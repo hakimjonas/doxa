@@ -170,6 +170,29 @@ data Vec[A: Type] : Nat -> Type {
     });
   });
 
+  group('synthRecursorType: result index headed by a top-level binding', () {
+    test('computed index (plus n m) synthesizes a well-typed recursor', () {
+      // The ctor's result index is `plus n m`, a TTop-headed expression.
+      // Evaluating it while inferring the recursor type needs the
+      // top-level registry, not a bare telescope env.
+      final env = _elab('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+fun plus(m: Nat, n: Nat): Nat = match m {
+  case zero => n
+  case succ m_ => succ (plus m_ n)
+}
+data D : Nat -> Type {
+  pack : (n: Nat) -> (m: Nat) -> D (plus n m);
+}
+''');
+      final dataDecl = env.lookupData('D')!;
+      final recType = synthRecursorType(dataDecl);
+      final ctx = env.toCtx();
+      final typeOfType = infer(ctx, recType);
+      expect(typeOfType, isA<VType>());
+    });
+  });
+
   group('synthRecursorType: indices whose types reference params', () {
     test('Eq-shaped data (indices of type A where A is a param) '
         'synthesizes a well-typed recursor', () {

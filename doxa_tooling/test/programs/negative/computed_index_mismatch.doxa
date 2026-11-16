@@ -1,0 +1,24 @@
+// The pack arm's index refines `n` to `plus a b`, but the body returns
+// an empty vector. The refinement must not make the mismatch disappear.
+data Nat: Type {
+  zero: Nat;
+  succ: Nat -> Nat;
+}
+
+fun plus(m: Nat, n: Nat): Nat = match m {
+  case zero => n
+  case succ m_ => succ (plus m_ n)
+}
+
+data Vec[A: Type]: Nat -> Type {
+  vnil: Vec A zero;
+  vcons: (n: Nat) -> A -> Vec A n -> Vec A (succ n);
+}
+
+data D: Nat -> Type {
+  pack: (n: Nat) -> (m: Nat) -> D (plus n m);
+}
+
+fun bad(n: Nat, d: D n): Vec Nat n = match d {
+  case pack a b => vnil
+}

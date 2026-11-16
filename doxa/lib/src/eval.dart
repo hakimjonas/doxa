@@ -2513,9 +2513,10 @@ Object _drive(
             } else {
               // Schedule check of args[0] against the first telescope
               // entry's type, then the AfterCheck frame drives the rest.
+              final teleEnv = _teleEnvFor(ctx);
               final firstExpected = eval(
                 _indexTelescope(decl, null, 0).type,
-                const ENil(),
+                teleEnv,
               );
               stack.add(
                 _InferIndAfterCheck(
@@ -2524,7 +2525,7 @@ Object _drive(
                   ctx: ctx,
                   args: args,
                   index: 0,
-                  teleEnv: const ENil(),
+                  teleEnv: teleEnv,
                 ),
               );
               step = _Check(ctx, args[0], firstExpected);
@@ -2548,15 +2549,20 @@ Object _drive(
             }
             if (args.isEmpty) {
               // Nullary constructor. Result is
-              // VData(dataName, <evaluated resultIndices under empty env>).
+              // VData(dataName, <evaluated resultIndices>). The
+              // telescope is empty, but the registry still has to be
+              // present for an index expression headed by a top-level
+              // binding.
+              final indexEnv = _teleEnvFor(ctx);
               final resultIndexVals = <Value>[
-                for (final t in ctorDecl.resultIndices) eval(t, const ENil()),
+                for (final t in ctorDecl.resultIndices) eval(t, indexEnv),
               ];
               step = _YieldV(VData(dataName, resultIndexVals));
             } else {
+              final teleEnv = _teleEnvFor(ctx);
               final firstExpected = eval(
                 _indexTelescope(dataDecl, ctorDecl, 0).type,
-                const ENil(),
+                teleEnv,
               );
               stack.add(
                 _InferIndAfterCheck(
@@ -2565,7 +2571,7 @@ Object _drive(
                   ctx: ctx,
                   args: args,
                   index: 0,
-                  teleEnv: const ENil(),
+                  teleEnv: teleEnv,
                 ),
               );
               step = _Check(ctx, args[0], firstExpected);
@@ -6865,6 +6871,19 @@ Value _piSort(_Sort domSort, _Sort codSort) {
 // Inductive-type telescope helpers
 // ---------------------------------------------------------------------------
 
+/// Seed a telescope environment with the registries carried by [ctx].
+///
+/// Constructor argument types and result indices were elaborated in the
+/// full top-level environment, so evaluating them needs the same
+/// registries: an index expression headed by a top-level binding (for
+/// example `D (plus n m)`) resolves through `TTop`, and without the
+/// registry `eval` aborts on a missing entry. The returned env has depth
+/// zero, so it seeds a telescope exactly like a bare `ENil`.
+Env _teleEnvFor(Ctx ctx) => ENil.withRegistries(
+  dataDecls: ctx.dataDecls,
+  topBindings: ctx.env.topBindings,
+);
+
 /// Return the telescope entry at position [index] of the combined
 /// telescope for an inductive-type inference.
 ///
@@ -6949,7 +6968,10 @@ _Step _checkMatchArmStep(
   // come from paramsV (already Values); prior args are fresh neutrals
   // placed at the caller's ctx levels since we're about to extend ctx
   // with them.
-  var teleEnv = const ENil() as Env;
+  // Seed with the ctx's registries: the ctor's arg types and result
+  // indices may reference top-level bindings (an index expression like
+  // `plus n m`), which `eval` resolves through `TTop`.
+  var teleEnv = _teleEnvFor(ctx);
   // Inject params into teleEnv (innermost-first: params[p-1] at
   // TBound(0), params[0] at TBound(p-1)).
   for (var i = 0; i < paramsV.length; i++) {
