@@ -45,6 +45,16 @@ jobs:
         with:
           ref: ${{ github.event.inputs.tag }}
 
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 3.13.1
+
+      - name: Install lam
+        run: |
+          dart pub global activate lambe 0.14.0
+          "$HOME/.pub-cache/bin/lam" --version
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
+
       - name: Check the confirmation and the publication holds
         env:
           CONFIRM: ${{ github.event.inputs.confirm }}
@@ -88,6 +98,32 @@ jobs:
             exit 1
           fi
 
+      # A retracted kernel version needs a version bump before any publish,
+      # whichever target the dispatch selects. An unreachable API, an empty
+      # body, or a failed query fails the gate: none of them may bypass it.
+      - name: Refuse a retracted kernel version
+        run: |
+          version="$(cat VERSION)"
+          if ! body="$(curl -fsS --max-time 30 https://pub.dev/api/packages/doxa)"; then
+            echo "cannot read the doxa package from pub.dev; refusing to publish without the retracted-version check." >&2
+            exit 1
+          fi
+          if [ -z "$body" ]; then
+            echo "empty doxa package response from pub.dev; refusing to publish." >&2
+            exit 1
+          fi
+          result="$(printf '%s' "$body" | lam -r \
+            "(.versions | filter(.version == \"$version\" && .retracted == true) | length) > 0" \
+            2>/dev/null)"
+          if [ "$result" != "true" ] && [ "$result" != "false" ]; then
+            echo "the lam retracted check failed; refusing to publish." >&2
+            exit 1
+          fi
+          if [ "$result" = "true" ]; then
+            echo "doxa $version is retracted on pub.dev; bump VERSION before publishing." >&2
+            exit 1
+          fi
+
   pub-dev:
     needs: [preflight]
     if: github.event.inputs.pub_dev == 'true'
@@ -105,17 +141,24 @@ jobs:
           # Pinned to the local dev SDK (see ci.yml).
           sdk: 3.13.1
 
+      - name: Install lam
+        run: |
+          dart pub global activate lambe 0.14.0
+          "$HOME/.pub-cache/bin/lam" --version
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
+
       - name: Publish to pub.dev (doxa kernel)
         run: |
           is_published() {
             local package="$1"
             local version="$2"
-            local body
-            if ! body="$(curl -fsS "https://pub.dev/api/packages/$package")"; then
+            local body result
+            if ! body="$(curl -fsS --max-time 30 "https://pub.dev/api/packages/$package")"; then
               return 1
             fi
-            printf '%s' "$body" \
-              | jq -e --arg v "$version" '.versions[] | select(.version == $v)' >/dev/null
+            result="$(printf '%s' "$body" | lam -r \
+              "(.versions | filter(.version == \"$version\") | length) > 0" 2>/dev/null)"
+            [ "$result" = "true" ]
           }
 
           version="$(cat VERSION)"
@@ -130,12 +173,13 @@ jobs:
           is_published() {
             local package="$1"
             local version="$2"
-            local body
-            if ! body="$(curl -fsS "https://pub.dev/api/packages/$package")"; then
+            local body result
+            if ! body="$(curl -fsS --max-time 30 "https://pub.dev/api/packages/$package")"; then
               return 1
             fi
-            printf '%s' "$body" \
-              | jq -e --arg v "$version" '.versions[] | select(.version == $v)' >/dev/null
+            result="$(printf '%s' "$body" | lam -r \
+              "(.versions | filter(.version == \"$version\") | length) > 0" 2>/dev/null)"
+            [ "$result" = "true" ]
           }
 
           version="$(cat VERSION)"

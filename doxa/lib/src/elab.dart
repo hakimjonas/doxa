@@ -27,7 +27,7 @@ import 'dart:io';
 
 import 'package:rumil/rumil.dart' show ParseError, Success, Partial, Failure;
 
-import 'check.dart' show TypeMismatch;
+import 'check.dart' show InductiveArityMismatch, TypeMismatch;
 import 'ctx.dart';
 import 'env.dart';
 import 'eval.dart';
@@ -2232,6 +2232,24 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
           argT = resultT!;
         }
 
+        // 2b.5. A function-typed argument must not be an incomplete
+        // constructor spine. Constructors are not first-class functions:
+        // the kernel rejects a short TConstr, but the codomain evaluated
+        // below would apply the argument, and a partial VConstr is not
+        // applicable. Report the arity mismatch here instead.
+        if (headVAsPi != null && headVAsPi.domain is VPi && argT is TConstr) {
+          final incomplete = _incompleteConstructor(state, argT);
+          if (incomplete != null) {
+            final (dataDecl, ctorDecl) = incomplete;
+            throw InductiveArityMismatch(
+              dataName: dataDecl.name,
+              ctorName: ctorDecl.name,
+              gotArity: argT.args.length,
+              expectedArity: dataDecl.params.length + ctorDecl.args.length,
+            );
+          }
+        }
+
         // 2c. Build result term.
         final builtT = switch (headT) {
           TData(:final name, :final args) =>
@@ -2408,12 +2426,14 @@ Term _checkExpr(_ElabState state, SExpr expr, Value expected) {
 Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
   // 0. Auto-`refl`. A bare `refl` (a plain identifier resolving to the
   // prelude's `Eq.refl`) checked against `Eq[A] x y` is sugar for
-  // `refl x` with the type and index inferred, provided `x` and `y`
-  // are definitionally equal. We leave the term as the bare nullary
-  // `TConstr('Eq', 'refl', [])`; the kernel's check-mode auto-refl rule
-  // then fills the `[A, x]` arguments from the expected type. (Routing
-  // val/arm bodies through check mode would otherwise insert the
-  // implicit type argument and strand the explicit `x`.)
+  // `refl x` with the type and index inferred. Emit the full
+  // `TConstr('Eq', 'refl', [A, x])` here rather than the bare nullary
+  // spine: the kernel's check-mode rule would fill the arguments from
+  // the expected type, but the stored term is later re-evaluated by
+  // `_shimState`, where a zero-argument `VConstr('Eq', 'refl')` that
+  // reaches an `Eq.rec`/`Eq.ind` match violates the constructor-arity
+  // invariant. Quoting `A` and `x` from the expected type keeps the
+  // elaborated term self-contained.
   final ek = expr.kind;
   if (ek is SIdentKind &&
       ek.name == 'refl' &&
@@ -2421,7 +2441,9 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
       expected.name == 'Eq' &&
       expected.args.length == 3 &&
       state.topEnv.lookupData('Eq') != null) {
-    return const TConstr('Eq', 'refl', <Term>[]);
+    final aTerm = quote(state.ctx.level, expected.args[0]);
+    final xTerm = quote(state.ctx.level, expected.args[1]);
+    return TConstr('Eq', 'refl', [aTerm, xTerm]);
   }
 
   // 1. Implicit-Pi auto-λ.
@@ -2524,6 +2546,31 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
     return _elabTacticBlock(state, kind, expected, expr.span);
   }
 
+  // 3.55. A bare constructor against a function type is a partial
+  //    application. Constructors are not first-class values: the kernel
+  //    rejects a TConstr spine shorter than the constructor's declared
+  //    arity, and the application spine would otherwise evaluate a
+  //    codomain over a non-function VConstr (see the SAppKind case).
+  //    Report the arity mismatch at the constructor head instead. A
+  //    nullary constructor is complete; checking it against a function
+  //    type is an ordinary type mismatch, so leave it to the
+  //    infer-then-conv fallback.
+  if (expected is VPi && kind is SIdentKind) {
+    final ctor = _constructorRef(state, kind.name);
+    if (ctor != null) {
+      final (dataDecl, ctorDecl) = ctor;
+      final arity = dataDecl.params.length + ctorDecl.args.length;
+      if (arity > 0) {
+        throw InductiveArityMismatch(
+          dataName: dataDecl.name,
+          ctorName: ctorDecl.name,
+          gotArity: 0,
+          expectedArity: arity,
+        );
+      }
+    }
+  }
+
   // 3.6. Constructor application against a matching expected data type.
   //    Elaborating a constructor application by inference first leaves
   //    the data parameters as unsolved metas while the explicit
@@ -2614,6 +2661,38 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
         return (d, c, cur, args.reversed.toList());
       }
     }
+  }
+  return null;
+}
+
+/// Resolve [name] to a constructor declaration when no local binder or
+/// data-type name shadows it. Mirrors the head resolution in
+/// [_constructorApplication].
+(DataDecl, CtorDecl)? _constructorRef(_ElabState state, String name) {
+  if (state.lookupLocal(name) != null) return null;
+  if (state.topEnv.lookupData(name) != null) return null;
+  for (final d in state.topEnv.dataDecls) {
+    for (final c in d.ctors) {
+      if (c.name == name) return (d, c);
+    }
+  }
+  return null;
+}
+
+/// Return the declarations when [term] is a constructor spine shorter
+/// than the constructor's declared arity, else null. An incomplete
+/// spine cannot be a first-class function value: the elaborator folds
+/// constructor arguments into [TConstr.args] and the kernel rejects a
+/// short spine.
+(DataDecl, CtorDecl)? _incompleteConstructor(_ElabState state, TConstr term) {
+  for (final d in state.topEnv.dataDecls) {
+    if (d.name != term.dataName) continue;
+    for (final c in d.ctors) {
+      if (c.name != term.ctorName) continue;
+      final expected = d.params.length + c.args.length;
+      return term.args.length < expected ? (d, c) : null;
+    }
+    return null;
   }
   return null;
 }

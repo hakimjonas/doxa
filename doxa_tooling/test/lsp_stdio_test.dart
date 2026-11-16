@@ -106,6 +106,46 @@ void main() {
     );
 
     test(
+      'reports a partial constructor application instead of crashing',
+      () async {
+        final server = await _LspServer.start();
+        addTearDown(server.dispose);
+        const source =
+            'data Nat : Type {\n'
+            '  zero : Nat;\n'
+            '  succ : Nat -> Nat;\n'
+            '}\n'
+            'val cong_e: (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) '
+            '-> (y: A) -> Eq A x y -> Eq B (f x) (f y) =\n'
+            '  (A: Type) => (B: Type) => (f: A -> B) => (x: A) => (y: A) '
+            '=> (p: Eq A x y) => Eq.rec\n'
+            '    A\n'
+            '    ((a: A) => (b: A) => (_: Eq A a b) => Eq B (f a) (f b))\n'
+            '    x\n'
+            '    y\n'
+            '    ((z: A) => refl (f z))\n'
+            '    p\n'
+            'val h: Eq Nat (succ zero) (succ zero) = '
+            'cong_e Nat Nat succ zero zero (refl zero)\n';
+
+        server.send(_didOpen('file:///workspace/ctor_value.doxa', source));
+        final diagnostics = _diagnostics(
+          await server.nextMessageWhere(
+            (m) => m['method'] == 'textDocument/publishDiagnostics',
+          ),
+        );
+        expect(diagnostics, isNotEmpty);
+        final message =
+            (diagnostics.first as Map<String, dynamic>)['message'] as String;
+        expect(message, contains('inductive-type arity mismatch'));
+        expect(message, contains('"Nat.succ" expects 1 argument'));
+
+        server.send({'jsonrpc': '2.0', 'method': 'exit'});
+        expect(await server.process.exitCode, 0);
+      },
+    );
+
+    test(
       'rechecks dependents against an unsaved imported data declaration',
       () async {
         final directory = Directory.systemTemp.createTempSync('doxa-lsp-');

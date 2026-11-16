@@ -45,8 +45,11 @@ mod_zero : (m: Nat) -> Eq Nat (mod m zero) m
 For `n > 0`, `div m n` is floor division and `mod m n` is the corresponding
 remainder:
 
-- `mod m n < n`.
-- `plus (mult (div m n) n) (mod m n) = m`, up to commutativity of `mult`.
+- `mod m n < n`, proved as `mod_lt`:
+  `(m: Nat) -> (n: Nat) -> Lt zero n -> Lt (mod m n) n`.
+- `plus (mult (div m n) n) (mod m n) = m`, up to commutativity of `mult`,
+  proved as `div_add_mod`:
+  `(m: Nat) -> (n: Nat) -> Lt zero n -> Eq Nat (plus (mult (div m n) n) (mod m n)) m`.
   Lean 4 states the same identity as `Nat.div_add_mod`.
 
 Concrete checks:
@@ -64,8 +67,13 @@ Concrete checks:
 | `div 5 0` | `0` |
 | `mod 5 0` | `5` |
 
-The bounds `mod m n < n` and `div_add_mod` are *planned*, not proved. Their
-proof shapes are described under [Open lemmas](#open-lemmas).
+The `mod_lt` proof generalises the `mod_acc` case split through `Bool.ind`
+with an explicit motive carrying the decision equation
+`Eq Bool (lt m (succ d)) x`. A direct `match` on `lt m n` does not refine a
+goal that mentions the scrutinee, so the equation is threaded as a hypothesis
+instead. `mod_step` and `mod_step_lt` implement the pattern: `mod_step` takes
+the branch, and `mod_step_lt` proves the bound for an arbitrary decision `b`
+by eliminating `b` with the equation in the motive.
 
 ### The fuel-based implementation
 
@@ -128,6 +136,34 @@ exactly one. `coprime zero zero` is `false_` because `gcd zero zero = zero`.
 `coprime two three` are `true_`; `coprime two four` and `coprime three three`
 are `false_`.
 
+### Order and subtraction lemmas
+
+`lib/stdlib/proofs.doxa` proves fifteen lemmas that relate the Boolean
+comparisons to the `Lt` relation and bound truncated subtraction:
+
+| Lemma | Statement | Bridges |
+|---|---|---|
+| `leq_refl` | `Eq Bool (leq n n) true_` | reflexivity of `leq` |
+| `leq_trans` | `leq a b -> leq b c -> leq a c` | transitivity of `leq` |
+| `leq_succ_right` | `leq a b -> leq a (succ b)` | monotonicity of `leq` in its right argument |
+| `leq_succ_true` | `leq m k = false_ -> leq (succ k) m` | a failed `leq` gives `leq` in the opposite direction |
+| `leq_self_plus` | `leq v (plus X v)` | a value is at most a sum with it on the right |
+| `lt_zero_succ` | `Lt zero (succ n)` | zero is below every successor |
+| `lt_succ_mono` | `Lt a b -> Lt (succ a) (succ b)` | monotonicity of `Lt` under `succ` |
+| `lt_of_leq` | `leq m n -> Lt m (succ n)` | the Boolean `leq` to `Lt` |
+| `lt_true_Lt` | `lt m n -> Lt m n` | the Boolean `lt` to `Lt` |
+| `lt_false_leq` | `lt m n = false_ -> leq n m` | a failed `lt` gives `leq` in the opposite direction |
+| `lt_leq` | `Lt m n -> leq m n` | the `Lt` relation to the Boolean `leq` |
+| `leq_sub` | `leq (sub m n) m` | truncated subtraction is at most the minuend |
+| `sub_add` | `leq n m -> plus (sub m n) n = m` | subtraction plus its subtrahend reconstructs the minuend |
+| `sub_plus_self` | `sub (plus X w) w = X` | subtracting the addend recovers the summand |
+| `plus_sub_swap` | `plus B (sub A v) = plus A (sub B v)` | swaps two bounded subtractions across a sum |
+
+The implication arrows abbreviate the full theorem types; a `leq` or `lt`
+premise is the corresponding `Eq Bool ... true_` hypothesis. `lt_succ_mono`
+and `lt_leq` are declared as `fun`s with structural recursion on the `Lt`
+proof; the other thirteen are `val` bindings built from `Nat.ind`.
+
 ## Integers
 
 `Int` is the inductive type
@@ -142,19 +178,20 @@ data Int: Type {
 `pos n` represents `n`, `neg n` represents `-(n + 1)`, and zero is `pos zero`.
 The `neg` encoding avoids a second representation of zero. The operations in
 `int_base.doxa` are `intPlus`, `intNeg`, `intSub`, `intMult`, `intLeq`,
-`intAbs` (returning a `Nat`), and `intSign`. There is no integer division or
-modulo.
+`intAbs` (returning a `Nat`), and `intSign`; `int_base.doxa` stays
+operations-only for `Rational`. `int.doxa` adds `intDiv` and `intMod`.
 
-### Proposed division convention
+### Division convention
 
-The recommendation for the future implementation is Euclidean division,
-matching Lean 4's `Int.ediv` and `Int.emod`. For a divisor `b` with
-`b != 0`:
+The implementation uses Euclidean division, matching Lean 4's `Int.ediv` and
+`Int.emod`. For a divisor `b` with `b != 0`:
 
 - `0 <= r < |b|`, where `|b|` is `intAbs b`.
 - `a = b * q + r`.
 
-For `b = 0`, the recommendation is `q = 0` and `r = a`, which matches Lean's
+`intDiv a b` and `intMod a b` reduce to `Nat.div` and `Nat.mod` on the
+magnitudes and adjust the quotient when the remainder is nonzero. For
+`b = 0`, `intDiv a 0 = pos zero` and `intMod a 0 = a`, which matches Lean's
 `Int.ediv`/`Int.emod` and the `Nat` conventions above.
 
 The main alternative is truncated division, rounding toward zero. Its
@@ -165,25 +202,57 @@ operators of C, Java, and Rust use this convention. Coq's `Z.div` and
 the divisor; that convention coincides with Euclidean division only for a
 positive divisor.
 
-The choice belongs to the Int implementation charter. This document records
-the recommendation and does not fix it.
+Concrete checks, with `v = n` written `pos n` and `v = -(n + 1)` written
+`neg n`, so -7 is `neg 6`:
+
+| `a` | `b` | `intDiv a b` | `intMod a b` |
+|---|---|---|---|
+| 7 | 2 | 3 | 1 |
+| -7 | 2 | -4 | 1 |
+| -6 | 2 | -3 | 0 |
+| -5 | 2 | -3 | 1 |
+| 7 | -2 | -3 | 1 |
+| 7 | -3 | -2 | 1 |
+| -7 | -2 | 4 | 1 |
+| -6 | -2 | 3 | 0 |
+| -5 | -2 | 3 | 1 |
+| 6 | 3 | 2 | 0 |
+| -6 | 3 | -2 | 0 |
+| 6 | -3 | -2 | 0 |
+| -6 | -3 | 2 | 0 |
+| 5 | 0 | 0 | 5 |
+| -5 | 0 | 0 | -5 |
+| 0 | 2 | 0 | 0 |
+| 0 | -2 | 0 | 0 |
+| 2 | 2 | 1 | 0 |
+| -2 | -2 | 1 | 0 |
+
+All rows check by `refl`.
 
 ## Open lemmas
 
-Two general theorems are not in `lib/stdlib/proofs.doxa`:
+Both `mod_lt` and `div_add_mod` are proved in `lib/stdlib/proofs.doxa`. No
+general theorem about the `Nat` arithmetic operations remains open.
 
-- `mod_lt`: for `n > 0`, `Lt (mod m n) n`. A proof generalises the fuel
-  induction over `mod_acc` and shows that the `false_` branch decreases the
-  value until it falls below `n`. It needs interaction lemmas relating `sub`,
-  `lt`, and `leq` that the library does not have.
-- `div_add_mod`: for `n > 0`,
-  `Eq Nat (plus (mult (div m n) n) (mod m n)) m`. A proof can carry the
-  invariant `m = n * q + r` through the `div_acc` loop, or relate `div_acc`
-  and `mod_acc` in one induction. It needs the bound from `mod_lt` and the
-  distributivity and associativity lemmas for `plus` and `mult`.
+For `Int`, the Euclidean identity and bound are proved for all `a` and
+`b != 0`:
 
-Each is estimated at one to two sessions after the missing `sub`/`lt`
-interaction lemmas are added.
+- `intDivMod`: `intPlus (intMult b (intDiv a b)) (intMod a b) = a`.
+- `intMod_nonneg`: `intLeq (pos zero) (intMod a b)` is `true_`.
+- `intMod_lt`:
+  `intLeq (intPlus (intMod a b) (pos (succ zero))) (pos (intAbs b))` is
+  `true_`.
+
+The two bound theorems take the nonzero condition as the hypothesis
+`(Eq Int b (pos zero) -> False)`. `intDivMod` also covers `b = 0`:
+`intDiv a 0 = pos zero` and `intMod a 0 = a`.
+
+The proofs use `intMult_pos_intNeg`, `intMult_neg_pos`,
+`intPlusHelp_plus`, `intDivNeg_shift`, `intPlus_one`, and
+`intModNegR_bound`, together with the Nat helpers `leq_self_plus`,
+`lt_leq`, `sub_plus_self`, `plus_sub_swap`, `leq_succ_succ`,
+`lt_succ_leq`, and `sub_lt_succ`. The nonnegative-dividend half also uses
+`intMult_neg_intNeg` and `intNeg_pos_zero`.
 
 ## References
 
