@@ -471,3 +471,124 @@ val intDivNeg_shift: (n: Nat)
     (mod (succ n) (succ m))
     (div_add_mod (succ n) (succ m) (lt_zero_succ m))
     (lt_leq (mod (succ n) (succ m)) (succ m) (mod_lt (succ n) (succ m) (lt_zero_succ m)))
+
+val intMult_neg_pos: (m: Nat)
+-> (k: Nat) -> Eq Int (intMult (neg m) (pos k)) (intNeg (pos (mult (succ m) k))) =
+  (m: Nat) => (k: Nat) => refl
+
+val intDivMod_neg_pos: (n: Nat)
+-> (m: Nat)
+  -> Eq
+      Int
+      (intPlus
+        (intMult (pos (succ m)) (intDiv (neg n) (pos (succ m))))
+        (intMod (neg n) (pos (succ m))))
+      (neg n) =
+  (n: Nat) => (m: Nat) => {
+    val B: Nat = succ m;
+    val k: Nat = intDivNegQ (div (succ n) B) (mod (succ n) B);
+    val r: Nat = intModNegR B (mod (succ n) B);
+    val e1: Eq Int (intMult (pos B) (intDiv (neg n) (pos B))) (intNeg (pos (mult B k))) = intMult_pos_intNeg
+      B
+      k;
+    val e2: Eq Int (intNeg (pos (mult B k))) (intNeg (pos (succ (plus n r)))) = cong_e
+      Nat
+      Int
+      ((t: Nat) => intNeg (pos t))
+      (mult B k)
+      (succ (plus n r))
+      (intDivNeg_shift n m);
+    val e3: Eq Int (intPlus (intNeg (pos (succ (plus n r)))) (pos r)) (neg n) = intPlusHelp_plus r n;
+    trans_e
+      Int
+      (intPlus (intMult (pos B) (intDiv (neg n) (pos B))) (intMod (neg n) (pos B)))
+      (intPlus (intNeg (pos (mult B k))) (intMod (neg n) (pos B)))
+      (neg n)
+      (cong_e
+        Int
+        Int
+        ((t: Int) => intPlus t (intMod (neg n) (pos B)))
+        (intMult (pos B) (intDiv (neg n) (pos B)))
+        (intNeg (pos (mult B k)))
+        e1)
+      (trans_e
+        Int
+        (intPlus (intNeg (pos (mult B k))) (intMod (neg n) (pos B)))
+        (intPlus (intNeg (pos (succ (plus n r)))) (intMod (neg n) (pos B)))
+        (neg n)
+        (cong_e
+          Int
+          Int
+          ((t: Int) => intPlus t (intMod (neg n) (pos B)))
+          (intNeg (pos (mult B k)))
+          (intNeg (pos (succ (plus n r))))
+          e2)
+        e3)
+    }
+
+val intDivMod_neg_neg: (n: Nat)
+-> (m: Nat)
+  -> Eq Int (intPlus (intMult (neg m) (intDiv (neg n) (neg m))) (intMod (neg n) (neg m))) (neg n) =
+  (n: Nat) => (m: Nat) => {
+    val B: Nat = succ m;
+    val k: Nat = intDivNegQ (div (succ n) B) (mod (succ n) B);
+    val r: Nat = intModNegR B (mod (succ n) B);
+    val e2: Eq Int (intNeg (pos (mult B k))) (intNeg (pos (succ (plus n r)))) = cong_e
+      Nat
+      Int
+      ((t: Nat) => intNeg (pos t))
+      (mult B k)
+      (succ (plus n r))
+      (intDivNeg_shift n m);
+    val e3: Eq Int (intPlus (intNeg (pos (succ (plus n r)))) (pos r)) (neg n) = intPlusHelp_plus r n;
+    trans_e
+      Int
+      (intPlus (intMult (neg m) (intDiv (neg n) (neg m))) (intMod (neg n) (neg m)))
+      (intPlus (intNeg (pos (mult B k))) (intMod (neg n) (neg m)))
+      (neg n)
+      (cong_e
+        Int
+        Int
+        ((t: Int) => intPlus t (intMod (neg n) (neg m)))
+        (intMult (neg m) (intDiv (neg n) (neg m)))
+        (intNeg (pos (mult B k)))
+        (intMult_neg_pos m k))
+      (trans_e
+        Int
+        (intPlus (intNeg (pos (mult B k))) (intMod (neg n) (neg m)))
+        (intPlus (intNeg (pos (succ (plus n r)))) (intMod (neg n) (neg m)))
+        (neg n)
+        (cong_e
+          Int
+          Int
+          ((t: Int) => intPlus t (intMod (neg n) (neg m)))
+          (intNeg (pos (mult B k)))
+          (intNeg (pos (succ (plus n r))))
+          e2)
+        e3)
+    }
+
+val intDivMod_neg: (n: Nat)
+-> (b: Int) -> Eq Int (intPlus (intMult b (intDiv (neg n) b)) (intMod (neg n) b)) (neg n) =
+  (n: Nat) => (b: Int) => Int.ind
+    ((y: Int) => Eq Int (intPlus (intMult y (intDiv (neg n) y)) (intMod (neg n) y)) (neg n))
+    ((m: Nat) => Nat.ind
+      ((k: Nat) => Eq
+        Int
+        (intPlus (intMult (pos k) (intDiv (neg n) (pos k))) (intMod (neg n) (pos k)))
+        (neg n))
+      (refl (neg n))
+      ((k: Nat) => (ih: Eq
+        Int
+        (intPlus (intMult (pos k) (intDiv (neg n) (pos k))) (intMod (neg n) (pos k)))
+        (neg n)) => intDivMod_neg_pos n k)
+      m)
+    ((m: Nat) => intDivMod_neg_neg n m)
+    b
+
+val intDivMod: (a: Int) -> (b: Int) -> Eq Int (intPlus (intMult b (intDiv a b)) (intMod a b)) a =
+  (a: Int) => Int.ind
+    ((x: Int) => (b: Int) -> Eq Int (intPlus (intMult b (intDiv x b)) (intMod x b)) x)
+    ((n: Nat) => (b: Int) => intDivMod_pos n b)
+    ((n: Nat) => (b: Int) => intDivMod_neg n b)
+    a

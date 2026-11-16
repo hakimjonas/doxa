@@ -82,6 +82,9 @@ val p7: Int = pos n7
 val m1: Int = neg n0
 val m2: Int = neg n1
 val m3: Int = neg n2
+val m5: Int = neg (succ (succ (succ (succ zero))))
+val m6: Int = neg n5
+val m7: Int = neg n6
 ''';
 
 String _src(String body) => '''
@@ -100,12 +103,13 @@ String _row(String a, String b, int index) =>
     'val row$index: Eq Int '
     '(intPlus (intMult $b (intDiv $a $b)) (intMod $a $b)) $a = refl';
 
-String _build(List<(String, String)> rows) {
+String _build(List<(String, String)> rows, {String? use}) {
   final buffer = StringBuffer();
   for (var i = 0; i < rows.length; i++) {
     final (a, b) = rows[i];
     buffer.writeln(_row(a, b, i));
   }
+  if (use != null) buffer.writeln(use);
   return _src(buffer.toString());
 }
 
@@ -122,6 +126,45 @@ void main() {
 
   test('the identity holds for zero divisors and zero dividends', () {
     final r = runSource(_build(_zeroCases));
+    expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+  });
+
+  test('negative dividend, positive divisor', () {
+    final r = runSource(
+      _build(
+        [('m7', 'p2'), ('m6', 'p2'), ('m5', 'p2')],
+        use:
+            'val use_neg_pos: Eq Int (neg n6) (neg n6) = '
+            'intDivMod (neg n6) (pos n2)\n'
+            'val z_neg_pos: Nat = zero',
+      ),
+    );
+    expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+  });
+
+  test('negative dividend, negative divisor', () {
+    final r = runSource(
+      _build(
+        [('m7', 'm2'), ('m6', 'm2'), ('m5', 'm2')],
+        use:
+            'val use_neg_neg: Eq Int (neg n6) (neg n6) = '
+            'intDivMod (neg n6) (neg n1)\n'
+            'val z_neg_neg: Nat = zero',
+      ),
+    );
+    expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+  });
+
+  test('zero divisor with a negative dividend', () {
+    final r = runSource(
+      _build(
+        [('m5', 'p0')],
+        use:
+            'val use_zero: Eq Int (neg n5) (neg n5) = '
+            'intDivMod (neg n5) (pos n0)\n'
+            'val z_zero: Nat = zero',
+      ),
+    );
     expect(r.code, 0, reason: 'stderr: ${r.stderr}');
   });
 }

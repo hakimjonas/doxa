@@ -234,19 +234,23 @@ All rows check by `refl`.
 Both `mod_lt` and `div_add_mod` are proved in `lib/stdlib/proofs.doxa`. No
 general theorem about the `Nat` arithmetic operations remains open.
 
-For `Int`, two Euclidean facts remain planned:
+For `Int`, the Euclidean identity is proved for all `a` and `b`:
 
-- `intPlus (intMult b (intDiv a b)) (intMod a b) = a` for `b != 0`. The
-  nonnegative-dividend half is proved as `intDivMod_pos` (`a = pos n`, any
-  `b`). The two negative-dividend cases are still planned.
-- `0 <= intMod a b < intAbs b` for `b != 0`.
+- `intDivMod`: `intPlus (intMult b (intDiv a b)) (intMod a b) = a`.
 
-They need `intPlus` associativity, identity, and inverse lemmas, `intMult`
-sign and distributivity lemmas, and an `Int`-order bridge to `intLeq`.
-`int.doxa` now provides `intMult_neg_intNeg`, `intMult_pos_intNeg`,
-`intPlusHelp_plus`, and `intDivNeg_shift`, together with `intNeg_pos_zero`.
-`intDivNeg_shift` relates `intDivNegQ` and `intModNegR` to `mult` and `plus`,
-the conversion the negative-dividend cases need.
+The statement includes `b = 0`: `intDiv a 0 = pos zero` and
+`intMod a 0 = a`.
+
+One `Int` fact remains planned:
+
+- `0 <= intMod a b < intAbs b` for `b != 0`. It needs an `Int`-valued
+  absolute value or an order bridge to `intLeq`.
+
+The proof of `intDivMod` uses `intMult_pos_intNeg`, `intMult_neg_pos`,
+`intPlusHelp_plus`, and `intDivNeg_shift`, together with the four Nat
+helpers `leq_self_plus`, `lt_leq`, `sub_plus_self`, and `plus_sub_swap`.
+The nonnegative-dividend half also uses `intMult_neg_intNeg` and
+`intNeg_pos_zero`.
 
 ## References
 
