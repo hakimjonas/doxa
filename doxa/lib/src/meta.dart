@@ -322,6 +322,7 @@ Term inlineSolvedBareMetas(Term term, MetaContext metas) {
         return walk(entry.solution);
       }(),
       TType() ||
+      TUnknown() ||
       TSProp() ||
       TProp() ||
       TFree() ||
@@ -466,6 +467,7 @@ Term inlineSolvedMetas(Term term, MetaContext metas, {int outerDepth = 0}) {
       return walk(entry.solution, depth);
     }(),
     TType() ||
+    TUnknown() ||
     TSProp() ||
     TProp() ||
     TFree() ||

@@ -136,6 +136,23 @@ final class UnexpectedFree extends DoxaCheckError {
   String toString() => 'UnexpectedFree(name: $name)';
 }
 
+/// A [TUnknown] reached the checker.
+///
+/// [TUnknown] and its value form are internal markers produced only by
+/// the elaborator's mutual pre-binding stubs and its expression shim.
+/// No user program can write one. The kernel cannot type a term whose
+/// type is unknown, so it reports this instead of guessing a type.
+final class UnknownTypeReached extends DoxaCheckError {
+  /// Where the unknown was reached (diagnostic only).
+  final String site;
+
+  /// Creates an unknown-type error.
+  const UnknownTypeReached(this.site);
+
+  @override
+  String toString() => 'UnknownTypeReached(site: $site)';
+}
+
 /// A reference to an inductive type or constructor could not be resolved.
 ///
 /// Raised by the checker when a [TData] or [TConstr] term references a

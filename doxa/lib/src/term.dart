@@ -179,6 +179,32 @@ final class TType extends Term {
   String toString() => 'TType($level)';
 }
 
+/// The internal unknown marker.
+///
+/// `TUnknown` is produced only by the elaborator: `_elabFunBlock`'s
+/// pass-1 pre-bindings carry it as a stub term, and [_shimState]'s
+/// local placeholders evaluate to [VUnknown]. It names the absence of
+/// a type, not a type: no surface syntax produces it, and the kernel
+/// accepts it only against itself.
+///
+/// It exists so the pre-binding and shim machinery can say "unknown"
+/// explicitly instead of reusing `Type 0` as a sentinel: `Type 0` is a
+/// real type, so a program that writes `Type` is indistinguishable
+/// from a placeholder under the old encoding.
+final class TUnknown extends Term {
+  /// Creates the unknown marker.
+  const TUnknown();
+
+  @override
+  bool operator ==(Object other) => other is TUnknown;
+
+  @override
+  int get hashCode => Object.hash('TUnknown', 0);
+
+  @override
+  String toString() => 'TUnknown';
+}
+
 /// The sort of propositions.
 ///
 /// `Prop` is impredicative: a Pi whose codomain is in `Prop` is itself
@@ -927,6 +953,7 @@ Term closeTerm(Term term, String name) => _closeAt(term, 0, name);
 
 Term _openAt(Term term, int depth, String name) => switch (term) {
   TType() => term,
+  TUnknown() => term,
   TProp() => term,
   TSProp() => term,
   TFree() => term,
@@ -998,6 +1025,7 @@ Term _openAt(Term term, int depth, String name) => switch (term) {
 
 Term _closeAt(Term term, int depth, String name) => switch (term) {
   TType() => term,
+  TUnknown() => term,
   TProp() => term,
   TSProp() => term,
   TMeta() => term,

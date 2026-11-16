@@ -129,6 +129,7 @@ int _maxTBoundIndex(Term t, [int depth = 0]) {
         work.add((domain, d));
         work.add((bound, d));
       case TType() ||
+          TUnknown() ||
           TProp() ||
           TSProp() ||
           TFree() ||

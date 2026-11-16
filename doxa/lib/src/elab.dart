@@ -48,7 +48,6 @@ export 'registry.dart';
 // Level constants (universe polymorphism).
 const _l0 = LLevel(0);
 const _l1 = LLevel(1);
-const _vType0 = VType(_l0);
 const _vType1 = VType(_l1);
 
 // ---------------------------------------------------------------------------
@@ -960,6 +959,15 @@ final class TopBinding {
   /// When true, this binding is opaque (never unfolds during conversion).
   final bool isOpaque;
 
+  /// When true, this binding is a mutual-block pre-binding.
+  ///
+  /// `_elabFunBlock` pass 1 registers a member's signature before any
+  /// sibling body is elaborated; the binding has a real [type] but no
+  /// elaborated value yet, so its [term] is [TUnknown]. The expression
+  /// shim stubs such bindings at an `NTop` neutral instead of
+  /// evaluating the stub, so a sibling's body never sees a fake value.
+  final bool isPreBinding;
+
   /// Creates a top-level binding.
   const TopBinding({
     required this.name,
@@ -969,6 +977,7 @@ final class TopBinding {
     this.recDecreasingArg,
     this.recArity,
     this.isOpaque = false,
+    this.isPreBinding = false,
   });
 }
 
@@ -1199,10 +1208,10 @@ Term elabExpr(TopEnv topEnv, SExpr expr) =>
 /// Elaborate [expr] against [topEnv] with local binder [names] (innermost first).
 ///
 /// Constructs a [_LocalScope] from [names] and delegates to [_elabExpr].
-/// Each local name becomes a de Bruijn binder with a placeholder type;
-/// the resulting term has correct de Bruijn indices for the given local
-/// names. The calling tactic's own [infer] pass uses the real
-/// [TacticState.ctx] for type checking.
+/// Each local name becomes a de Bruijn binder whose type is the
+/// internal unknown marker; the resulting term has correct de Bruijn
+/// indices for the given local names. The calling tactic's own [infer]
+/// pass uses the real [TacticState.ctx] for type checking.
 Term elabExprInScope(
   TopEnv topEnv,
   List<String> names,
@@ -1751,9 +1760,9 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
 ///
 /// The returned [Value] is correct whenever [state.ctx] faithfully
 /// models the local binders. The [_elabExpr] shim may call this with a
-/// state whose [Ctx] carries placeholder types for the binders it does
-/// not track; the shim discards the [Value] in that case, so no bogus
-/// type leaks.
+/// state whose [Ctx] carries [VUnknown] for the binders it does not
+/// track. Unknown types do not convert with real ones, so the shim's
+/// callers reject the term rather than accepting a guessed type.
 (Term, Value) _inferExpr(_ElabState state, SExpr expr) {
   // Provenance seed (see `_checkExpr`): attach `expr.span` to a
   // `TypeMismatch` raised while inferring this expression, innermost
@@ -1976,8 +1985,10 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
     ):
       // Pi-type elaboration. Sort computation follows `_piSort` in
       // eval.dart (SPEC §8.2 PTS rules). We infer both sides and
-      // compute the Pi's sort when both sides inferred cleanly,
-      // falling back to a placeholder otherwise.
+      // compute the Pi's sort when both sides inferred cleanly.
+      // Otherwise the sort is unknown: report it as such rather than
+      // claiming `Type 0`, which would let the Pi pass a universe
+      // check it never satisfied.
       final (domT, domSort) = _inferExpr(state, domain);
       final domV = eval(domT, state.ctx.env);
       final binderName = param ?? ' _';
@@ -1985,7 +1996,7 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
         state.push(binderName, domV, paramSpan),
         codomain,
       );
-      final resultV = _computePiSort(domSort, codSort) ?? _vType0;
+      final resultV = _computePiSort(domSort, codSort) ?? const VUnknown();
       return (TPi(domT, codT, name: param, icit: icit), resultV);
 
     case SLetKind(
@@ -2110,8 +2121,8 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       // type when resolving identifier refs.
       //
       // The returned VPi's codomain closure holds the body's INFERRED
-      // TYPE quoted back to a term. A `TType(0)` placeholder here would
-      // be fine when the returned VPi is discarded but LIES when a
+      // TYPE quoted back to a term. A fabricated type here would be
+      // fine when the returned VPi is discarded but LIES when a
       // lambda is passed as an argument to an implicit function (the
       // arg type unification would see `Type` instead of the real
       // codomain and solve the implicit incorrectly). So we compute the
@@ -2262,8 +2273,10 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
           _ => TApp(headT, argT),
         };
 
-        // 2d. Advance type value to codomain.
-        Value builtV = _vType0;
+        // 2d. Advance type value to codomain. When the head's Pi
+        // shape is unavailable (an unknown-typed head), the result
+        // type is unknown, not `Type 0`.
+        Value builtV = const VUnknown();
         if (headVAsPi != null) {
           final argV = eval(argT, state.ctx.env);
           try {
@@ -2300,14 +2313,14 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       // inferred Value.
       //
       // No-returning path (motive is null in the emitted TMatch)
-      // returns a VType(0) placeholder. The kernel's _Infer(TMatch)
-      // would throw `MatchMotiveRequired` there; the check-mode path
-      // handles no-motive by synthesizing from `expected` (and pattern
+      // returns [VUnknown]. The kernel's _Infer(TMatch) would throw
+      // `MatchMotiveRequired` there; the check-mode path handles
+      // no-motive by synthesizing from `expected` (and pattern
       // unification solves indexed-family motives).
       final term = _elabMatch(state, expr);
       final matchTerm = term as TMatch;
       if (matchTerm.motive == null) {
-        return (term, _vType0);
+        return (term, const VUnknown());
       }
       final motiveV = eval(matchTerm.motive!, state.ctx.env);
       return (term, motiveV);
@@ -2317,8 +2330,10 @@ TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
       // Relation should be A → A → Prop. Infer it.
       final (relationT, _) = _inferExpr(state, relation);
       final quotTerm = TQuot(carrierT, relationT);
-      // The type of Quot(A, R) is Type 0 (or the sort of A)
-      final resultV = carrierV is VType ? VType(carrierV.level) : _vType0;
+      // `Quot(A, R)` sits at the carrier's universe when the carrier
+      // is a Type; otherwise its sort is unknown.
+      final resultV =
+          carrierV is VType ? VType(carrierV.level) : const VUnknown();
       return (quotTerm, resultV);
 
     case SQuotMkKind():
@@ -2883,9 +2898,21 @@ Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
   if (metas == null) return (fT, fV);
   var curT = fT;
   var curV = fV;
+  // An unknown head type exposes no Pi structure to peel. Inserting a
+  // meta here would invent a type the real context cannot justify, so
+  // the application keeps its arguments as written and its result type
+  // stays [VUnknown]; the kernel then rejects any check that needs the
+  // missing type instead of accepting a guessed one.
+  if (curV is VUnknown) return (fT, fV);
   while (curV is VPi && curV.icit == Icit.implicit) {
     // Check if this implicit is class-constrained (instance search).
     final domain = curV.domain;
+    if (domain is VUnknown) {
+      // No name-matched instance resolution and no meta allocation
+      // against an unknown domain: stop peeling and let the consumer
+      // report the unknown.
+      break;
+    }
     if (domain is VData &&
         state.topEnv.classRegistry.containsKey(domain.name)) {
       final className = domain.name;
@@ -2998,6 +3025,7 @@ String? _valueTypeName(Value v) => switch (v) {
 /// Check whether a [Value] contains no metavariables (is fully concrete).
 bool _isFullyConcrete(Value v) => switch (v) {
   VType() => true,
+  VUnknown() => false, // the absence of a type is never concrete
   VProp() => true,
   VSProp() => true,
   VPi() => false, // Pi with unresolved codomain env might have metas
@@ -3084,7 +3112,7 @@ Value _closeValueOverCtx(Value type, Ctx ctx) {
 ///   cod = Type m, dom = Type n => Pi : Type (imax n m)
 ///
 /// Returns null when either side isn't a recognisable sort; the
-/// caller supplies a placeholder.
+/// caller records the sort as unknown.
 Value? _computePiSort(Value domSort, Value codSort) {
   if (codSort is VProp) return const VProp();
   if (codSort is VSProp) return const VSProp();
@@ -3119,26 +3147,25 @@ Value _stripBodyIsNormal(Value v) => switch (v) {
 
 /// Build an `_ElabState` approximating the current [topEnv] + [locals]
 /// for the `_elabExpr` shim. Each local binder is pushed into [Ctx]
-/// with a placeholder [VType(0)] type, the shim discards any [Value]
-/// returned by `_inferExpr`, so the placeholder never leaks.
+/// with the [VUnknown] marker as its type: the shim has names but no
+/// binder types, and `_inferExpr` consults those types to pick between
+/// check and infer mode and to insert implicit arguments. The marker
+/// makes that ignorance explicit; the kernel never treats it as a
+/// type.
 ///
 /// Top bindings are stubbed as `VNeutral(NTop(name))` at the value
 /// slot: `_inferExpr` may call `eval(argT, state.ctx.env)` on arg
 /// terms that reference top bindings (e.g. a recursive `plus` inside
-/// a mutual-block member's body), and the real `topEnv.toCtx()`
-/// evaluation of pre-binding stubs (whose sentinel term is
-/// `TType(0)`; see `_elabFunBlock` pass 1) would yield a bogus
-/// `VType(0)` that crashes `_Apply`. Stubbing every top-binding value
-/// as an NTop neutral matches `checkDeclResult`'s co-recursive-group
-/// discipline and ensures `eval` on elab-time terms stays stuck
-/// rather than reducing through an invalid top binding.
-///
+/// a mutual-block member's body), and evaluating a pre-binding's stub
+/// term ([TUnknown]) would yield [VUnknown] where a real value is
+/// expected. Stubbing every top-binding value as an NTop neutral
+/// matches `checkDeclResult`'s co-recursive-group discipline and keeps
+/// `eval` on elab-time terms stuck rather than reducing through a
+/// binding whose body does not exist yet.
 _ElabState _shimState(TopEnv topEnv, _LocalScope locals, {MetaContext? metas}) {
   // Build a Ctx with real top-binding values where available, and
-  // NTop neutral stubs for mutual-block pre-bindings (whose sentinel
-  // term is `TType(0)` per `_elabFunBlock` pass 1, evaluating it
-  // would yield a bogus `VType(0)` that crashes `_Apply` when body
-  // code references them).
+  // NTop neutral stubs for mutual-block pre-bindings (flagged
+  // [TopBinding.isPreBinding] by `_elabFunBlock` pass 1).
   //
   // Check-mode elaboration inside `_buildFunBody` needs REAL values
   // for `type Foo = ...` bindings so that a body referencing `Foo` in
@@ -3147,11 +3174,9 @@ _ElabState _shimState(TopEnv topEnv, _LocalScope locals, {MetaContext? metas}) {
   // `fun if_[A](b: Bool, ...)` where the body needs Bool's Pi chain to
   // drive application type-checking.
   //
-  // Discrimination rule: a binding is a mutual-pre-stub iff its
-  // type is a VPi chain AND its term syntactically equals
-  // `TType(0)` (the sentinel in `_elabFunBlock`). Legitimate
-  // `type X = Type` has term `TType(0)` but type `VType(1)` (Type
-  // 1), distinguishable.
+  // The flag, not the term shape, decides. A binding's value term is
+  // recoverable from the flag alone, so no legitimate `type X = Type`
+  // alias can be mistaken for a pre-binding.
   final entries = <String, TopBindingEntry>{};
   for (final b in topEnv.bindings) {
     final env = ENil.withRegistries(
@@ -3160,8 +3185,8 @@ _ElabState _shimState(TopEnv topEnv, _LocalScope locals, {MetaContext? metas}) {
     );
     var typeV = eval(b.type, env);
     final Value valueV;
-    if (b.term == const TType(_l0) && typeV is VPi) {
-      // Mutual-pre-binding sentinel: stub as NTop neutral.
+    if (b.isPreBinding) {
+      // Mutual pre-binding: stub as NTop neutral.
       valueV = VNeutral(NTop(b.name));
       // The VPi closures were created during `_buildFunType` at a
       // higher env depth (function params pushed).  Strip
@@ -3196,7 +3221,7 @@ _ElabState _shimState(TopEnv topEnv, _LocalScope locals, {MetaContext? metas}) {
   }
   var scope = const _LocalNil() as _LocalScope;
   for (var i = names.length - 1; i >= 0; i--) {
-    ctx = ctx.extend(const VType(_l0));
+    ctx = ctx.extend(const VUnknown());
     scope = scope.push(names[i]);
   }
   return _ElabState(topEnv, ctx, scope);
@@ -3210,9 +3235,10 @@ Term _elabExpr(
 }) {
   switch (expr.kind) {
     // Every SExprKind routes through `_inferExpr` with the Value
-    // discarded. `_shimState` gives local binders placeholder types;
-    // the Value returned may be a placeholder too for sub-expressions
-    // not yet type-checked, but the shim discards it either way.
+    // discarded. `_shimState` gives local binders the unknown marker,
+    // so the Value returned is [VUnknown] for sub-expressions whose
+    // type depends on them; the shim discards it, and unknown types
+    // never convert with real ones.
     case SIdentKind():
     case SDotKind():
     case STypeKind():
@@ -3252,9 +3278,9 @@ Term _elabExpr(
 /// requires meta-driven unification.
 ///
 /// When [expected] is null (infer-mode entry), arm bodies are
-/// elaborated in infer mode with binder types set to [VType(0)]
-/// placeholders, the Ctx type at each binder is not consulted
-/// by any migrated `_inferExpr` logic for a binder-indexing purpose.
+/// elaborated in infer mode with the unknown marker as the binder
+/// types: the scrutinee's type is too weak to recover the ctor's
+/// argument telescope.
 /// The resulting TMatch has `motive = null` when the user omitted
 /// `returning`, and the kernel's post-elab check applies the
 /// constant-motive-from-expected rule.
@@ -3351,13 +3377,8 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
   // Extract scrutinee params for real arm-binder types. This is
   // unconditional: SApp drives check-mode on nested args, which
   // conv-compares arm-binder types against expected domains, so arm
-  // binders need REAL types
-  // even in infer-mode match elaboration, not a VType(0)
-  // placeholder).
-  // conv-compares arm-binder types against expected domains, so arm
-  // binders need REAL types
-  // even in infer-mode match elaboration, not a VType(0)
-  // placeholder).
+  // binders need REAL types even in infer-mode match elaboration,
+  // not the unknown marker.
   //
   // For VNeutral scrutinees (e.g., a function-parameter scrutinee in a
   // mutual-fun block), extract the data-type arguments from the scrutinee's
@@ -3436,8 +3457,8 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
         // refined expected type.
         //
         // In infer-mode (expected == null or scrutinee not well-
-        // typed enough to extract params), fall back to VType(0)
-        // placeholders and infer-mode body elaboration.
+        // typed enough to extract params), fall back to the unknown
+        // marker and infer-mode body elaboration.
         var armState = state;
         // The telescope env built alongside the arm binders: params
         // (innermost-first) followed by one fresh neutral per ctor arg,
@@ -3512,8 +3533,11 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
           }
           armTeleEnv = teleEnv;
         } else {
+          // Infer-mode entry: the scrutinee's type is too weak to
+          // recover the ctor argument types, so the arm binders carry
+          // the unknown marker rather than a fake `Type 0`.
           for (final b in arm.binders) {
-            armState = armState.push(b, const VType(_l0));
+            armState = armState.push(b, const VUnknown());
           }
         }
 
@@ -3819,7 +3843,7 @@ DeclResult _elabDecl(
       // This is cheap: TTop(name) is position-independent, so
       // collapsing the single-fun path into
       // the block path costs nothing and removes the duplicated
-      // "dummy TType(0) placeholder" site.
+      // synthetic pre-binding site.
       final blockResult = _elabFunBlock(topEnv, decl.span, [
         SFunBlockMember(kind, decl.span),
       ], metas: metas);
@@ -4416,7 +4440,8 @@ TopBinding _elabFun(
 ///      against the outer [topEnv]. Signatures cannot reference
 ///      sibling members (the "header independence" limitation;
 ///      lifting it would require metavariables). Pre-build
-///      [TopBinding]s with placeholder terms.
+///      [TopBinding]s whose [TopBinding.term] is [TUnknown] and whose
+///      [TopBinding.isPreBinding] flag is set.
 ///   4. Pass 2: build a scratch [TopEnv] with all pre-bindings
 ///      registered, then elaborate each body against it. Sibling
 ///      and self references now resolve to the pre-registered
@@ -4530,11 +4555,12 @@ TopBinding _elabFun(
       TopBinding(
         name: m.fun.name,
         type: typeTerm,
-        term: const TType(
-          _l0,
-        ), // never evaluated, TTop resolves via topBindings
+        // Pass 2 fills in the elaborated body; until then the value is
+        // unknown, not a fake `Type 0`.
+        term: const TUnknown(),
         span: m.span,
         isOpaque: true, // stays stuck as NTop during elaboration
+        isPreBinding: true,
       ),
     );
   }
@@ -5693,8 +5719,8 @@ List<CtorDecl> _elabDataCtors(
   // level types (evaluated from the elaborated kindTerms). This
   // matches the lazy-motive discipline in `_buildFunBody` /
   // `_buildFunType`: SApp's check-mode arg elab requires correct
-  // binder types, so we can't use the `_shimState` placeholder
-  // (VType(0)) for params.
+  // binder types, so we can't use the `_shimState` unknown marker
+  // for params.
   var ctorState = _shimState(scratchEnv, const _LocalNil());
   var teleEnv = ctorState.ctx.env;
   for (final p in params) {
@@ -6216,6 +6242,7 @@ List<int> _topoSortHeaders(
 /// [_strictlyPositiveInAny], not by this predicate.
 bool _occursInAny(Set<String> dataNames, Term term) => switch (term) {
   TType() ||
+  TUnknown() ||
   TSProp() ||
   TProp() ||
   TFree() ||
@@ -6349,6 +6376,7 @@ bool _isParamStrictlyPositive(Term term, int boundVar) =>
 // in the domain.
 switch (term) {
   TType() ||
+  TUnknown() ||
   TSProp() ||
   TProp() ||
   TFree() ||
@@ -6403,7 +6431,13 @@ switch (term) {
 /// Does TBound(target) occur anywhere in [term] (adjusting for binder
 /// descent)?
 bool _boundOccursIn(Term term, int target) => switch (term) {
-  TType() || TSProp() || TProp() || TFree() || TTop() || TMeta() => false,
+  TType() ||
+  TUnknown() ||
+  TSProp() ||
+  TProp() ||
+  TFree() ||
+  TTop() ||
+  TMeta() => false,
   TBound(:final index) => index == target,
   TData(:final args) => args.any((a) => _boundOccursIn(a, target)),
   TConstr(:final args) => args.any((a) => _boundOccursIn(a, target)),

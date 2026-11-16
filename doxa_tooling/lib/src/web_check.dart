@@ -700,6 +700,7 @@ String _checkErrorKind(DoxaCheckError error) => switch (error) {
   NotAFunction _ => 'not_a_function',
   NotAType _ => 'not_a_type',
   UnexpectedFree _ => 'internal_error',
+  UnknownTypeReached _ => 'internal_error',
   UnknownDataOrCtor _ => 'unknown_reference',
   InductiveArityMismatch _ => 'inductive_arity_mismatch',
   MatchMotiveRequired _ => 'match_motive_required',

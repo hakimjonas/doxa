@@ -151,6 +151,11 @@ String reportCheckError(
       sb.write(source.formatContext(span, color: c));
       sb.writeln('  variable: $name');
       sb.writeln('  this indicates an elaborator bug and should be reported.');
+    case UnknownTypeReached(:final site):
+      sb.writeln("${c.error('error')}: internal error: unknown type");
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln('  the elaborator needed a type it does not know ($site).');
+      sb.writeln('  this indicates an elaborator bug and should be reported.');
     case UnknownDataOrCtor(:final dataName, :final ctorName):
       sb.writeln("${c.error('error')}: unknown inductive reference");
       sb.write(source.formatContext(span, color: c));

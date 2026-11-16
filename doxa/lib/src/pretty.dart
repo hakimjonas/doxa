@@ -105,6 +105,9 @@ class _Printer {
 
   String _termInner(Term t, int prec, {required int depth}) => switch (t) {
     TType(:final level) => _prettyLevel(level),
+    // The internal unknown marker has no surface syntax; render it
+    // readably if a diagnostic quotes one.
+    TUnknown() => 'Unknown',
     TProp() => 'Prop',
     TSProp() => 'SProp',
     TBound(:final index) => _boundName(index),
@@ -386,6 +389,7 @@ bool _referencesBound0(Term t) => _refBound(t, 0);
 
 bool _refBound(Term t, int depth) => switch (t) {
   TType() => false,
+  TUnknown() => false,
   TProp() => false,
   TSProp() => false,
   TFree() => false,

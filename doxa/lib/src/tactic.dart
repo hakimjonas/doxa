@@ -917,6 +917,10 @@ void _validateTerm(Term t, Ctx ctx, int depth) {
   switch (t) {
     case TFree(:final name):
       throw StateError('validateTerm: unresolved TFree($name)');
+    case TUnknown():
+      // The internal unknown marker never belongs in a term handed to
+      // the meta-solver: it names the absence of a type.
+      throw StateError('validateTerm: internal TUnknown');
     case TBound(:final index):
       final maxIdx = ctx.level + depth - 1;
       if (index > maxIdx) {
