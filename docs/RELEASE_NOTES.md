@@ -95,7 +95,7 @@ them with a dedicated error. They are not shipped features:
 
 | Surface | Current status | Error |
 |---|---|---|
-| Quotient construction `mk` and elimination `lift(f, proof)` | `Quot(A, R)` formation is available; the kernel does not check the lift compatibility proof | `QuotientUnsupported` |
+| Quotient construction `mk` and elimination `lift(f, proof)` | `Quot(A, R)` formation is available. The surface is gated, and the kernel API rejects the `TQuotMk` / `TQuotLift` terms directly, because the lift compatibility proof is not checked | `QuotientUnsupported` (surface), `QuotientTermUnsupported` (kernel API) |
 | `typeclass` and `impl` declarations | Parser, formatter, AST, and internal class registry only; the resolver does not thread dictionaries, search instances, or project methods | `TypeclassUnsupported` |
 | `termination_by` | Every annotation is rejected; the measure was never checked | `TerminationByUnsupported` |
 
@@ -139,7 +139,10 @@ These are design non-goals, not omissions:
 - **Quotient construction and elimination**: `mk` and `lift(f, proof)` are
   rejected with `QuotientUnsupported`. `Quot(A, R)` formation is available.
   The kernel does not check the lift compatibility proof, so the elimination
-  rule is not offered.
+  rule is not offered. The kernel API rejects the `TQuotMk` and `TQuotLift`
+  terms directly (`QuotientTermUnsupported`), so a consumer that builds
+  kernel terms cannot bypass the surface gate; quotation and evaluation still
+  handle the terms for the 1.0 completion.
 
 ## Installation
 

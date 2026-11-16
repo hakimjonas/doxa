@@ -123,6 +123,22 @@ void main() {
       expect(out, contains('error: not a type'));
       expect(out, contains('expected a universe'));
     });
+
+    test('QuotientTermUnsupported says the elimination is unchecked', () {
+      final src = _src('lift(q, f, proof)');
+      const err = QuotientTermUnsupported('Quot.lift');
+      final out = reportCheckError(src, err, const DoxaSpan(0, 4));
+      expect(
+        out,
+        contains(
+          'error: quotient construction and elimination are not '
+          'supported',
+        ),
+      );
+      expect(out, contains('`Quot.lift` reached the kernel'));
+      expect(out, contains('compatibility proof'));
+      expect(out, contains('Quot(A, R)` formation is available'));
+    });
   });
 
   group('TypeMismatch carries the offending sub-expression span', () {

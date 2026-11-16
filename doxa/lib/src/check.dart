@@ -354,7 +354,38 @@ final class PropEliminationIntoType extends DoxaCheckError {
       'PropEliminationIntoType($dataName, result sort: $resultSort)';
 }
 
-/// A term expected to be a quotient type but the inferred type was not a VQuot.
+/// A quotient injection ([TQuotMk]) or elimination ([TQuotLift]) reached
+/// the kernel.
+///
+/// The kernel does not check `lift`'s compatibility proof, and `mk` has
+/// no sound rule without the quotient elimination it belongs to, so
+/// neither term has a typing rule the kernel can justify. The surface
+/// elaborator rejects the syntax with [QuotientUnsupported]; this error
+/// is the boundary for consumers that build kernel terms directly. Both
+/// [infer] and [check] raise it before inspecting any subterm.
+///
+/// Quotient *formation* (`TQuot`) is unaffected: the type former is
+/// sound.
+///
+/// Reserved for the 1.0 completion, when the elimination rule is
+/// checked: the diagnostic classes below describe conditions the kernel
+/// cannot currently reach because these terms are rejected first.
+final class QuotientTermUnsupported extends DoxaCheckError {
+  /// The rejected form, e.g. `Quot.mk` or `Quot.lift`.
+  final String term;
+
+  /// Creates the rejection.
+  const QuotientTermUnsupported(this.term);
+
+  @override
+  String toString() => 'QuotientTermUnsupported($term)';
+}
+
+/// Reserved for the 1.0 quotient completion: a term expected to be a
+/// quotient type but the inferred type was not a [VQuot].
+///
+/// Unreachable while [QuotientTermUnsupported] rejects the elimination
+/// before its operand is inferred.
 final class NotAQuotient extends DoxaCheckError {
   /// Creates a type mismatch.
   final Value actual;
@@ -365,7 +396,10 @@ final class NotAQuotient extends DoxaCheckError {
   String toString() => 'NotAQuotient(actual: $actual)';
 }
 
-/// TQuotMk cannot be inferred; it must appear in a check context.
+/// Reserved for the 1.0 quotient completion: [TQuotMk] cannot be
+/// inferred and must appear in a check context.
+///
+/// Unreachable while [QuotientTermUnsupported] rejects both modes.
 final class QuotMkInInferMode extends DoxaCheckError {
   /// The member.
   const QuotMkInInferMode();
@@ -373,7 +407,11 @@ final class QuotMkInInferMode extends DoxaCheckError {
   String toString() => 'QuotMkInInferMode()';
 }
 
-/// The compatibility proof for Quot.lift does not have the correct type.
+/// Reserved for the 1.0 quotient completion: the compatibility proof for
+/// `Quot.lift` does not have the correct type.
+///
+/// Unreachable while [QuotientTermUnsupported] rejects the elimination
+/// before the proof is checked.
 final class QuotFnNotRespectingRelation extends DoxaCheckError {
   /// The member.
   final Value got;

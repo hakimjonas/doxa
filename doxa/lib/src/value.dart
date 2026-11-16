@@ -343,6 +343,11 @@ final class VQuot extends Value {
 }
 
 /// A quotient element value: `Quot.mk(a)`.
+///
+/// The value-level image of [TQuotMk]. The checker rejects the term
+/// (`QuotientTermUnsupported`), so this value is reachable only through
+/// [eval] on kernel terms that bypass checking. Internal until the
+/// quotient elimination is completed.
 final class VQuotMk extends Value {
   /// The field.
   final Value arg;
@@ -353,6 +358,11 @@ final class VQuotMk extends Value {
 
 /// A stuck quotient lift (waiting for the quot argument to become VQuotMk).
 /// Once the quot is canonical, ι-reduction fires: lift(mk(a), f, proof) → f(a).
+///
+/// The value-level image of [TQuotLift]. The checker rejects the term
+/// (`QuotientTermUnsupported`), so this value is reachable only through
+/// [eval] on kernel terms that bypass checking. Internal until the
+/// quotient elimination is completed.
 final class VQuotLift extends Value {
   /// The field.
   final Value quot;

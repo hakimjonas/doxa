@@ -885,6 +885,16 @@ final class TQuot extends Term {
 }
 
 /// Inject an element into a quotient: `Quot.mk(a)`.
+///
+/// Rejected by the checker: [infer] and [check] raise
+/// `QuotientTermUnsupported` before inspecting any subterm. The kernel
+/// has no sound rule for the injection until the quotient elimination
+/// is completed, and the surface elaborator gates `mk` with
+/// `QuotientUnsupported`. Evaluation and quotation still handle the
+/// term so the future completion can reuse them; evaluation assumes
+/// well-typed input and is not the type-checking boundary.
+///
+/// Internal until the elimination rule is checked (1.0 work).
 final class TQuotMk extends Term {
   /// The field.
   final Term arg;
@@ -904,6 +914,17 @@ final class TQuotMk extends Term {
 
 /// Eliminate from a quotient: `Quot.lift(quot, f, proof)`.
 /// f: A → B, proof: (x y: A) → R x y → Eq B (f x) (f y)
+///
+/// Rejected by the checker: [infer] and [check] raise
+/// `QuotientTermUnsupported` before inferring the quotient operand or
+/// opening the function's codomain. The compatibility proof is not
+/// checked, so the elimination has no typing rule the kernel can
+/// justify; the surface elaborator gates `lift` with
+/// `QuotientUnsupported`. Evaluation and quotation still handle the
+/// term so the future completion can reuse them; evaluation assumes
+/// well-typed input and is not the type-checking boundary.
+///
+/// Internal until the elimination rule is checked (1.0 work).
 final class TQuotLift extends Term {
   /// The field.
   final Term quot;

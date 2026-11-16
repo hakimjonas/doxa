@@ -242,6 +242,27 @@ String reportCheckError(
         '  a Type-sorted result (inferred sort: '
         '${_prettyValueAt(resultSort, 0)}).',
       );
+    case QuotientTermUnsupported(:final term):
+      sb.writeln(
+        "${c.error('error')}: quotient construction and elimination are "
+        'not supported',
+      );
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  `$term` reached the kernel, which has no checked typing rule for '
+        'it:',
+      );
+      sb.writeln(
+        '  the compatibility proof required by the quotient elimination is',
+      );
+      sb.writeln(
+        '  not checked. The surface syntax is gated, so only a program that',
+      );
+      sb.writeln('  builds kernel terms directly can see this.');
+      sb.writeln(
+        '  `Quot(A, R)` formation is available; completing the elimination '
+        'is 1.0 work.',
+      );
     case NotAQuotient(:final actual):
       sb.writeln("${c.error('error')}: not a quotient type");
       sb.write(source.formatContext(span, color: c));

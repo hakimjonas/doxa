@@ -252,11 +252,26 @@ void main() {
       expect(infer(ctx, q), isA<VType>());
     });
 
-    test('TQuotMk in infer mode throws QuotMkInInferMode', () {
+    test('TQuotMk is rejected in infer mode', () {
       const ctx = CNil.withRegistries(dataDecls: [], topBindings: {});
       expect(
         () => infer(ctx, const TQuotMk(TType(LLevel(0)))),
-        throwsA(isA<QuotMkInInferMode>()),
+        throwsA(
+          isA<QuotientTermUnsupported>().having(
+            (e) => e.term,
+            'term',
+            'Quot.mk',
+          ),
+        ),
+      );
+    });
+
+    test('TQuotMk is rejected in check mode', () {
+      const ctx = CNil.withRegistries(dataDecls: [], topBindings: {});
+      expect(
+        () =>
+            check(ctx, const TQuotMk(TType(LLevel(0))), const VType(LLevel(0))),
+        throwsA(isA<QuotientTermUnsupported>()),
       );
     });
 
@@ -269,33 +284,27 @@ void main() {
       expect(() => infer(ctx, q), throwsA(isA<NotAType>()));
     });
 
-    test('infer TQuotLift with non-quotient quot throws NotAQuotient', () {
+    test('infer TQuotLift rejects the term before inspecting any subterm', () {
+      // The quotient operand is an out-of-scope `TBound(7)`. If the
+      // kernel inferred it, it would abort on the index. The
+      // rejection has to come first.
       const t = TQuotLift(
-        TType(LLevel(0)),
+        TBound(7),
         TLam(TType(LLevel(0)), TBound(0)),
         TProp(),
       );
       const ctx = CNil.withRegistries(dataDecls: [], topBindings: {});
-      expect(() => infer(ctx, t), throwsA(isA<NotAQuotient>()));
-    });
-
-    test(
-      'infer TQuotLift with non-quotient quot throws NotAQuotient (TQuot types as VType, not VQuot)',
-      () {
-        // TQuot(TType(LLevel(0)), ...)'s inferred type is VType, not VQuot.
-        // TQuotLift expects a VQuot-typed term. This tests that case.
-        const t = TQuotLift(
-          TQuot(
-            TType(LLevel(0)),
-            TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())),
+      expect(
+        () => infer(ctx, t),
+        throwsA(
+          isA<QuotientTermUnsupported>().having(
+            (e) => e.term,
+            'term',
+            'Quot.lift',
           ),
-          TLam(TType(LLevel(0)), TBound(0)),
-          TProp(),
-        );
-        const ctx = CNil.withRegistries(dataDecls: [], topBindings: {});
-        expect(() => infer(ctx, t), throwsA(isA<NotAQuotient>()));
-      },
-    );
+        ),
+      );
+    });
 
     // --- Parser tests ---
 
@@ -394,9 +403,12 @@ void main() {
       },
     );
 
-    test('Quot.lift with VQuot-typed quot and proper fn succeeds in infer', () {
-      // Construct a context with a VQuot-typed binder so the quot check
-      // succeeds and we exercise the full TQuotLift infer path.
+    test('TQuotLift with a VQuot-typed quot and arbitrary proof is rejected '
+        'in infer mode', () {
+      // A well-formed quotient binder, a proper function, and an
+      // arbitrary compatibility proof. The elimination is rejected
+      // because the kernel cannot check the proof, not because the
+      // shape is wrong.
       const base = CNil.withRegistries(dataDecls: [], topBindings: {});
       const env = ENil.withRegistries(dataDecls: [], topBindings: {});
       final ctx = CCons(
@@ -406,29 +418,21 @@ void main() {
         1,
         base,
       );
-      // TBound(0) has type VQuot. TLam(TType(LLevel(0)), TType(LLevel(0))) has type (x: Type) -> Type.
       const q = TQuotLift(
         TBound(0),
         TLam(TType(LLevel(0)), TType(LLevel(0))),
-        TType(LLevel(0)),
+        TProp(),
       );
-      final t = infer(ctx, q);
-      expect(t, isA<VType>());
+      expect(() => infer(ctx, q), throwsA(isA<QuotientTermUnsupported>()));
     });
 
-    test('Quot.lift with non-VPi fn type throws NotAFunction', () {
-      const base = CNil.withRegistries(dataDecls: [], topBindings: {});
-      const env = ENil.withRegistries(dataDecls: [], topBindings: {});
-      final ctx = CCons(
-        const VQuot(VType(LLevel(0)), VProp()),
-        const VNeutral(NVar(0)),
-        env.extend(const VNeutral(NVar(0))),
-        1,
-        base,
+    test('TQuotLift is rejected in check mode', () {
+      const ctx = CNil.withRegistries(dataDecls: [], topBindings: {});
+      const q = TQuotLift(TBound(7), TType(LLevel(0)), TType(LLevel(0)));
+      expect(
+        () => check(ctx, q, const VType(LLevel(0))),
+        throwsA(isA<QuotientTermUnsupported>()),
       );
-      // TType(LLevel(0)) infers to VType(LLevel(1)), which is NOT VPi.
-      const q = TQuotLift(TBound(0), TType(LLevel(0)), TType(LLevel(0)));
-      expect(() => infer(ctx, q), throwsA(isA<NotAFunction>()));
     });
 
     // --- Quotient-in-match tests ---
