@@ -16,11 +16,11 @@
 //     eliminator (`Nat.ind` / `List.ind`).
 //
 // Shared modules are imported instead of redeclared.
-import "../lib/stdlib/list.doxa"
+import "../doxa_stdlib/lib/stdlib/list.doxa"
 
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 
-import "../lib/stdlib/vec.doxa"
+import "../doxa_stdlib/lib/stdlib/vec.doxa"
 // Congruence: equal inputs give equal `f`-images. The body matches on
 // the proof and rebuilds a bare `refl`.
 

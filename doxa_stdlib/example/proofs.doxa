@@ -1,0 +1,12 @@
+// A small proof that imports the packaged standard library by path.
+// Check it from the repository root with:
+//   dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/example/proofs.doxa
+import "../lib/stdlib/nat.doxa"
+
+import "../lib/stdlib/proofs.doxa"
+
+val two: Nat = succ (succ zero)
+// `plus_zero` states `plus n zero = n`, so its instantiation at `two` is the
+// whole proof.
+
+val two_plus_zero: Eq Nat (plus two zero) two = plus_zero two

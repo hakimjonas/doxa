@@ -1,0 +1,2 @@
+// Domain package for Prop — re-exports prop.doxa.
+import "../prop.doxa"

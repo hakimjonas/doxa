@@ -54,11 +54,11 @@ void profileStdlib(
   List<DataDecl> dataDecls,
   Map<String, Set<String>> namespaceBindings,
 ) {
-  final src = File('lib/stdlib/proofs.doxa').readAsStringSync();
+  final src = File('doxa_stdlib/lib/stdlib/proofs.doxa').readAsStringSync();
   final prog = _parse(src);
 
   final importState = ImportState();
-  importState.currentImportPath = 'lib/stdlib/proofs.doxa';
+  importState.currentImportPath = 'doxa_stdlib/lib/stdlib/proofs.doxa';
   importState.importedPaths.clear();
   final sw = Stopwatch();
 

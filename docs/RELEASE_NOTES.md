@@ -161,5 +161,5 @@ dart run doxa check myfile.doxa
 - [Tutorial](docs/tutorial.md)
 - [SPEC coverage audit](docs/SPEC_COVERAGE.md)
 - [Syntax reference](SYNTAX.md)
-- [Standard library](lib/stdlib/)
+- [Standard library](../doxa_stdlib/lib/stdlib/)
 - [Proof examples](example/proofs.doxa)

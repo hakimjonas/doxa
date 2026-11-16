@@ -71,7 +71,7 @@ void main() {
   group('namespace-qualified access', () {
     test('Nat.zero resolves via import "nat.doxa"', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 val x : Nat = Nat.zero
 val y : Nat = Nat.plus Nat.zero Nat.zero
 ''';
@@ -81,7 +81,7 @@ val y : Nat = Nat.plus Nat.zero Nat.zero
 
     test('unqualified zero still works (backward compat)', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 val x : Nat = zero
 val y : Nat = plus zero zero
 ''';
@@ -91,7 +91,7 @@ val y : Nat = plus zero zero
 
     test('mixed qualified and unqualified access', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 val x : Nat = Nat.zero
 val y : Nat = plus zero x
 val z : Nat = Nat.plus x y
@@ -102,7 +102,7 @@ val z : Nat = Nat.plus x y
 
     test('import "nat.doxa" as N enables N.zero', () {
       const src = '''
-import "../lib/stdlib/nat.doxa" as N
+import "../doxa_stdlib/lib/stdlib/nat.doxa" as N
 val x : Nat = N.zero
 val y : Nat = N.plus N.zero N.zero
 ''';
@@ -112,7 +112,7 @@ val y : Nat = N.plus N.zero N.zero
 
     test('alias coexists with unqualified access', () {
       const src = '''
-import "../lib/stdlib/nat.doxa" as N
+import "../doxa_stdlib/lib/stdlib/nat.doxa" as N
 val x : Nat = zero
 val y : Nat = N.zero
 val z : Nat = plus x y
@@ -126,7 +126,7 @@ val z : Nat = plus x y
       // `Nat.rec` as a term refers to the recursor; we verify it
       // resolves without an "unresolved name" error.
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 val n : Nat = Nat.zero
 val use_rec = Nat.rec
 ''';
@@ -137,7 +137,7 @@ val use_rec = Nat.rec
     test('different namespaces with aliases disambiguate', () {
       // nat.doxa transitively imports bool.doxa, so use alias for disambiguation.
       const src = '''
-import "../lib/stdlib/nat.doxa" as N
+import "../doxa_stdlib/lib/stdlib/nat.doxa" as N
 val a : Nat = N.zero
 val b : Bool = N.true_
 val c : Bool = N.and_ b b
@@ -149,7 +149,7 @@ val c : Bool = N.and_ b b
     test('selective import with qualified access via alias', () {
       // Selective import must include data decl names for type references.
       const src = '''
-import "../lib/stdlib/nat.doxa" { Nat, zero, plus } as N
+import "../doxa_stdlib/lib/stdlib/nat.doxa" { Nat, zero, plus } as N
 val x : Nat = N.zero
 val y : Nat = N.plus x x
 ''';
@@ -162,8 +162,8 @@ val y : Nat = N.plus x x
       // bindings. Names like `true_` are unique to bool.doxa.
       // The import should succeed because names don't collide.
       const src = '''
-import "../lib/stdlib/nat.doxa"
-import "../lib/stdlib/bool.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/bool.doxa"
 val x : Nat = zero
 val b : Bool = true_
 ''';
@@ -173,7 +173,7 @@ val b : Bool = true_
 
     test('namespace-qualified types work: Nat.zero, Nat.plus, etc.', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 val x : Nat = Nat.zero
 val b : Bool = Nat.true_
 val c : Bool = Nat.and_ b b
@@ -185,7 +185,7 @@ val c : Bool = Nat.and_ b b
     test('qualified type reference in annotation', () {
       // Uses alias for the type name qualification.
       const src = '''
-import "../lib/stdlib/nat.doxa" as N
+import "../doxa_stdlib/lib/stdlib/nat.doxa" as N
 val x : N.Nat = N.zero
 ''';
       final r = runSource(src);

@@ -69,7 +69,7 @@ void main() {
   group('constructor parameters from the expected type', () {
     test('Box3 solves a value parameter used in an argument type', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 data Box3[A: Type, R: A -> A -> Prop]: Type {
   box3: (x: A) -> ((y: A) -> R y x -> Box3 A R) -> Box3 A R;
 }
@@ -87,7 +87,7 @@ val apply_box:
 
     test('nullary constructors with value parameters still check', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 data Triv: Prop {
   triv: Triv;
 }
@@ -106,7 +106,7 @@ val b2: Box2 Nat ((a: Nat) => (b: Nat) => Triv) = box2
 
     test('a wrong constructor argument reports a type mismatch', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 data Triv: Prop {
   triv: Triv;
 }
@@ -194,7 +194,7 @@ fun f(d: D zero (succ zero) (succ zero)): Nat = match d {
 
     test('parameterized AccP, nat_wfP, and strong_ind_implP check', () {
       const src = '''
-import "../lib/stdlib/proofs.doxa"
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
 data AccP[A: Type, R: A -> A -> Prop]: A -> Prop {
   acc_introP: (x: A) ->
     ((y: A) -> R y x -> AccP A R y) -> AccP A R x;

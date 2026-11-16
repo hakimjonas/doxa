@@ -1,6 +1,6 @@
 /// Quick parse-throughput benchmark over the .doxa corpus.
 ///
-/// Times `parseProgram` on every program in lib/stdlib + test/programs.
+/// Times `parseProgram` on every program in doxa_stdlib/lib/stdlib + test/programs.
 /// Not a rigorous microbenchmark, a baseline number to compare the
 /// rule()-based parser against a future Pratt variant, and to sanity
 /// the cost before a WASM build. Run: `dart run tool/parse_bench.dart`.
@@ -15,7 +15,7 @@ void main() {
   final files =
       <File>[
           ...Directory(
-            'lib/stdlib',
+            'doxa_stdlib/lib/stdlib',
           ).listSync(recursive: true).whereType<File>(),
           ...Directory(
             'doxa_tooling/test/programs',

@@ -1,7 +1,7 @@
 // Propositional connectives (Prop-sorted).
 //
 // And, Or, Not, and Exists as standard Prop-sorted inductive types.
-import "../proofs.doxa"
+import "proofs.doxa"
 // Conjunction: A ∧ B
 
 data And[A: Prop, B: Prop]: Prop {

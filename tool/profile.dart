@@ -49,13 +49,13 @@ void main() {
   }
 
   // stdlib proofs
-  final src = _read('lib/stdlib/proofs.doxa');
+  final src = _read('doxa_stdlib/lib/stdlib/proofs.doxa');
   final sw = Stopwatch();
   var totalParse = 0, totalElab = 0, totalCheck = 0, totalNf = 0;
 
   // Warmup
   final importState = ImportState();
-  importState.currentImportPath = 'lib/stdlib/proofs.doxa';
+  importState.currentImportPath = 'doxa_stdlib/lib/stdlib/proofs.doxa';
   importState.importedPaths.clear();
   _check(src, bindings, dataDecls, namespaceBindings, importState);
 

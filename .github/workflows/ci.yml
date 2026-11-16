@@ -33,6 +33,10 @@ jobs:
         working-directory: ./doxa_tooling
         run: dart pub get
 
+      - name: Install dependencies (doxa_stdlib)
+        working-directory: ./doxa_stdlib
+        run: dart pub get
+
       - name: Analyze (doxa kernel)
         working-directory: ./doxa
         run: dart analyze --no-fatal-warnings
@@ -41,8 +45,12 @@ jobs:
         working-directory: ./doxa_tooling
         run: dart analyze --no-fatal-warnings
 
+      - name: Analyze (doxa_stdlib)
+        working-directory: ./doxa_stdlib
+        run: dart analyze --no-fatal-warnings
+
       - name: Format check (Dart)
-        run: dart format --set-exit-if-changed doxa/ doxa_tooling/
+        run: dart format --set-exit-if-changed doxa/ doxa_tooling/ doxa_stdlib/
 
       - name: Test (doxa kernel)
         working-directory: ./doxa
@@ -52,13 +60,19 @@ jobs:
         working-directory: ./doxa_tooling
         run: dart test
 
+      # The stdlib package test drives the sibling CLI when it is present.
+      - name: Test (doxa_stdlib)
+        working-directory: ./doxa_stdlib
+        run: dart test
+
       - name: Build doxa CLI
         working-directory: ./doxa_tooling
         run: dart compile exe bin/doxa.dart -o /tmp/doxa
 
       - name: doxa fmt --check (all parseable .doxa files)
         run: |
-          for f in $(find lib/stdlib example doxa_tooling/test/programs -name '*.doxa' -type f \
+          for f in $(find doxa_stdlib/lib/stdlib doxa_stdlib/example example \
+            doxa_tooling/test/programs -name '*.doxa' -type f \
             ! -path 'doxa_tooling/test/programs/negative/block_no_result.doxa' \
             ! -path 'doxa_tooling/test/programs/negative/parse_error.doxa'); do
             /tmp/doxa fmt --check "$f" || exit 1
@@ -66,13 +80,14 @@ jobs:
 
       - name: doxa type-check (stdlib)
         run: |
-          for f in $(find lib/stdlib -name '*.doxa' -type f ! -name 'prelude.doxa'); do
+          for f in $(find doxa_stdlib/lib/stdlib -name '*.doxa' -type f \
+            ! -name 'prelude.doxa'); do
             /tmp/doxa check "$f" || exit 1
           done
 
       - name: doxa type-check (examples)
         run: |
-          for f in example/*.doxa; do
+          for f in example/*.doxa doxa_stdlib/example/*.doxa; do
             /tmp/doxa check "$f" || exit 1
           done
 
@@ -180,11 +195,18 @@ jobs:
 
       # Pre-release only: hosted doxa 0.8.4 does not exist until the
       # release workflow publishes the kernel. This check is non-fatal;
-      # release.yml runs pana against the hosted packages after both
-      # publishes.
+      # release.yml runs pana against the hosted packages after all
+      # three publishes.
       - name: pana score (doxa_tooling)
         run: |
           pana doxa_tooling/ --no-warning --source path --exit-code-threshold 0 2>&1 | tail -20 || true
+
+      # The stdlib package has no runtime dependencies, so pana can
+      # resolve it without the kernel. Fatal: a regression here is a
+      # packaging bug, not a pending publish.
+      - name: pana score (doxa_stdlib)
+        run: |
+          pana doxa_stdlib/ --no-warning --source path --exit-code-threshold 0 2>&1 | tail -20
 
   # Preserve the branch-protection context while requiring every CI job.
   test:

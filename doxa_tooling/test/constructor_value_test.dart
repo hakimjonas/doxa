@@ -69,7 +69,7 @@ void main() {
   group('partial constructor applications', () {
     test('a bare constructor as a higher-order argument is rejected', () {
       final r = runSource('''
-import "../lib/stdlib/proofs.doxa"
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
 val h: Eq Nat (succ zero) (succ zero) =
   cong_e Nat Nat succ zero zero (refl zero)
 ''');
@@ -82,7 +82,7 @@ val h: Eq Nat (succ zero) (succ zero) =
 
     test('the rejection holds in inference mode', () {
       final r = runSource('''
-import "../lib/stdlib/proofs.doxa"
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
 val h = cong_e Nat Nat succ zero zero (refl zero)
 ''');
       expect(r.code, isNot(0));
@@ -92,7 +92,7 @@ val h = cong_e Nat Nat succ zero zero (refl zero)
 
     test('a partial constructor against a function type is rejected', () {
       final r = runSource('''
-import "../lib/stdlib/proofs.doxa"
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
 val f: (n: Nat) -> Lt n (succ n) = lt_succ
 ''');
       expect(r.code, isNot(0));
@@ -131,7 +131,7 @@ val bad: Eq Pair (pair zero zero) (pair zero zero) =
 
     test('a partial function application still checks', () {
       final r = runSource('''
-import "../lib/stdlib/proofs.doxa"
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
 val p: Nat -> Nat = plus zero
 ''');
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
@@ -139,7 +139,7 @@ val p: Nat -> Nat = plus zero
 
     test('an eta-expanded constructor still checks', () {
       final r = runSource('''
-import "../lib/stdlib/proofs.doxa"
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
 val h: Eq Nat (succ zero) (succ zero) =
   cong_e Nat Nat ((n: Nat) => succ n) zero zero (refl zero)
 ''');
@@ -148,7 +148,7 @@ val h: Eq Nat (succ zero) (succ zero) =
 
     test('an applied constructor still checks', () {
       final r = runSource('''
-import "../lib/stdlib/proofs.doxa"
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
 val h: Eq Nat (succ zero) (succ zero) = refl (succ zero)
 val r: Eq Nat zero zero = refl zero
 ''');

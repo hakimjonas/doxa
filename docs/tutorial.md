@@ -245,7 +245,7 @@ the surrounding type information.
 A file can import another via an `import` statement at the top level.
 Paths are relative to the importing file. Cyclic imports are rejected; an
 imported file is elaborated once, and importing it again from the same
-pipeline is a no-op. The standard library files under `lib/stdlib/` are
+pipeline is a no-op. The standard library files under `doxa_stdlib/lib/stdlib/` are
 imported this way.
 
 ---
@@ -713,7 +713,7 @@ of identity proofs is not derivable, and it is not even statable since
 ## 16. Next steps
 
 - The [language specification](../SPEC.md) gives the full formal semantics.
-- The [standard library sources](../lib/stdlib/) contain `Nat`, `List`,
+- The [standard library sources](../doxa_stdlib/lib/stdlib/) contain `Nat`, `List`,
   `Vec`, `Bool`, `Option`, and the `Eq` lemmas.
 - The [proof example](../example/proofs.doxa) proves `plus_zero_left`,
   `plus_zero_right`, `length_append`, `succ_ne_zero`, and `vlength_index`.

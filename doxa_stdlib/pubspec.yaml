@@ -1,0 +1,19 @@
+name: doxa_stdlib
+description: >-
+  The Doxa standard library: checked Doxa sources for Nat, Bool, List,
+  Option, Vec, Sigma, Eq, Int, Rational, and the arithmetic proofs.
+version: 0.8.4
+license: GPL-3.0-or-later
+repository: https://github.com/hakimjonas/doxa
+homepage: https://github.com/hakimjonas/doxa
+
+environment:
+  sdk: ^3.7.0
+
+# The package is pure Doxa source plus a small locator library. The
+# sources are checked with the Doxa CLI from a sibling checkout; the
+# package itself carries no runtime or test dependency on the kernel so
+# a published copy resolves without the unpublished tooling packages.
+dev_dependencies:
+  test: ^1.31.0
+  lints: ^6.0.0

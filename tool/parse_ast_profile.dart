@@ -55,13 +55,13 @@ void main() {
   print('---------------|---------|----------|----------|------');
 
   final files = [
-    'lib/stdlib/nat.doxa',
-    'lib/stdlib/bool.doxa',
-    'lib/stdlib/option.doxa',
-    'lib/stdlib/vec.doxa',
-    'lib/stdlib/list.doxa',
-    'lib/stdlib/eq.doxa',
-    'lib/stdlib/proofs.doxa',
+    'doxa_stdlib/lib/stdlib/nat.doxa',
+    'doxa_stdlib/lib/stdlib/bool.doxa',
+    'doxa_stdlib/lib/stdlib/option.doxa',
+    'doxa_stdlib/lib/stdlib/vec.doxa',
+    'doxa_stdlib/lib/stdlib/list.doxa',
+    'doxa_stdlib/lib/stdlib/eq.doxa',
+    'doxa_stdlib/lib/stdlib/proofs.doxa',
     'example/proofs.doxa',
   ];
 

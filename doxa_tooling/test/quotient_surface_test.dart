@@ -67,7 +67,7 @@ void main() {
   group('quotient surface', () {
     test('Quot(A, R) still forms a type', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
 val q: Type = Quot(Nat, rel)
 ''';
@@ -77,7 +77,7 @@ val q: Type = Quot(Nat, rel)
 
     test('mk is rejected', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
 val q: Quot(Nat, rel) = mk zero
 ''';
@@ -92,7 +92,7 @@ val q: Quot(Nat, rel) = mk zero
 
     test('lift is rejected', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
 val f = lift((x: Nat) => x, (a: Nat) => (b: Nat) => (h: rel a b) => refl a)
 ''';

@@ -67,7 +67,7 @@ void main() {
   group('well-founded recursion (Acc)', () {
     test('Acc type exists in prelude', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 fun rel(a: Nat, b: Nat) : Prop = Eq[Nat] a b
 val accProp : Prop = Acc[Nat] rel zero
 ''';
@@ -80,7 +80,7 @@ val accProp : Prop = Acc[Nat] rel zero
       // function. Supplying one explicit argument produces an arity
       // mismatch, which proves the constructor name resolves.
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 val intro = Acc[Nat].acc_intro zero
 ''';
       final r = runSource(src);
@@ -89,7 +89,7 @@ val intro = Acc[Nat].acc_intro zero
 
     test('Acc.rec recursor exists', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 val rec = Acc[Nat].rec
 ''';
       final r = runSource(src);
@@ -98,7 +98,7 @@ val rec = Acc[Nat].rec
 
     test('termination_by on simple fun is rejected', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 fun identity(x : Nat) : Nat termination_by (x) = x
 ''';
       final r = runSource(src);
@@ -108,7 +108,7 @@ fun identity(x : Nat) : Nat termination_by (x) = x
 
     test('termination_by with an unknown parameter is rejected', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 fun f(x : Nat) : Nat termination_by (y) = x
 ''';
       final r = runSource(src);
@@ -118,7 +118,7 @@ fun f(x : Nat) : Nat termination_by (y) = x
 
     test('termination_by with {struct} is rejected', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 fun f(x : Nat) : Nat {struct x} termination_by (x) = x
 ''';
       final r = runSource(src);
@@ -128,7 +128,7 @@ fun f(x : Nat) : Nat {struct x} termination_by (x) = x
 
     test('structural recursion still works', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 fun my_plus(a : Nat, b : Nat) : Nat = match a {
   case zero => b
   case succ a_ => succ (my_plus a_ b)
@@ -140,7 +140,7 @@ fun my_plus(a : Nat, b : Nat) : Nat = match a {
 
     test('termination_by on a non-recursive fun is rejected', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 fun helper(m : Nat, n : Nat) : Nat termination_by (m) = plus m (plus m n)
 ''';
       final r = runSource(src);
@@ -159,7 +159,7 @@ fun helper(m : Nat, n : Nat) : Nat termination_by (m) = plus m (plus m n)
       // This was accepted by the old single-parameter fuel path and
       // makes the checker diverge in conversion.
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 fun bad(n: Nat): Eq Nat zero (succ zero) termination_by n = bad (succ n)
 ''';
       final r = runSource(src);
@@ -169,7 +169,7 @@ fun bad(n: Nat): Eq Nat zero (succ zero) termination_by n = bad (succ n)
 
     test('multi-parameter termination_by is rejected', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 fun f(a: Nat, b: Nat): Nat termination_by a b = f a b
 ''';
       final r = runSource(src);
@@ -179,7 +179,7 @@ fun f(a: Nat, b: Nat): Nat termination_by a b = f a b
 
     test('mutual-block member with termination_by is rejected', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 fun f(n: Nat): Nat termination_by n = g n
 and g(n: Nat): Nat = f n
 ''';
@@ -192,7 +192,7 @@ and g(n: Nat): Nat = f n
       // `observed_iota` forces `strong_ind P step zero` through
       // `nat_wf zero` and Acc.rec to `step zero ... = refl zero`.
       const src = '''
-import "../lib/stdlib/proofs.doxa"
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
 fun P(n: Nat): Prop = Eq Nat n n
 fun step(n: Nat, ih: (k: Nat) -> Lt k n -> P k): P n = refl n
 val observed: Nat = Eq.rect Nat
@@ -212,7 +212,7 @@ val observed_iota: Eq Nat observed zero = refl zero
       // recursor type must stay closed in both the Pi-chain domains and
       // the base type's indices.
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 data D6[A: Type]: Type {
   mk6: ((y: A) -> Eq A y y -> D6 A) -> D6 A;
 }
@@ -231,7 +231,7 @@ val racc = Acc.rec Nat
       // The IH is function-shaped over the same Pi chain as acc_intro's
       // recursive argument.
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
 val acc_eq: (n: Nat) -> Acc Nat rel n -> Eq Nat n n =
   (n: Nat) => (h: Acc Nat rel n) => Acc.rec Nat rel
@@ -252,7 +252,7 @@ val acc_eq: (n: Nat) -> Acc Nat rel n -> Eq Nat n n =
       // result. The recursive arguments are function-typed, so the IH
       // must be a lambda closed over the constructor telescope.
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 data D4[A: Type]: Type {
   mk4: (x: A) -> ((y: A) -> D4 A) -> D4 A;
 }
@@ -294,7 +294,7 @@ val acc_rect_iota:
       // requires the Acc.rec IH to be the closed lambda
       // `(y) -> (r) -> Eq Nat y y`.
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
 val acc_true: (n: Nat) -> Acc Nat rel n -> Eq Nat n n =
   (n: Nat) => (h: Acc Nat rel n) => Acc.rec Nat rel
@@ -323,7 +323,7 @@ val observe_iota:
       // The step applies the IH to `x`, so the identity of the IH is
       // observable: `ih x` must be `D4.rec ... (f x)`.
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 data D4[A: Type]: Type {
   mk4: (x: A) -> ((y: A) -> D4 A) -> D4 A;
 }
@@ -347,7 +347,7 @@ val d4_use_iota: (x: Nat) -> (f: (y: Nat) -> D4 Nat) ->
       // The IH is applied at `x` with `refl x`, so the dependent
       // domain and the recursive-call body must both line up.
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 data D5[A: Type]: Type {
   mk5: (x: A) -> ((y: A) -> Eq A y x -> D5 A) -> D5 A;
 }
@@ -375,7 +375,7 @@ val d5_use_iota: (x: Nat) -> (f: (y: Nat) -> Eq Nat y x -> D5 Nat) ->
       // proof. Acc is Prop-sorted, so the Type-valued motive uses
       // `Acc.rect`.
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 fun rel(a: Nat, b: Nat): Prop = Eq Nat a b
 val acc_motive:
   (x: Nat) -> (v: Acc Nat rel x) -> Type =
@@ -413,7 +413,7 @@ val acc_ih_iota:
       // comparison checks that the iota step keeps the full head spine
       // and returns the recursive call on `f x`.
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 data Tree[A: Type]: Type {
   leafT: Tree A;
   nodeT: (x: A) -> ((y: A) -> Tree A) -> Tree A;

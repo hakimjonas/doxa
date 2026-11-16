@@ -416,7 +416,7 @@ val result: Type =
   });
 
   group('stdlib formatting', () {
-    final stdlibDir = Directory('../lib/stdlib');
+    final stdlibDir = Directory('../doxa_stdlib/lib/stdlib');
 
     test('all stdlib files parse after formatting', () {
       if (!stdlibDir.existsSync()) return;

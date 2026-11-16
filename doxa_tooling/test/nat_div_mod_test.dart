@@ -68,7 +68,7 @@ class _BufferedSink implements IOSink {
 /// edge cases. Doxa has no decimal term literals, so each numeral is a
 /// `succ` chain.
 const _preamble = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 val one: Nat = succ zero
 val two: Nat = succ (succ zero)
 val four: Nat = succ (succ (succ (succ zero)))

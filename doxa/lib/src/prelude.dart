@@ -21,7 +21,7 @@ import 'parse.dart';
 import 'surface.dart';
 
 /// The Doxa prelude source (Eq + Acc). Keep in sync with
-/// `lib/stdlib/prelude.doxa`.
+/// `doxa_stdlib/lib/stdlib/prelude.doxa` in the standard-library package.
 const String preludeSource = '''
 data Eq[A: Type] : A -> A -> Prop {
   refl : (x: A) -> Eq[A] x x;
@@ -54,11 +54,13 @@ PreludeData? _preludeCache;
 /// Whether [filename] names the checked standard-library prelude source.
 ///
 /// The prelude is ambient for ordinary user files. Loading it again while
-/// checking its own source would declare `Eq` and `Acc` twice.
+/// checking its own source would declare `Eq` and `Acc` twice. The source
+/// lives in the `doxa_stdlib` package; the path is the packaged location,
+/// either repo-relative or absolute.
 bool isStdlibPreludePath(String filename) {
   final normalized = filename.replaceAll('\\', '/');
-  return normalized == 'lib/stdlib/prelude.doxa' ||
-      normalized.endsWith('/lib/stdlib/prelude.doxa');
+  return normalized == 'doxa_stdlib/lib/stdlib/prelude.doxa' ||
+      normalized.endsWith('/doxa_stdlib/lib/stdlib/prelude.doxa');
 }
 
 /// Load and cache the prelude.
@@ -79,7 +81,7 @@ PreludeData loadPrelude() {
     Failure<ParseError, SProgram>() =>
       throw StateError(
         'prelude failed to parse; this is a kernel bug. '
-        'lib/stdlib/prelude.doxa must stay in sync.',
+        'doxa_stdlib/lib/stdlib/prelude.doxa must stay in sync.',
       ),
   };
 

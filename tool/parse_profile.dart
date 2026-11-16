@@ -6,13 +6,13 @@ import 'package:rumil/rumil.dart';
 void main() {
   // Profile: parse-only, no elaboration, no checking.
   final files = {
-    'stdlib/nat': 'lib/stdlib/nat.doxa',
-    'stdlib/bool': 'lib/stdlib/bool.doxa',
-    'stdlib/option': 'lib/stdlib/option.doxa',
-    'stdlib/vec': 'lib/stdlib/vec.doxa',
-    'stdlib/list': 'lib/stdlib/list.doxa',
-    'stdlib/eq': 'lib/stdlib/eq.doxa',
-    'stdlib/proofs': 'lib/stdlib/proofs.doxa',
+    'stdlib/nat': 'doxa_stdlib/lib/stdlib/nat.doxa',
+    'stdlib/bool': 'doxa_stdlib/lib/stdlib/bool.doxa',
+    'stdlib/option': 'doxa_stdlib/lib/stdlib/option.doxa',
+    'stdlib/vec': 'doxa_stdlib/lib/stdlib/vec.doxa',
+    'stdlib/list': 'doxa_stdlib/lib/stdlib/list.doxa',
+    'stdlib/eq': 'doxa_stdlib/lib/stdlib/eq.doxa',
+    'stdlib/proofs': 'doxa_stdlib/lib/stdlib/proofs.doxa',
     'example/proofs': 'example/proofs.doxa',
   };
 
