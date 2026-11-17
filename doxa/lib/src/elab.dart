@@ -1574,17 +1574,35 @@ Term _elabTacticBlock(
   }
   // Create a fresh meta for the goal type.
   final goalMetaId = metas.freshTermMeta(expected, state.ctx);
-  // Try each alternative in order. Metas allocated by a failed
-  // attempt are abandoned; only the last attempt's allocation range
-  // contributes goals to the snapshot.
+  // Each alternative starts from the same unsolved root and discards
+  // the metas and solutions the previous attempt produced. Without the
+  // restore, an alternative that solved the root and then left a
+  // subgoal open would poison the next alternative's `solve`.
+  final rootSnapshot = metas.snapshot();
   var attemptStart = metas.length;
   var lastEst = state;
   for (final alt in kind.steps) {
+    metas.restore(rootSnapshot);
     attemptStart = metas.length;
-    final tstate = TacticState(metas, state.ctx, goalMetaId);
+    final tstate = TacticState(
+      metas,
+      state.ctx,
+      goalMetaId,
+      _localScopeNames(state.names),
+    );
     final (result, newEst) = _runTacticSteps(alt, tstate, state);
     lastEst = newEst;
     if (result is TacticOk) {
+      // The block is closed only when every meta allocated by this
+      // attempt is solved, not merely the root. A tactic that creates
+      // goals without reporting them (or a `cases`-style split) leaves
+      // an unsolved meta that would otherwise surface as an opaque
+      // kernel failure.
+      final unsolved = <int>[
+        for (var i = attemptStart; i < metas.length; i++)
+          if (!metas.isSolved(i)) i,
+      ];
+      if (unsolved.isNotEmpty) continue;
       try {
         final term = metas.solutionOf(goalMetaId);
         _recordProofState(metas, span, goalMetaId, attemptStart, lastEst);
@@ -1633,90 +1651,72 @@ List<String> _localScopeNames(_LocalScope scope) {
   return names;
 }
 
-/// Run a sequence of tactic steps, using [_ElabState] for expression
-/// elaboration so local binders introduced by `intro` are visible.
+/// Run a sequence of tactic steps, consuming the goal queue.
 ///
-/// Returns the result paired with the elaborator state after the last
-/// successful step (its name scope mirrors the tactic context).
+/// Each step runs against the first unsolved goal. When a tactic creates
+/// subgoals, they join the queue after the current goal, so `;`-separated
+/// steps work through the arms of an induction in order. The block is
+/// complete only when every queued goal is solved; a trailing step with
+/// no goal left is a no-op.
+///
+/// Returns the result paired with the elaborator state for the current
+/// goal (its name scope mirrors the tactic context).
 (TacticResult, _ElabState) _runTacticSteps(
   List<STacticStep> steps,
   TacticState tstate,
   _ElabState est,
 ) {
-  var currentTstate = tstate;
+  TacticState? current = tstate;
   var currentEst = est;
+  var lastMetas = tstate.metas;
   for (final step in steps) {
-    final (result, newEst) = switch (step) {
-      STacticIntro(:final name) => _runIntro(
-        currentTstate,
-        currentEst,
-        name: name,
-      ),
-      STacticExact(:final expr) => (
-        _runExact(expr, currentTstate, currentEst),
-        currentEst,
-      ),
-      STacticApply(:final expr) => (
-        _runApply(expr, currentTstate, currentEst),
-        currentEst,
-      ),
-      STacticRefl() => (_runRefl(currentTstate), currentEst),
-      STacticRewrite(:final expr) => (
-        _runRewrite(expr, currentTstate, currentEst),
-        currentEst,
-      ),
-      STacticInduction(:final name) => (
-        _runInduction(name, currentTstate, currentEst),
-        currentEst,
-      ),
-      STacticTrivial() => (_runTrivial(currentTstate), currentEst),
+    if (current == null) break;
+    final state = current;
+    final result = switch (step) {
+      STacticIntro(:final name) => intro(state, name: name),
+      STacticExact(:final expr) => _runExact(expr, state, currentEst),
+      STacticApply(:final expr) => _runApply(expr, state, currentEst),
+      STacticRefl() => refl(state),
+      STacticRewrite(:final expr) => _runRewrite(expr, state, currentEst),
+      STacticInduction(:final name) => _runInduction(name, state, currentEst),
+      STacticTrivial() => trivial(state),
     };
     switch (result) {
       case TacticOk(:final term, :final metas, :final subMeta):
+        lastMetas = metas;
         if (subMeta != null) {
-          currentTstate.metas.solve(currentTstate.currentMeta, term);
+          metas.solve(state.currentMeta, term);
         }
-        // Use the updated ctx and names from the new _ElabState
-        // (intro extends both ctx and local name scope).
-        currentTstate = TacticState(
-          metas,
-          newEst.ctx,
-          subMeta ?? currentTstate.currentMeta,
-          currentTstate.binderNames,
-        );
-        currentEst = newEst;
+        final next = nextGoalAfter(state, result);
+        if (next != null) {
+          currentEst = _ElabState(
+            currentEst.topEnv,
+            next.ctx,
+            _scopeOfNames(next.binderNames),
+          );
+        }
+        current = next;
       case TacticFail():
         return (result, currentEst);
     }
   }
-  return (TacticOk(const TType(LLevel(0)), currentTstate.metas), currentEst);
+  if (current != null) {
+    final remaining = 1 + current.pending.length;
+    return (
+      TacticFail('tactic block: $remaining subgoal(s) remain'),
+      currentEst,
+    );
+  }
+  return (TacticOk(const TType(LLevel(0)), lastMetas), currentEst);
 }
 
-(TacticResult, _ElabState) _runIntro(
-  TacticState tstate,
-  _ElabState est, {
-  String? name,
-}) {
-  final goalType = tstate.goalType;
-  if (goalType is! VPi) {
-    return (const TacticFail('intro: goal is not a function type'), est);
+/// Build a local name scope from an innermost-first name list.
+_LocalScope _scopeOfNames(List<String> innermostFirst) {
+  var scope = const _LocalNil() as _LocalScope;
+  for (var i = innermostFirst.length - 1; i >= 0; i--) {
+    scope = scope.push(innermostFirst[i]);
   }
-  final pi = goalType;
-  final freshName = name ?? pi.name ?? 'h';
-  // Extend the TacticState's Ctx.
-  final newCtx = tstate.ctx.extend(pi.domain);
-  // Update the ElabState's names so further tactics can resolve `freshName`.
-  final newEst = est.push(freshName, pi.domain);
-  final codArg = VNeutral(NVar(newCtx.level - 1));
-  final codVal = eval(pi.codomain.body, pi.codomain.env.extend(codArg));
-  final subMetaId = tstate.metas.freshTermMeta(codVal, newCtx);
-  final bodyTerm = TMeta(subMetaId);
-  final lamTerm = TLam(
-    quote(tstate.ctx.level, pi.domain),
-    bodyTerm,
-    name: freshName,
-  );
-  return (TacticOk(lamTerm, tstate.metas, subMeta: subMetaId), newEst);
+  return scope;
 }
 
 TacticResult _runExact(SExpr expr, TacticState tstate, _ElabState est) {
@@ -1749,8 +1749,6 @@ TacticResult _runApply(SExpr expr, TacticState tstate, _ElabState est) {
   return tacticApply(term)(tstate);
 }
 
-TacticResult _runRefl(TacticState tstate) => refl(tstate);
-
 TacticResult _runRewrite(SExpr expr, TacticState tstate, _ElabState est) {
   final topEnv = est.topEnv;
   final names = est.names;
@@ -1765,8 +1763,6 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
   }
   return inductionAt(binderIdx)(tstate);
 }
-
-TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
 
 // ---------------------------------------------------------------------------
 // Expression elaboration

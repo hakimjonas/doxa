@@ -155,7 +155,7 @@ the argument. The non-dependent arrow `A -> B` is sugar for `(_: A) -> B`
 when `_` does not appear in `B`.
 
 For `Nat`, the checker synthesises the dependent eliminators `Nat.ind` and
-`Nat.rec`. They let you write induction proofs directly:
+`Nat.rec`. They let you write induction proofs directly in term form:
 
 ```doxa
 data Nat : Type {
@@ -184,7 +184,9 @@ fun plusZeroRight(n: Nat): Eq[Nat] (plus n zero) n =
 
 `Nat.ind` takes a motive `P : (k: Nat) -> Type`, a base case `P zero`, and
 a step case that, given `P m`, produces `P (succ m)`. `List.ind` and
-`Vec.ind` follow the corresponding induction principles.
+`Vec.ind` follow the corresponding induction principles. The `by { ... }`
+tactic in §9 builds the same recursor application from `induction n`,
+with one goal per constructor.
 
 ---
 
@@ -259,8 +261,38 @@ theorem sample : (A: Type) -> A -> A = by { refl | intro A; intro x; exact x }
 ```
 
 Available commands: `intro name`, `exact expr`, `apply expr`, `refl`,
-`induction name`, `trivial`. Alternatives are separated by `|`; the first
-successful alternative wins.
+`induction name`, `rewrite proof`, `trivial`. Alternatives are separated
+by `|`; the first alternative that closes every goal wins.
+
+Steps separated by `;` are applied to one goal each, in order. A block
+starts with a single goal. When a step creates several goals
+(`induction n` creates one per constructor), the following steps work
+through them in constructor order, and a step that closes its goal hands
+the next step the next open goal. The block succeeds only when every
+goal it created is closed.
+
+An induction proof therefore reads as one step per arm:
+
+```doxa
+fun plus(m: Nat, n: Nat): Nat = match m {
+  case zero => n
+  case succ k => succ (plus k n)
+}
+
+theorem plus_zero : (n: Nat) -> Eq Nat (plus n zero) n = by {
+  intro n;
+  induction n;
+  refl;
+  rewrite ih;
+  refl
+}
+```
+
+`induction` names each constructor's arguments from the data declaration
+(`a`, `a2`, ... where the declaration has no name) and names the
+induction hypotheses `ih`, `ih2`, ... in recursive-argument order. The
+names are in scope for the following steps, so the `succ` arm above can
+`rewrite ih`.
 
 ---
 
@@ -299,6 +331,35 @@ Context:
 > :step exact x
 Goal solved. Use :qed to commit.
 ```
+
+### Induction
+
+`:step induction n` splits the goal into one goal per constructor. For
+the `plus_zero` theorem from §9, after `:step intro n`:
+
+```
+> :step induction n
+Induction applied.
+Goal:
+  Eq Nat zero zero
+Context:
+  n : Nat
+
+> :step refl
+Goal:
+  Eq Nat (succ (plus a zero)) (succ a)
+Context:
+  ih : Eq Nat (plus a zero) a
+  a : Nat
+  n : Nat
+```
+
+A step that closes an arm moves to the next one, with the constructor's
+arguments and induction hypotheses named in the context.
+
+`rewrite ih` and `exact ih` can refer to the hypothesis by name. `:undo`
+restores the whole goal queue, so it also steps back from a later arm to
+an earlier one.
 
 ### Inspecting and undoing
 

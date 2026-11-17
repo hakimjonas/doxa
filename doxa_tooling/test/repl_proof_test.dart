@@ -201,4 +201,64 @@ void main() {
       expect((result as ReplMeta).text, contains('Already in proof mode'));
     });
   });
+
+  group('induction', () {
+    test('names the argument and hypothesis and advances goal by goal', () {
+      var session = _seededSession();
+      (_, session) = session.processInput(
+        'data Nat : Type { zero : Nat; succ : Nat -> Nat; }',
+      );
+      (_, session) = session.processInput(
+        'fun plus(m: Nat, n: Nat): Nat = match m {'
+        ' case zero => n case succ k => succ (plus k n) }',
+      );
+      (_, session) = session.processInput(
+        ':goal theorem plus_zero : (n: Nat) -> Eq Nat (plus n zero) n',
+      );
+      (_, session) = session.processInput(':step intro n');
+
+      final (inductionResult, afterInduction) = session.processInput(
+        ':step induction n',
+      );
+      session = afterInduction;
+      expect((inductionResult as ReplMeta).text, contains('Eq Nat zero zero'));
+
+      // `refl` closes the zero arm; the session then shows the succ arm
+      // with its argument and induction hypothesis named and typed.
+      final (zeroResult, afterZero) = session.processInput(':step refl');
+      session = afterZero;
+      final zeroText = (zeroResult as ReplMeta).text;
+      expect(zeroText, contains('Eq Nat (succ (plus a zero)) (succ a)'));
+      expect(zeroText, contains('a : Nat'));
+      expect(zeroText, contains('ih : Eq Nat (plus a zero) a'));
+
+      // Undo restores the whole queue: the zero arm is current again and
+      // the succ arm is still pending.
+      final (undoResult, afterUndo) = session.processInput(':undo');
+      session = afterUndo;
+      expect((undoResult as ReplMeta).text, contains('Eq Nat zero zero'));
+      final (redoZero, afterRedoZero) = session.processInput(':step refl');
+      session = afterRedoZero;
+      expect(
+        (redoZero as ReplMeta).text,
+        contains('Eq Nat (succ (plus a zero)) (succ a)'),
+      );
+
+      final (rewriteResult, afterRewrite) = session.processInput(
+        ':step rewrite ih',
+      );
+      session = afterRewrite;
+      expect(
+        (rewriteResult as ReplMeta).text,
+        contains('Eq Nat (succ a) (succ a)'),
+      );
+
+      final (reflResult, afterRefl) = session.processInput(':step refl');
+      session = afterRefl;
+      expect((reflResult as ReplMeta).text, contains('Goal solved'));
+
+      final (qedResult, _) = session.processInput(':qed');
+      expect((qedResult as ReplMeta).text, contains('plus_zero'));
+    });
+  });
 }

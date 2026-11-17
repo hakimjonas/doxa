@@ -79,12 +79,14 @@ final class _ProofSnapshot {
   final int currentGoalMeta;
   final Ctx ctx;
   final List<String> binderNames;
+  final List<TacticGoal> pendingGoals;
 
   const _ProofSnapshot(
     this.metaSnapshot,
     this.currentGoalMeta,
     this.ctx,
     this.binderNames,
+    this.pendingGoals,
   );
 }
 
@@ -96,6 +98,7 @@ final class _ProofSession {
   int currentGoalMeta;
   Ctx ctx;
   List<String> binderNames;
+  List<TacticGoal> pendingGoals;
   final TopEnv topEnv;
   final String theoremName;
   final Term theoremType;
@@ -106,6 +109,7 @@ final class _ProofSession {
     required this.currentGoalMeta,
     required this.ctx,
     required this.binderNames,
+    required this.pendingGoals,
     required this.topEnv,
     required this.theoremName,
     required this.theoremType,
@@ -177,6 +181,51 @@ final class ReplSession {
       return true;
     }());
     ps.metas.solve(ps.currentGoalMeta, term);
+  }
+
+  /// The tactic state for the current goal, including the pending queue.
+  TacticState _queueState(_ProofSession ps) => TacticState(
+    ps.metas,
+    ps.ctx,
+    ps.currentGoalMeta,
+    ps.binderNames,
+    ps.pendingGoals,
+  );
+
+  /// Capture the current proof state, including the goal queue, for
+  /// `:undo`. The caller pushes it onto [undoStack] only when its step
+  /// succeeds.
+  _ProofSnapshot _snapshot(_ProofSession ps) => _ProofSnapshot(
+    ps.metas.snapshot(),
+    ps.currentGoalMeta,
+    ps.ctx,
+    List.unmodifiable(ps.binderNames),
+    List.unmodifiable(ps.pendingGoals),
+  );
+
+  /// Select the goal the next `:step` should target after [result] solved
+  /// the current goal. Returns true when a goal is current.
+  bool _advanceToNextGoal(_ProofSession ps, TacticOk result) {
+    final next = nextGoalAfter(_queueState(ps), result);
+    if (next == null) return false;
+    ps.currentGoalMeta = next.currentMeta;
+    ps.ctx = next.ctx;
+    ps.binderNames = List.unmodifiable(next.binderNames);
+    ps.pendingGoals = next.pending;
+    return true;
+  }
+
+  /// Render the current goal, or report that the proof is complete.
+  String _goalStatus(_ProofSession ps) {
+    if (!ps.metas.isSolved(ps.currentGoalMeta)) {
+      return _formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType);
+    }
+    var unsolved = 0;
+    for (var i = 0; i < ps.metas.length; i++) {
+      if (!ps.metas.isSolved(i)) unsolved++;
+    }
+    if (unsolved == 0) return 'Goal solved. Use :qed to commit.';
+    return 'Proof incomplete: $unsolved subgoal(s) remain.';
   }
 
   /// Process a single line of REPL input.
@@ -540,6 +589,7 @@ final class ReplSession {
       currentGoalMeta: goalMetaId,
       ctx: ctxWithMetas,
       binderNames: const [],
+      pendingGoals: const [],
       topEnv: topEnv,
       theoremName: theoremName,
       theoremType: typeTerm,
@@ -560,13 +610,20 @@ final class ReplSession {
   /// Format context lines for display (innermost-first).
   String _formatContext(Ctx ctx, List<String> binderNames) {
     if (binderNames.isEmpty) return '';
+    // Outer-scope names, outermost-first, so binder types render the
+    // binders they mention by their source names instead of `?k`.
+    final outerNames = binderNames.reversed.toList();
     final lines = <String>[];
     var c = ctx;
     var i = 0;
     while (c is CCons && i < binderNames.length) {
       final name = binderNames[i];
       final typeTerm = quote(c.level, c.type);
-      final typeStr = prettyTerm(typeTerm, outerDepth: c.level);
+      final typeStr = prettyTerm(
+        typeTerm,
+        outerDepth: c.level,
+        outerNames: outerNames,
+      );
       lines.add('  $name : $typeStr');
       c = c.rest;
       i++;
@@ -576,8 +633,13 @@ final class ReplSession {
 
   /// Format goal + context display.
   String _formatGoalAndCtx(Ctx ctx, List<String> binderNames, Value goalType) {
+    final outerNames = binderNames.reversed.toList();
     final goalTerm = quote(ctx.level, goalType);
-    final goalStr = prettyTerm(goalTerm, outerDepth: ctx.level);
+    final goalStr = prettyTerm(
+      goalTerm,
+      outerDepth: ctx.level,
+      outerNames: outerNames,
+    );
     final sb = StringBuffer();
     sb.writeln('Goal:');
     sb.writeln('  $goalStr');
@@ -646,36 +708,18 @@ final class ReplSession {
     final name = nameArg.isNotEmpty ? nameArg : null;
     final freshName = name ?? pi.name ?? 'h';
 
-    final snap = _ProofSnapshot(
-      ps.metas.snapshot(),
-      ps.currentGoalMeta,
-      ps.ctx,
-      List.unmodifiable(ps.binderNames),
-    );
+    final snap = _snapshot(ps);
 
-    final tstate = TacticState(
-      ps.metas,
-      ps.ctx,
-      ps.currentGoalMeta,
-      ps.binderNames,
-    );
+    final tstate = _queueState(ps);
     final result = intro(tstate, name: name);
     return switch (result) {
-      TacticOk(:final term, :final subMeta) => () {
+      TacticOk(:final term) => () {
         _solveMeta(ps, term);
         ps.undoStack.add(snap);
-        if (subMeta != null) {
-          ps.currentGoalMeta = subMeta;
-        }
-        ps.ctx = ps.ctx.extend(pi.domain);
-        ps.binderNames = [freshName, ...ps.binderNames];
+        _advanceToNextGoal(ps, result);
         final output = StringBuffer();
         output.writeln('Introduced $freshName.');
-        output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
-        if (subMeta == null) {
-          output.writeln();
-          output.write('Goal solved. Use :qed to commit.');
-        }
+        output.write(_goalStatus(ps));
         return (ReplMeta(output.toString().trimRight()), this);
       }(),
       TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
@@ -721,36 +765,15 @@ final class ReplSession {
     }
 
     // Take snapshot.
-    final snap = _ProofSnapshot(
-      ps.metas.snapshot(),
-      ps.currentGoalMeta,
-      ps.ctx,
-      List.unmodifiable(ps.binderNames),
-    );
+    final snap = _snapshot(ps);
 
-    final tstate = TacticState(
-      ps.metas,
-      ps.ctx,
-      ps.currentGoalMeta,
-      ps.binderNames,
-    );
+    final tstate = _queueState(ps);
     final result = exact(term)(tstate);
     return switch (result) {
       TacticOk() => () {
         ps.undoStack.add(snap);
-        final output = StringBuffer();
-        final allSolved = () {
-          for (var i = 0; i < ps.metas.length; i++) {
-            if (!ps.metas.isSolved(i)) return false;
-          }
-          return true;
-        }();
-        if (allSolved) {
-          output.writeln('Goal solved. Use :qed to commit.');
-        } else {
-          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
-        }
-        return (ReplMeta(output.toString().trimRight()), this);
+        _advanceToNextGoal(ps, result);
+        return (ReplMeta(_goalStatus(ps)), this);
       }(),
       TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
     };
@@ -792,96 +815,43 @@ final class ReplSession {
       }
     }
 
-    final snap = _ProofSnapshot(
-      ps.metas.snapshot(),
-      ps.currentGoalMeta,
-      ps.ctx,
-      List.unmodifiable(ps.binderNames),
-    );
+    final snap = _snapshot(ps);
 
-    final tstate = TacticState(
-      ps.metas,
-      ps.ctx,
-      ps.currentGoalMeta,
-      ps.binderNames,
-    );
+    final tstate = _queueState(ps);
     final result = tacticApply(term)(tstate);
     return switch (result) {
       TacticOk() => () {
         ps.undoStack.add(snap);
-        final output = StringBuffer();
-        output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
-        return (ReplMeta(output.toString().trimRight()), this);
+        _advanceToNextGoal(ps, result);
+        return (ReplMeta(_goalStatus(ps)), this);
       }(),
       TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
     };
   }
 
   ReplStep _stepRefl(_ProofSession ps) {
-    final snap = _ProofSnapshot(
-      ps.metas.snapshot(),
-      ps.currentGoalMeta,
-      ps.ctx,
-      List.unmodifiable(ps.binderNames),
-    );
-    final tstate = TacticState(
-      ps.metas,
-      ps.ctx,
-      ps.currentGoalMeta,
-      ps.binderNames,
-    );
+    final snap = _snapshot(ps);
+    final tstate = _queueState(ps);
     final result = refl(tstate);
     return switch (result) {
       TacticOk() => () {
         ps.undoStack.add(snap);
-        final output = StringBuffer();
-        final allSolved = () {
-          for (var i = 0; i < ps.metas.length; i++) {
-            if (!ps.metas.isSolved(i)) return false;
-          }
-          return true;
-        }();
-        if (allSolved) {
-          output.writeln('Goal solved. Use :qed to commit.');
-        } else {
-          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
-        }
-        return (ReplMeta(output.toString().trimRight()), this);
+        _advanceToNextGoal(ps, result);
+        return (ReplMeta(_goalStatus(ps)), this);
       }(),
       TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
     };
   }
 
   ReplStep _stepTrivial(_ProofSession ps) {
-    final snap = _ProofSnapshot(
-      ps.metas.snapshot(),
-      ps.currentGoalMeta,
-      ps.ctx,
-      List.unmodifiable(ps.binderNames),
-    );
-    final tstate = TacticState(
-      ps.metas,
-      ps.ctx,
-      ps.currentGoalMeta,
-      ps.binderNames,
-    );
+    final snap = _snapshot(ps);
+    final tstate = _queueState(ps);
     final result = trivial(tstate);
     return switch (result) {
       TacticOk() => () {
         ps.undoStack.add(snap);
-        final output = StringBuffer();
-        final allSolved = () {
-          for (var i = 0; i < ps.metas.length; i++) {
-            if (!ps.metas.isSolved(i)) return false;
-          }
-          return true;
-        }();
-        if (allSolved) {
-          output.writeln('Goal solved. Use :qed to commit.');
-        } else {
-          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
-        }
-        return (ReplMeta(output.toString().trimRight()), this);
+        _advanceToNextGoal(ps, result);
+        return (ReplMeta(_goalStatus(ps)), this);
       }(),
       TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
     };
@@ -891,32 +861,21 @@ final class ReplSession {
   ///
   /// Normalises the goal type, replacing it with its normal form.
   ReplStep _stepSimpl(_ProofSession ps) {
-    final snap = _ProofSnapshot(
-      ps.metas.snapshot(),
-      ps.currentGoalMeta,
-      ps.ctx,
-      List.unmodifiable(ps.binderNames),
-    );
-    final tstate = TacticState(
-      ps.metas,
-      ps.ctx,
-      ps.currentGoalMeta,
-      ps.binderNames,
-    );
+    final snap = _snapshot(ps);
+    final tstate = _queueState(ps);
     final result = simpl(tstate);
     return switch (result) {
-      TacticOk(:final subMeta) => () {
+      TacticOk() => () {
         ps.undoStack.add(snap);
         _solveMeta(ps, result.term);
-        if (subMeta != null) {
-          ps.currentGoalMeta = subMeta;
-        }
+        final generated = result.subMeta != null;
+        _advanceToNextGoal(ps, result);
         final output = StringBuffer();
-        if (subMeta == null) {
-          output.writeln('Goal solved (already in normal form).');
-        } else {
-          output.writeln('Simplified.');
-          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
+        output.writeln(
+          generated ? 'Simplified.' : 'Goal solved (already in normal form).',
+        );
+        if (!ps.metas.isSolved(ps.currentGoalMeta)) {
+          output.write(_goalStatus(ps));
         }
         return (ReplMeta(output.toString().trimRight()), this);
       }(),
@@ -930,36 +889,17 @@ final class ReplSession {
   /// (default 5), then runs the auto tactic.
   ReplStep _stepAuto(_ProofSession ps, String arg) {
     final depth = int.tryParse(arg.trim()) ?? 5;
-    final snap = _ProofSnapshot(
-      ps.metas.snapshot(),
-      ps.currentGoalMeta,
-      ps.ctx,
-      List.unmodifiable(ps.binderNames),
-    );
-    final tstate = TacticState(
-      ps.metas,
-      ps.ctx,
-      ps.currentGoalMeta,
-      ps.binderNames,
-    );
+    final snap = _snapshot(ps);
+    final tstate = _queueState(ps);
     final result = auto(depth: depth)(tstate);
     return switch (result) {
       TacticOk() => () {
         ps.undoStack.add(snap);
         _solveMeta(ps, result.term);
+        _advanceToNextGoal(ps, result);
         final output = StringBuffer();
         output.writeln('Auto succeeded.');
-        final allSolved = () {
-          for (var i = 0; i < ps.metas.length; i++) {
-            if (!ps.metas.isSolved(i)) return false;
-          }
-          return true;
-        }();
-        if (allSolved) {
-          output.writeln('Goal solved. Use :qed to commit.');
-        } else {
-          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
-        }
+        output.write(_goalStatus(ps));
         return (ReplMeta(output.toString().trimRight()), this);
       }(),
       TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
@@ -971,36 +911,17 @@ final class ReplSession {
   /// Attempts to solve arithmetic goals on Nat via normalisation and
   /// known lemma application.
   ReplStep _stepOmega(_ProofSession ps) {
-    final snap = _ProofSnapshot(
-      ps.metas.snapshot(),
-      ps.currentGoalMeta,
-      ps.ctx,
-      List.unmodifiable(ps.binderNames),
-    );
-    final tstate = TacticState(
-      ps.metas,
-      ps.ctx,
-      ps.currentGoalMeta,
-      ps.binderNames,
-    );
+    final snap = _snapshot(ps);
+    final tstate = _queueState(ps);
     final result = omega(tstate);
     return switch (result) {
       TacticOk() => () {
         ps.undoStack.add(snap);
         _solveMeta(ps, result.term);
+        _advanceToNextGoal(ps, result);
         final output = StringBuffer();
         output.writeln('Omega succeeded.');
-        final allSolved = () {
-          for (var i = 0; i < ps.metas.length; i++) {
-            if (!ps.metas.isSolved(i)) return false;
-          }
-          return true;
-        }();
-        if (allSolved) {
-          output.writeln('Goal solved. Use :qed to commit.');
-        } else {
-          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
-        }
+        output.write(_goalStatus(ps));
         return (ReplMeta(output.toString().trimRight()), this);
       }(),
       TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
@@ -1011,33 +932,17 @@ final class ReplSession {
   ///
   /// Applies the first matching constructor of the goal's type.
   ReplStep _stepConstructor(_ProofSession ps) {
-    final snap = _ProofSnapshot(
-      ps.metas.snapshot(),
-      ps.currentGoalMeta,
-      ps.ctx,
-      List.unmodifiable(ps.binderNames),
-    );
-    final tstate = TacticState(
-      ps.metas,
-      ps.ctx,
-      ps.currentGoalMeta,
-      ps.binderNames,
-    );
+    final snap = _snapshot(ps);
+    final tstate = _queueState(ps);
     final result = tacticConstructor(tstate);
     return switch (result) {
-      TacticOk(:final subMeta) => () {
+      TacticOk() => () {
         ps.undoStack.add(snap);
         _solveMeta(ps, result.term);
-        if (subMeta != null) {
-          ps.currentGoalMeta = subMeta;
-        }
+        _advanceToNextGoal(ps, result);
         final output = StringBuffer();
         output.writeln('Constructor applied.');
-        if (subMeta == null) {
-          output.writeln('Goal solved. Use :qed to commit.');
-        } else {
-          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
-        }
+        output.write(_goalStatus(ps));
         return (ReplMeta(output.toString().trimRight()), this);
       }(),
       TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
@@ -1051,34 +956,18 @@ final class ReplSession {
     if (arg.isEmpty) {
       return (const ReplError(':step cases requires a variable name.'), this);
     }
-    final snap = _ProofSnapshot(
-      ps.metas.snapshot(),
-      ps.currentGoalMeta,
-      ps.ctx,
-      List.unmodifiable(ps.binderNames),
-    );
-    final tstate = TacticState(
-      ps.metas,
-      ps.ctx,
-      ps.currentGoalMeta,
-      ps.binderNames,
-    );
+    final snap = _snapshot(ps);
+    final tstate = _queueState(ps);
     final resultFn = tacticCases(arg);
     final result = resultFn(tstate);
     return switch (result) {
-      TacticOk(:final subMeta) => () {
+      TacticOk() => () {
         ps.undoStack.add(snap);
         _solveMeta(ps, result.term);
-        if (subMeta != null) {
-          ps.currentGoalMeta = subMeta;
-        }
+        _advanceToNextGoal(ps, result);
         final output = StringBuffer();
         output.writeln('Case analysis applied.');
-        if (subMeta == null) {
-          output.writeln('Goal solved. Use :qed to commit.');
-        } else {
-          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
-        }
+        output.write(_goalStatus(ps));
         return (ReplMeta(output.toString().trimRight()), this);
       }(),
       TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
@@ -1134,34 +1023,16 @@ final class ReplSession {
       }
     }
 
-    final snap = _ProofSnapshot(
-      ps.metas.snapshot(),
-      ps.currentGoalMeta,
-      ps.ctx,
-      List.unmodifiable(ps.binderNames),
-    );
+    final snap = _snapshot(ps);
 
-    final tstate = TacticState(
-      ps.metas,
-      ps.ctx,
-      ps.currentGoalMeta,
-      ps.binderNames,
-    );
+    final tstate = _queueState(ps);
     final result = rewrite(proofTerm)(tstate);
     return switch (result) {
-      TacticOk(:final subMeta) => () {
+      TacticOk() => () {
         ps.undoStack.add(snap);
         _solveMeta(ps, result.term);
-        if (subMeta != null) {
-          ps.currentGoalMeta = subMeta;
-        }
-        final output = StringBuffer();
-        if (subMeta == null) {
-          output.writeln('Goal solved. Use :qed to commit.');
-        } else {
-          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
-        }
-        return (ReplMeta(output.toString().trimRight()), this);
+        _advanceToNextGoal(ps, result);
+        return (ReplMeta(_goalStatus(ps)), this);
       }(),
       TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
     };
@@ -1178,34 +1049,18 @@ final class ReplSession {
       );
     }
 
-    final snap = _ProofSnapshot(
-      ps.metas.snapshot(),
-      ps.currentGoalMeta,
-      ps.ctx,
-      List.unmodifiable(ps.binderNames),
-    );
+    final snap = _snapshot(ps);
 
-    final tstate = TacticState(
-      ps.metas,
-      ps.ctx,
-      ps.currentGoalMeta,
-      ps.binderNames,
-    );
+    final tstate = _queueState(ps);
     final result = induction(arg)(tstate);
     return switch (result) {
-      TacticOk(:final subMeta) => () {
+      TacticOk() => () {
         ps.undoStack.add(snap);
         _solveMeta(ps, result.term);
-        if (subMeta != null) {
-          ps.currentGoalMeta = subMeta;
-        }
+        _advanceToNextGoal(ps, result);
         final output = StringBuffer();
         output.writeln('Induction applied.');
-        if (subMeta == null) {
-          output.writeln('Goal solved. Use :qed to commit.');
-        } else {
-          output.write(_formatGoalAndCtx(ps.ctx, ps.binderNames, ps.goalType));
-        }
+        output.write(_goalStatus(ps));
         return (ReplMeta(output.toString().trimRight()), this);
       }(),
       TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
@@ -1227,6 +1082,7 @@ final class ReplSession {
     ps.currentGoalMeta = snap.currentGoalMeta;
     ps.ctx = snap.ctx;
     ps.binderNames = snap.binderNames;
+    ps.pendingGoals = snap.pendingGoals;
 
     final output = StringBuffer();
     output.writeln('Undone.');

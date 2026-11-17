@@ -44,6 +44,49 @@ TopEnv _elab(String src) {
   return env;
 }
 
+/// Elaborate and declaration-check [src] the way the CLI does, starting
+/// from the prelude, so tactic-built terms are kernel-checked.
+TopEnv _elabAndCheck(String src) {
+  var env = TopEnv(
+    prelude.bindings,
+    prelude.dataDecls,
+    const {},
+    prelude.namespaceBindings,
+  );
+  final prog = _parse(src);
+  for (final decl in prog.decls) {
+    final produced = elabDecl(env, decl);
+    final checked = checkDeclResult(
+      TopEnv(
+        env.bindings,
+        [...env.dataDecls, ...produced.dataDecls],
+        env.classRegistry,
+        env.namespaceBindings,
+      ),
+      produced,
+    );
+    env = TopEnv(
+      [...env.bindings, ...checked],
+      [...env.dataDecls, ...produced.dataDecls],
+      {...env.classRegistry, ...produced.classRegistry},
+      mergeNamespace(env.namespaceBindings, produced.namespaceBindings),
+    );
+  }
+  return env;
+}
+
+/// The `Nat` and `plus` prelude used by the sequencing tests.
+const _natPlus = '''
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+fun plus(m: Nat, n: Nat): Nat = match m {
+  case zero => n
+  case succ k => succ (plus k n)
+}
+''';
+
 void main() {
   group('theorem parsing', () {
     test('theorem with by block parses', () {
@@ -227,6 +270,48 @@ data Nat : Type {
           (metas.lookup(zeroMeta) as TermMetaUnsolved).typeExpected;
 
       expect(prettyTerm(quote(ctx.level, zeroGoal)), 'Eq Nat zero zero');
+    });
+  });
+
+  group('multi-goal sequencing', () {
+    test('induction arms are consumed in order and the IH is usable', () {
+      final env = _elabAndCheck('''
+$_natPlus
+val plus_zero : (n: Nat) -> Eq Nat (plus n zero) n = (n: Nat) => by {
+  induction n;
+  refl;
+  rewrite ih;
+  refl
+}
+''');
+      expect(env.bindings.where((b) => b.name == 'plus_zero'), hasLength(1));
+    });
+
+    test('a reflexivity goal closes with one refl per arm', () {
+      final env = _elabAndCheck('''
+$_natPlus
+val plus_refl : (n: Nat) -> Eq Nat (plus n zero) (plus n zero) =
+  (n: Nat) => by {
+    induction n;
+    refl;
+    refl
+  }
+''');
+      expect(env.bindings.where((b) => b.name == 'plus_refl'), hasLength(1));
+    });
+
+    test('an induction arm left unsolved fails the block', () {
+      expect(
+        () => _elabAndCheck('''
+$_natPlus
+val plus_incomplete : (n: Nat) -> Eq Nat (plus n zero) (plus n zero) =
+  (n: Nat) => by {
+    induction n;
+    refl
+  }
+'''),
+        throwsA(isA<TacticFailed>()),
+      );
     });
   });
 }

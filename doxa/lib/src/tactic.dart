@@ -23,12 +23,31 @@ import 'env.dart';
 import 'eval.dart';
 import 'eval.dart' as kernel_eval;
 import 'meta.dart';
+import 'registry.dart';
 import 'term.dart';
 import 'value.dart';
 
 // ---------------------------------------------------------------------------
 // State and result types
 // ---------------------------------------------------------------------------
+
+/// A goal created by a tactic, with everything needed to resume work on
+/// it: the meta to solve, the binder context, and the innermost-first
+/// binder names that resolve those binders in source expressions.
+final class TacticGoal {
+  /// The metavariable to solve.
+  final int metaId;
+
+  /// The typing context at the goal.
+  final Ctx ctx;
+
+  /// Binder names in scope, innermost first, positionally aligned with
+  /// the [ctx] chain.
+  final List<String> binderNames;
+
+  /// Creates a goal.
+  const TacticGoal(this.metaId, this.ctx, this.binderNames);
+}
 
 /// The state a tactic operates on: the elaborator context plus the
 /// current goal meta to solve.
@@ -46,12 +65,18 @@ final class TacticState {
   /// in `exact` / `apply` / `rewrite` expressions.
   final List<String> binderNames;
 
+  /// Goals created by earlier steps and not yet solved, in the order
+  /// they were created. The current goal is [currentMeta]; these follow
+  /// it.
+  final List<TacticGoal> pending;
+
   /// Creates a tactic state.
   const TacticState(
     this.metas,
     this.ctx,
     this.currentMeta, [
     this.binderNames = const [],
+    this.pending = const [],
   ]);
 
   /// Copy with a replacement field.
@@ -60,11 +85,13 @@ final class TacticState {
     Ctx? ctx,
     int? currentMeta,
     List<String>? binderNames,
+    List<TacticGoal>? pending,
   }) => TacticState(
     metas ?? this.metas,
     ctx ?? this.ctx,
     currentMeta ?? this.currentMeta,
     binderNames ?? this.binderNames,
+    pending ?? this.pending,
   );
 
   /// The type of the current goal.
@@ -92,8 +119,51 @@ final class TacticOk extends TacticResult {
   /// operate on (e.g. the subgoal created by `intro`).
   final int? subMeta;
 
+  /// Every goal this tactic created, in the order they should be worked
+  /// on. A single-goal tactic may leave this empty and set [subMeta]
+  /// instead; multi-goal tactics (`induction`) fill it so the caller can
+  /// queue every arm.
+  final List<TacticGoal> subGoals;
+
   /// Creates a success result.
-  const TacticOk(this.term, this.metas, {this.subMeta});
+  const TacticOk(
+    this.term,
+    this.metas, {
+    this.subMeta,
+    this.subGoals = const [],
+  });
+}
+
+/// The state after [result] solved [prev]'s current goal.
+///
+/// The next goal is the first unsolved one among the tactic's
+/// [TacticOk.subGoals] and [prev]'s [TacticState.pending] queue, in that
+/// order. Returns null when every goal is solved.
+///
+/// Callers solve [prev]'s current meta with [TacticOk.term] first (when
+/// [TacticOk.subMeta] is non-null); this function only selects.
+TacticState? nextGoalAfter(TacticState prev, TacticOk result) {
+  final created =
+      result.subGoals.isNotEmpty
+          ? result.subGoals
+          : (result.subMeta != null && !result.metas.isSolved(result.subMeta!)
+              ? [TacticGoal(result.subMeta!, prev.ctx, prev.binderNames)]
+              : const <TacticGoal>[]);
+  final queue = <TacticGoal>[...created, ...prev.pending];
+  final index = queue.indexWhere((g) => !result.metas.isSolved(g.metaId));
+  if (index < 0) return null;
+  final picked = queue[index];
+  final rest = <TacticGoal>[
+    for (var i = index + 1; i < queue.length; i++)
+      if (!result.metas.isSolved(queue[i].metaId)) queue[i],
+  ];
+  return TacticState(
+    result.metas,
+    picked.ctx,
+    picked.metaId,
+    picked.binderNames,
+    rest,
+  );
 }
 
 /// The tactic failed with a diagnostic message.
@@ -112,16 +182,20 @@ final class TacticFail extends TacticResult {
 /// A tactic is a function from [TacticState] to [TacticResult].
 typedef TacticFn = TacticResult Function(TacticState state);
 
-/// Sequence combinator: run [t1], then [t2] on the resulting state.
+/// Sequence combinator: run [t1], then [t2] on the next goal.
 ///
-/// If [t1] returns a term but leaves a subgoal ([subMeta] is non-null),
-/// the subgoal becomes the new [currentMeta] for [t2].
+/// `t1` solves the current goal; if it created subgoals, `t2` runs on
+/// the first one, then on the next queued goal after that. When `t1`
+/// leaves no goal, `t2` is a no-op and the result of `t1` is returned.
 TacticFn seq(TacticFn t1, TacticFn t2) => (s) {
   final r1 = t1(s);
   return switch (r1) {
-    TacticOk(term: final _, :final metas, :final subMeta) => t2(
-      TacticState(metas, s.ctx, subMeta ?? s.currentMeta),
-    ),
+    TacticOk(:final term, :final metas, :final subMeta) => () {
+      if (subMeta != null) metas.solve(s.currentMeta, term);
+      final next = nextGoalAfter(s, r1);
+      if (next == null) return r1;
+      return t2(next);
+    }(),
     TacticFail _ => r1,
   };
 };
@@ -165,7 +239,14 @@ TacticResult intro(TacticState s, {String? name}) {
     bodyTerm,
     name: freshName,
   );
-  return TacticOk(lamTerm, s.metas, subMeta: subMetaId);
+  return TacticOk(
+    lamTerm,
+    s.metas,
+    subMeta: subMetaId,
+    subGoals: [
+      TacticGoal(subMetaId, newCtx, [freshName, ...s.binderNames]),
+    ],
+  );
 }
 
 /// `exact t`: provides an explicit proof term that must have the goal type.
@@ -255,9 +336,21 @@ TacticFn Function(Term) tacticApply =
 
 /// `rewrite p`: rewrites the goal using equality proof `p`.
 ///
-/// Expects `p : Eq[A] x y`.  Builds the term
-/// `Eq.rec A (λ a => G[x:=a]) x y p ?sub` where `G` is the goal type and
-/// `?sub` is a fresh subgoal for the rewritten type `G[x:=y]`.
+/// Expects `p : Eq[A] x y`. Replaces `x` with `y` throughout the goal
+/// type `G`, leaving a subgoal for `G[x:=y]`.
+///
+/// Doxa's `Eq` recursor abstracts both indices and the proof:
+/// `Eq.rec A P c d base e : P c d e`, and its method is a function
+/// `(z: A) -> P z z (refl z)`. A motive that only substitutes into one
+/// index cannot express a one-point rewrite (the base would then have to
+/// hold at every `z`), and a one-argument motive is rejected outright.
+/// Rewriting is transport: with the symmetric proof `sym p : Eq[A] y x`
+/// and the motive `P a b e := G[x:=a] -> G[x:=b]`, the identity method
+/// proves `P z z (refl z)` for every `z`, and
+///
+///   Eq.rec A P y x (λ z h. h) (sym p) : G[x:=y] -> G
+///
+/// turns a proof of the rewritten goal into a proof of the goal.
 TacticFn Function(Term) rewrite =
     (p) => (s) {
       final pType = infer(s.ctx, p);
@@ -272,65 +365,115 @@ TacticFn Function(Term) rewrite =
       final x = eqArgs[1]; // x : A
       final y = eqArgs[2]; // y : A
       final level = s.ctx.level;
+      final xLevel =
+          x is VNeutral && x.neutral is NVar ? (x.neutral as NVar).level : null;
 
-      // Goal G = s.goalType (a Value).
-      // Build P = λ a => G[x := a].
-      //
-      // When x is an NVar, use substNVar to replace x with a fresh
-      // neutral at the current level.  Quote the result at level+1
-      // so that the fresh neutral becomes TBound(0) (the λ binder).
-      final Value goalWithFresh;
-      final Value motiveBodyV;
-      if (x is VNeutral && x.neutral is NVar) {
-        final scrutLevel = (x.neutral as NVar).level;
-        final freshVar = VNeutral(NVar(level));
-        goalWithFresh = substNVar(s.goalType, scrutLevel, freshVar);
-        motiveBodyV = goalWithFresh;
-      } else {
-        // Non-NVar x: quote goal at level+1 and replace x's term by
-        // TBound(0) using a syntactic walk.
-        final goalTerm = quote(level + 1, s.goalType);
-        final xTerm = quote(level + 1, x);
-        final motiveBody = _replaceTermInTerm(goalTerm, xTerm, const TBound(0));
-        final pY = eval(motiveBody, s.ctx.env.extend(y));
-        final subMetaId = s.metas.freshTermMeta(pY, s.ctx);
-        final motive = TLam(quote(level, aType), motiveBody);
-        var proofTerm = const TRec('Eq') as Term;
-        for (final arg in [
-          quote(level, aType),
-          motive,
-          quote(level, x),
-          quote(level, y),
-          p,
-          TMeta(subMetaId),
-        ]) {
-          proofTerm = TApp(proofTerm, arg);
+      // G[x := v] as a Term quoted at [quoteLevel], where the
+      // replacement `v` is the binder at de Bruijn index [boundIndex]
+      // of that scope. For an NVar `x`, substitute a neutral at the
+      // matching absolute level; otherwise replace the quoted subterm.
+      Term goalAt(int quoteLevel, int boundIndex) {
+        if (xLevel != null) {
+          return quote(
+            quoteLevel,
+            substNVar(
+              s.goalType,
+              xLevel,
+              VNeutral(NVar(quoteLevel - 1 - boundIndex)),
+            ),
+          );
         }
-        return TacticOk(proofTerm, s.metas, subMeta: subMetaId);
+        final goalTerm = quote(quoteLevel, s.goalType);
+        final xTerm = quote(quoteLevel, x);
+        return _replaceTermInTerm(goalTerm, xTerm, TBound(boundIndex));
       }
 
-      // Quote the body at level+1 so the fresh neutral → TBound(0).
-      final motiveBody = quote(level + 1, motiveBodyV);
-      final motive = TLam(quote(level, aType), motiveBody);
+      final aVar = VNeutral(NVar(level));
+      final bVar = VNeutral(NVar(level + 1));
+      final eqAB = VData('Eq', [aType, aVar, bVar]);
 
-      // P y — evaluate G[x:=a] with a ↦ y.
-      final pY = eval(motiveBody, s.ctx.env.extend(y));
-      final subMetaId = s.metas.freshTermMeta(pY, s.ctx);
-      final subMeta = TMeta(subMetaId);
+      // sym p : Eq[A] y x. The method of Eq.rec for `refl` is
+      // `(z: A) -> P z z (refl z)`, so here it is the function
+      // `λ z. refl A z`.
+      final symMotive = TLam(
+        quote(level, aType),
+        TLam(
+          quote(level + 1, aType),
+          TLam(
+            quote(level + 2, eqAB),
+            quote(level + 3, VData('Eq', [aType, bVar, aVar])),
+          ),
+        ),
+      );
+      final symMethod = TLam(
+        quote(level, aType),
+        TConstr('Eq', 'refl', [quote(level + 1, aType), const TBound(0)]),
+      );
+      var symProof = const TRec('Eq') as Term;
+      for (final arg in [
+        quote(level, aType),
+        symMotive,
+        quote(level, x),
+        quote(level, y),
+        symMethod,
+        p,
+      ]) {
+        symProof = TApp(symProof, arg);
+      }
 
-      // Eq.rec A P x y p  :  P x → P y
-      var proofTerm = const TRec('Eq') as Term;
+      // Main motive P a b e := G[x:=a] -> G[x:=b], under binders
+      // a (level), b (level+1), e (level+2). The Pi body is quoted at
+      // level+3; its codomain sits one binder deeper, so its quoted
+      // references are one index larger.
+      final motive = TLam(
+        quote(level, aType),
+        TLam(
+          quote(level + 1, aType),
+          TLam(
+            quote(level + 2, eqAB),
+            TPi(goalAt(level + 3, 2), goalAt(level + 4, 2)),
+          ),
+        ),
+      );
+
+      // Method `λ (z: A) (h: G[x:=z]). h`, whose type is
+      // `P z z (refl z) = G[x:=z] -> G[x:=z]`.
+      final method = TLam(
+        quote(level, aType),
+        TLam(goalAt(level + 1, 0), const TBound(0)),
+      );
+
+      // Base instantiated at the equation's left endpoint, y: the
+      // subgoal is G[x:=y].
+      final reflY = VConstr('Eq', 'refl', [aType, y]);
+      final subgoalTerm = goalAt(level + 3, 1);
+      final subgoalType = eval(
+        subgoalTerm,
+        s.ctx.env.extend(y).extend(y).extend(reflY),
+      );
+      final subMetaId = s.metas.freshTermMeta(subgoalType, s.ctx);
+
+      // Eq.rec A P y x (λ z h. h) (sym p) : G[x:=y] -> G,
+      // applied to the rewritten subgoal.
+      final motiveSort = _motiveSortFor(s.ctx, s.goalType);
+      var recursor = TRec('Eq', motiveSort: motiveSort) as Term;
       for (final arg in [
         quote(level, aType),
         motive,
-        quote(level, x),
         quote(level, y),
-        p,
-        subMeta,
+        quote(level, x),
+        method,
+        symProof,
       ]) {
-        proofTerm = TApp(proofTerm, arg);
+        recursor = TApp(recursor, arg);
       }
-      return TacticOk(proofTerm, s.metas, subMeta: subMetaId);
+      final proofTerm = TApp(recursor, TMeta(subMetaId));
+      return TacticOk(
+        proofTerm,
+        s.metas,
+        subMeta: subMetaId,
+        subGoals: [TacticGoal(subMetaId, s.ctx, s.binderNames)],
+      );
     };
 
 /// `induction x`: produces subgoals per constructor of `x`'s type.
@@ -338,7 +481,9 @@ TacticFn Function(Term) rewrite =
 /// Looks up `x` in the context, finds its inductive data type, and
 /// builds the recursor application `T.ind (λ a => G) m1 ... mn x`
 /// where each `mi` is a method (constructor case) with fresh subgoal
-/// metas and induction hypotheses for recursive arguments.
+/// metas and induction hypotheses for recursive arguments. Every method
+/// subgoal is returned in [TacticOk.subGoals], in constructor order, so
+/// a sequencing driver can work through the arms.
 TacticFn Function(String) induction =
     (varName) => (s) {
       // Look up the variable using binderNames (populated by
@@ -391,73 +536,115 @@ TacticFn Function(int) _inductionAt =
       } else {
         return const TacticFail('induction: cannot build motive');
       }
+      final scrutLevel = (xVal.neutral as NVar).level;
       final motiveBody = quote(level + 1, motiveV);
       final motive = TLam(quote(level, xType), motiveBody);
 
-      // Build each constructor method and collect fresh meta IDs.
-      final methodMetas = <int>[];
+      // Build each constructor method and collect its subgoal.
+      final methodGoals = <TacticGoal>[];
       final methodTerms = <Term>[];
       final paramCount = dataDecl.params.length;
+      final registries = ENil.withRegistries(
+        dataDecls: s.ctx.env.dataDecls,
+        topBindings: s.ctx.env.topBindings,
+      );
 
       for (final ctor in dataDecl.ctors) {
-        // Build the constructor applied to fresh neutrals for its args.
-        var teleEnv = const ENil() as Env;
-        for (var i = paramCount - 1; i >= 0; i--) {
+        // Constructor-argument types are closed under the data's params
+        // (outermost) and the preceding constructor arguments. Mirror
+        // the kernel's arm-telescope construction: extend params in
+        // declaration order, then one neutral per argument. The neutral
+        // for argument j sits at level `level + j`, the level it
+        // occupies inside the method's lambda chain.
+        Env teleEnv = registries;
+        for (var i = 0; i < paramCount; i++) {
           teleEnv = teleEnv.extend(dataArgs[i]);
         }
+        final argTypes = <Value>[];
         final ctorArgs = <Value>[];
-        final recArgPositions = <int>[];
         for (var j = 0; j < ctor.args.length; j++) {
-          final argTypeV = eval(ctor.args[j].type, teleEnv);
-          ctorArgs.add(VNeutral(NVar(level + j)));
-          teleEnv = teleEnv.extend(VNeutral(NVar(level + j)));
-          // Check if this arg is recursive (its type mentions the data).
-          if (_typeMentionsData(argTypeV, dataName)) {
-            recArgPositions.add(j);
-          }
+          argTypes.add(eval(ctor.args[j].type, teleEnv));
+          final neutral = VNeutral(NVar(level + j));
+          ctorArgs.add(neutral);
+          teleEnv = teleEnv.extend(neutral);
         }
 
-        // P(ctor(args)) = goalType[x := ctor(args)]
+        // Names for the method binders. Declared constructor-argument
+        // names are used when present; otherwise a stable positional
+        // name. Induction hypotheses are named ih, ih2, ...
+        final argNames = <String>[
+          for (var j = 0; j < ctor.args.length; j++) _ctorArgName(ctor, j),
+        ];
+        final recArgPositions = <int>[
+          for (var j = 0; j < ctor.args.length; j++)
+            if (_typeMentionsData(argTypes[j], dataName)) j,
+        ];
+        final ihNames = <String>[
+          for (var i = 0; i < recArgPositions.length; i++) _ihName(i),
+        ];
+
+        // P(ctor(args)): the goal refined to this constructor's shape.
         final ctorResultV = VConstr(dataName, ctor.name, ctorArgs);
-        final pCtorV = substNVar(
-          goalType,
-          (xVal.neutral as NVar).level,
-          ctorResultV,
+        final pCtorV = substNVar(goalType, scrutLevel, ctorResultV);
+
+        // The induction hypotheses sit after all argument binders in the
+        // method's type (`Nat.rec`'s succ method is `(k: Nat) -> P k -> P
+        // (succ k)`). Their types are P at the corresponding recursive
+        // argument.
+        final ihTypes = <Value>[
+          for (final j in recArgPositions)
+            substNVar(goalType, scrutLevel, ctorArgs[j]),
+        ];
+
+        var methodCtx = s.ctx;
+        for (final t in argTypes) {
+          methodCtx = methodCtx.extend(t);
+        }
+        for (final t in ihTypes) {
+          methodCtx = methodCtx.extend(t);
+        }
+        final methodBodyMeta = s.metas.freshTermMeta(pCtorV, methodCtx);
+        methodGoals.add(
+          TacticGoal(methodBodyMeta, methodCtx, [
+            for (var i = ihTypes.length - 1; i >= 0; i--) ihNames[i],
+            for (var j = argTypes.length - 1; j >= 0; j--) argNames[j],
+            ...s.binderNames,
+          ]),
         );
 
-        // Method type: (args) -> (IHs) -> P(ctor(args))
-        // Build the lambda chain manually, with a fresh subgoal meta
-        // at the end for the body.
-        final ihTypes = <Value>[];
-        var methodBodyCtx = s.ctx;
-        for (final j in recArgPositions) {
-          final recArgValue = ctorArgs[j];
-          final ihType = substNVar(
-            goalType,
-            (xVal.neutral as NVar).level,
-            recArgValue,
-          );
-          ihTypes.add(ihType);
-          methodBodyCtx = methodBodyCtx.extend(ihType);
-        }
-        final methodBodyMeta = s.metas.freshTermMeta(pCtorV, methodBodyCtx);
-        methodMetas.add(methodBodyMeta);
-
-        // Build the lambda: λ IHs... λ args... => TMeta(methodBodyMeta)
+        // Build the lambda chain: arguments outermost, hypotheses
+        // innermost, matching the recursor's synthesized method type.
+        //
+        // A binder's domain lives in the scope outside that binder, so
+        // argument j is quoted at level+j (it may reference the params,
+        // the outer context, and arguments 0..j-1) and hypothesis i at
+        // level+args.length+i. Quoting every domain at `level` was the
+        // source of the negative de Bruijn indices that made every
+        // non-trivial induction hypothesis unusable.
         var body = TMeta(methodBodyMeta) as Term;
-        for (final ihType in ihTypes.reversed) {
-          body = TLam(quote(level, ihType), body);
+        for (var i = ihTypes.length - 1; i >= 0; i--) {
+          body = TLam(
+            quote(level + argTypes.length + i, ihTypes[i]),
+            body,
+            name: ihNames[i],
+          );
         }
-        for (var j = ctor.args.length - 1; j >= 0; j--) {
-          final argTypeV = eval(ctor.args[j].type, teleEnv);
-          body = TLam(quote(level, argTypeV), body);
+        for (var j = argTypes.length - 1; j >= 0; j--) {
+          body = TLam(quote(level + j, argTypes[j]), body, name: argNames[j]);
         }
         methodTerms.add(body);
       }
 
       // Build the full recursor application.
       // T.ind params P method1 ... methodN scrutinee
-      var proofTerm = TRec(dataName) as Term;
+      //
+      // Pick the recursor whose motive targets the goal's sort: a
+      // Prop-sorted goal uses `T.ind`, a Type goal the large-elimination
+      // variant. The default recursor's motive is the data's declared
+      // sort, and Prop does not cumulate into Type, so a Prop goal
+      // checked against a Type-sorted motive is rejected.
+      final motiveSort = _motiveSortFor(s.ctx, goalType);
+      var proofTerm = TRec(dataName, motiveSort: motiveSort) as Term;
       // Apply params.
       for (var i = 0; i < paramCount; i++) {
         proofTerm = TApp(proofTerm, quote(level, dataArgs[i]));
@@ -471,10 +658,45 @@ TacticFn Function(int) _inductionAt =
       // Apply scrutinee.
       proofTerm = TApp(proofTerm, TBound(binderIdx));
 
-      // The first subgoal meta becomes the "current" one for the next
-      // tactic step.  _runTacticSteps handles the sequencing.
-      return TacticOk(proofTerm, s.metas, subMeta: methodMetas.first);
+      // The first subgoal becomes the "current" one for the next tactic
+      // step; the rest are queued by the sequencing driver.
+      return TacticOk(
+        proofTerm,
+        s.metas,
+        subMeta: methodGoals.first.metaId,
+        subGoals: methodGoals,
+      );
     };
+
+/// The name for constructor argument [j]'s binder: the declared name
+/// when the data declaration has one, a stable positional name (a, a2,
+/// a3, ...) otherwise.
+String _ctorArgName(CtorDecl ctor, int j) {
+  final declared = ctor.args[j].name;
+  if (declared != null && declared != '_') return declared;
+  return j == 0 ? 'a' : 'a${j + 1}';
+}
+
+/// The name for the [i]-th induction hypothesis: `ih`, `ih2`, ...
+String _ihName(int i) => i == 0 ? 'ih' : 'ih${i + 1}';
+
+/// The motive-sort override for the recursor that matches [goalType]'s
+/// sort: Prop goals use `T.ind`, SProp goals `T.indS`, Type goals the
+/// large-elimination variant. The recursor's motive has the goal's sort,
+/// and Prop does not cumulate into Type, so the default (the data's own
+/// declared sort) is wrong whenever the goal's sort differs.
+Term? _motiveSortFor(Ctx ctx, Value goalType) {
+  final Value sort;
+  try {
+    sort = infer(ctx, quote(ctx.level, goalType));
+  } catch (_) {
+    return null;
+  }
+  if (sort is VProp) return const TProp();
+  if (sort is VSProp) return const TSProp();
+  if (sort is VType) return TType(sort.level);
+  return null;
+}
 
 /// True if [v] is or contains a reference to the inductive type [dataName].
 /// Used by [induction] to identify recursive constructor arguments.
