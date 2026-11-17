@@ -8178,15 +8178,30 @@ Value substNVar(Value value, int scrutLevel, Value replacement) {
       newSpine.add(na);
       if (!identical(na, a)) changed = true;
     }
-    return changed
-        ? VFun(
-          value.name,
-          value.lam,
-          value.decreasingArg,
-          value.arity,
-          newSpine,
-        )
-        : value;
+    if (!changed) return value;
+    // Substituting the scrutinee can turn the decreasing argument into
+    // a canonical constructor, e.g. `plus n zero` under `n := zero`.
+    // Such an application is no longer stuck: unfold it exactly as the
+    // evaluator's apply path would, instead of returning a frozen VFun
+    // whose spine satisfies the fix-reduction guard. Callers compare
+    // the result with conv, and conv never unfolds a VFun (it treats a
+    // stuck VFun as opaque), so leaving it stale makes two
+    // definitionally equal types look distinct.
+    if (newSpine.length >= value.arity &&
+        newSpine[value.decreasingArg] is VConstr) {
+      var unfolded = value.lam;
+      for (final a in newSpine) {
+        unfolded = apply(unfolded, a);
+      }
+      return unfolded;
+    }
+    return VFun(
+      value.name,
+      value.lam,
+      value.decreasingArg,
+      value.arity,
+      newSpine,
+    );
   }
   if (value is VMatch) {
     final newScrutinee = substNVar(value.scrutinee, scrutLevel, replacement);

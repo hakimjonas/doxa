@@ -4,7 +4,13 @@ library;
 import 'package:doxa/src/parse.dart';
 import 'package:doxa/src/prelude.dart';
 import 'package:doxa/src/surface.dart';
+import 'package:doxa/src/ctx.dart';
 import 'package:doxa/src/elab.dart';
+import 'package:doxa/src/eval.dart';
+import 'package:doxa/src/meta.dart';
+import 'package:doxa/src/pretty.dart';
+import 'package:doxa/src/tactic.dart';
+import 'package:doxa/src/value.dart';
 import 'package:rumil/rumil.dart';
 import 'package:test/test.dart';
 
@@ -146,6 +152,81 @@ val induction_wrap : (w: Wrap) -> Wrap = (w: Wrap) => by {
         () => env.bindings.firstWhere((b) => b.name == 'induction_wrap'),
         returnsNormally,
       );
+    });
+  });
+
+  group('induction goal refinement', () {
+    /// Open [typeSrc] at a fresh binder and return the extended context
+    /// plus the goal type under that binder.
+    (Ctx, Value) openPi(TopEnv env, MetaContext metas, String typeSrc) {
+      final parsed = parseExpr(typeSrc);
+      if (parsed is! Success<ParseError, SExpr>) {
+        fail('parse failed: $parsed');
+      }
+      final typeTerm = elabExpr(env, parsed.value);
+      final baseCtx = env.toCtx(metas: metas);
+      final pi = eval(typeTerm, baseCtx.env) as VPi;
+      final ctx = baseCtx.extend(pi.domain);
+      final goal = eval(
+        pi.codomain.body,
+        pi.codomain.env.extend(VNeutral(NVar(ctx.level - 1))),
+      );
+      return (ctx, goal);
+    }
+
+    test('the zero arm of a Nat induction mentions the reduced '
+        'application, not the stuck one', () {
+      final env = _elab('''
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+fun plus(m: Nat, n: Nat): Nat = match m {
+  case zero => n
+  case succ k => succ (plus k n)
+}
+''');
+      final metas = MetaContext();
+      final (ctx, goal) = openPi(
+        env,
+        metas,
+        '(n: Nat) -> Eq Nat (plus n zero) (plus n zero)',
+      );
+      final goalId = metas.freshTermMeta(goal, ctx);
+      final state = TacticState(metas, ctx, goalId, const ['n']);
+
+      final result = induction('n')(state);
+      expect(result, isA<TacticOk>());
+      final zeroMeta = (result as TacticOk).subMeta!;
+      final zeroGoal =
+          (metas.lookup(zeroMeta) as TermMetaUnsolved).typeExpected;
+
+      // Before the fix this printed `Eq Nat (plus zero zero)
+      // (plus zero zero)`: the substituted application stayed a frozen
+      // VFun. Refinement must expose the reduced form so subsequent
+      // tactics (and the final kernel check) see `Eq Nat zero zero`.
+      expect(prettyTerm(quote(ctx.level, zeroGoal)), 'Eq Nat zero zero');
+    });
+
+    test('a goal without a top-level function refines as before', () {
+      final env = _elab('''
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+''');
+      final metas = MetaContext();
+      final (ctx, goal) = openPi(env, metas, '(n: Nat) -> Eq Nat n n');
+      final goalId = metas.freshTermMeta(goal, ctx);
+      final state = TacticState(metas, ctx, goalId, const ['n']);
+
+      final result = induction('n')(state);
+      expect(result, isA<TacticOk>());
+      final zeroMeta = (result as TacticOk).subMeta!;
+      final zeroGoal =
+          (metas.lookup(zeroMeta) as TermMetaUnsolved).typeExpected;
+
+      expect(prettyTerm(quote(ctx.level, zeroGoal)), 'Eq Nat zero zero');
     });
   });
 }
