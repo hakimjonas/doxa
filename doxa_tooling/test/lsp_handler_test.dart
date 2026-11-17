@@ -481,7 +481,7 @@ void main() {
       const uri = 'file:///workspace/references.doxa';
       const source =
           'fun identity{A: Type}(value: A): A = value\n'
-          'fun applyIdentity(value: Type): Type = identity value\n';
+          'fun applyIdentity{B: Type}(value: B): B = identity value\n';
       handler.handle(_didOpen(uri, source));
 
       final result = handler.handle(
@@ -501,7 +501,7 @@ void main() {
       const uri = 'file:///workspace/rename.doxa';
       const source =
           'fun identity{A: Type}(value: A): A = value\n'
-          'fun applyIdentity(value: Type): Type = identity value\n';
+          'fun applyIdentity{B: Type}(value: B): B = identity value\n';
       final declarationOffset = source.indexOf('identity');
       final referenceOffset = source.lastIndexOf('identity');
       final referenceCharacter = referenceOffset - source.indexOf('\n') - 1;

@@ -27,7 +27,13 @@ import 'dart:io';
 
 import 'package:rumil/rumil.dart' show ParseError, Success, Partial, Failure;
 
-import 'check.dart' show InductiveArityMismatch, TypeMismatch;
+import 'check.dart'
+    show
+        DoxaCheckError,
+        InductiveArityMismatch,
+        InvalidMetaSolution,
+        TypeMismatch,
+        UnknownTypeReached;
 import 'ctx.dart';
 import 'env.dart';
 import 'eval.dart';
@@ -1306,13 +1312,13 @@ List<TopBinding> checkDeclResult(TopEnv topEnv, DeclResult result) {
         final expectedV = eval(binding.type, ctx.env);
         check(ctx, binding.term, expectedV);
       }
-      return _finalizeDeclBindings(result.bindings, metas);
+      return _finishDeclBindings(result.bindings, metas);
     }
+    final ctx = _ctxWithMetas(topEnv.toCtx(), metas);
     for (final binding in result.bindings) {
-      final ctx = _ctxWithMetas(topEnv.toCtx(), metas);
       check(ctx, binding.term, eval(binding.type, ctx.env));
     }
-    return _finalizeDeclBindings(result.bindings, metas);
+    return _finishDeclBindings(result.bindings, metas);
   }
   // Pre-scope the whole group by installing each member as a stub
   // in topBindings. The stub's type is the member's declared type;
@@ -1343,14 +1349,128 @@ List<TopBinding> checkDeclResult(TopEnv topEnv, DeclResult result) {
   // unchanged (the group members are NOT de-Bruijn-indexed
   // they're name-indexed via TTop).
   final groupCtx = _ctxWithTopBindings(baseCtx, stubs, metas: metas);
-  // Check each member's body.
+  // Check each member's body. The inlined term is the one that will be
+  // stored; `_finishDeclBindings` audits the solved solutions themselves.
   for (var i = 0; i < group.members.length; i++) {
     final binding = result.bindings[group.members[i].bindingIndex];
     final term =
         metas != null ? inlineSolvedMetas(binding.term, metas) : binding.term;
     check(groupCtx, term, memberTypes[i]);
   }
-  return _finalizeDeclBindings(result.bindings, metas);
+  return _finishDeclBindings(result.bindings, metas);
+}
+
+/// Audit every solved term-meta's solution against the type recorded
+/// when the meta was created, then inline the solutions and return the
+/// finalized bindings.
+///
+/// `_Infer(TMeta)` returns a solved meta's pre-solve `typeExpected`
+/// without validating the solution (see the note there). That keeps the
+/// kernel from re-inferring a solution in isolation, which rejects
+/// legitimate pattern-unification solutions: their quoted stuck forms (a
+/// `TMatch` with a null motive, for example) are well-typed only under
+/// the expected type they were elaborated against. The audit therefore
+/// checks the solution against its own expected type, peeling a λ-chain
+/// in lockstep with the expected Pi so the annotations are compared by
+/// conversion instead of re-inferred.
+///
+/// An ill-typed solution, such as the one-argument `Eq.rec` rewrite the
+/// tactic engine used to build, is rejected here with
+/// [InvalidMetaSolution] instead of being inlined into a stored
+/// declaration.
+List<TopBinding> _finishDeclBindings(
+  List<TopBinding> bindings,
+  MetaContext? metas,
+) {
+  if (metas != null) _validateSolvedMetas(metas);
+  return _finalizeDeclBindings(bindings, metas);
+}
+
+/// Validate every solved meta in [metas]. Solutions may solve other
+/// metas through conversion while being checked, so keep scanning until
+/// no new solved entry appears.
+void _validateSolvedMetas(MetaContext metas) {
+  final validated = <int>{};
+  var changed = true;
+  while (changed) {
+    changed = false;
+    for (var i = 0; i < metas.length; i++) {
+      if (validated.contains(i)) continue;
+      final entry = metas.lookup(i);
+      if (entry is! TermMetaSolved) continue;
+      validated.add(i);
+      changed = true;
+      _validateSolvedMeta(metas, i, entry);
+    }
+  }
+}
+
+/// Validate one solved meta's solution against its expected type, in the
+/// context where the meta was created.
+void _validateSolvedMeta(MetaContext metas, int id, TermMetaSolved entry) {
+  final ctx = _installMetas(entry.localCtx, metas);
+  try {
+    _checkSolution(ctx, entry.solution, entry.typeExpected);
+  } on DoxaCheckError catch (e) {
+    throw InvalidMetaSolution(id, entry.typeExpected, entry.localCtx.level, e);
+  } on Object catch (e) {
+    // Evaluation of a malformed solution (e.g. a free variable) throws a
+    // StateError rather than a DoxaCheckError. Report it as an invalid
+    // solution, not as a crash.
+    throw InvalidMetaSolution(
+      id,
+      entry.typeExpected,
+      entry.localCtx.level,
+      UnknownTypeReached('solution could not be checked: $e'),
+    );
+  }
+}
+
+/// Check [solution] against [expected] without re-inferring the
+/// annotations of its λ binders.
+///
+/// A λ-chain solution was built against [expected]'s Pi domains; peeling
+/// both together compares each annotation with the corresponding domain
+/// by conversion and checks only the final body. This mirrors the
+/// check-mode `λ` rule, which also descends under the *expected* domain.
+void _checkSolution(Ctx ctx, Term solution, Value expected) {
+  var c = ctx;
+  var t = solution;
+  var e = expected;
+  while (e is VPi && t is TLam) {
+    final annotV = eval(t.domain, c.env);
+    final domainResult = subtype(
+      c.level,
+      e.domain,
+      annotV,
+      dataDecls: c.dataDecls,
+      metas: c.metas,
+      topBindings: c.env.topBindings,
+    );
+    if (domainResult is ConvMismatch) {
+      throw TypeMismatch(e.domain, annotV, domainResult, level: c.level);
+    }
+    c = c.extend(e.domain);
+    final fresh = VNeutral(NVar(c.level - 1));
+    e = eval(e.codomain.body, e.codomain.env.extend(fresh));
+    t = t.body;
+  }
+  check(c, t, e);
+}
+
+/// Install [metas] on an arbitrary local context, rebuilding the chain
+/// when the context was created without one.
+Ctx _installMetas(Ctx ctx, MetaContext metas) {
+  if (identical(ctx.metas, metas)) return ctx;
+  if (ctx is CNil) {
+    return CNil.withRegistries(
+      dataDecls: ctx.dataDecls,
+      topBindings: ctx.topBindings,
+      metas: metas,
+    );
+  }
+  final c = ctx as CCons;
+  return CCons(c.type, c.value, c.env, c.level, _installMetas(c.rest, metas));
 }
 
 /// Return [bindings] with every solved meta in each binding's

@@ -2609,9 +2609,13 @@ Object _drive(
                 // a re-inference of the solution term. Pattern-unif
                 // solutions can contain quoted stuck forms (e.g.
                 // `TMatch(null motive)`) that are well-typed only
-                // in a specific check context, not standalone
-                // infer. Lean/Coq/Agda store meta type separately
-                // from solution for this reason.
+                // under that expected type, not standalone infer.
+                // The solution is audited against this same type at
+                // the declaration boundary (`checkDeclResult`'s
+                // `_validateSolvedMetas`); a check here would reject
+                // the legitimate stuck forms. Lean/Coq/Agda keep the
+                // meta type separate from the solution for the same
+                // reason.
                 step = _YieldV(typeExpected);
             }
 

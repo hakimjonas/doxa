@@ -108,6 +108,20 @@ void main() {
       expect(out, contains('actual:   Type'));
     });
 
+    test('InvalidMetaSolution names the meta and its expected type', () {
+      final src = _src('val bad : Nat = ?0\n');
+      const err = InvalidMetaSolution(
+        0,
+        VData('Nat', <Value>[]),
+        0,
+        NotAType(VType(LLevel(1))),
+      );
+      final out = reportCheckError(src, err, const DoxaSpan(0, 17));
+      expect(out, contains('error: solved metavariable is ill-typed'));
+      expect(out, contains('?0 was solved with a term'));
+      expect(out, contains('Nat'));
+    });
+
     test('NotAFunction format', () {
       final src = _src('val x = Type Type\n');
       const err = NotAFunction(VType(LLevel(1)));

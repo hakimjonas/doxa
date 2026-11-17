@@ -96,7 +96,9 @@ final class TermMetaSolved extends MetaEntry {
 
   /// The type the solution inhabits, retained from the pre-solve
   /// [TermMetaUnsolved.typeExpected] so `_Infer(TMeta)` doesn't need
-  /// to re-infer the solution term.
+  /// to re-infer the solution term. `checkDeclResult` audits the
+  /// solution against this type (and [localCtx]) at the declaration
+  /// boundary, rejecting an ill-typed solution instead of storing it.
   final Value typeExpected;
 
   /// The local context at the meta's original insertion site
