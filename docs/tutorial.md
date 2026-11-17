@@ -313,6 +313,17 @@ theorem eq_sym : (A: Type) -> (x: A) -> (y: A) -> Eq A x y -> Eq A y x = by {
 The `refl` arm's goal is `Eq A a a` for the constructor argument `a`,
 not the unrefined `Eq A y x`.
 
+The expressions in `exact`, `apply`, and `rewrite` elaborate in the
+tactic's local context: local binders carry their real types, and
+implicit arguments are inserted as at any other application site. So
+`exact (cong f ih)` works with `f` and `ih` introduced earlier.
+
+`apply lemma` creates one goal per *explicit* argument of `lemma`, in
+argument order, before any older pending goal. Implicit arguments are
+filled by conversion and never become goals. When the goal's type
+constrains an explicit argument, that argument is solved during
+`apply`; only the remaining ones appear.
+
 ---
 
 ## 9b. Interactive proof mode
@@ -379,6 +390,22 @@ arguments and induction hypotheses named in the context.
 For an indexed scrutinee the arm's goal is refined to the constructor's
 indices. With `h : Eq A x y`, `:step induction h` shows the `refl` arm's
 goal as `Eq A a a` for its constructor argument `a`, not `Eq A y x`.
+
+### Applying a lemma
+
+`:step apply lemma` shows one goal per explicit argument, in argument
+order. Closing the first makes the next argument current. Implicit
+arguments are filled by conversion and are not shown.
+
+```
+> :step apply two_nats
+Goal:
+  Nat
+
+> :step exact zero
+Goal:
+  Nat
+```
 
 `rewrite ih` and `exact ih` can refer to the hypothesis by name. `:undo`
 restores the whole goal queue, so it also steps back from a later arm to

@@ -296,4 +296,64 @@ void main() {
       expect((abort as ReplMeta).text, contains('Proof aborted'));
     });
   });
+
+  group('tactic expressions', () {
+    test('apply shows each explicit argument as a goal', () {
+      var session = _seededSession();
+      (_, session) = session.processInput(
+        'data Nat : Type { zero : Nat; succ : Nat -> Nat; }',
+      );
+      (_, session) = session.processInput(
+        'fun two_nats(a: Nat, b: Nat): Nat = a',
+      );
+      (_, session) = session.processInput(':goal theorem apply_two : Nat');
+
+      final (applied, afterApply) = session.processInput(
+        ':step apply two_nats',
+      );
+      session = afterApply;
+      expect((applied as ReplMeta).text, contains('Nat'));
+
+      final (first, afterFirst) = session.processInput(':step exact zero');
+      session = afterFirst;
+      expect((first as ReplMeta).text, contains('Nat'));
+
+      final (second, afterSecond) = session.processInput(
+        ':step exact (succ zero)',
+      );
+      session = afterSecond;
+      expect((second as ReplMeta).text, contains('Goal solved'));
+
+      final (qed, _) = session.processInput(':qed');
+      expect((qed as ReplMeta).text, contains('apply_two'));
+    });
+
+    test('exact elaborates a constructor application in the goal context', () {
+      var session = _seededSession();
+      (_, session) = session.processInput(
+        'data PairEqual[A: Type] : A -> A -> Prop {'
+        ' mkEq : (z: A) -> PairEqual A z z; }',
+      );
+      (_, session) = session.processInput(
+        ':goal theorem sym : (A: Type) -> (x: A) -> (y: A) ->'
+        ' PairEqual A x y -> PairEqual A y x',
+      );
+      for (final step in [
+        ':step intro A',
+        ':step intro x',
+        ':step intro y',
+        ':step intro h',
+        ':step induction h',
+      ]) {
+        (_, session) = session.processInput(step);
+      }
+
+      final (exact, afterExact) = session.processInput(':step exact (mkEq z)');
+      session = afterExact;
+      expect((exact as ReplMeta).text, contains('Goal solved'));
+
+      final (qed, _) = session.processInput(':qed');
+      expect((qed as ReplMeta).text, contains('sym'));
+    });
+  });
 }

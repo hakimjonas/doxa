@@ -6429,6 +6429,93 @@ bool _solutionWellScoped(
   }
 }
 
+/// Close a [Value] over all binders in [ctx], producing the Value
+/// of type `(outer-binders) → original-type`.
+///
+/// The elaborator uses this to give inserted implicit metas a closed
+/// type that admits solutions referencing outer binders; the tactic
+/// engine uses it for `apply`'s implicit arguments, which are solved
+/// by conversion against the goal.
+///
+/// Builds a VPi chain outermost-first. The domains come from the
+/// ctx's binder types; the codomain at each layer is a closure over
+/// the extended env. We quote the original type into a Term at
+/// ctx.level, wrap that term in the Pi chain, then eval once under
+/// an empty env to produce the Value.
+Value closeValueOverCtx(Value type, Ctx ctx) {
+  if (ctx is CNil) return type;
+  // Collect binder types innermost-first by walking the Ctx.
+  final binderTypes = <Value>[];
+  var c = ctx;
+  while (c is CCons) {
+    binderTypes.add(c.type);
+    c = c.rest;
+  }
+  // Quote the body type at ctx.level so TBound references in it
+  // are valid under the same depth as the Pi chain we're about
+  // to build.
+  final Term body = quote(ctx.level, type);
+  // Wrap in Pi chain: innermost binder (at TBound(0)) has its type
+  // quoted at the corresponding earlier depth.
+  //
+  // binderTypes[0] is the innermost binder (current depth - 1);
+  // binderTypes.last is the outermost (depth 0). To build the Pi
+  // outermost-first, iterate binderTypes in reverse so the
+  // outermost wraps last.
+  //
+  // Each binder's type at its binding depth: binder at level k was
+  // bound when the depth was k; quoting its type at depth k gives
+  // a term valid in the outer scope up to level k. Which is what
+  // we want.
+  var curBody = body;
+  // Iterate innermost-first: wrap Pi(binderType, curBody) with
+  // binderType quoted at its own depth.
+  var depth = ctx.level;
+  for (var i = 0; i < binderTypes.length; i++) {
+    depth -= 1;
+    final domT = quote(depth, binderTypes[i]);
+    curBody = TPi(domT, curBody);
+  }
+  // Eval under an env carrying the ctx's registries (NOT a bare ENil):
+  // the closed Pi's codomain closures may now reference `TTop(name)`
+  // for a guarded recursive `fun`, and forcing
+  // such a closure later (e.g. in `_tryUnify`'s domain walk) must
+  // resolve the top binding. A bare ENil has no registry and throws
+  // "TTop(map) with no matching entry". The Pi chain is closed (its
+  // body's free TBounds are bound by its own λ-binders), so the env
+  // contributes only the dataDecls/topBindings registries, never stray
+  // bound values.
+  final closingEnv = ENil.withRegistries(
+    dataDecls: ctx.env.dataDecls,
+    topBindings: ctx.env.topBindings,
+  );
+  return eval(curBody, closingEnv);
+}
+
+/// Wrap [body], open at [ctx]'s level, in a λ-chain over the context.
+///
+/// The inverse shape of [closeValueOverCtx]: binder `i`'s domain is
+/// quoted at its binding depth, and the final body sits under the whole
+/// chain. The body's free de Bruijn indices refer to the same binders in
+/// the same order, so they need no shifting. Used to commit an open
+/// proof term to a meta declared with the closed `Π ctx. T` type.
+Term closeTermOverCtx(Term body, Ctx ctx) {
+  if (ctx is CNil) return body;
+  final binderTypes = <Value>[];
+  var c = ctx;
+  while (c is CCons) {
+    binderTypes.add(c.type);
+    c = c.rest;
+  }
+  var term = body;
+  var depth = ctx.level;
+  for (var i = 0; i < binderTypes.length; i++) {
+    depth -= 1;
+    term = TLam(quote(depth, binderTypes[i]), term);
+  }
+  return term;
+}
+
 /// Install [metas] on an arbitrary [ctx], rebuilding the chain when the
 /// context was created without one. Meta contexts are usually threaded
 /// through the root `CNil`, but a context captured for a meta may predate

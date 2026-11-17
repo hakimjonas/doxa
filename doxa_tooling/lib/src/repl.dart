@@ -80,6 +80,8 @@ final class _ProofSnapshot {
   final Ctx ctx;
   final List<String> binderNames;
   final List<TacticGoal> pendingGoals;
+  final Ctx? closedGoalOverCtx;
+  final Value? goalTypeOverride;
 
   const _ProofSnapshot(
     this.metaSnapshot,
@@ -87,6 +89,8 @@ final class _ProofSnapshot {
     this.ctx,
     this.binderNames,
     this.pendingGoals,
+    this.closedGoalOverCtx,
+    this.goalTypeOverride,
   );
 }
 
@@ -99,6 +103,14 @@ final class _ProofSession {
   Ctx ctx;
   List<String> binderNames;
   List<TacticGoal> pendingGoals;
+
+  /// When non-null, the current goal's meta is closed over this context
+  /// (`apply`'s explicit arguments); a solution open in it is lifted
+  /// before it is committed.
+  Ctx? closedGoalOverCtx;
+
+  /// The open goal type when it differs from the meta's declared type.
+  Value? goalTypeOverride;
   final TopEnv topEnv;
   final String theoremName;
   final Term theoremType;
@@ -116,9 +128,10 @@ final class _ProofSession {
   }) : undoStack = [];
 
   Value get goalType =>
-      metas.lookup(currentGoalMeta).isSolved
+      goalTypeOverride ??
+      (metas.lookup(currentGoalMeta).isSolved
           ? (metas.lookup(currentGoalMeta) as TermMetaSolved).typeExpected
-          : (metas.lookup(currentGoalMeta) as TermMetaUnsolved).typeExpected;
+          : (metas.lookup(currentGoalMeta) as TermMetaUnsolved).typeExpected);
 }
 
 /// Immutable REPL session holding accumulated top-level state.
@@ -180,7 +193,11 @@ final class ReplSession {
       validateTerm(term, ps.ctx);
       return true;
     }());
-    ps.metas.solve(ps.currentGoalMeta, term);
+    final closedCtx = ps.closedGoalOverCtx;
+    ps.metas.solve(
+      ps.currentGoalMeta,
+      closedCtx == null ? term : closeTermOverCtx(term, closedCtx),
+    );
   }
 
   /// The tactic state for the current goal, including the pending queue.
@@ -190,6 +207,8 @@ final class ReplSession {
     ps.currentGoalMeta,
     ps.binderNames,
     ps.pendingGoals,
+    ps.goalTypeOverride,
+    ps.closedGoalOverCtx,
   );
 
   /// Capture the current proof state, including the goal queue, for
@@ -201,6 +220,8 @@ final class ReplSession {
     ps.ctx,
     List.unmodifiable(ps.binderNames),
     List.unmodifiable(ps.pendingGoals),
+    ps.closedGoalOverCtx,
+    ps.goalTypeOverride,
   );
 
   /// Select the goal the next `:step` should target after [result] solved
@@ -212,6 +233,8 @@ final class ReplSession {
     ps.ctx = next.ctx;
     ps.binderNames = List.unmodifiable(next.binderNames);
     ps.pendingGoals = next.pending;
+    ps.closedGoalOverCtx = next.closedGoalOverCtx;
+    ps.goalTypeOverride = next.goalTypeOverride;
     return true;
   }
 
@@ -749,18 +772,31 @@ final class ReplSession {
 
     Term term;
     try {
-      term = elabExprInScope(ps.topEnv, ps.binderNames, expr, metas: ps.metas);
+      term = elabCheckInCtx(
+        ps.topEnv,
+        ps.ctx,
+        ps.binderNames,
+        expr,
+        ps.goalType,
+      );
     } catch (_) {
-      // Fallback: simple identifier → TBound.
-      if (expr.kind case SIdentKind(:final name)) {
-        final idx = ps.binderNames.indexOf(name);
-        if (idx >= 0) {
-          term = TBound(idx);
+      try {
+        term = elabInferInCtx(ps.topEnv, ps.ctx, ps.binderNames, expr).$1;
+      } catch (_) {
+        // Fallback: simple identifier → TBound.
+        if (expr.kind case SIdentKind(:final name)) {
+          final idx = ps.binderNames.indexOf(name);
+          if (idx >= 0) {
+            term = TBound(idx);
+          } else {
+            return (ReplMeta('exact: unresolved name "$name"'), this);
+          }
         } else {
-          return (ReplMeta('exact: unresolved name "$name"'), this);
+          return (
+            const ReplMeta('exact: could not elaborate expression'),
+            this,
+          );
         }
-      } else {
-        return (const ReplMeta('exact: could not elaborate expression'), this);
       }
     }
 
@@ -801,7 +837,7 @@ final class ReplSession {
 
     Term term;
     try {
-      term = elabExprInScope(ps.topEnv, ps.binderNames, expr, metas: ps.metas);
+      term = elabInferInCtx(ps.topEnv, ps.ctx, ps.binderNames, expr).$1;
     } catch (_) {
       if (expr.kind case SIdentKind(:final name)) {
         final idx = ps.binderNames.indexOf(name);
@@ -1001,12 +1037,7 @@ final class ReplSession {
 
     Term proofTerm;
     try {
-      proofTerm = elabExprInScope(
-        ps.topEnv,
-        ps.binderNames,
-        expr,
-        metas: ps.metas,
-      );
+      proofTerm = elabInferInCtx(ps.topEnv, ps.ctx, ps.binderNames, expr).$1;
     } catch (_) {
       if (expr.kind case SIdentKind(:final name)) {
         final idx = ps.binderNames.indexOf(name);
@@ -1083,6 +1114,8 @@ final class ReplSession {
     ps.ctx = snap.ctx;
     ps.binderNames = snap.binderNames;
     ps.pendingGoals = snap.pendingGoals;
+    ps.closedGoalOverCtx = snap.closedGoalOverCtx;
+    ps.goalTypeOverride = snap.goalTypeOverride;
 
     final output = StringBuffer();
     output.writeln('Undone.');

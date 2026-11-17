@@ -21,13 +21,17 @@ export 'src/eval.dart'
         ConvOk,
         ConvMismatch,
         infer,
-        check;
+        check,
+        closeValueOverCtx,
+        closeTermOverCtx;
 export 'src/check.dart';
 export 'src/elab.dart'
     show
         elabDecl,
         elabExpr,
         elabExprInScope,
+        elabCheckInCtx,
+        elabInferInCtx,
         checkDeclResult,
         declNames,
         ctorSignatureTerm,

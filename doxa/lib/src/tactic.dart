@@ -45,8 +45,25 @@ final class TacticGoal {
   /// the [ctx] chain.
   final List<String> binderNames;
 
+  /// The type to display and check this goal against when it differs
+  /// from the meta's declared type. `apply`'s explicit arguments use
+  /// this: the meta is closed over the context, the goal is the open
+  /// argument type.
+  final Value? displayType;
+
+  /// When non-null, this goal's meta is declared with the type
+  /// `Π context. displayType`; a solution open in this context is
+  /// lifted to a λ-chain before it is committed.
+  final Ctx? closedOverCtx;
+
   /// Creates a goal.
-  const TacticGoal(this.metaId, this.ctx, this.binderNames);
+  const TacticGoal(
+    this.metaId,
+    this.ctx,
+    this.binderNames, {
+    this.displayType,
+    this.closedOverCtx,
+  });
 }
 
 /// The state a tactic operates on: the elaborator context plus the
@@ -70,6 +87,15 @@ final class TacticState {
   /// it.
   final List<TacticGoal> pending;
 
+  /// The type to display and check the current goal against when it
+  /// differs from the meta's declared type (`apply` explicit arguments).
+  final Value? goalTypeOverride;
+
+  /// When non-null, the current goal's meta is declared with the type
+  /// `Π ctx. goalType`; a solution open in this context is lifted before
+  /// it is committed.
+  final Ctx? closedGoalOverCtx;
+
   /// Creates a tactic state.
   const TacticState(
     this.metas,
@@ -77,6 +103,8 @@ final class TacticState {
     this.currentMeta, [
     this.binderNames = const [],
     this.pending = const [],
+    this.goalTypeOverride,
+    this.closedGoalOverCtx,
   ]);
 
   /// Copy with a replacement field.
@@ -86,19 +114,39 @@ final class TacticState {
     int? currentMeta,
     List<String>? binderNames,
     List<TacticGoal>? pending,
+    Value? goalTypeOverride,
+    Ctx? closedGoalOverCtx,
   }) => TacticState(
     metas ?? this.metas,
     ctx ?? this.ctx,
     currentMeta ?? this.currentMeta,
     binderNames ?? this.binderNames,
     pending ?? this.pending,
+    goalTypeOverride ?? this.goalTypeOverride,
+    closedGoalOverCtx ?? this.closedGoalOverCtx,
   );
 
   /// The type of the current goal.
   Value get goalType =>
-      metas.lookup(currentMeta).isSolved
+      goalTypeOverride ??
+      (metas.lookup(currentMeta).isSolved
           ? (metas.lookup(currentMeta) as TermMetaSolved).typeExpected
-          : (metas.lookup(currentMeta) as TermMetaUnsolved).typeExpected;
+          : (metas.lookup(currentMeta) as TermMetaUnsolved).typeExpected);
+}
+
+/// Solve [s]'s current goal with [term].
+///
+/// When the goal's meta is closed over the local context (`apply`'s
+/// explicit arguments), the open [term] is lifted to the closed λ-chain
+/// the meta was declared with. The kernel treats every solved meta's
+/// solution as closed; committing an open term directly makes a later
+/// force of that meta evaluate its free indices under an empty env.
+void solveCurrentGoal(TacticState s, Term term) {
+  final ctx = s.closedGoalOverCtx;
+  s.metas.solve(
+    s.currentMeta,
+    ctx == null ? term : closeTermOverCtx(term, ctx),
+  );
 }
 
 /// The result of running a tactic.
@@ -163,6 +211,8 @@ TacticState? nextGoalAfter(TacticState prev, TacticOk result) {
     picked.metaId,
     picked.binderNames,
     rest,
+    picked.displayType,
+    picked.closedOverCtx,
   );
 }
 
@@ -190,8 +240,8 @@ typedef TacticFn = TacticResult Function(TacticState state);
 TacticFn seq(TacticFn t1, TacticFn t2) => (s) {
   final r1 = t1(s);
   return switch (r1) {
-    TacticOk(:final term, :final metas, :final subMeta) => () {
-      if (subMeta != null) metas.solve(s.currentMeta, term);
+    TacticOk(:final term, :final subMeta) => () {
+      if (subMeta != null) solveCurrentGoal(s, term);
       final next = nextGoalAfter(s, r1);
       if (next == null) return r1;
       return t2(next);
@@ -256,7 +306,7 @@ TacticFn Function(Term) exact =
       try {
         final inferredType = infer(s.ctx, term);
         if (conv(s.ctx.level, inferredType, goalType, s: s) is ConvOk) {
-          s.metas.solve(s.currentMeta, term);
+          solveCurrentGoal(s, term);
           return TacticOk(term, s.metas);
         }
       } catch (_) {}
@@ -296,30 +346,75 @@ TacticResult refl(TacticState s) {
     final inferred = infer(s.ctx, reflTerm);
     if (conv(s.ctx.level, inferred, goalType, s: s) is ConvOk) {
       // Leaf tactic: solve the goal itself, matching `exact` and `apply`.
-      s.metas.solve(s.currentMeta, reflTerm);
+      solveCurrentGoal(s, reflTerm);
       return TacticOk(reflTerm, s.metas);
     }
   } catch (_) {}
   return const TacticFail('refl: type mismatch after constructing refl');
 }
 
-/// `apply f`: applies lemma `f`, creating subgoals for each argument.
+/// `apply f`: applies lemma `f`, creating subgoals for its explicit
+/// arguments.
 ///
 /// Expects `f` to have a Pi type `(x1: A1) -> ... -> (xn: An) -> R`.
-/// Creates fresh metas for each argument and returns `f ?1 ... ?n`.
+/// Every binder gets a fresh meta. Implicit binders are filled by
+/// conversion when the conclusion is checked against the goal and never
+/// become user goals. Each explicit binder's meta is reported in
+/// [TacticOk.subGoals] in argument order, so the following steps solve
+/// `apply`'s arguments left to right before any older pending goal.
 TacticFn Function(Term) tacticApply =
     (f) => (s) {
       final fType = infer(s.ctx, f);
       final args = <Term>[];
+      final explicitGoals = <TacticGoal>[];
       var currentType = fType;
-      var currentCtx = s.ctx;
       while (currentType is VPi) {
         final pi = currentType;
-        final subMeta = s.metas.freshTermMeta(pi.domain, currentCtx);
-        args.add(TMeta(subMeta));
-        currentCtx = currentCtx.extend(pi.domain);
-        final codArg = VNeutral(NVar(currentCtx.level - 1));
-        currentType = eval(pi.codomain.body, pi.codomain.env.extend(codArg));
+        if (pi.icit == Icit.implicit) {
+          // Implicit arguments are filled by conversion against the
+          // goal. Close the meta over the local context (the same shape
+          // `_insertImplicits` uses) so a solution may reference the
+          // local binders, and apply the meta to them.
+          final closedType = closeValueOverCtx(pi.domain, s.ctx);
+          final metaId = s.metas.freshTermMeta(closedType, s.ctx);
+          var metaTerm = TMeta(metaId) as Term;
+          for (var k = s.ctx.level - 1; k >= 0; k--) {
+            metaTerm = TApp(metaTerm, TBound(k));
+          }
+          args.add(metaTerm);
+          final metaValue = eval(metaTerm, s.ctx.env);
+          currentType = eval(
+            pi.codomain.body,
+            pi.codomain.env.extend(metaValue),
+          );
+        } else {
+          // Explicit arguments become user goals, in argument order.
+          // The kernel requires every solved meta to be closed, so the
+          // meta is declared with the type closed over the local context
+          // and applied to it. The user sees the open argument type and
+          // their proof is lifted to the closed λ-chain on solve.
+          final closedType = closeValueOverCtx(pi.domain, s.ctx);
+          final metaId = s.metas.freshTermMeta(closedType, s.ctx);
+          var metaTerm = TMeta(metaId) as Term;
+          for (var k = s.ctx.level - 1; k >= 0; k--) {
+            metaTerm = TApp(metaTerm, TBound(k));
+          }
+          args.add(metaTerm);
+          explicitGoals.add(
+            TacticGoal(
+              metaId,
+              s.ctx,
+              s.binderNames,
+              displayType: pi.domain,
+              closedOverCtx: s.ctx,
+            ),
+          );
+          final metaValue = eval(metaTerm, s.ctx.env);
+          currentType = eval(
+            pi.codomain.body,
+            pi.codomain.env.extend(metaValue),
+          );
+        }
       }
       var result = f;
       for (final arg in args) {
@@ -327,11 +422,15 @@ TacticFn Function(Term) tacticApply =
       }
       final goalType = s.goalType;
       final resultType = infer(s.ctx, result);
-      if (conv(s.ctx.level, resultType, goalType, s: s) is ConvOk) {
-        s.metas.solve(s.currentMeta, result);
-        return TacticOk(result, s.metas);
+      final matches = conv(s.ctx.level, resultType, goalType, s: s) is ConvOk;
+      // With explicit holes the conclusion can only be checked once the
+      // user's proofs fill them; the kernel re-checks the final term.
+      // Without holes, a mismatched lemma is rejected here as before.
+      if (!matches && explicitGoals.isEmpty) {
+        return const TacticFail('apply: type mismatch');
       }
-      return const TacticFail('apply: type mismatch');
+      solveCurrentGoal(s, result);
+      return TacticOk(result, s.metas, subGoals: explicitGoals);
     };
 
 /// `rewrite p`: rewrites the goal using equality proof `p`.
@@ -877,7 +976,7 @@ TacticResult trivial(TacticState s) {
           final inferred = infer(s.ctx, term);
           if (conv(s.ctx.level, inferred, s.goalType, s: s) is ConvOk) {
             // Leaf tactic: solve the goal itself, matching `exact`.
-            s.metas.solve(s.currentMeta, term);
+            solveCurrentGoal(s, term);
             return TacticOk(term, s.metas);
           }
         } catch (_) {}
@@ -1022,7 +1121,7 @@ TacticResult simpl(TacticState s) {
     return refl(s);
   }
   final subMetaId = s.metas.freshTermMeta(eval(nfTerm, s.ctx.env), s.ctx);
-  s.metas.solve(s.currentMeta, TMeta(subMetaId));
+  solveCurrentGoal(s, TMeta(subMetaId));
   return TacticOk(TMeta(subMetaId), s.metas, subMeta: subMetaId);
 }
 
@@ -1065,7 +1164,7 @@ TacticResult tacticConstructor(TacticState s) {
     try {
       final ctorType = infer(s.ctx, ctorTerm);
       if (conv(s.ctx.level, ctorType, goalType, s: s) is ConvOk) {
-        s.metas.solve(s.currentMeta, ctorTerm);
+        solveCurrentGoal(s, ctorTerm);
         // Return the first subgoal meta as current.
         final subMeta = argMetas.isNotEmpty ? argMetas.first : null;
         return TacticOk(ctorTerm, s.metas, subMeta: subMeta);
@@ -1182,6 +1281,11 @@ kernel_eval.ConvResult conv(
   a,
   b,
   dataDecls: s.ctx.env.dataDecls,
+  // Thread the meta context: a term elaborated in the tactic's real
+  // context carries solved implicit arguments, and conversion must
+  // force them (and may solve new ones) exactly as the elaborator's
+  // conv does.
+  metas: s.metas,
   topBindings: s.ctx.env.topBindings,
 );
 

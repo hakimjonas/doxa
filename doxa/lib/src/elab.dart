@@ -1250,6 +1250,36 @@ Term elabExprInScope(
   return _elabExpr(topEnv, scope, expr, metas: metas);
 }
 
+/// Elaborate [expr] in check mode against [expected], using [ctx]'s
+/// real binder types and the innermost-first [binderNames] for name
+/// resolution.
+///
+/// Used by tactic blocks and the REPL so `exact e` sees the same binder
+/// types the elaborator uses, and implicit insertion is driven by the
+/// goal type.
+Term elabCheckInCtx(
+  TopEnv topEnv,
+  Ctx ctx,
+  List<String> binderNames,
+  SExpr expr,
+  Value expected,
+) => _checkExpr(
+  _ElabState(topEnv, ctx, _scopeOfNames(binderNames)),
+  expr,
+  expected,
+);
+
+/// Infer [expr] in [ctx]'s real context, resolving names against
+/// [binderNames] (innermost first). Used by the `apply` and `rewrite`
+/// tactics so the lemma/proof term is elaborated with real binder types
+/// and implicit insertion.
+(Term, Value) elabInferInCtx(
+  TopEnv topEnv,
+  Ctx ctx,
+  List<String> binderNames,
+  SExpr expr,
+) => _inferExpr(_ElabState(topEnv, ctx, _scopeOfNames(binderNames)), expr);
+
 /// Type-check every binding in [result] and return the bindings
 /// with solved metavariables inlined (see [inlineSolvedMetas]).
 ///
@@ -1758,7 +1788,7 @@ List<String> _localScopeNames(_LocalScope scope) {
       case TacticOk(:final term, :final metas, :final subMeta):
         lastMetas = metas;
         if (subMeta != null) {
-          metas.solve(state.currentMeta, term);
+          solveCurrentGoal(state, term);
         }
         final next = nextGoalAfter(state, result);
         if (next != null) {
@@ -1793,39 +1823,44 @@ _LocalScope _scopeOfNames(List<String> innermostFirst) {
 }
 
 TacticResult _runExact(SExpr expr, TacticState tstate, _ElabState est) {
-  // Try to elaborate the expression using the full elaborator with the
-  // tactic's local scope.
+  // Elaborate the expression in the tactic's real context, in CHECK mode
+  // against the goal, so implicit arguments are inserted from the
+  // expected type. The `_elabExpr` shim uses VUnknown binder types and
+  // cannot infer e.g. `cong`'s type parameters from a local proof.
   Term term;
   try {
-    term = _elabExpr(est.topEnv, est.names, expr, metas: est.ctx.metas);
+    term = _checkExpr(est, expr, tstate.goalType);
   } catch (_) {
-    // Fallback: if the expression is a simple identifier, look it up
-    // in the local scope and construct a TBound.
-    if (expr.kind case SIdentKind(:final name)) {
-      final idx = est.names.indexOf(name);
-      if (idx >= 0) {
-        term = TBound(idx);
+    // Fallback for a proof term that is only inferable: elaborate it in
+    // infer mode and let `exact` convert its type against the goal.
+    try {
+      term = _inferExpr(est, expr).$1;
+    } catch (_) {
+      // Last resort: a simple identifier in the local scope.
+      if (expr.kind case SIdentKind(:final name)) {
+        final idx = est.names.indexOf(name);
+        if (idx >= 0) {
+          term = TBound(idx);
+        } else {
+          return TacticFail('exact: unresolved name "$name"');
+        }
       } else {
-        return TacticFail('exact: unresolved name "$name"');
+        rethrow;
       }
-    } else {
-      rethrow;
     }
   }
   return exact(term)(tstate);
 }
 
 TacticResult _runApply(SExpr expr, TacticState tstate, _ElabState est) {
-  final topEnv = est.topEnv;
-  final names = est.names;
-  final term = _elabExpr(topEnv, names, expr);
+  // Infer the lemma in the tactic's real context so its implicit
+  // arguments are inserted before `tacticApply` inspects the Pi chain.
+  final (term, _) = _inferExpr(est, expr);
   return tacticApply(term)(tstate);
 }
 
 TacticResult _runRewrite(SExpr expr, TacticState tstate, _ElabState est) {
-  final topEnv = est.topEnv;
-  final names = est.names;
-  final term = _elabExpr(topEnv, names, expr);
+  final (term, _) = _inferExpr(est, expr);
   return rewrite(term)(tstate);
 }
 
@@ -3069,7 +3104,7 @@ Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
     // the value at the use site. Without this, a bare meta can
     // only solve to closed terms and implicit inference fails for
     // any function whose solution references a surrounding binder.
-    final closedType = _closeValueOverCtx(curV.domain, state.ctx);
+    final closedType = closeValueOverCtx(curV.domain, state.ctx);
     final metaId = metas.freshTermMeta(closedType, state.ctx);
     // Build the meta applied to every outer bound variable. At this
     // depth, TBound(k) for k in [0, state.ctx.level) references
@@ -3127,66 +3162,6 @@ bool _isNeutralConcrete(Neutral n) => switch (n) {
   NProj(:final expr) => _isFullyConcrete(expr),
   _ => false, // NMeta, NStuck etc. are not concrete
 };
-
-/// Close a [Value] over all binders in [ctx], producing the Value
-/// of type `(outer-binders) → original-type`. Used by
-/// `_insertImplicits` to give inserted metas a closed type that
-/// admits solutions referencing outer binders.
-///
-/// Builds a VPi chain outermost-first. The domains come from the
-/// ctx's binder types; the codomain at each layer is a closure over
-/// the extended env. We quote the original type into a Term at
-/// ctx.level, wrap that term in the Pi chain, then eval once under
-/// an empty env to produce the Value.
-Value _closeValueOverCtx(Value type, Ctx ctx) {
-  if (ctx is CNil) return type;
-  // Collect binder types innermost-first by walking the Ctx.
-  final binderTypes = <Value>[];
-  var c = ctx;
-  while (c is CCons) {
-    binderTypes.add(c.type);
-    c = c.rest;
-  }
-  // Quote the body type at ctx.level so TBound references in it
-  // are valid under the same depth as the Pi chain we're about
-  // to build.
-  final Term body = quote(ctx.level, type);
-  // Wrap in Pi chain: innermost binder (at TBound(0)) has its type
-  // quoted at the corresponding earlier depth.
-  //
-  // binderTypes[0] is the innermost binder (current depth - 1);
-  // binderTypes.last is the outermost (depth 0). To build the Pi
-  // outermost-first, iterate binderTypes in reverse so the
-  // outermost wraps last.
-  //
-  // Each binder's type at its binding depth: binder at level k was
-  // bound when the depth was k; quoting its type at depth k gives
-  // a term valid in the outer scope up to level k. Which is what
-  // we want.
-  var curBody = body;
-  // Iterate innermost-first: wrap Pi(binderType, curBody) with
-  // binderType quoted at its own depth.
-  var depth = ctx.level;
-  for (var i = 0; i < binderTypes.length; i++) {
-    depth -= 1;
-    final domT = quote(depth, binderTypes[i]);
-    curBody = TPi(domT, curBody);
-  }
-  // Eval under an env carrying the ctx's registries (NOT a bare ENil):
-  // the closed Pi's codomain closures may now reference `TTop(name)`
-  // for a guarded recursive `fun`, and forcing
-  // such a closure later (e.g. in `_tryUnify`'s domain walk) must
-  // resolve the top binding. A bare ENil has no registry and throws
-  // "TTop(map) with no matching entry". The Pi chain is closed (its
-  // body's free TBounds are bound by its own λ-binders), so the env
-  // contributes only the dataDecls/topBindings registries, never stray
-  // bound values.
-  final closingEnv = ENil.withRegistries(
-    dataDecls: ctx.env.dataDecls,
-    topBindings: ctx.env.topBindings,
-  );
-  return eval(curBody, closingEnv);
-}
 
 /// Compute the sort of a Pi-type from its domain-and-codomain sort
 /// values, per the PTS rules in SPEC §8.2. Mirrors `_piSort` in

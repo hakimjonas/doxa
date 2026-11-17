@@ -8,11 +8,12 @@
 /// and the application was rejected deep inside the tactic with no
 /// mention of the actual problem.
 ///
-/// With the explicit marker the same program is still rejected, because
-/// the shim genuinely does not know the local binder's type, but the
-/// diagnostic now names the unknown instead of fabricating a type. The
-/// direct (non-tactic) body has real binder types and still checks,
-/// which is the control that isolates the shim.
+/// With the explicit marker the shim no longer fabricates a type. Tactic
+/// expressions no longer use the shim's binder chain at all: `exact`,
+/// `apply`, and `rewrite` elaborate against the tactic's real `Ctx`
+/// (`elabCheckInCtx`/`elabInferInCtx`), so the implicit arguments below
+/// are inserted from the real local binder types. The shim remains for
+/// the top-level `elabExpr`/`elabExprInScope` entry points.
 library;
 
 import 'dart:convert';
@@ -33,34 +34,28 @@ import '../bin/doxa.dart' show checkSource;
 }
 
 void main() {
-  group('Stage 0 reproducer: shim-local type reaches implicit insertion', () {
+  group('tactic expressions use the real local context', () {
     test('tactic application of a local implicit-polymorphic binder', () {
-      // `f` is a local binder; the shim knows only its name, so it
-      // cannot insert the implicit argument `f`'s real type requires.
-      // The term is still built as written and rejected by the
-      // tactic's own check; `exact` reports that check as an opaque
-      // tactic failure. The unknown marker does not change this
-      // outcome, it only stops the fabricated `Type 0` from standing
-      // in for the missing type.
+      // `f` is a local binder with a real type. `exact` checks the
+      // expression against the goal in the tactic's context, so the
+      // implicit `A` is inserted and solved to `B`.
       final r = check('''
 val test : ({A: Type} -> A -> A) -> (B: Type) -> B -> B
   = (f: {A: Type} -> A -> A) => (B: Type) => (b: B) => by { exact f b }
 ''');
-      expect(r.code, 1, reason: 'stderr:\n${r.stderr}');
-      expect(r.stderr, contains('tactic failed'));
+      expect(r.code, 0, reason: 'stderr:\n${r.stderr}');
+      expect(r.stdout, startsWith('OK:'));
     });
 
     test('tactic application of a top-level implicit function to a local', () {
-      // `id` has a real type; the argument `x` is a shim local. The
-      // dummy Type-0 type used to be offered to the implicit
-      // metavariable as a solution.
+      // `id`'s implicit `A` is solved from the local `x : A`.
       final r = check('''
 fun id{A: Type}(a: A): A = a
 val test : (A: Type) -> A -> A
   = (A: Type) => (x: A) => by { exact id x }
 ''');
-      expect(r.code, 1, reason: 'stderr:\n${r.stderr}');
-      expect(r.stderr, contains('found Unknown'));
+      expect(r.code, 0, reason: 'stderr:\n${r.stderr}');
+      expect(r.stdout, startsWith('OK:'));
     });
 
     test('mutual-block member body with a tactic application', () {
@@ -69,8 +64,8 @@ fun id{A: Type}(a: A): A = a
 fun test[A](x: A): A = by { exact id x }
 and other[A](x: A): A = x
 ''');
-      expect(r.code, 1, reason: 'stderr:\n${r.stderr}');
-      expect(r.stderr, contains('found Unknown'));
+      expect(r.code, 0, reason: 'stderr:\n${r.stderr}');
+      expect(r.stdout, startsWith('OK:'));
     });
 
     test('control: the direct body elaborates with real binder types', () {
@@ -84,12 +79,11 @@ val test : (A: Type) -> A -> A
     });
 
     test('explicit arguments in a tactic application still elaborate', () {
-      // No implicit insertion is needed, so the unknown head type is
-      // harmless: the term is built as written and the tactic's real
-      // check accepts it.
+      // `f` takes its type argument explicitly, so `f B b` needs no
+      // implicit insertion; the tactic's real check accepts it.
       final r = check('''
-val test : ({A: Type} -> A -> A) -> (B: Type) -> B -> B
-  = (f: {A: Type} -> A -> A) => (B: Type) => (b: B) => by { exact f B b }
+val test : ((A: Type) -> A -> A) -> (B: Type) -> B -> B
+  = (f: (A: Type) -> A -> A) => (B: Type) => (b: B) => by { exact f B b }
 ''');
       expect(r.code, 0, reason: 'stderr:\n${r.stderr}');
       expect(r.stdout, startsWith('OK:'));
