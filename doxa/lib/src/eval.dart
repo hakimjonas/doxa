@@ -5425,6 +5425,17 @@ ConvResult? _tryUnify(Value a, Value b, int level, MetaContext metas) {
   if (!_solutionWellScopedUnderCtx(inlinedSolution, entry.localCtx)) {
     return null;
   }
+  // A candidate can be well-scoped but ill-typed: the classic case is an
+  // implicit argument whose closed expected codomain is a sort and whose
+  // rigid side is a term one universe above it (`?A value := Type 0`
+  // against `?A : (value: Type 0) -> Type 0`). Convertibility does not
+  // compare sorts, so reject the candidate here, at the application that
+  // triggered it, instead of storing it and failing later.
+  checkMetaSolution(
+    installMetaContext(entry.localCtx, metas),
+    inlinedSolution,
+    entry.typeExpected,
+  );
   metas.solve(idM, inlinedSolution);
   return const ConvOk();
 }
@@ -6416,6 +6427,70 @@ bool _solutionWellScoped(
       }
       return true;
   }
+}
+
+/// Install [metas] on an arbitrary [ctx], rebuilding the chain when the
+/// context was created without one. Meta contexts are usually threaded
+/// through the root `CNil`, but a context captured for a meta may predate
+/// the install; the audit and the solve-time check both need it.
+Ctx installMetaContext(Ctx ctx, MetaContext metas) {
+  if (identical(ctx.metas, metas)) return ctx;
+  if (ctx is CNil) {
+    return CNil.withRegistries(
+      dataDecls: ctx.dataDecls,
+      topBindings: ctx.topBindings,
+      metas: metas,
+    );
+  }
+  final c = ctx as CCons;
+  return CCons(
+    c.type,
+    c.value,
+    c.env,
+    c.level,
+    installMetaContext(c.rest, metas),
+  );
+}
+
+/// Check a candidate meta solution against the type recorded when the
+/// meta was created, in its creation context. Throws a [DoxaCheckError]
+/// on mismatch.
+///
+/// When the expected type is a Pi and the solution a λ-chain, peel both
+/// in lockstep: the solution was built against those domains, so the
+/// annotations are compared by conversion and only the final body is
+/// checked. Re-inferring the annotations standalone rejects legitimate
+/// pattern-unification solutions whose quoted stuck forms (a `TMatch`
+/// with a null motive) are well-typed only under the expected type.
+/// This is the check-mode λ rule without that re-inference.
+///
+/// Used by the unifier before committing a solution (so an unsound
+/// candidate is rejected at the application that triggered it) and by
+/// `checkDeclResult`'s audit (the backstop for solutions committed
+/// directly through the API).
+void checkMetaSolution(Ctx ctx, Term solution, Value expected) {
+  var c = ctx;
+  var t = solution;
+  var e = expected;
+  while (e is VPi && t is TLam) {
+    final annotV = eval(t.domain, c.env);
+    final domainResult = subtype(
+      c.level,
+      e.domain,
+      annotV,
+      dataDecls: c.dataDecls,
+      metas: c.metas,
+      topBindings: c.env.topBindings,
+    );
+    if (domainResult is ConvMismatch) {
+      throw TypeMismatch(e.domain, annotV, domainResult, level: c.level);
+    }
+    c = c.extend(e.domain);
+    final fresh = VNeutral(NVar(c.level - 1));
+    e = eval(e.codomain.body, e.codomain.env.extend(fresh));
+    t = t.body;
+  }
+  check(c, t, e);
 }
 
 /// verify the candidate solution [t] is

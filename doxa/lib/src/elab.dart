@@ -1408,9 +1408,9 @@ void _validateSolvedMetas(MetaContext metas) {
 /// Validate one solved meta's solution against its expected type, in the
 /// context where the meta was created.
 void _validateSolvedMeta(MetaContext metas, int id, TermMetaSolved entry) {
-  final ctx = _installMetas(entry.localCtx, metas);
+  final ctx = installMetaContext(entry.localCtx, metas);
   try {
-    _checkSolution(ctx, entry.solution, entry.typeExpected);
+    checkMetaSolution(ctx, entry.solution, entry.typeExpected);
   } on DoxaCheckError catch (e) {
     throw InvalidMetaSolution(id, entry.typeExpected, entry.localCtx.level, e);
   } on Object catch (e) {
@@ -1424,53 +1424,6 @@ void _validateSolvedMeta(MetaContext metas, int id, TermMetaSolved entry) {
       UnknownTypeReached('solution could not be checked: $e'),
     );
   }
-}
-
-/// Check [solution] against [expected] without re-inferring the
-/// annotations of its λ binders.
-///
-/// A λ-chain solution was built against [expected]'s Pi domains; peeling
-/// both together compares each annotation with the corresponding domain
-/// by conversion and checks only the final body. This mirrors the
-/// check-mode `λ` rule, which also descends under the *expected* domain.
-void _checkSolution(Ctx ctx, Term solution, Value expected) {
-  var c = ctx;
-  var t = solution;
-  var e = expected;
-  while (e is VPi && t is TLam) {
-    final annotV = eval(t.domain, c.env);
-    final domainResult = subtype(
-      c.level,
-      e.domain,
-      annotV,
-      dataDecls: c.dataDecls,
-      metas: c.metas,
-      topBindings: c.env.topBindings,
-    );
-    if (domainResult is ConvMismatch) {
-      throw TypeMismatch(e.domain, annotV, domainResult, level: c.level);
-    }
-    c = c.extend(e.domain);
-    final fresh = VNeutral(NVar(c.level - 1));
-    e = eval(e.codomain.body, e.codomain.env.extend(fresh));
-    t = t.body;
-  }
-  check(c, t, e);
-}
-
-/// Install [metas] on an arbitrary local context, rebuilding the chain
-/// when the context was created without one.
-Ctx _installMetas(Ctx ctx, MetaContext metas) {
-  if (identical(ctx.metas, metas)) return ctx;
-  if (ctx is CNil) {
-    return CNil.withRegistries(
-      dataDecls: ctx.dataDecls,
-      topBindings: ctx.topBindings,
-      metas: metas,
-    );
-  }
-  final c = ctx as CCons;
-  return CCons(c.type, c.value, c.env, c.level, _installMetas(c.rest, metas));
 }
 
 /// Return [bindings] with every solved meta in each binding's
