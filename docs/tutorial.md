@@ -186,8 +186,8 @@ fun plusZeroRight(n: Nat): Eq[Nat] (plus n zero) n =
 a step case that, given `P m`, produces `P (succ m)`. `List.ind` and
 `Vec.ind` follow the corresponding induction principles. The `by { ... }`
 tactic in §9 builds the same recursor application from `induction n`,
-with one goal per constructor, and refines an indexed family's goal
-index per constructor.
+with one goal per constructor; for an indexed family each goal is the
+motive applied to the constructor's own indices and value.
 
 ---
 
@@ -303,12 +303,13 @@ induction hypotheses `ih`, `ih2`, ... in recursive-argument order. The
 names are in scope for the following steps, so the `succ` arm above can
 `rewrite ih`.
 
-For an indexed family the arm's goal is refined to the constructor's
-indices, using the same first-order refinement as `match`. Symmetry of
-equality is then one `refl` step:
+For an indexed family the arm's goal comes from the recursor's motive:
+each method goal is the motive applied to the constructor's own result
+indices and value, which is definitionally the method type the recursor
+demands. Symmetry of equality is then one `refl` step:
 
 ```doxa
-theorem eq_sym : (A: Type) -> (x: A) -> (y: A) -> Eq A x y -> Eq A y x = by {
+theorem eq_sym : (A: Type) -> (x: A) -> (y: A) -> Eq[A] x y -> Eq[A] y x = by {
   intro A;
   intro x;
   intro y;
@@ -318,8 +319,46 @@ theorem eq_sym : (A: Type) -> (x: A) -> (y: A) -> Eq A x y -> Eq A y x = by {
 }
 ```
 
-The `refl` arm's goal is `Eq A a a` for the constructor argument `a`,
-not the unrefined `Eq A y x`.
+The `refl` arm's goal is `Eq[A] a a` for the constructor argument `a`,
+not the unrefined `Eq[A] y x`.
+
+Building the arm from the motive also covers a scrutinee whose index is a
+compound term that does not unify with a constructor's index. With
+`v : Vec[A] (succ n)`, induction still produces a `vnil` arm, and its
+goal is the recursor's `P zero vnil`, that is `Eq[Nat] zero zero`, not the
+unreachable `Eq[Nat] zero (succ n)`:
+
+```doxa
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+data Vec[A: Type] : Nat -> Type {
+  vnil  : Vec[A] zero;
+  vcons : (n: Nat) -> A -> Vec[A] n -> Vec[A] (succ n);
+}
+
+fun vlength{A: Type, n: Nat}(v: Vec[A] n): Nat = match v {
+  case vnil => zero
+  case vcons _ _ rest => succ (vlength rest)
+}
+
+theorem vlength_succ : (A: Type) -> (n: Nat) -> (v: Vec[A] (succ n)) ->
+    Eq[Nat] (vlength v) (succ n) = by {
+  intro A;
+  intro n;
+  intro v;
+  induction v;
+  refl;
+  rewrite ih;
+  refl
+}
+```
+
+The `vcons` hypothesis is `Eq[Nat] (vlength rest) n`: the motive at the
+recursive argument's own index `n`, not at the scrutinee's `succ n`. So
+`rewrite ih` leaves `Eq[Nat] (succ n) (succ n)`, which `refl` closes.
 
 The expressions in `exact`, `apply`, and `rewrite` elaborate in the
 tactic's local context: local binders carry their real types, and
@@ -395,9 +434,12 @@ Context:
 A step that closes an arm moves to the next one, with the constructor's
 arguments and induction hypotheses named in the context.
 
-For an indexed scrutinee the arm's goal is refined to the constructor's
-indices. With `h : Eq A x y`, `:step induction h` shows the `refl` arm's
-goal as `Eq A a a` for its constructor argument `a`, not `Eq A y x`.
+For an indexed scrutinee the arm's goal is the motive applied to the
+constructor's result indices, so it is the recursor's method goal. With
+`h : Eq A x y`, `:step induction h` shows the `refl` arm's goal as
+`Eq A a a` for its constructor argument `a`, not `Eq A y x`. A compound
+scrutinee index gives the same treatment: inducting on
+`v : Vec A (succ n)` shows the `vnil` arm's goal as `Eq Nat zero zero`.
 
 ### Reverting a binder
 

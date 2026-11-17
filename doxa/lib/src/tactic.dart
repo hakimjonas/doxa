@@ -773,6 +773,12 @@ TacticFn Function(int) _inductionAt =
       for (var t = indexCount - 1; t >= 0; t--) {
         motive = TLam(indexDomains[t], motive);
       }
+      // The recursor's method type is `arguments -> IHs -> P resultIndices
+      // (C args)`. Evaluate the motive once and apply it directly: that
+      // is definitionally the method type, including for a constructor
+      // whose result indices do not unify with the scrutinee's (the
+      // unreachable `vnil` in an induction on `Vec A (succ n)`).
+      final motiveV = eval(motive, s.ctx.env);
 
       // Build each constructor method and collect its subgoal.
       final methodGoals = <TacticGoal>[];
@@ -813,48 +819,37 @@ TacticFn Function(int) _inductionAt =
         ];
 
         // The arm telescope: the outer context plus the ctor arguments
-        // (without the IHs). The index refinement is computed against
-        // this context, exactly as a match arm is.
+        // (without the IHs).
         var armCtx = s.ctx;
         for (final t in argTypes) {
           armCtx = armCtx.extend(t);
         }
 
-        // P(ctor args): the goal at the constructor instance, with the
-        // scrutinee's indices refined to this constructor's result
-        // indices. For indexed families this is what makes the refl arm
-        // of `Eq` become `Eq A a a` and the vcons arm of `Vec` become
-        // `Eq Nat (vlength (vcons ...)) (succ k)`.
+        // P(resultIndices) (C args): the recursor's method goal. Applying
+        // the motive gives the goal at the constructor's own indices, so
+        // an unreachable constructor's method is `P zero vnil` (for Vec)
+        // rather than the unrefined `Eq Nat zero (succ n)`.
+        final ctorResultIndicesV = <Value>[
+          for (final t in ctor.resultIndices) eval(t, teleEnv),
+        ];
         final ctorInstanceV = VConstr(dataName, ctor.name, [
           ...paramsV,
           ...ctorArgs,
         ]);
-        final pCtorV = refineMatchArmExpected(
-          ctx: s.ctx,
-          armCtx: armCtx,
-          expected: substNVar(goalType, scrutLevel, ctorInstanceV),
-          scrutineeIndicesV: indicesV,
-          ctorResultIndexTerms: ctor.resultIndices,
-          teleEnv: teleEnv,
-        );
+        final pCtorV = _applyMotive(motiveV, [
+          ...ctorResultIndicesV,
+          ctorInstanceV,
+        ]);
 
         // The induction hypotheses sit after all argument binders in the
         // method's type. Each is the motive at the recursive argument's
-        // own indices and the argument itself (the same index equations
-        // applied to the sub-value).
+        // own indices and the argument itself.
         final ihTypes = <Value>[
           for (final j in recArgPositions)
-            _refineSubGoal(
-              ctx: s.ctx,
-              armCtx: armCtx,
-              goalType: goalType,
-              scrutLevel: scrutLevel,
-              indicesV: indicesV,
-              subType: argTypes[j],
-              subValue: ctorArgs[j],
-              paramCount: paramCount,
-              dataName: dataName,
-            ),
+            _applyMotive(motiveV, [
+              ..._subIndices(argTypes[j], dataName, paramCount),
+              ctorArgs[j],
+            ]),
         ];
 
         var methodCtx = armCtx;
@@ -973,35 +968,22 @@ Value _abstractIndexValue({
   return eval(replaced, env);
 }
 
-/// The induction hypothesis for recursive constructor argument [j]: the
-/// goal at the argument's own indices and value, refined with the same
-/// first-order index equations the match arms use.
-Value _refineSubGoal({
-  required Ctx ctx,
-  required Ctx armCtx,
-  required Value goalType,
-  required int scrutLevel,
-  required List<Value> indicesV,
-  required Value subType,
-  required Value subValue,
-  required int paramCount,
-  required String dataName,
-}) {
-  final expected = substNVar(goalType, scrutLevel, subValue);
-  if (subType is! VData || subType.name != dataName) {
-    // Not a direct data value (e.g. a function-typed recursive
-    // argument); only the value substitution applies.
-    return expected;
+/// Apply [motive] to [args] left to right.
+Value _applyMotive(Value motive, List<Value> args) {
+  var result = motive;
+  for (final arg in args) {
+    result = apply(result, arg);
   }
-  final subIndices = subType.args.sublist(paramCount);
-  return refineMatchArmExpected(
-    ctx: ctx,
-    armCtx: armCtx,
-    expected: expected,
-    scrutineeIndicesV: indicesV,
-    ctorResultIndexTerms: [for (final v in subIndices) quote(armCtx.level, v)],
-    teleEnv: armCtx.env,
-  );
+  return result;
+}
+
+/// The index values of the data value [type] (params dropped), or an
+/// empty list when [type] is not the target inductive applied to
+/// arguments (e.g. a function-typed recursive argument).
+List<Value> _subIndices(Value type, String dataName, int paramCount) {
+  if (type is! VData || type.name != dataName) return const <Value>[];
+  if (type.args.length < paramCount) return const <Value>[];
+  return type.args.sublist(paramCount);
 }
 
 /// The motive-sort override for the recursor that matches [goalType]'s

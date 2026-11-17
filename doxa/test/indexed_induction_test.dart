@@ -1,10 +1,16 @@
-/// `induction` must refine the goal's indices per constructor, the same
-/// first-order refinement the match arms use.
+/// `induction` must build each method goal by applying the motive to the
+/// constructor's own result indices and value, matching the recursor's
+/// method type.
 ///
 /// The recursor's motive abstracts the scrutinee's indices and the
-/// scrutinee, and each method's expected type is the goal at the
-/// constructor's result indices. A completed proof through the tactic
-/// therefore checks against the recursor, not merely elaborates.
+/// scrutinee. Its method type is `arguments -> IHs -> P resultIndices
+/// (C args)`, so computing the method and hypothesis goals from the
+/// motive is definitionally the recursor's own type. The earlier
+/// first-order index refinement agrees with the motive for a variable
+/// scrutinee index and for a constructor whose index unifies with the
+/// scrutinee's, but leaves the unreachable method of a compound-index
+/// induction at the unrefined goal. A completed proof through the
+/// tactic therefore checks against the recursor, not merely elaborates.
 library;
 
 import 'package:doxa/src/elab.dart';
@@ -102,6 +108,49 @@ val vlength_index : (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) 
   }
 ''');
       expect(_binding(env, 'vlength_index').name, 'vlength_index');
+    });
+
+    test('a compound-index induction closes at the constructor indices', () {
+      // The scrutinee's index is `succ n`, which cannot unify with
+      // `vnil`'s `zero`. Applying the motive makes the vnil method goal
+      // `Eq Nat zero zero` (the recursor's `P zero vnil`) instead of the
+      // unrefined `Eq Nat zero (succ n)`, and the vcons hypothesis
+      // `Eq Nat (vlength rest) n` is at the recursive argument's own
+      // index, so `rewrite ih` closes the arm.
+      final env = _elabAndCheck('''
+$_vec
+val vlength_succ : (A: Type) -> (n: Nat) -> (v: Vec A (succ n)) ->
+    Eq Nat (vlength v) (succ n) = by {
+  intro A;
+  intro n;
+  intro v;
+  induction v;
+  refl;
+  rewrite ih;
+  refl
+}
+''');
+      expect(_binding(env, 'vlength_succ').name, 'vlength_succ');
+    });
+
+    test('a wrong compound-index arm still fails', () {
+      // The vcons arm needs the hypothesis; `refl` cannot close
+      // `Eq Nat (succ (vlength rest)) (succ n)` for an abstract `n`.
+      expect(
+        () => _elabAndCheck('''
+$_vec
+val bad_vlength_succ : (A: Type) -> (n: Nat) -> (v: Vec A (succ n)) ->
+    Eq Nat (vlength v) (succ n) = by {
+  intro A;
+  intro n;
+  intro v;
+  induction v;
+  refl;
+  refl
+}
+'''),
+        throwsA(isA<TacticFailed>()),
+      );
     });
 
     test('a wrong indexed arm still fails', () {
