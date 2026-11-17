@@ -37,6 +37,7 @@ import 'check.dart'
 import 'ctx.dart';
 import 'env.dart';
 import 'eval.dart';
+import 'import_path.dart' show PackageImportError, resolveImportPath;
 import 'meta.dart';
 import 'parse.dart' show parseProgram;
 import 'pretty.dart';
@@ -573,6 +574,44 @@ final class ImportFileNotFound extends ElabError {
   String toString() => 'ImportFileNotFound($path @ $span)';
 }
 
+/// A `package:` import names a package that the project's package
+/// configuration does not declare, or no configuration was found above the
+/// importing file.
+final class ImportPackageNotFound extends ElabError {
+  /// The import specifier as written.
+  final String importPath;
+
+  /// The package name between `package:` and the first `/`.
+  final String packageName;
+
+  /// The file whose import could not be resolved.
+  final String currentFile;
+
+  /// The consulted package configuration, or `null` when none was found.
+  final String? configPath;
+
+  /// Whether the specifier is malformed (no package name or no path).
+  final bool malformedSpecifier;
+
+  /// The source span of the offending `import` declaration.
+  @override
+  final DoxaSpan span;
+
+  /// Creates a package-import-not-found error.
+  const ImportPackageNotFound({
+    required this.importPath,
+    required this.packageName,
+    required this.currentFile,
+    required this.configPath,
+    required this.span,
+    this.malformedSpecifier = false,
+  });
+
+  @override
+  String toString() =>
+      'ImportPackageNotFound($packageName: $importPath @ $span)';
+}
+
 /// A tactic block `by { ... }` failed during elaboration.
 final class TacticFailed extends ElabError {
   /// The failure message from the tactic engine.
@@ -772,9 +811,26 @@ final class ImportState {
   }
 
   /// Resolve [importPath] relative to [currentImportPath].
-  String resolvePath(String importPath) {
-    final current = Uri.file(currentImportPath!);
-    return current.resolve(importPath).toFilePath();
+  ///
+  /// Package specifiers resolve through the nearest
+  /// `.dart_tool/package_config.json`; when that fails the error is reported
+  /// at [span], the location of the import declaration.
+  String resolvePath(
+    String importPath, {
+    DoxaSpan span = const DoxaSpan(-1, -1),
+  }) {
+    try {
+      return resolveImportPath(importPath, currentImportPath!);
+    } on PackageImportError catch (e) {
+      throw ImportPackageNotFound(
+        importPath: e.importPath,
+        packageName: e.packageName,
+        currentFile: e.currentFile,
+        configPath: e.configPath,
+        span: span,
+        malformedSpecifier: e.malformedSpecifier,
+      );
+    }
   }
 
   /// Look up the source being processed, or `null` for the top-level file.
@@ -4283,7 +4339,7 @@ DeclResult _processImport(
       'currentImportPath is not set; cannot resolve import "$path"',
     );
   }
-  final resolvedPath = importState.resolvePath(path);
+  final resolvedPath = importState.resolvePath(path, span: span);
 
   // Idempotent import: if this file was already imported (by a prior
   // import at the current level), silently return no new bindings.

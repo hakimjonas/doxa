@@ -10,11 +10,19 @@ surface-syntax reference.
 program, elaborates declarations, and checks the elaborated terms. The prelude
 declares `Eq` and `Acc`.
 
-Imports use quoted paths relative to the importing file. The parser accepts an
+Imports use quoted paths. A path is either relative to the importing file or a
+`package:` URI of the form `package:<name>/<path>`. A `package:` import is
+resolved through the nearest `.dart_tool/package_config.json` above the
+importing file: `<name>` must name a package in that configuration, and
+`<path>` is resolved under that package's library root (`lib/` unless the
+configuration records another `packageUri`). A missing configuration, an
+undeclared package, or a malformed specifier is a resolution error; the
+resolver never falls back to a relative path. The parser accepts an
 unqualified import, a selective import, an alias, or both:
 
 ```doxa
 import "nat.doxa"
+import "package:doxa_stdlib/stdlib/nat.doxa"
 import "nat.doxa" { Nat, zero } as N
 ```
 

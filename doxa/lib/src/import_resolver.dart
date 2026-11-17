@@ -23,9 +23,11 @@ import 'elab.dart'
         ElabError,
         CyclicImport,
         ImportFileNotFound,
+        ImportPackageNotFound,
         elabDecl,
         checkDeclResult,
         mergeNamespace;
+import 'import_path.dart' show PackageImportError, resolveImportPath;
 import 'parse.dart' show parseProgram;
 import 'prelude.dart' show PreludeData;
 import 'source.dart' show SourceFile;
@@ -203,8 +205,18 @@ final class ImportResolver {
   ];
 
   String? _resolve(String importPath, String currentFile) {
-    final current = Uri.file(currentFile);
-    return _canonicalPath(current.resolve(importPath).toFilePath());
+    try {
+      return _canonicalPath(resolveImportPath(importPath, currentFile));
+    } on PackageImportError catch (e) {
+      throw ImportPackageNotFound(
+        importPath: e.importPath,
+        packageName: e.packageName,
+        currentFile: e.currentFile,
+        configPath: e.configPath,
+        span: const DoxaSpan(-1, -1),
+        malformedSpecifier: e.malformedSpecifier,
+      );
+    }
   }
 
   String _absPath(String path) => _canonicalPath(path);

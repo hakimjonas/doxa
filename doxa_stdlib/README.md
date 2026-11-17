@@ -59,5 +59,35 @@ import "../lib/stdlib/nat.doxa"
 val two: Nat = succ (succ zero)
 ```
 
-Import resolution for a packaged dependency is not implemented yet; the
-example in `example/` uses a relative path for that reason.
+## Using the library from a Doxa project
+
+A project that depends on the package imports it by URI. Declare the
+dependency and fetch the configuration once:
+
+```yaml
+dev_dependencies:
+  doxa_stdlib:
+    path: ../doxa_stdlib
+```
+
+```sh
+dart pub get
+```
+
+Then import the library by package URI:
+
+```doxa
+import "package:doxa_stdlib/stdlib/nat.doxa"
+
+val two: Nat = succ (succ zero)
+```
+
+The resolver reads the nearest `.dart_tool/package_config.json` above the
+importing file and resolves `package:doxa_stdlib/<path>` under the package's
+library root (`lib/`). No command-line flag is involved. A file outside a
+Dart project that uses a package URI fails with a configuration error instead
+of falling back to a relative path.
+
+The domain re-exports remain available:
+`import "package:doxa_stdlib/stdlib/Nat/package.doxa"` reaches the same
+declarations.

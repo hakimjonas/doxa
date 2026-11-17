@@ -9,4 +9,5 @@
 - `lib/doxa_stdlib.dart` exposes the packaged standard-library root
   (`stdlibRoot`, `stdlibRootPath`) without a dependency on the kernel or
   the tooling.
-- `example/proofs.doxa` shows a proof that imports the library by path.
+- `example/proofs.doxa` shows a proof that imports the library by package
+  URI (`package:doxa_stdlib/stdlib/nat.doxa`).
