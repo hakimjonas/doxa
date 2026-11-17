@@ -186,7 +186,8 @@ fun plusZeroRight(n: Nat): Eq[Nat] (plus n zero) n =
 a step case that, given `P m`, produces `P (succ m)`. `List.ind` and
 `Vec.ind` follow the corresponding induction principles. The `by { ... }`
 tactic in §9 builds the same recursor application from `induction n`,
-with one goal per constructor.
+with one goal per constructor, and refines an indexed family's goal
+index per constructor.
 
 ---
 
@@ -294,6 +295,24 @@ induction hypotheses `ih`, `ih2`, ... in recursive-argument order. The
 names are in scope for the following steps, so the `succ` arm above can
 `rewrite ih`.
 
+For an indexed family the arm's goal is refined to the constructor's
+indices, using the same first-order refinement as `match`. Symmetry of
+equality is then one `refl` step:
+
+```doxa
+theorem eq_sym : (A: Type) -> (x: A) -> (y: A) -> Eq A x y -> Eq A y x = by {
+  intro A;
+  intro x;
+  intro y;
+  intro h;
+  induction h;
+  refl
+}
+```
+
+The `refl` arm's goal is `Eq A a a` for the constructor argument `a`,
+not the unrefined `Eq A y x`.
+
 ---
 
 ## 9b. Interactive proof mode
@@ -356,6 +375,10 @@ Context:
 
 A step that closes an arm moves to the next one, with the constructor's
 arguments and induction hypotheses named in the context.
+
+For an indexed scrutinee the arm's goal is refined to the constructor's
+indices. With `h : Eq A x y`, `:step induction h` shows the `refl` arm's
+goal as `Eq A a a` for its constructor argument `a`, not `Eq A y x`.
 
 `rewrite ih` and `exact ih` can refer to the hypothesis by name. `:undo`
 restores the whole goal queue, so it also steps back from a later arm to

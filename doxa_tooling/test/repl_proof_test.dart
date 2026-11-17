@@ -261,4 +261,39 @@ void main() {
       expect((qedResult as ReplMeta).text, contains('plus_zero'));
     });
   });
+
+  group('indexed induction', () {
+    test('the refined arm goal names the constructor argument', () {
+      var session = _seededSession();
+      (_, session) = session.processInput(
+        'data PairEqual[A: Type] : A -> A -> Prop {'
+        ' mkEq : (z: A) -> PairEqual A z z; }',
+      );
+      (_, session) = session.processInput(
+        ':goal theorem sym : (A: Type) -> (x: A) -> (y: A) ->'
+        ' PairEqual A x y -> PairEqual A y x',
+      );
+      for (final step in [
+        ':step intro A',
+        ':step intro x',
+        ':step intro y',
+        ':step intro h',
+      ]) {
+        (_, session) = session.processInput(step);
+      }
+
+      final (result, afterInduction) = session.processInput(
+        ':step induction h',
+      );
+      session = afterInduction;
+      final text = (result as ReplMeta).text;
+      // The index refinement turns `PairEqual A y x` into
+      // `PairEqual A z z` for the mkEq arm.
+      expect(text, contains('PairEqual A z z'));
+      expect(text, contains('z : A'));
+
+      final (abort, _) = session.processInput(':abort');
+      expect((abort as ReplMeta).text, contains('Proof aborted'));
+    });
+  });
 }

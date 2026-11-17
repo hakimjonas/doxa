@@ -508,7 +508,15 @@ TacticFn Function(int) inductionAt = _inductionAt;
 
 TacticFn Function(int) _inductionAt =
     (binderIdx) => (s) {
-      final xType = s.ctx.lookupType(binderIdx);
+      final level = s.ctx.level;
+      // Normalize the goal and the scrutinee type: earlier elaboration
+      // leaves solved metavariables in both (implicit arguments of the
+      // functions they mention). The index refinement walks values
+      // structurally, so a solved `NMeta` where it expects an `NVar`
+      // would silently skip the refinement.
+      Value normalize(Value v) =>
+          eval(inlineSolvedMetas(quote(level, v), s.metas), s.ctx.env);
+      final xType = normalize(s.ctx.lookupType(binderIdx));
       if (xType is! VData) {
         return const TacticFail(
           'induction: variable is not of an inductive type',
@@ -523,31 +531,70 @@ TacticFn Function(int) _inductionAt =
       if (dataDecl.ctors.isEmpty) {
         return TacticFail('induction: $dataName has no constructors');
       }
-      final level = s.ctx.level;
-      final goalType = s.goalType;
+      final goalType = normalize(s.goalType);
 
-      // Build the motive P = λ a => goalType[x := a].
       final Value xVal = VNeutral(NVar(level - 1 - binderIdx));
-      final Value motiveV;
-      if (xVal is VNeutral && xVal.neutral is NVar) {
-        final scrutLevel = (xVal.neutral as NVar).level;
-        final freshVar = VNeutral(NVar(level));
-        motiveV = substNVar(goalType, scrutLevel, freshVar);
-      } else {
+      if (xVal is! VNeutral || xVal.neutral is! NVar) {
         return const TacticFail('induction: cannot build motive');
       }
       final scrutLevel = (xVal.neutral as NVar).level;
-      final motiveBody = quote(level + 1, motiveV);
-      final motive = TLam(quote(level, xType), motiveBody);
 
-      // Build each constructor method and collect its subgoal.
-      final methodGoals = <TacticGoal>[];
-      final methodTerms = <Term>[];
       final paramCount = dataDecl.params.length;
+      final indexCount = dataDecl.indices.length;
+      final paramsV = dataArgs.sublist(0, paramCount);
+      final indicesV = dataArgs.sublist(paramCount);
       final registries = ENil.withRegistries(
         dataDecls: s.ctx.env.dataDecls,
         topBindings: s.ctx.env.topBindings,
       );
+
+      // Motive P = λ (i_0: I_0) ... (i_k-1: I_k-1) (a: T params i). G,
+      // abstracting the scrutinee and the scrutinee's indices. The
+      // recursor's motive type is `(indices) -> T params indices ->
+      // Sort`, so index binder t sits at level+t and the scrutinee
+      // binder at level+indexCount.
+      final indexDomains = <Term>[];
+      Env indexEnv = registries;
+      for (var i = 0; i < paramCount; i++) {
+        indexEnv = indexEnv.extend(paramsV[i]);
+      }
+      for (var t = 0; t < indexCount; t++) {
+        final indexTypeV = eval(dataDecl.indices[t].type, indexEnv);
+        indexDomains.add(quote(level + t, indexTypeV));
+        indexEnv = indexEnv.extend(VNeutral(NVar(level + t)));
+      }
+      final scrutBinderLevel = level + indexCount;
+      final scrutTypeV = VData(dataName, [
+        ...paramsV,
+        for (var t = 0; t < indexCount; t++) VNeutral(NVar(level + t)),
+      ]);
+      // The motive body is the goal with the scrutinee and each index
+      // value replaced by its binder. The body sits under all
+      // index binders plus the scrutinee binder, hence quoted at
+      // scrutBinderLevel+1.
+      Value motiveGoal = substNVar(
+        goalType,
+        scrutLevel,
+        VNeutral(NVar(scrutBinderLevel)),
+      );
+      for (var t = 0; t < indexCount; t++) {
+        motiveGoal = _abstractIndexValue(
+          ctx: s.ctx,
+          goal: motiveGoal,
+          index: indicesV[t],
+          binder: VNeutral(NVar(level + t)),
+          quoteLevel: scrutBinderLevel + 1,
+        );
+      }
+      final motiveBody = quote(scrutBinderLevel + 1, motiveGoal);
+      var motive = TLam(quote(scrutBinderLevel, scrutTypeV), motiveBody);
+      for (var t = indexCount - 1; t >= 0; t--) {
+        motive = TLam(indexDomains[t], motive);
+      }
+
+      // Build each constructor method and collect its subgoal.
+      final methodGoals = <TacticGoal>[];
+      final methodTerms = <Term>[];
 
       for (final ctor in dataDecl.ctors) {
         // Constructor-argument types are closed under the data's params
@@ -558,7 +605,7 @@ TacticFn Function(int) _inductionAt =
         // occupies inside the method's lambda chain.
         Env teleEnv = registries;
         for (var i = 0; i < paramCount; i++) {
-          teleEnv = teleEnv.extend(dataArgs[i]);
+          teleEnv = teleEnv.extend(paramsV[i]);
         }
         final argTypes = <Value>[];
         final ctorArgs = <Value>[];
@@ -583,23 +630,52 @@ TacticFn Function(int) _inductionAt =
           for (var i = 0; i < recArgPositions.length; i++) _ihName(i),
         ];
 
-        // P(ctor(args)): the goal refined to this constructor's shape.
-        final ctorResultV = VConstr(dataName, ctor.name, ctorArgs);
-        final pCtorV = substNVar(goalType, scrutLevel, ctorResultV);
+        // The arm telescope: the outer context plus the ctor arguments
+        // (without the IHs). The index refinement is computed against
+        // this context, exactly as a match arm is.
+        var armCtx = s.ctx;
+        for (final t in argTypes) {
+          armCtx = armCtx.extend(t);
+        }
+
+        // P(ctor args): the goal at the constructor instance, with the
+        // scrutinee's indices refined to this constructor's result
+        // indices. For indexed families this is what makes the refl arm
+        // of `Eq` become `Eq A a a` and the vcons arm of `Vec` become
+        // `Eq Nat (vlength (vcons ...)) (succ k)`.
+        final ctorInstanceV = VConstr(dataName, ctor.name, [
+          ...paramsV,
+          ...ctorArgs,
+        ]);
+        final pCtorV = refineMatchArmExpected(
+          ctx: s.ctx,
+          armCtx: armCtx,
+          expected: substNVar(goalType, scrutLevel, ctorInstanceV),
+          scrutineeIndicesV: indicesV,
+          ctorResultIndexTerms: ctor.resultIndices,
+          teleEnv: teleEnv,
+        );
 
         // The induction hypotheses sit after all argument binders in the
-        // method's type (`Nat.rec`'s succ method is `(k: Nat) -> P k -> P
-        // (succ k)`). Their types are P at the corresponding recursive
-        // argument.
+        // method's type. Each is the motive at the recursive argument's
+        // own indices and the argument itself (the same index equations
+        // applied to the sub-value).
         final ihTypes = <Value>[
           for (final j in recArgPositions)
-            substNVar(goalType, scrutLevel, ctorArgs[j]),
+            _refineSubGoal(
+              ctx: s.ctx,
+              armCtx: armCtx,
+              goalType: goalType,
+              scrutLevel: scrutLevel,
+              indicesV: indicesV,
+              subType: argTypes[j],
+              subValue: ctorArgs[j],
+              paramCount: paramCount,
+              dataName: dataName,
+            ),
         ];
 
-        var methodCtx = s.ctx;
-        for (final t in argTypes) {
-          methodCtx = methodCtx.extend(t);
-        }
+        var methodCtx = armCtx;
         for (final t in ihTypes) {
           methodCtx = methodCtx.extend(t);
         }
@@ -618,9 +694,7 @@ TacticFn Function(int) _inductionAt =
         // A binder's domain lives in the scope outside that binder, so
         // argument j is quoted at level+j (it may reference the params,
         // the outer context, and arguments 0..j-1) and hypothesis i at
-        // level+args.length+i. Quoting every domain at `level` was the
-        // source of the negative de Bruijn indices that made every
-        // non-trivial induction hypothesis unusable.
+        // level+args.length+i.
         var body = TMeta(methodBodyMeta) as Term;
         for (var i = ihTypes.length - 1; i >= 0; i--) {
           body = TLam(
@@ -635,8 +709,10 @@ TacticFn Function(int) _inductionAt =
         methodTerms.add(body);
       }
 
-      // Build the full recursor application.
-      // T.ind params P method1 ... methodN scrutinee
+      // Build the full recursor application. The synthesized recursor
+      // takes params, the motive, the methods, the scrutinee's indices,
+      // then the scrutinee:
+      //   T.ind params P methods indices scrutinee
       //
       // Pick the recursor whose motive targets the goal's sort: a
       // Prop-sorted goal uses `T.ind`, a Type goal the large-elimination
@@ -647,15 +723,20 @@ TacticFn Function(int) _inductionAt =
       var proofTerm = TRec(dataName, motiveSort: motiveSort) as Term;
       // Apply params.
       for (var i = 0; i < paramCount; i++) {
-        proofTerm = TApp(proofTerm, quote(level, dataArgs[i]));
+        proofTerm = TApp(proofTerm, quote(level, paramsV[i]));
       }
       // Apply motive.
       proofTerm = TApp(proofTerm, motive);
-      // Apply methods.
+      // Apply the scrutinee's indices, then the methods, then the
+      // scrutinee. `synthRecursorType` wraps the indices outside the
+      // methods (see Eq.rec: `(P) -> (c) -> (d) -> method -> (e)`), so
+      // indexed recursors take their indices before the method arms.
+      for (var t = 0; t < indexCount; t++) {
+        proofTerm = TApp(proofTerm, quote(level, indicesV[t]));
+      }
       for (final m in methodTerms) {
         proofTerm = TApp(proofTerm, m);
       }
-      // Apply scrutinee.
       proofTerm = TApp(proofTerm, TBound(binderIdx));
 
       // The first subgoal becomes the "current" one for the next tactic
@@ -679,6 +760,67 @@ String _ctorArgName(CtorDecl ctor, int j) {
 
 /// The name for the [i]-th induction hypothesis: `ih`, `ih2`, ...
 String _ihName(int i) => i == 0 ? 'ih' : 'ih${i + 1}';
+
+/// Replace every occurrence of [index] in [goal] with [binder].
+///
+/// A variable index uses [substNVar], which is capture-avoiding. A
+/// compound index (e.g. `succ n`) is quoted and replaced syntactically,
+/// the same first-order discipline the rewrite motive uses. The kernel
+/// check rejects an abstraction that is wrong under the goal's binders.
+Value _abstractIndexValue({
+  required Ctx ctx,
+  required Value goal,
+  required Value index,
+  required Value binder,
+  required int quoteLevel,
+}) {
+  if (index is VNeutral && index.neutral is NVar) {
+    return substNVar(goal, (index.neutral as NVar).level, binder);
+  }
+  final goalT = quote(quoteLevel, goal);
+  final indexT = quote(quoteLevel, index);
+  final binderT = quote(quoteLevel, binder);
+  final replaced = _replaceTermInTerm(goalT, indexT, binderT);
+  // Evaluate under an env supplying the binders in scope at
+  // [quoteLevel]: the outer context plus the new index/scrutinee
+  // binders (identity neutrals).
+  var env = ctx.env;
+  for (var lvl = ctx.level; lvl < quoteLevel; lvl++) {
+    env = env.extend(VNeutral(NVar(lvl)));
+  }
+  return eval(replaced, env);
+}
+
+/// The induction hypothesis for recursive constructor argument [j]: the
+/// goal at the argument's own indices and value, refined with the same
+/// first-order index equations the match arms use.
+Value _refineSubGoal({
+  required Ctx ctx,
+  required Ctx armCtx,
+  required Value goalType,
+  required int scrutLevel,
+  required List<Value> indicesV,
+  required Value subType,
+  required Value subValue,
+  required int paramCount,
+  required String dataName,
+}) {
+  final expected = substNVar(goalType, scrutLevel, subValue);
+  if (subType is! VData || subType.name != dataName) {
+    // Not a direct data value (e.g. a function-typed recursive
+    // argument); only the value substitution applies.
+    return expected;
+  }
+  final subIndices = subType.args.sublist(paramCount);
+  return refineMatchArmExpected(
+    ctx: ctx,
+    armCtx: armCtx,
+    expected: expected,
+    scrutineeIndicesV: indicesV,
+    ctorResultIndexTerms: [for (final v in subIndices) quote(armCtx.level, v)],
+    teleEnv: armCtx.env,
+  );
+}
 
 /// The motive-sort override for the recursor that matches [goalType]'s
 /// sort: Prop goals use `T.ind`, SProp goals `T.indS`, Type goals the

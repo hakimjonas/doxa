@@ -172,10 +172,10 @@ val rewrite_trivial : (A: Type) -> (x: A) -> (h: Eq A x x) -> Eq A x x =
 
     test('induction on Eq using refl', () {
       // Prove: (A: Type) -> (x: A) -> (y: A) -> (h: Eq A x y) -> Eq A x y
-      // by induction on h, then exact h (refl case).
+      // by induction on h. The refl arm is refined to Eq A a a.
       final env = _elab('''
 val induction_eq : (A: Type) -> (x: A) -> (y: A) -> (h: Eq A x y) -> Eq A x y =
-  (A: Type) => (x: A) => (y: A) => (h: Eq A x y) => by { induction h; exact h }
+  (A: Type) => (x: A) => (y: A) => (h: Eq A x y) => by { induction h; refl }
 ''');
       expect(
         () => env.bindings.firstWhere((b) => b.name == 'induction_eq'),
