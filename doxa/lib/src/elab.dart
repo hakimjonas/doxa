@@ -1440,7 +1440,11 @@ void _validateSolvedMetas(MetaContext metas) {
 void _validateSolvedMeta(MetaContext metas, int id, TermMetaSolved entry) {
   final ctx = installMetaContext(entry.localCtx, metas);
   try {
-    checkMetaSolution(ctx, entry.solution, entry.typeExpected);
+    checkMetaSolution(
+      ctx,
+      inlineSolvedMetas(entry.solution, metas),
+      entry.typeExpected,
+    );
   } on DoxaCheckError catch (e) {
     throw InvalidMetaSolution(id, entry.typeExpected, entry.localCtx.level, e);
   } on Object catch (e) {
@@ -1782,6 +1786,7 @@ List<String> _localScopeNames(_LocalScope scope) {
       STacticRefl() => refl(state),
       STacticRewrite(:final expr) => _runRewrite(expr, state, currentEst),
       STacticInduction(:final name) => _runInduction(name, state, currentEst),
+      STacticRevert(:final name) => revert(name)(state),
       STacticTrivial() => trivial(state),
     };
     switch (result) {

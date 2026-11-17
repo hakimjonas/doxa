@@ -262,8 +262,16 @@ theorem sample : (A: Type) -> A -> A = by { refl | intro A; intro x; exact x }
 ```
 
 Available commands: `intro name`, `exact expr`, `apply expr`, `refl`,
-`induction name`, `rewrite proof`, `trivial`. Alternatives are separated
-by `|`; the first alternative that closes every goal wins.
+`induction name`, `revert name`, `rewrite proof`, `trivial`.
+Alternatives are separated by `|`; the first alternative that closes
+every goal wins.
+
+`revert x` is the inverse of `intro`: it moves the innermost local
+binder `x` back into the goal, which becomes `(x: T) -> G`. This
+generalises the goal over `x` before a later step. Only the innermost
+binder can be reverted; a binder with dependent binders inside it fails
+with `revert: "x" is not the innermost binder; revert the binders
+introduced after it first`.
 
 Steps separated by `;` are applied to one goal each, in order. A block
 starts with a single goal. When a step creates several goals
@@ -391,6 +399,40 @@ For an indexed scrutinee the arm's goal is refined to the constructor's
 indices. With `h : Eq A x y`, `:step induction h` shows the `refl` arm's
 goal as `Eq A a a` for its constructor argument `a`, not `Eq A y x`.
 
+### Reverting a binder
+
+`:step revert x` moves the innermost binder back into the goal. The
+inverse of `:step intro`, it generalises the goal over `x` before a
+later step:
+
+```
+> :step intro A
+Introduced A.
+Goal:
+  (x: A) -> Eq A x x
+Context:
+  A : Type
+
+> :step intro x
+Introduced x.
+Goal:
+  Eq A x x
+Context:
+  x : A
+  A : Type
+
+> :step revert x
+Reverted x.
+Goal:
+  (x: A) -> Eq A x x
+Context:
+  A : Type
+```
+
+Only the innermost binder can be reverted. Reverting a binder that has
+dependent binders inside it reports `revert: "x" is not the innermost
+binder; revert the binders introduced after it first`.
+
 ### Applying a lemma
 
 `:step apply lemma` shows one goal per explicit argument, in argument
@@ -448,6 +490,7 @@ idProof : (A: Type) -> A -> A
 | `:step refl`          | Close `Eq[A] x x` goals |
 | `:step rewrite p`     | Rewrite using an equality proof `p` |
 | `:step induction v`   | Inductive case split on variable `v` |
+| `:step revert v`      | Move the innermost binder `v` back into the goal |
 | `:step constructor`   | Apply the first matching constructor |
 | `:step cases v`       | Case analysis on variable `v` (no IHs) |
 | `:step simpl`         | Normalise the goal |

@@ -299,6 +299,89 @@ TacticResult intro(TacticState s, {String? name}) {
   );
 }
 
+/// `revert x`: moves the local binder `x` back into the goal.
+///
+/// The inverse of `intro`: the goal becomes `(x: T) -> G`, where `T` is
+/// the binder's type in the outer scope and `G` is the goal with `x` as
+/// the bound variable. The current goal meta is solved with the new
+/// goal's meta applied to the binder, so the proof eventually reduces to
+/// the new goal's proof applied to the same value.
+///
+/// Only the innermost binder is supported. A binder with dependent
+/// binders inside it cannot be removed without also rewinding them, and
+/// silently dropping them would leave their types out of scope.
+TacticFn Function(String) revert =
+    (varName) => (s) {
+      int? binderIdx;
+      for (var i = 0; i < s.binderNames.length; i++) {
+        if (s.binderNames[i] == varName) {
+          binderIdx = i;
+          break;
+        }
+      }
+      if (binderIdx == null) {
+        return TacticFail('revert: variable "$varName" not in scope');
+      }
+      return _revertAt(binderIdx, varName)(s);
+    };
+
+TacticFn Function(int, String) _revertAt =
+    (binderIdx, varName) => (s) {
+      if (s.closedGoalOverCtx != null) {
+        return const TacticFail('revert: cannot revert an apply argument goal');
+      }
+      if (binderIdx != 0) {
+        return TacticFail(
+          'revert: "$varName" is not the innermost binder; revert the '
+          'binders introduced after it first',
+        );
+      }
+      final ctx = s.ctx;
+      if (ctx is! CCons) {
+        return TacticFail('revert: there is no binder "$varName" to revert');
+      }
+      final outerCtx = ctx.rest;
+      final level = s.ctx.level;
+      // `ctx.type` is the binder's type in the outer scope (it does not
+      // mention the binder). The goal is a value at the full level; under
+      // the new Pi binder the same indices denote the same binders, so it
+      // quotes unchanged at `level`.
+      final goal = s.goalType;
+      final openGoal = eval(
+        TPi(quote(level - 1, ctx.type), quote(level, goal), name: varName),
+        outerCtx.env,
+      );
+      // The new goal lives in the outer context, but its proof solves the
+      // old goal under the reverted binder. A bare meta would store a
+      // solution relative to the outer depth and be inlined under the
+      // extra binder without a shift. Close the meta over the outer
+      // context (the `apply` argument shape), display the open Pi, and
+      // apply the closed meta to the outer binders at the use site.
+      final closedType = closeValueOverCtx(openGoal, outerCtx);
+      final newMeta = s.metas.freshTermMeta(closedType, outerCtx);
+      var appliedMeta = TMeta(newMeta) as Term;
+      for (var k = outerCtx.level - 1; k >= 0; k--) {
+        appliedMeta = TApp(appliedMeta, TBound(k + 1));
+      }
+      // The old goal is `openGoal x` for the binder x (TBound 0 in the
+      // current context).
+      final applied = TApp(appliedMeta, const TBound(0));
+      return TacticOk(
+        applied,
+        s.metas,
+        subMeta: newMeta,
+        subGoals: [
+          TacticGoal(
+            newMeta,
+            outerCtx,
+            s.binderNames.sublist(1),
+            displayType: openGoal,
+            closedOverCtx: outerCtx,
+          ),
+        ],
+      );
+    };
+
 /// `exact t`: provides an explicit proof term that must have the goal type.
 TacticFn Function(Term) exact =
     (term) => (s) {

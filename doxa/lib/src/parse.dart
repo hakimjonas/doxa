@@ -1306,6 +1306,7 @@ final Parser<ParseError, STacticStep> _tacticStep =
     _keyword(
       'induction',
     ).skipThen(_ident).map<STacticStep>(STacticInduction.new) |
+    _keyword('revert').skipThen(_ident).map<STacticStep>(STacticRevert.new) |
     _keyword('trivial').map<STacticStep>((_) => const STacticTrivial());
 
 /// A sequence of tactic steps separated by `;`: `step; step; ...`.

@@ -356,4 +356,40 @@ void main() {
       expect((qed as ReplMeta).text, contains('sym'));
     });
   });
+
+  group('revert', () {
+    test('moves the innermost binder into the goal', () {
+      var session = _seededSession();
+      (_, session) = session.processInput(
+        ':goal theorem id_revert : (A: Type) -> (x: A) -> Eq A x x',
+      );
+      (_, session) = session.processInput(':step intro A');
+      (_, session) = session.processInput(':step intro x');
+
+      final (reverted, afterRevert) = session.processInput(':step revert x');
+      session = afterRevert;
+      final text = (reverted as ReplMeta).text;
+      expect(text, contains('(x: A) -> Eq A x x'));
+      expect(text, contains('A : Type'));
+
+      (_, session) = session.processInput(':step intro x');
+      (_, session) = session.processInput(':step refl');
+      final (qed, _) = session.processInput(':qed');
+      expect((qed as ReplMeta).text, contains('id_revert'));
+    });
+
+    test('a non-innermost binder fails with the documented message', () {
+      var session = _seededSession();
+      (_, session) = session.processInput(
+        'data Nat : Type { zero : Nat; succ : Nat -> Nat; }',
+      );
+      (_, session) = session.processInput(
+        ':goal theorem dep : (n: Nat) -> (h: Eq Nat n n) -> Eq Nat n n',
+      );
+      (_, session) = session.processInput(':step intro n');
+      (_, session) = session.processInput(':step intro h');
+      final (reverted, _) = session.processInput(':step revert n');
+      expect((reverted as ReplMeta).text, contains('not the innermost'));
+    });
+  });
 }

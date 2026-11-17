@@ -707,6 +707,8 @@ final class ReplSession {
         return _stepRewrite(ps, tacticArg);
       case 'induction':
         return _stepInduction(ps, tacticArg);
+      case 'revert':
+        return _stepRevert(ps, tacticArg);
       case 'simpl':
         return _stepSimpl(ps);
       case 'auto':
@@ -1091,6 +1093,29 @@ final class ReplSession {
         _advanceToNextGoal(ps, result);
         final output = StringBuffer();
         output.writeln('Induction applied.');
+        output.write(_goalStatus(ps));
+        return (ReplMeta(output.toString().trimRight()), this);
+      }(),
+      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+    };
+  }
+
+  ReplStep _stepRevert(_ProofSession ps, String arg) {
+    if (arg.isEmpty) {
+      return (const ReplError(':step revert requires a variable name.'), this);
+    }
+
+    final snap = _snapshot(ps);
+
+    final tstate = _queueState(ps);
+    final result = revert(arg)(tstate);
+    return switch (result) {
+      TacticOk() => () {
+        ps.undoStack.add(snap);
+        _solveMeta(ps, result.term);
+        _advanceToNextGoal(ps, result);
+        final output = StringBuffer();
+        output.writeln('Reverted $arg.');
         output.write(_goalStatus(ps));
         return (ReplMeta(output.toString().trimRight()), this);
       }(),
