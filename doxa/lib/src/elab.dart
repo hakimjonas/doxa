@@ -27,7 +27,13 @@ import 'dart:io';
 
 import 'package:rumil/rumil.dart' show ParseError, Success, Partial, Failure;
 
-import 'check.dart' show InductiveArityMismatch, TypeMismatch;
+import 'check.dart'
+    show
+        DoxaCheckError,
+        InductiveArityMismatch,
+        InvalidMetaSolution,
+        TypeMismatch,
+        UnknownTypeReached;
 import 'ctx.dart';
 import 'env.dart';
 import 'eval.dart';
@@ -1244,6 +1250,36 @@ Term elabExprInScope(
   return _elabExpr(topEnv, scope, expr, metas: metas);
 }
 
+/// Elaborate [expr] in check mode against [expected], using [ctx]'s
+/// real binder types and the innermost-first [binderNames] for name
+/// resolution.
+///
+/// Used by tactic blocks and the REPL so `exact e` sees the same binder
+/// types the elaborator uses, and implicit insertion is driven by the
+/// goal type.
+Term elabCheckInCtx(
+  TopEnv topEnv,
+  Ctx ctx,
+  List<String> binderNames,
+  SExpr expr,
+  Value expected,
+) => _checkExpr(
+  _ElabState(topEnv, ctx, _scopeOfNames(binderNames)),
+  expr,
+  expected,
+);
+
+/// Infer [expr] in [ctx]'s real context, resolving names against
+/// [binderNames] (innermost first). Used by the `apply` and `rewrite`
+/// tactics so the lemma/proof term is elaborated with real binder types
+/// and implicit insertion.
+(Term, Value) elabInferInCtx(
+  TopEnv topEnv,
+  Ctx ctx,
+  List<String> binderNames,
+  SExpr expr,
+) => _inferExpr(_ElabState(topEnv, ctx, _scopeOfNames(binderNames)), expr);
+
 /// Type-check every binding in [result] and return the bindings
 /// with solved metavariables inlined (see [inlineSolvedMetas]).
 ///
@@ -1306,13 +1342,13 @@ List<TopBinding> checkDeclResult(TopEnv topEnv, DeclResult result) {
         final expectedV = eval(binding.type, ctx.env);
         check(ctx, binding.term, expectedV);
       }
-      return _finalizeDeclBindings(result.bindings, metas);
+      return _finishDeclBindings(result.bindings, metas);
     }
+    final ctx = _ctxWithMetas(topEnv.toCtx(), metas);
     for (final binding in result.bindings) {
-      final ctx = _ctxWithMetas(topEnv.toCtx(), metas);
       check(ctx, binding.term, eval(binding.type, ctx.env));
     }
-    return _finalizeDeclBindings(result.bindings, metas);
+    return _finishDeclBindings(result.bindings, metas);
   }
   // Pre-scope the whole group by installing each member as a stub
   // in topBindings. The stub's type is the member's declared type;
@@ -1343,14 +1379,85 @@ List<TopBinding> checkDeclResult(TopEnv topEnv, DeclResult result) {
   // unchanged (the group members are NOT de-Bruijn-indexed
   // they're name-indexed via TTop).
   final groupCtx = _ctxWithTopBindings(baseCtx, stubs, metas: metas);
-  // Check each member's body.
+  // Check each member's body. The inlined term is the one that will be
+  // stored; `_finishDeclBindings` audits the solved solutions themselves.
   for (var i = 0; i < group.members.length; i++) {
     final binding = result.bindings[group.members[i].bindingIndex];
     final term =
         metas != null ? inlineSolvedMetas(binding.term, metas) : binding.term;
     check(groupCtx, term, memberTypes[i]);
   }
-  return _finalizeDeclBindings(result.bindings, metas);
+  return _finishDeclBindings(result.bindings, metas);
+}
+
+/// Audit every solved term-meta's solution against the type recorded
+/// when the meta was created, then inline the solutions and return the
+/// finalized bindings.
+///
+/// `_Infer(TMeta)` returns a solved meta's pre-solve `typeExpected`
+/// without validating the solution (see the note there). That keeps the
+/// kernel from re-inferring a solution in isolation, which rejects
+/// legitimate pattern-unification solutions: their quoted stuck forms (a
+/// `TMatch` with a null motive, for example) are well-typed only under
+/// the expected type they were elaborated against. The audit therefore
+/// checks the solution against its own expected type, peeling a λ-chain
+/// in lockstep with the expected Pi so the annotations are compared by
+/// conversion instead of re-inferred.
+///
+/// An ill-typed solution, such as the one-argument `Eq.rec` rewrite the
+/// tactic engine used to build, is rejected here with
+/// [InvalidMetaSolution] instead of being inlined into a stored
+/// declaration.
+List<TopBinding> _finishDeclBindings(
+  List<TopBinding> bindings,
+  MetaContext? metas,
+) {
+  if (metas != null) _validateSolvedMetas(metas);
+  return _finalizeDeclBindings(bindings, metas);
+}
+
+/// Validate every solved meta in [metas]. Solutions may solve other
+/// metas through conversion while being checked, so keep scanning until
+/// no new solved entry appears.
+void _validateSolvedMetas(MetaContext metas) {
+  final validated = <int>{};
+  var changed = true;
+  while (changed) {
+    changed = false;
+    for (var i = 0; i < metas.length; i++) {
+      if (validated.contains(i)) continue;
+      final entry = metas.lookup(i);
+      if (entry is! TermMetaSolved) continue;
+      validated.add(i);
+      changed = true;
+      _validateSolvedMeta(metas, i, entry);
+    }
+  }
+}
+
+/// Validate one solved meta's solution against its expected type, in the
+/// context where the meta was created.
+void _validateSolvedMeta(MetaContext metas, int id, TermMetaSolved entry) {
+  final ctx = installMetaContext(entry.localCtx, metas);
+  try {
+    checkMetaSolution(
+      ctx,
+      inlineSolvedMetas(entry.solution, metas),
+      entry.typeExpected,
+    );
+  } on DoxaCheckError catch (e) {
+    throw InvalidMetaSolution(id, entry.typeExpected, entry.localCtx.level, e);
+  } on Object catch (e) {
+    // Evaluation of a malformed solution (e.g. a free variable) throws a
+    // StateError rather than a DoxaCheckError. Report it as an invalid
+    // solution, not as a crash.
+    throw InvalidMetaSolution(
+      id,
+      entry.typeExpected,
+      entry.localCtx.level,
+      UnknownTypeReached('solution could not be checked: $e'),
+    );
+  }
 }
 
 /// Return [bindings] with every solved meta in each binding's
@@ -1574,17 +1681,35 @@ Term _elabTacticBlock(
   }
   // Create a fresh meta for the goal type.
   final goalMetaId = metas.freshTermMeta(expected, state.ctx);
-  // Try each alternative in order. Metas allocated by a failed
-  // attempt are abandoned; only the last attempt's allocation range
-  // contributes goals to the snapshot.
+  // Each alternative starts from the same unsolved root and discards
+  // the metas and solutions the previous attempt produced. Without the
+  // restore, an alternative that solved the root and then left a
+  // subgoal open would poison the next alternative's `solve`.
+  final rootSnapshot = metas.snapshot();
   var attemptStart = metas.length;
   var lastEst = state;
   for (final alt in kind.steps) {
+    metas.restore(rootSnapshot);
     attemptStart = metas.length;
-    final tstate = TacticState(metas, state.ctx, goalMetaId);
+    final tstate = TacticState(
+      metas,
+      state.ctx,
+      goalMetaId,
+      _localScopeNames(state.names),
+    );
     final (result, newEst) = _runTacticSteps(alt, tstate, state);
     lastEst = newEst;
     if (result is TacticOk) {
+      // The block is closed only when every meta allocated by this
+      // attempt is solved, not merely the root. A tactic that creates
+      // goals without reporting them (or a `cases`-style split) leaves
+      // an unsolved meta that would otherwise surface as an opaque
+      // kernel failure.
+      final unsolved = <int>[
+        for (var i = attemptStart; i < metas.length; i++)
+          if (!metas.isSolved(i)) i,
+      ];
+      if (unsolved.isNotEmpty) continue;
       try {
         final term = metas.solutionOf(goalMetaId);
         _recordProofState(metas, span, goalMetaId, attemptStart, lastEst);
@@ -1633,128 +1758,114 @@ List<String> _localScopeNames(_LocalScope scope) {
   return names;
 }
 
-/// Run a sequence of tactic steps, using [_ElabState] for expression
-/// elaboration so local binders introduced by `intro` are visible.
+/// Run a sequence of tactic steps, consuming the goal queue.
 ///
-/// Returns the result paired with the elaborator state after the last
-/// successful step (its name scope mirrors the tactic context).
+/// Each step runs against the first unsolved goal. When a tactic creates
+/// subgoals, they join the queue after the current goal, so `;`-separated
+/// steps work through the arms of an induction in order. The block is
+/// complete only when every queued goal is solved; a trailing step with
+/// no goal left is a no-op.
+///
+/// Returns the result paired with the elaborator state for the current
+/// goal (its name scope mirrors the tactic context).
 (TacticResult, _ElabState) _runTacticSteps(
   List<STacticStep> steps,
   TacticState tstate,
   _ElabState est,
 ) {
-  var currentTstate = tstate;
+  TacticState? current = tstate;
   var currentEst = est;
+  var lastMetas = tstate.metas;
   for (final step in steps) {
-    final (result, newEst) = switch (step) {
-      STacticIntro(:final name) => _runIntro(
-        currentTstate,
-        currentEst,
-        name: name,
-      ),
-      STacticExact(:final expr) => (
-        _runExact(expr, currentTstate, currentEst),
-        currentEst,
-      ),
-      STacticApply(:final expr) => (
-        _runApply(expr, currentTstate, currentEst),
-        currentEst,
-      ),
-      STacticRefl() => (_runRefl(currentTstate), currentEst),
-      STacticRewrite(:final expr) => (
-        _runRewrite(expr, currentTstate, currentEst),
-        currentEst,
-      ),
-      STacticInduction(:final name) => (
-        _runInduction(name, currentTstate, currentEst),
-        currentEst,
-      ),
-      STacticTrivial() => (_runTrivial(currentTstate), currentEst),
+    if (current == null) break;
+    final state = current;
+    final result = switch (step) {
+      STacticIntro(:final name) => intro(state, name: name),
+      STacticExact(:final expr) => _runExact(expr, state, currentEst),
+      STacticApply(:final expr) => _runApply(expr, state, currentEst),
+      STacticRefl() => refl(state),
+      STacticRewrite(:final expr) => _runRewrite(expr, state, currentEst),
+      STacticInduction(:final name) => _runInduction(name, state, currentEst),
+      STacticRevert(:final name) => revert(name)(state),
+      STacticTrivial() => trivial(state),
     };
     switch (result) {
       case TacticOk(:final term, :final metas, :final subMeta):
+        lastMetas = metas;
         if (subMeta != null) {
-          currentTstate.metas.solve(currentTstate.currentMeta, term);
+          solveCurrentGoal(state, term);
         }
-        // Use the updated ctx and names from the new _ElabState
-        // (intro extends both ctx and local name scope).
-        currentTstate = TacticState(
-          metas,
-          newEst.ctx,
-          subMeta ?? currentTstate.currentMeta,
-          currentTstate.binderNames,
-        );
-        currentEst = newEst;
+        final next = nextGoalAfter(state, result);
+        if (next != null) {
+          currentEst = _ElabState(
+            currentEst.topEnv,
+            next.ctx,
+            _scopeOfNames(next.binderNames),
+          );
+        }
+        current = next;
       case TacticFail():
         return (result, currentEst);
     }
   }
-  return (TacticOk(const TType(LLevel(0)), currentTstate.metas), currentEst);
+  if (current != null) {
+    final remaining = 1 + current.pending.length;
+    return (
+      TacticFail('tactic block: $remaining subgoal(s) remain'),
+      currentEst,
+    );
+  }
+  return (TacticOk(const TType(LLevel(0)), lastMetas), currentEst);
 }
 
-(TacticResult, _ElabState) _runIntro(
-  TacticState tstate,
-  _ElabState est, {
-  String? name,
-}) {
-  final goalType = tstate.goalType;
-  if (goalType is! VPi) {
-    return (const TacticFail('intro: goal is not a function type'), est);
+/// Build a local name scope from an innermost-first name list.
+_LocalScope _scopeOfNames(List<String> innermostFirst) {
+  var scope = const _LocalNil() as _LocalScope;
+  for (var i = innermostFirst.length - 1; i >= 0; i--) {
+    scope = scope.push(innermostFirst[i]);
   }
-  final pi = goalType;
-  final freshName = name ?? pi.name ?? 'h';
-  // Extend the TacticState's Ctx.
-  final newCtx = tstate.ctx.extend(pi.domain);
-  // Update the ElabState's names so further tactics can resolve `freshName`.
-  final newEst = est.push(freshName, pi.domain);
-  final codArg = VNeutral(NVar(newCtx.level - 1));
-  final codVal = eval(pi.codomain.body, pi.codomain.env.extend(codArg));
-  final subMetaId = tstate.metas.freshTermMeta(codVal, newCtx);
-  final bodyTerm = TMeta(subMetaId);
-  final lamTerm = TLam(
-    quote(tstate.ctx.level, pi.domain),
-    bodyTerm,
-    name: freshName,
-  );
-  return (TacticOk(lamTerm, tstate.metas, subMeta: subMetaId), newEst);
+  return scope;
 }
 
 TacticResult _runExact(SExpr expr, TacticState tstate, _ElabState est) {
-  // Try to elaborate the expression using the full elaborator with the
-  // tactic's local scope.
+  // Elaborate the expression in the tactic's real context, in CHECK mode
+  // against the goal, so implicit arguments are inserted from the
+  // expected type. The `_elabExpr` shim uses VUnknown binder types and
+  // cannot infer e.g. `cong`'s type parameters from a local proof.
   Term term;
   try {
-    term = _elabExpr(est.topEnv, est.names, expr, metas: est.ctx.metas);
+    term = _checkExpr(est, expr, tstate.goalType);
   } catch (_) {
-    // Fallback: if the expression is a simple identifier, look it up
-    // in the local scope and construct a TBound.
-    if (expr.kind case SIdentKind(:final name)) {
-      final idx = est.names.indexOf(name);
-      if (idx >= 0) {
-        term = TBound(idx);
+    // Fallback for a proof term that is only inferable: elaborate it in
+    // infer mode and let `exact` convert its type against the goal.
+    try {
+      term = _inferExpr(est, expr).$1;
+    } catch (_) {
+      // Last resort: a simple identifier in the local scope.
+      if (expr.kind case SIdentKind(:final name)) {
+        final idx = est.names.indexOf(name);
+        if (idx >= 0) {
+          term = TBound(idx);
+        } else {
+          return TacticFail('exact: unresolved name "$name"');
+        }
       } else {
-        return TacticFail('exact: unresolved name "$name"');
+        rethrow;
       }
-    } else {
-      rethrow;
     }
   }
   return exact(term)(tstate);
 }
 
 TacticResult _runApply(SExpr expr, TacticState tstate, _ElabState est) {
-  final topEnv = est.topEnv;
-  final names = est.names;
-  final term = _elabExpr(topEnv, names, expr);
+  // Infer the lemma in the tactic's real context so its implicit
+  // arguments are inserted before `tacticApply` inspects the Pi chain.
+  final (term, _) = _inferExpr(est, expr);
   return tacticApply(term)(tstate);
 }
 
-TacticResult _runRefl(TacticState tstate) => refl(tstate);
-
 TacticResult _runRewrite(SExpr expr, TacticState tstate, _ElabState est) {
-  final topEnv = est.topEnv;
-  final names = est.names;
-  final term = _elabExpr(topEnv, names, expr);
+  final (term, _) = _inferExpr(est, expr);
   return rewrite(term)(tstate);
 }
 
@@ -1765,8 +1876,6 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
   }
   return inductionAt(binderIdx)(tstate);
 }
-
-TacticResult _runTrivial(TacticState tstate) => trivial(tstate);
 
 // ---------------------------------------------------------------------------
 // Expression elaboration
@@ -3000,7 +3109,7 @@ Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
     // the value at the use site. Without this, a bare meta can
     // only solve to closed terms and implicit inference fails for
     // any function whose solution references a surrounding binder.
-    final closedType = _closeValueOverCtx(curV.domain, state.ctx);
+    final closedType = closeValueOverCtx(curV.domain, state.ctx);
     final metaId = metas.freshTermMeta(closedType, state.ctx);
     // Build the meta applied to every outer bound variable. At this
     // depth, TBound(k) for k in [0, state.ctx.level) references
@@ -3058,66 +3167,6 @@ bool _isNeutralConcrete(Neutral n) => switch (n) {
   NProj(:final expr) => _isFullyConcrete(expr),
   _ => false, // NMeta, NStuck etc. are not concrete
 };
-
-/// Close a [Value] over all binders in [ctx], producing the Value
-/// of type `(outer-binders) → original-type`. Used by
-/// `_insertImplicits` to give inserted metas a closed type that
-/// admits solutions referencing outer binders.
-///
-/// Builds a VPi chain outermost-first. The domains come from the
-/// ctx's binder types; the codomain at each layer is a closure over
-/// the extended env. We quote the original type into a Term at
-/// ctx.level, wrap that term in the Pi chain, then eval once under
-/// an empty env to produce the Value.
-Value _closeValueOverCtx(Value type, Ctx ctx) {
-  if (ctx is CNil) return type;
-  // Collect binder types innermost-first by walking the Ctx.
-  final binderTypes = <Value>[];
-  var c = ctx;
-  while (c is CCons) {
-    binderTypes.add(c.type);
-    c = c.rest;
-  }
-  // Quote the body type at ctx.level so TBound references in it
-  // are valid under the same depth as the Pi chain we're about
-  // to build.
-  final Term body = quote(ctx.level, type);
-  // Wrap in Pi chain: innermost binder (at TBound(0)) has its type
-  // quoted at the corresponding earlier depth.
-  //
-  // binderTypes[0] is the innermost binder (current depth - 1);
-  // binderTypes.last is the outermost (depth 0). To build the Pi
-  // outermost-first, iterate binderTypes in reverse so the
-  // outermost wraps last.
-  //
-  // Each binder's type at its binding depth: binder at level k was
-  // bound when the depth was k; quoting its type at depth k gives
-  // a term valid in the outer scope up to level k. Which is what
-  // we want.
-  var curBody = body;
-  // Iterate innermost-first: wrap Pi(binderType, curBody) with
-  // binderType quoted at its own depth.
-  var depth = ctx.level;
-  for (var i = 0; i < binderTypes.length; i++) {
-    depth -= 1;
-    final domT = quote(depth, binderTypes[i]);
-    curBody = TPi(domT, curBody);
-  }
-  // Eval under an env carrying the ctx's registries (NOT a bare ENil):
-  // the closed Pi's codomain closures may now reference `TTop(name)`
-  // for a guarded recursive `fun`, and forcing
-  // such a closure later (e.g. in `_tryUnify`'s domain walk) must
-  // resolve the top binding. A bare ENil has no registry and throws
-  // "TTop(map) with no matching entry". The Pi chain is closed (its
-  // body's free TBounds are bound by its own λ-binders), so the env
-  // contributes only the dataDecls/topBindings registries, never stray
-  // bound values.
-  final closingEnv = ENil.withRegistries(
-    dataDecls: ctx.env.dataDecls,
-    topBindings: ctx.env.topBindings,
-  );
-  return eval(curBody, closingEnv);
-}
 
 /// Compute the sort of a Pi-type from its domain-and-codomain sort
 /// values, per the PTS rules in SPEC §8.2. Mirrors `_piSort` in

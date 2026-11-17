@@ -105,6 +105,28 @@ String reportCheckError(
   final c = color ?? const AnsiColor(false);
   final sb = StringBuffer();
   switch (error) {
+    case InvalidMetaSolution(
+      :final metaId,
+      :final typeExpected,
+      :final level,
+      :final cause,
+    ):
+      sb.writeln("${c.error('error')}: solved metavariable is ill-typed");
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  ?$metaId was solved with a term that does not have its expected type',
+      );
+      sb.writeln('  ${_prettyValueAt(typeExpected, level)}');
+      switch (cause) {
+        case TypeMismatch(:final got, :final expected, level: final innerLevel):
+          sb.writeln(
+            '  solution mismatch: expected '
+            '${_prettyValueAt(expected, innerLevel)}, '
+            'found ${_prettyValueAt(got, innerLevel)}',
+          );
+        default:
+          sb.writeln('  ${cause.toString()}');
+      }
     case TypeMismatch(:final got, :final expected, level: final ctxLevel):
       sb.writeln("${c.error('error')}: type mismatch");
       sb.write(

@@ -1193,6 +1193,17 @@ final class STacticInduction extends STacticStep {
   String toString() => 'STacticInduction($name)';
 }
 
+/// `revert name`: moves a local binder back into the goal.
+final class STacticRevert extends STacticStep {
+  /// The field.
+  final String name;
+
+  /// The field.
+  const STacticRevert(this.name);
+  @override
+  String toString() => 'STacticRevert($name)';
+}
+
 /// `trivial`: tries `refl` and simple context lookups.
 final class STacticTrivial extends STacticStep {
   /// The field.

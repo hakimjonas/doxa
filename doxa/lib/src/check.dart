@@ -425,3 +425,38 @@ final class QuotFnNotRespectingRelation extends DoxaCheckError {
   String toString() =>
       'QuotFnNotRespectingRelation(got: $got, expected: $expected)';
 }
+
+/// A solved metavariable's solution does not inhabit the type recorded
+/// when the metavariable was created.
+///
+/// `_Infer(TMeta)` returns the pre-solve expected type instead of
+/// re-typing the solution, because a solution can contain quoted stuck
+/// forms that are only well-typed under that expected type. This error
+/// is the audit at the declaration boundary: the solution is checked
+/// against [typeExpected] in its creation context, and an ill-typed
+/// solution is rejected here rather than stored.
+final class InvalidMetaSolution extends DoxaCheckError {
+  /// The solved metavariable's id.
+  final int metaId;
+
+  /// The expected type recorded when the meta was created.
+  final Value typeExpected;
+
+  /// The de Bruijn level of the meta's creation context, used to render
+  /// [typeExpected]'s free variables.
+  final int level;
+
+  /// The kernel error that rejected the solution.
+  final DoxaCheckError cause;
+
+  /// Creates an invalid-solution error.
+  const InvalidMetaSolution(
+    this.metaId,
+    this.typeExpected,
+    this.level,
+    this.cause,
+  );
+
+  @override
+  String toString() => 'InvalidMetaSolution(?$metaId: $cause)';
+}

@@ -696,6 +696,7 @@ String _truncate(String value, int maxLength) =>
     value.length <= maxLength ? value : '${value.substring(0, maxLength)}...';
 
 String _checkErrorKind(DoxaCheckError error) => switch (error) {
+  InvalidMetaSolution _ => 'invalid_meta_solution',
   TypeMismatch _ => 'type_mismatch',
   NotAFunction _ => 'not_a_function',
   NotAType _ => 'not_a_type',

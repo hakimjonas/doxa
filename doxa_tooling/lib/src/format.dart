@@ -1080,6 +1080,7 @@ class _Formatter {
       _visit(expr),
     ]),
     STacticInduction(:final name) => _Doc.txt('induction $name'),
+    STacticRevert(:final name) => _Doc.txt('revert $name'),
     STacticTrivial() => _Doc.txt('trivial'),
   };
 

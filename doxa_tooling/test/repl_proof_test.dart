@@ -201,4 +201,195 @@ void main() {
       expect((result as ReplMeta).text, contains('Already in proof mode'));
     });
   });
+
+  group('induction', () {
+    test('names the argument and hypothesis and advances goal by goal', () {
+      var session = _seededSession();
+      (_, session) = session.processInput(
+        'data Nat : Type { zero : Nat; succ : Nat -> Nat; }',
+      );
+      (_, session) = session.processInput(
+        'fun plus(m: Nat, n: Nat): Nat = match m {'
+        ' case zero => n case succ k => succ (plus k n) }',
+      );
+      (_, session) = session.processInput(
+        ':goal theorem plus_zero : (n: Nat) -> Eq Nat (plus n zero) n',
+      );
+      (_, session) = session.processInput(':step intro n');
+
+      final (inductionResult, afterInduction) = session.processInput(
+        ':step induction n',
+      );
+      session = afterInduction;
+      expect((inductionResult as ReplMeta).text, contains('Eq Nat zero zero'));
+
+      // `refl` closes the zero arm; the session then shows the succ arm
+      // with its argument and induction hypothesis named and typed.
+      final (zeroResult, afterZero) = session.processInput(':step refl');
+      session = afterZero;
+      final zeroText = (zeroResult as ReplMeta).text;
+      expect(zeroText, contains('Eq Nat (succ (plus a zero)) (succ a)'));
+      expect(zeroText, contains('a : Nat'));
+      expect(zeroText, contains('ih : Eq Nat (plus a zero) a'));
+
+      // Undo restores the whole queue: the zero arm is current again and
+      // the succ arm is still pending.
+      final (undoResult, afterUndo) = session.processInput(':undo');
+      session = afterUndo;
+      expect((undoResult as ReplMeta).text, contains('Eq Nat zero zero'));
+      final (redoZero, afterRedoZero) = session.processInput(':step refl');
+      session = afterRedoZero;
+      expect(
+        (redoZero as ReplMeta).text,
+        contains('Eq Nat (succ (plus a zero)) (succ a)'),
+      );
+
+      final (rewriteResult, afterRewrite) = session.processInput(
+        ':step rewrite ih',
+      );
+      session = afterRewrite;
+      expect(
+        (rewriteResult as ReplMeta).text,
+        contains('Eq Nat (succ a) (succ a)'),
+      );
+
+      final (reflResult, afterRefl) = session.processInput(':step refl');
+      session = afterRefl;
+      expect((reflResult as ReplMeta).text, contains('Goal solved'));
+
+      final (qedResult, _) = session.processInput(':qed');
+      expect((qedResult as ReplMeta).text, contains('plus_zero'));
+    });
+  });
+
+  group('indexed induction', () {
+    test('the refined arm goal names the constructor argument', () {
+      var session = _seededSession();
+      (_, session) = session.processInput(
+        'data PairEqual[A: Type] : A -> A -> Prop {'
+        ' mkEq : (z: A) -> PairEqual A z z; }',
+      );
+      (_, session) = session.processInput(
+        ':goal theorem sym : (A: Type) -> (x: A) -> (y: A) ->'
+        ' PairEqual A x y -> PairEqual A y x',
+      );
+      for (final step in [
+        ':step intro A',
+        ':step intro x',
+        ':step intro y',
+        ':step intro h',
+      ]) {
+        (_, session) = session.processInput(step);
+      }
+
+      final (result, afterInduction) = session.processInput(
+        ':step induction h',
+      );
+      session = afterInduction;
+      final text = (result as ReplMeta).text;
+      // The index refinement turns `PairEqual A y x` into
+      // `PairEqual A z z` for the mkEq arm.
+      expect(text, contains('PairEqual A z z'));
+      expect(text, contains('z : A'));
+
+      final (abort, _) = session.processInput(':abort');
+      expect((abort as ReplMeta).text, contains('Proof aborted'));
+    });
+  });
+
+  group('tactic expressions', () {
+    test('apply shows each explicit argument as a goal', () {
+      var session = _seededSession();
+      (_, session) = session.processInput(
+        'data Nat : Type { zero : Nat; succ : Nat -> Nat; }',
+      );
+      (_, session) = session.processInput(
+        'fun two_nats(a: Nat, b: Nat): Nat = a',
+      );
+      (_, session) = session.processInput(':goal theorem apply_two : Nat');
+
+      final (applied, afterApply) = session.processInput(
+        ':step apply two_nats',
+      );
+      session = afterApply;
+      expect((applied as ReplMeta).text, contains('Nat'));
+
+      final (first, afterFirst) = session.processInput(':step exact zero');
+      session = afterFirst;
+      expect((first as ReplMeta).text, contains('Nat'));
+
+      final (second, afterSecond) = session.processInput(
+        ':step exact (succ zero)',
+      );
+      session = afterSecond;
+      expect((second as ReplMeta).text, contains('Goal solved'));
+
+      final (qed, _) = session.processInput(':qed');
+      expect((qed as ReplMeta).text, contains('apply_two'));
+    });
+
+    test('exact elaborates a constructor application in the goal context', () {
+      var session = _seededSession();
+      (_, session) = session.processInput(
+        'data PairEqual[A: Type] : A -> A -> Prop {'
+        ' mkEq : (z: A) -> PairEqual A z z; }',
+      );
+      (_, session) = session.processInput(
+        ':goal theorem sym : (A: Type) -> (x: A) -> (y: A) ->'
+        ' PairEqual A x y -> PairEqual A y x',
+      );
+      for (final step in [
+        ':step intro A',
+        ':step intro x',
+        ':step intro y',
+        ':step intro h',
+        ':step induction h',
+      ]) {
+        (_, session) = session.processInput(step);
+      }
+
+      final (exact, afterExact) = session.processInput(':step exact (mkEq z)');
+      session = afterExact;
+      expect((exact as ReplMeta).text, contains('Goal solved'));
+
+      final (qed, _) = session.processInput(':qed');
+      expect((qed as ReplMeta).text, contains('sym'));
+    });
+  });
+
+  group('revert', () {
+    test('moves the innermost binder into the goal', () {
+      var session = _seededSession();
+      (_, session) = session.processInput(
+        ':goal theorem id_revert : (A: Type) -> (x: A) -> Eq A x x',
+      );
+      (_, session) = session.processInput(':step intro A');
+      (_, session) = session.processInput(':step intro x');
+
+      final (reverted, afterRevert) = session.processInput(':step revert x');
+      session = afterRevert;
+      final text = (reverted as ReplMeta).text;
+      expect(text, contains('(x: A) -> Eq A x x'));
+      expect(text, contains('A : Type'));
+
+      (_, session) = session.processInput(':step intro x');
+      (_, session) = session.processInput(':step refl');
+      final (qed, _) = session.processInput(':qed');
+      expect((qed as ReplMeta).text, contains('id_revert'));
+    });
+
+    test('a non-innermost binder fails with the documented message', () {
+      var session = _seededSession();
+      (_, session) = session.processInput(
+        'data Nat : Type { zero : Nat; succ : Nat -> Nat; }',
+      );
+      (_, session) = session.processInput(
+        ':goal theorem dep : (n: Nat) -> (h: Eq Nat n n) -> Eq Nat n n',
+      );
+      (_, session) = session.processInput(':step intro n');
+      (_, session) = session.processInput(':step intro h');
+      final (reverted, _) = session.processInput(':step revert n');
+      expect((reverted as ReplMeta).text, contains('not the innermost'));
+    });
+  });
 }

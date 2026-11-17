@@ -155,7 +155,7 @@ the argument. The non-dependent arrow `A -> B` is sugar for `(_: A) -> B`
 when `_` does not appear in `B`.
 
 For `Nat`, the checker synthesises the dependent eliminators `Nat.ind` and
-`Nat.rec`. They let you write induction proofs directly:
+`Nat.rec`. They let you write induction proofs directly in term form:
 
 ```doxa
 data Nat : Type {
@@ -184,7 +184,10 @@ fun plusZeroRight(n: Nat): Eq[Nat] (plus n zero) n =
 
 `Nat.ind` takes a motive `P : (k: Nat) -> Type`, a base case `P zero`, and
 a step case that, given `P m`, produces `P (succ m)`. `List.ind` and
-`Vec.ind` follow the corresponding induction principles.
+`Vec.ind` follow the corresponding induction principles. The `by { ... }`
+tactic in §9 builds the same recursor application from `induction n`,
+with one goal per constructor; for an indexed family each goal is the
+motive applied to the constructor's own indices and value.
 
 ---
 
@@ -259,8 +262,114 @@ theorem sample : (A: Type) -> A -> A = by { refl | intro A; intro x; exact x }
 ```
 
 Available commands: `intro name`, `exact expr`, `apply expr`, `refl`,
-`induction name`, `trivial`. Alternatives are separated by `|`; the first
-successful alternative wins.
+`induction name`, `revert name`, `rewrite proof`, `trivial`.
+Alternatives are separated by `|`; the first alternative that closes
+every goal wins.
+
+`revert x` is the inverse of `intro`: it moves the innermost local
+binder `x` back into the goal, which becomes `(x: T) -> G`. This
+generalises the goal over `x` before a later step. Only the innermost
+binder can be reverted; a binder with dependent binders inside it fails
+with `revert: "x" is not the innermost binder; revert the binders
+introduced after it first`.
+
+Steps separated by `;` are applied to one goal each, in order. A block
+starts with a single goal. When a step creates several goals
+(`induction n` creates one per constructor), the following steps work
+through them in constructor order, and a step that closes its goal hands
+the next step the next open goal. The block succeeds only when every
+goal it created is closed.
+
+An induction proof therefore reads as one step per arm:
+
+```doxa
+fun plus(m: Nat, n: Nat): Nat = match m {
+  case zero => n
+  case succ k => succ (plus k n)
+}
+
+theorem plus_zero : (n: Nat) -> Eq Nat (plus n zero) n = by {
+  intro n;
+  induction n;
+  refl;
+  rewrite ih;
+  refl
+}
+```
+
+`induction` names each constructor's arguments from the data declaration
+(`a`, `a2`, ... where the declaration has no name) and names the
+induction hypotheses `ih`, `ih2`, ... in recursive-argument order. The
+names are in scope for the following steps, so the `succ` arm above can
+`rewrite ih`.
+
+For an indexed family the arm's goal comes from the recursor's motive:
+each method goal is the motive applied to the constructor's own result
+indices and value, which is definitionally the method type the recursor
+demands. Symmetry of equality is then one `refl` step:
+
+```doxa
+theorem eq_sym : (A: Type) -> (x: A) -> (y: A) -> Eq[A] x y -> Eq[A] y x = by {
+  intro A;
+  intro x;
+  intro y;
+  intro h;
+  induction h;
+  refl
+}
+```
+
+The `refl` arm's goal is `Eq[A] a a` for the constructor argument `a`,
+not the unrefined `Eq[A] y x`.
+
+Building the arm from the motive also covers a scrutinee whose index is a
+compound term that does not unify with a constructor's index. With
+`v : Vec[A] (succ n)`, induction still produces a `vnil` arm, and its
+goal is the recursor's `P zero vnil`, that is `Eq[Nat] zero zero`, not the
+unreachable `Eq[Nat] zero (succ n)`:
+
+```doxa
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+data Vec[A: Type] : Nat -> Type {
+  vnil  : Vec[A] zero;
+  vcons : (n: Nat) -> A -> Vec[A] n -> Vec[A] (succ n);
+}
+
+fun vlength{A: Type, n: Nat}(v: Vec[A] n): Nat = match v {
+  case vnil => zero
+  case vcons _ _ rest => succ (vlength rest)
+}
+
+theorem vlength_succ : (A: Type) -> (n: Nat) -> (v: Vec[A] (succ n)) ->
+    Eq[Nat] (vlength v) (succ n) = by {
+  intro A;
+  intro n;
+  intro v;
+  induction v;
+  refl;
+  rewrite ih;
+  refl
+}
+```
+
+The `vcons` hypothesis is `Eq[Nat] (vlength rest) n`: the motive at the
+recursive argument's own index `n`, not at the scrutinee's `succ n`. So
+`rewrite ih` leaves `Eq[Nat] (succ n) (succ n)`, which `refl` closes.
+
+The expressions in `exact`, `apply`, and `rewrite` elaborate in the
+tactic's local context: local binders carry their real types, and
+implicit arguments are inserted as at any other application site. So
+`exact (cong f ih)` works with `f` and `ih` introduced earlier.
+
+`apply lemma` creates one goal per *explicit* argument of `lemma`, in
+argument order, before any older pending goal. Implicit arguments are
+filled by conversion and never become goals. When the goal's type
+constrains an explicit argument, that argument is solved during
+`apply`; only the remaining ones appear.
 
 ---
 
@@ -300,6 +409,92 @@ Context:
 Goal solved. Use :qed to commit.
 ```
 
+### Induction
+
+`:step induction n` splits the goal into one goal per constructor. For
+the `plus_zero` theorem from §9, after `:step intro n`:
+
+```
+> :step induction n
+Induction applied.
+Goal:
+  Eq Nat zero zero
+Context:
+  n : Nat
+
+> :step refl
+Goal:
+  Eq Nat (succ (plus a zero)) (succ a)
+Context:
+  ih : Eq Nat (plus a zero) a
+  a : Nat
+  n : Nat
+```
+
+A step that closes an arm moves to the next one, with the constructor's
+arguments and induction hypotheses named in the context.
+
+For an indexed scrutinee the arm's goal is the motive applied to the
+constructor's result indices, so it is the recursor's method goal. With
+`h : Eq A x y`, `:step induction h` shows the `refl` arm's goal as
+`Eq A a a` for its constructor argument `a`, not `Eq A y x`. A compound
+scrutinee index gives the same treatment: inducting on
+`v : Vec A (succ n)` shows the `vnil` arm's goal as `Eq Nat zero zero`.
+
+### Reverting a binder
+
+`:step revert x` moves the innermost binder back into the goal. The
+inverse of `:step intro`, it generalises the goal over `x` before a
+later step:
+
+```
+> :step intro A
+Introduced A.
+Goal:
+  (x: A) -> Eq A x x
+Context:
+  A : Type
+
+> :step intro x
+Introduced x.
+Goal:
+  Eq A x x
+Context:
+  x : A
+  A : Type
+
+> :step revert x
+Reverted x.
+Goal:
+  (x: A) -> Eq A x x
+Context:
+  A : Type
+```
+
+Only the innermost binder can be reverted. Reverting a binder that has
+dependent binders inside it reports `revert: "x" is not the innermost
+binder; revert the binders introduced after it first`.
+
+### Applying a lemma
+
+`:step apply lemma` shows one goal per explicit argument, in argument
+order. Closing the first makes the next argument current. Implicit
+arguments are filled by conversion and are not shown.
+
+```
+> :step apply two_nats
+Goal:
+  Nat
+
+> :step exact zero
+Goal:
+  Nat
+```
+
+`rewrite ih` and `exact ih` can refer to the hypothesis by name. `:undo`
+restores the whole goal queue, so it also steps back from a later arm to
+an earlier one.
+
 ### Inspecting and undoing
 
 ```
@@ -337,6 +532,7 @@ idProof : (A: Type) -> A -> A
 | `:step refl`          | Close `Eq[A] x x` goals |
 | `:step rewrite p`     | Rewrite using an equality proof `p` |
 | `:step induction v`   | Inductive case split on variable `v` |
+| `:step revert v`      | Move the innermost binder `v` back into the goal |
 | `:step constructor`   | Apply the first matching constructor |
 | `:step cases v`       | Case analysis on variable `v` (no IHs) |
 | `:step simpl`         | Normalise the goal |
