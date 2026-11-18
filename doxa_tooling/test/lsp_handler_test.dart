@@ -711,7 +711,7 @@ void main() {
         final location = result['result'] as Map<String, dynamic>;
         expect(
           location['uri'],
-          File('../lib/stdlib/nat.doxa').absolute.uri.toString(),
+          File('../doxa_stdlib/lib/stdlib/nat.doxa').absolute.uri.toString(),
         );
         expect((location['range'] as Map<String, dynamic>)['start'], {
           'line': 6,
@@ -723,12 +723,12 @@ void main() {
     test(
       'returns the source location for transitive imported declarations',
       () {
-        final root = File('../lib/stdlib/Prop/prop.doxa').absolute;
+        final root = File('../doxa_stdlib/lib/stdlib/prop.doxa').absolute;
         final source = root.readAsStringSync();
         final uri = root.uri.toString();
         final notIntro = _sourcePosition(source, 'not_intro');
         final proofsSource =
-            File('../lib/stdlib/proofs.doxa').readAsStringSync();
+            File('../doxa_stdlib/lib/stdlib/proofs.doxa').readAsStringSync();
         final falseDefinition = _sourcePosition(proofsSource, 'data False');
         final handler = LspHandler();
         handler.handle(_didOpen(uri, source));
@@ -747,7 +747,7 @@ void main() {
         final location = result['result'] as Map<String, dynamic>;
         expect(
           location['uri'],
-          File('../lib/stdlib/proofs.doxa').absolute.uri.toString(),
+          File('../doxa_stdlib/lib/stdlib/proofs.doxa').absolute.uri.toString(),
         );
         expect((location['range'] as Map<String, dynamic>)['start'], {
           'line': falseDefinition.line,
@@ -759,7 +759,7 @@ void main() {
     test(
       'semantically highlights data declarations and imported data types',
       () {
-        final root = File('../lib/stdlib/Prop/prop.doxa').absolute;
+        final root = File('../doxa_stdlib/lib/stdlib/prop.doxa').absolute;
         final source = root.readAsStringSync();
         final uri = root.uri.toString();
         final andDefinition = _sourcePosition(source, 'data And');
@@ -798,10 +798,10 @@ void main() {
     );
 
     test('returns imported constructors from their defining files', () {
-      final intBase = File('../lib/stdlib/int_base.doxa').absolute;
+      final intBase = File('../doxa_stdlib/lib/stdlib/int_base.doxa').absolute;
       final intBaseSource = intBase.readAsStringSync();
       final intBaseUri = intBase.uri.toString();
-      final consumer = File('../lib/stdlib/int.doxa').absolute;
+      final consumer = File('../doxa_stdlib/lib/stdlib/int.doxa').absolute;
       final consumerSource = consumer.readAsStringSync();
       final consumerUri = consumer.uri.toString();
       final handler = LspHandler();
@@ -853,7 +853,7 @@ void main() {
       final zeroLocation = zeroDefinition['result'] as Map<String, dynamic>;
       expect(
         falseLocation['uri'],
-        File('../lib/stdlib/bool.doxa').absolute.uri.toString(),
+        File('../doxa_stdlib/lib/stdlib/bool.doxa').absolute.uri.toString(),
       );
       expect((falseLocation['range'] as Map<String, dynamic>)['start'], {
         'line': 5,
@@ -861,7 +861,7 @@ void main() {
       });
       expect(
         zeroLocation['uri'],
-        File('../lib/stdlib/nat.doxa').absolute.uri.toString(),
+        File('../doxa_stdlib/lib/stdlib/nat.doxa').absolute.uri.toString(),
       );
       expect((zeroLocation['range'] as Map<String, dynamic>)['start'], {
         'line': 7,
@@ -1352,7 +1352,7 @@ void main() {
     });
 
     test('checks the standard-library prelude without ambient duplicates', () {
-      final prelude = File('../lib/stdlib/prelude.doxa').absolute;
+      final prelude = File('../doxa_stdlib/lib/stdlib/prelude.doxa').absolute;
       final handler = LspHandler();
       handler.handle(
         _didOpen(prelude.uri.toString(), prelude.readAsStringSync()),

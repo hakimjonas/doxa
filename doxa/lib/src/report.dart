@@ -465,6 +465,33 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
       sb.writeln("${c.error('error')}: import file not found");
       sb.write(source.formatContext(span, color: c));
       sb.writeln('  cannot find file: $path');
+    case ImportPackageNotFound(
+      :final importPath,
+      :final packageName,
+      :final currentFile,
+      :final configPath,
+      :final malformedSpecifier,
+      :final span,
+    ):
+      sb.writeln("${c.error('error')}: package import not found");
+      sb.write(source.formatContext(span, color: c));
+      if (malformedSpecifier) {
+        sb.writeln('  cannot resolve "$importPath":');
+        sb.writeln('  a package import needs a name and a path.');
+        sb.writeln('  Use `package:<name>/<path>`.');
+      } else if (configPath == null) {
+        sb.writeln('  cannot resolve "$importPath":');
+        sb.writeln(
+          '  no .dart_tool/package_config.json was found above $currentFile.',
+        );
+        sb.writeln('  Run `dart pub get` in that project.');
+      } else {
+        sb.writeln('  cannot resolve "$importPath":');
+        sb.writeln('  package "$packageName" is not declared in $configPath.');
+        sb.writeln(
+          '  Add it to the project dependencies and run `dart pub get`.',
+        );
+      }
     case StructAnnotationNotFound(
       :final funName,
       :final paramName,

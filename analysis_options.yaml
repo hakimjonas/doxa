@@ -1,5 +1,5 @@
 # Monorepo root — analysis is configured per-package.
-# Each sub-package (doxa/, doxa_tooling/) has its own
+# Each sub-package (doxa/, doxa_tooling/, doxa_stdlib/) has its own
 # analysis_options.yaml with lints and strict mode settings.
 #
 # This file exists only to suppress Dart analyzer from walking

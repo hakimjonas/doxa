@@ -69,7 +69,7 @@ editor-client configuration is in [`contrib/README.md`](contrib/README.md).
 ```
 doxa/              kernel library package
 doxa_tooling/      CLI, formatter, REPL, LSP, and browser entry point
-lib/stdlib/        checked Doxa standard-library sources
+doxa_stdlib/       Doxa standard-library package with the checked sources
 editors/           VS Code, Zed, and JetBrains extensions
 tool/grammar/      declarative grammar IR and tree-sitter generator script
 contrib/           generic-editor client configurations

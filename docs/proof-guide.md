@@ -9,10 +9,10 @@ uses parity and induction on `Nat`, without fractions or coprimality.
 
 The relevant declarations are in three files:
 
-- `lib/stdlib/proofs.doxa` contains the arithmetic and equality lemmas,
+- `doxa_stdlib/lib/stdlib/proofs.doxa` contains the arithmetic and equality lemmas,
   the accessibility proof `nat_wf` / `nat_wf_help`, and `strong_ind`.
-- `lib/stdlib/case_study.doxa` contains the parity lemmas and `sqrt2`.
-- `lib/stdlib/nat.doxa` defines `Lt`.
+- `doxa_stdlib/lib/stdlib/case_study.doxa` contains the parity lemmas and `sqrt2`.
+- `doxa_stdlib/lib/stdlib/nat.doxa` defines `Lt`.
 
 ## 1. Arithmetic lemmas (proofs.doxa)
 
@@ -158,8 +158,8 @@ The final case analysis is on `t`:
 ## 6. Verification
 
 ```
-doxa_tooling/build/doxa check lib/stdlib/proofs.doxa      # 83 declarations
-doxa_tooling/build/doxa check lib/stdlib/case_study.doxa  # 127 declarations
+doxa_tooling/build/doxa check doxa_stdlib/lib/stdlib/proofs.doxa      # 83 declarations
+doxa_tooling/build/doxa check doxa_stdlib/lib/stdlib/case_study.doxa  # 127 declarations
 ```
 
 Both files type-check with the current CLI.

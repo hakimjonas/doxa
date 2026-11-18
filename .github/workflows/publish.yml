@@ -14,7 +14,7 @@ on:
         description: 'Type PUBLISH to confirm the external publish.'
         required: true
       pub_dev:
-        description: 'Publish doxa and doxa_tooling to pub.dev.'
+        description: 'Publish doxa, doxa_tooling, and doxa_stdlib to pub.dev.'
         type: boolean
         default: false
       vscode:
@@ -35,7 +35,8 @@ jobs:
   # dispatch asks for a target:
   #
   # - ALLOW_PUB_DEV_PUBLISH exists because the pub.dev hold is a standing
-  #   policy independent of any one release.
+  #   policy independent of any one release. It covers all three pub.dev
+  #   packages: doxa, doxa_tooling, and doxa_stdlib.
   # - ALLOW_MARKETPLACE_PUBLISH exists because the editor marketplaces are
   #   external and irreversible in the same way.
   preflight:
@@ -88,7 +89,7 @@ jobs:
           fi
 
           if [ "${PUB_DEV:-}" = "true" ] && [ "${ALLOW_PUB_DEV:-}" != "true" ]; then
-            echo "pub.dev is on hold: set the ALLOW_PUB_DEV_PUBLISH repository variable to true to allow this publish." >&2
+            echo "pub.dev is on hold: set the ALLOW_PUB_DEV_PUBLISH repository variable to true to allow publishing the three packages." >&2
             exit 1
           fi
 
@@ -209,14 +210,39 @@ jobs:
             sleep 10
           done
 
-      # Run immediately after both publishes. If pub.dev's package index
-      # has not caught up, rerun the job; do not remove this gate.
+      - name: Publish to pub.dev (doxa_stdlib)
+        run: |
+          is_published() {
+            local package="$1"
+            local version="$2"
+            local body result
+            if ! body="$(curl -fsS --max-time 30 "https://pub.dev/api/packages/$package")"; then
+              return 1
+            fi
+            result="$(printf '%s' "$body" | lam -r \
+              "(.versions | filter(.version == \"$version\") | length) > 0" 2>/dev/null)"
+            [ "$result" = "true" ]
+          }
+
+          version="$(cat VERSION)"
+          if is_published doxa_stdlib "$version"; then
+            echo "doxa_stdlib $version is already published; skipping."
+            exit 0
+          fi
+
+          # The stdlib package declares no dependency on the kernel or the
+          # tooling, so it can publish regardless of their index state.
+          dart pub publish --directory doxa_stdlib/ --force
+
+      # Run immediately after all three publishes. If pub.dev's package
+      # index has not caught up, rerun the job; do not remove this gate.
       - name: pana score (published)
         run: |
           dart pub global activate pana
           attempt=1
           until pana doxa/ --source hosted --exit-code-threshold 0 \
-            && pana doxa_tooling/ --source hosted --exit-code-threshold 0; do
+            && pana doxa_tooling/ --source hosted --exit-code-threshold 0 \
+            && pana doxa_stdlib/ --source hosted --exit-code-threshold 0; do
             if [ "$attempt" -ge 12 ]; then
               echo "pana gate failed after $attempt attempts." >&2
               exit 1

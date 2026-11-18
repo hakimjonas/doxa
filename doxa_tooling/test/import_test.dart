@@ -33,12 +33,12 @@ import '../bin/doxa.dart' show checkSource;
 }
 
 void main() {
-  final stdlibDir = Directory('../lib/stdlib');
+  final stdlibDir = Directory('../doxa_stdlib/lib/stdlib');
 
   group('import', () {
     test('import "stdlib/nat.doxa" makes Nat, plus, etc. available', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 val x : Nat = zero
 val y : Nat = plus zero zero
 ''';
@@ -48,8 +48,8 @@ val y : Nat = plus zero zero
 
     test('import multiple stdlib files works', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
-import "../lib/stdlib/list.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/list.doxa"
 val xs : List[Nat] = nil
 val n : Nat = length xs
 ''';
@@ -59,8 +59,8 @@ val n : Nat = length xs
 
     test('importing a file twice is idempotent', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 val x : Nat = zero
 ''';
       final r = runSource(src, filename: 'import_test.doxa');
@@ -90,7 +90,7 @@ val x : Nat = zero
 
     test('import paths resolve relative to importing file', () {
       // The stdlib dirs exist; test that path resolution works.
-      const src = 'import "../lib/stdlib/nat.doxa"';
+      const src = 'import "../doxa_stdlib/lib/stdlib/nat.doxa"';
       final r = runSource(src, filename: 'import_test.doxa');
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
@@ -116,7 +116,7 @@ val x : Nat = zero
 
     test('transitive import works (list imports nat which imports bool)', () {
       const src = '''
-import "../lib/stdlib/list.doxa"
+import "../doxa_stdlib/lib/stdlib/list.doxa"
 val xs : List[Nat] = nil
 ''';
       final r = runSource(src, filename: 'import_test.doxa');
@@ -125,11 +125,11 @@ val xs : List[Nat] = nil
 
     test('stdlib nat.doxa type-checks via CLI', () {
       if (!stdlibDir.existsSync()) {
-        fail('expected lib/stdlib/ to exist');
+        fail('expected doxa_stdlib/lib/stdlib/ to exist');
       }
       final file = File('${stdlibDir.path}/nat.doxa');
       if (!file.existsSync()) {
-        fail('expected lib/stdlib/nat.doxa to exist');
+        fail('expected doxa_stdlib/lib/stdlib/nat.doxa to exist');
       }
       final r = runFile(file);
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
@@ -137,7 +137,7 @@ val xs : List[Nat] = nil
 
     test('stdlib list.doxa type-checks via CLI', () {
       if (!stdlibDir.existsSync()) {
-        fail('expected lib/stdlib/ to exist');
+        fail('expected doxa_stdlib/lib/stdlib/ to exist');
       }
       final file = File('${stdlibDir.path}/list.doxa');
       final r = runFile(file);
@@ -146,7 +146,7 @@ val xs : List[Nat] = nil
 
     test('stdlib proofs.doxa type-checks via CLI', () {
       if (!stdlibDir.existsSync()) {
-        fail('expected lib/stdlib/ to exist');
+        fail('expected doxa_stdlib/lib/stdlib/ to exist');
       }
       final file = File('${stdlibDir.path}/proofs.doxa');
       final r = runFile(file);
@@ -155,7 +155,7 @@ val xs : List[Nat] = nil
 
     test('stdlib vec.doxa type-checks via CLI', () {
       if (!stdlibDir.existsSync()) {
-        fail('expected lib/stdlib/ to exist');
+        fail('expected doxa_stdlib/lib/stdlib/ to exist');
       }
       final file = File('${stdlibDir.path}/vec.doxa');
       final r = runFile(file);

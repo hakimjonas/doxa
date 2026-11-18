@@ -733,6 +733,7 @@ String _elabErrorKind(ElabError error) => switch (error) {
   NonExhaustiveMatch _ => 'nonexhaustive_match',
   CyclicImport _ => 'cyclic_import',
   ImportFileNotFound _ => 'import_file_not_found',
+  ImportPackageNotFound _ => 'import_package_not_found',
   StructAnnotationNotFound _ => 'struct_annotation_not_found',
   TerminationByUnsupported _ => 'termination_by_unsupported',
   QuotientUnsupported _ => 'quotient_unsupported',

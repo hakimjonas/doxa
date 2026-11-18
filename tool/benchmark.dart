@@ -64,7 +64,7 @@ void main(List<String> args) {
   }
 
   // ---- Real workloads ----
-  final stdlibDir = Directory('lib/stdlib');
+  final stdlibDir = Directory('doxa_stdlib/lib/stdlib');
   if (stdlibDir.existsSync()) {
     for (final f
         in stdlibDir.listSync().whereType<File>().toList()
@@ -79,7 +79,7 @@ void main(List<String> args) {
     }
   } else {
     // Sub-package layout — try relative to doxa_tooling.
-    final alt = Directory('../lib/stdlib');
+    final alt = Directory('../doxa_stdlib/lib/stdlib');
     if (alt.existsSync()) {
       for (final f
           in alt.listSync().whereType<File>().toList()

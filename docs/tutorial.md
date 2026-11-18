@@ -245,8 +245,29 @@ the surrounding type information.
 A file can import another via an `import` statement at the top level.
 Paths are relative to the importing file. Cyclic imports are rejected; an
 imported file is elaborated once, and importing it again from the same
-pipeline is a no-op. The standard library files under `lib/stdlib/` are
-imported this way.
+pipeline is a no-op.
+
+An import may also name a package with the `package:` scheme:
+
+```doxa
+import "package:doxa_stdlib/stdlib/nat.doxa"
+```
+
+The resolver finds the nearest `.dart_tool/package_config.json` above the
+importing file, looks up the package, and resolves the path under the
+package's library root (`lib/`). Declare the package in the project and run
+`dart pub get` once:
+
+```yaml
+dev_dependencies:
+  doxa_stdlib:
+    path: ../doxa_stdlib
+```
+
+A `package:` import outside a Dart project fails with a configuration error;
+the resolver does not fall back to a relative path. The standard library
+sources under `doxa_stdlib/lib/stdlib/` can still be imported by relative
+path.
 
 ---
 
@@ -713,7 +734,7 @@ of identity proofs is not derivable, and it is not even statable since
 ## 16. Next steps
 
 - The [language specification](../SPEC.md) gives the full formal semantics.
-- The [standard library sources](../lib/stdlib/) contain `Nat`, `List`,
+- The [standard library sources](../doxa_stdlib/lib/stdlib/) contain `Nat`, `List`,
   `Vec`, `Bool`, `Option`, and the `Eq` lemmas.
 - The [proof example](../example/proofs.doxa) proves `plus_zero_left`,
   `plus_zero_right`, `length_append`, `succ_ne_zero`, and `vlength_index`.

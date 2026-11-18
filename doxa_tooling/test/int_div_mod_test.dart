@@ -91,7 +91,7 @@ val m7: Int = neg n6
 ''';
 
 String _src(String body) => '''
-import "../lib/stdlib/int.doxa"
+import "../doxa_stdlib/lib/stdlib/int.doxa"
 $_numerals
 $body
 ''';

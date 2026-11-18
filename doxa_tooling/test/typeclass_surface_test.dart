@@ -68,7 +68,7 @@ void main() {
   group('typeclass surface', () {
     test('typeclass declaration is rejected', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 typeclass Default[A: Type] {
   fun default(): A;
 }
@@ -87,7 +87,7 @@ typeclass Default[A: Type] {
 
     test('impl declaration is rejected', () {
       const src = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 impl Default[Nat] {
   fun default(): Nat = zero;
 }

@@ -49,6 +49,11 @@ void main() {
         pubspecVersion,
         '../doxa_tooling/pubspec.yaml',
       ),
+      '../doxa_stdlib/pubspec.yaml': _firstMatch(
+        _read('../doxa_stdlib/pubspec.yaml'),
+        pubspecVersion,
+        '../doxa_stdlib/pubspec.yaml',
+      ),
       '../editors/vscode/package.json':
           (jsonDecode(_read('../editors/vscode/package.json'))
                   as Map<String, dynamic>)['version']
@@ -105,5 +110,6 @@ void main() {
   test('package-local changelogs mention the release', () {
     expect(_read('../doxa/CHANGELOG.md'), contains('## $version'));
     expect(_read('../doxa_tooling/CHANGELOG.md'), contains('## $version'));
+    expect(_read('../doxa_stdlib/CHANGELOG.md'), contains('## $version'));
   });
 }

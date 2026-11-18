@@ -8,7 +8,7 @@ import 'package:doxa/src/surface.dart';
 import 'package:rumil/rumil.dart';
 
 void main() {
-  final path = 'lib/stdlib/proofs.doxa';
+  final path = 'doxa_stdlib/lib/stdlib/proofs.doxa';
   final src = File(path).readAsStringSync();
   final lines = src.length;
   final decls = 'val fun type data'.allMatches(src).length;

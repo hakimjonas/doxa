@@ -63,7 +63,7 @@ class _BufferedSink implements IOSink {
 }
 
 const _preamble = '''
-import "../lib/stdlib/nat.doxa"
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
 val one: Nat = succ zero
 val two: Nat = succ (succ zero)
 val three: Nat = succ (succ (succ zero))

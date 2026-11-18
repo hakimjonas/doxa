@@ -58,6 +58,7 @@ export 'src/elab.dart'
         NonExhaustiveMatch,
         CyclicImport,
         ImportFileNotFound,
+        ImportPackageNotFound,
         StructAnnotationNotFound,
         TerminationByUnsupported,
         QuotientUnsupported,

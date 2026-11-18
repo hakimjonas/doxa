@@ -20,15 +20,16 @@ and other declarations depend on.
 ```sh
 dart test                     # kernel tests (working dir: doxa/)
 dart test                     # tooling tests (working dir: doxa_tooling/)
+dart test                     # stdlib package tests (working dir: doxa_stdlib/)
 dart run doxa_tooling/bin/doxa.dart check <file>    # check a single .doxa file
-dart analyze                  # static analysis (either package)
+dart analyze                  # static analysis (the package you are in)
 ```
 
 ### Eldarator eliminators — reference
 
 `Bool.ind` takes 4 positional arguments: `motive, trueCase, falseCase, scrutinee`.
 `Nat.ind` takes 3 positional arguments: `motive, zeroCase, succCase, scrutinee`.
-Do not guess eliminator arity — check the prelude or existing proofs in `lib/stdlib/proofs.doxa`.
+Do not guess eliminator arity — check the prelude or existing proofs in `doxa_stdlib/lib/stdlib/proofs.doxa`.
 
 ## Project structure
 
@@ -36,7 +37,7 @@ Do not guess eliminator arity — check the prelude or existing proofs in `lib/s
 |---|---|
 | `doxa/` | Kernel library (check, elab, eval, parse, surface, etc.) |
 | `doxa_tooling/` | CLI, REPL, LSP, WASM, formatter, structured output |
-| `lib/stdlib/` | Standard library `.doxa` files |
+| `doxa_stdlib/` | Standard-library package: Doxa sources, locator library, example, tests |
 | `editors/vscode/` | VS Code extension (TypeScript-free JS + TextMate grammar) |
 | `editors/jetbrains/` | JetBrains plugin (Kotlin, builds with Gradle) |
 | `docs/` | Plans, specs, handovers |
@@ -51,6 +52,7 @@ and editor extensions read from it:
 |---|---|
 | `doxa/pubspec.yaml` | `version: <VERSION>` |
 | `doxa_tooling/pubspec.yaml` | `version: <VERSION>` |
+| `doxa_stdlib/pubspec.yaml` | `version: <VERSION>` |
 | `editors/vscode/package.json` | `"version": "<VERSION>"` |
 | `editors/jetbrains/gradle.properties` | `pluginVersion = <VERSION>` |
 | `doxa_tooling/lib/src/lsp/handler.dart` | `serverInfo.version` |
@@ -73,7 +75,7 @@ the kernel's actual behaviour.
 
 ## Dart conventions and pana score
 
-- `dart format --set-exit-if-changed` on both packages and the root.
+- `dart format --set-exit-if-changed` on every package and the root.
 - Before publishing to pub.dev: `pana .` **must score 150/160**.
 - After publishing: the target is **160/160**.
 - Do not introduce new lints or warnings. Every `dart analyze` issue is a
@@ -82,7 +84,8 @@ the kernel's actual behaviour.
 ## Publishing
 
 Publication is on hold. pub.dev and the two editor marketplaces are external,
-irreversible actions, and doxa is not releaseworthy yet. Do not publish, and do
+irreversible actions, and doxa is not releaseworthy yet. There are three
+pub.dev targets: `doxa`, `doxa_tooling`, and `doxa_stdlib`. Do not publish, and do
 not write a plan whose last step is a publish, until the user lifts the hold.
 
 Version bumps, tags, and pushes to GitHub need the user's explicit go-ahead.
@@ -94,13 +97,14 @@ Version bumps additionally update every mirror listed above.
   pub.dev or either marketplace. `release_workflows_test.dart` enforces this.
 - `.github/workflows/publish.yml` is `workflow_dispatch` only. It requires the
   `tag` input, a typed `PUBLISH` confirmation, and at least one target
-  checkbox. The pub.dev job also requires `ALLOW_PUB_DEV_PUBLISH=true`; the
-  marketplace jobs also require `ALLOW_MARKETPLACE_PUBLISH=true`. Unset means
-  false, so a fresh repository cannot publish.
+  checkbox. The pub.dev job publishes three packages (`doxa`, `doxa_tooling`,
+  `doxa_stdlib`) and requires `ALLOW_PUB_DEV_PUBLISH=true`; the marketplace
+  jobs also require `ALLOW_MARKETPLACE_PUBLISH=true`. Unset means false, so a
+  fresh repository cannot publish.
 - Status: `doxa` 0.8.4 was published to pub.dev on 2026-11-12 and retracted
-  the same day. `doxa_tooling` has never been published. The 0.8.4 JetBrains
-  plugin was published from the pre-fix commit and remains on the
-  marketplace.
+  the same day. `doxa_tooling` and `doxa_stdlib` have never been published.
+  The 0.8.4 JetBrains plugin was published from the pre-fix commit and
+  remains on the marketplace.
 - The bar when the hold is lifted is the one used for the other Dart
   projects: `pana` 150/160 or better before the publish, 160/160 after, and
   every gate in the pre-commit checklist green.
@@ -111,29 +115,29 @@ Before staging or committing any change, run ALL of these from the
 repository root.  Do NOT commit if any check fails.
 
 ```sh
-# 1. Dart static analysis (both packages)
-dart analyze  && (dart analyze)
+# 1. Dart static analysis (all packages)
+(cd doxa && dart analyze)  && (cd doxa_tooling && dart analyze)  && (cd doxa_stdlib && dart analyze)
 
-# 2. Dart formatter (both packages)
-dart format --set-exit-if-changed .  && (dart format --set-exit-if-changed .)
+# 2. Dart formatter (all packages and the root)
+dart format --set-exit-if-changed .
 
 # 3. Doxa checker on key stdlib files
-dart run doxa_tooling/bin/doxa.dart check lib/stdlib/nat.doxa
-dart run doxa_tooling/bin/doxa.dart check lib/stdlib/proofs.doxa
-dart run doxa_tooling/bin/doxa.dart check lib/stdlib/case_study.doxa
+dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/nat.doxa
+dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/proofs.doxa
+dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/case_study.doxa
+dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/int.doxa
 
 # 4. Doxa formatter on ALL stdlib .doxa files
-find lib/stdlib -name '*.doxa' -exec dart run doxa_tooling/bin/doxa.dart fmt --check {} \;
+find doxa_stdlib/lib/stdlib -name '*.doxa' -exec dart run doxa_tooling/bin/doxa.dart fmt --check {} \;
 
 # 5. Kernel tests
-dart test
+(cd doxa && dart test)
 
 # 6. Tooling tests
-dart test
+(cd doxa_tooling && dart test)
 
-# Kernel and tooling directories shown before working-directory prefix.
-# --- doxa/ directory ---
-# --- doxa_tooling/ directory ---
+# 7. Standard-library package tests
+(cd doxa_stdlib && dart test)
 ```
 
 ## Editor extensions

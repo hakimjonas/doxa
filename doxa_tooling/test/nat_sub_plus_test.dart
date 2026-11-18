@@ -64,7 +64,7 @@ class _BufferedSink implements IOSink {
 }
 
 const _source = '''
-import "../lib/stdlib/proofs.doxa"
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
 val sub_plus: Eq Nat (sub (plus (succ (succ zero)) (succ zero)) (succ zero)) (succ (succ zero)) = refl
 val leq_self: Eq Bool (leq (succ zero) (plus (succ (succ zero)) (succ zero))) true_ = refl
 val lt_leq_row: Eq Bool (leq (succ zero) (succ (succ (succ zero)))) true_ = refl

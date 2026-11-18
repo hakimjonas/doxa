@@ -1,7 +1,7 @@
 # Arithmetic in the standard library
 
-This document specifies the arithmetic operations in `lib/stdlib/nat.doxa` and
-`lib/stdlib/int_base.doxa`. The kernel definitions are authoritative; the
+This document specifies the arithmetic operations in `doxa_stdlib/lib/stdlib/nat.doxa` and
+`doxa_stdlib/lib/stdlib/int_base.doxa`. The kernel definitions are authoritative; the
 examples below were checked with `doxa check` and `refl`. Lemmas marked
 *planned* are not proved.
 
@@ -33,7 +33,7 @@ The two conventions follow Lean 4's `Nat.div` and `Nat.mod`:
 - `div m zero = zero` for every `m`.
 - `mod m zero = m` for every `m`.
 
-Both are proved in `lib/stdlib/proofs.doxa`:
+Both are proved in `doxa_stdlib/lib/stdlib/proofs.doxa`:
 
 ```
 div_zero : (m: Nat) -> Eq Nat (div m zero) zero
@@ -138,7 +138,7 @@ are `false_`.
 
 ### Order and subtraction lemmas
 
-`lib/stdlib/proofs.doxa` proves fifteen lemmas that relate the Boolean
+`doxa_stdlib/lib/stdlib/proofs.doxa` proves fifteen lemmas that relate the Boolean
 comparisons to the `Lt` relation and bound truncated subtraction:
 
 | Lemma | Statement | Bridges |
@@ -231,7 +231,7 @@ All rows check by `refl`.
 
 ## Open lemmas
 
-Both `mod_lt` and `div_add_mod` are proved in `lib/stdlib/proofs.doxa`. No
+Both `mod_lt` and `div_add_mod` are proved in `doxa_stdlib/lib/stdlib/proofs.doxa`. No
 general theorem about the `Nat` arithmetic operations remains open.
 
 For `Int`, the Euclidean identity and bound are proved for all `a` and

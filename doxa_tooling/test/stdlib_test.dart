@@ -1,4 +1,4 @@
-/// Runs the CLI check on every `lib/stdlib/*.doxa` file; each must type-check.
+/// Runs the CLI check on every `doxa_stdlib/lib/stdlib/*.doxa` file; each must type-check.
 library;
 
 import 'dart:convert';
@@ -10,15 +10,15 @@ import 'package:test/test.dart';
 import '../bin/doxa.dart' show checkSource;
 
 void main() {
-  final stdlibDir = Directory('../lib/stdlib');
+  final stdlibDir = Directory('../doxa_stdlib/lib/stdlib');
 
   group('stdlib type-checks', () {
-    // Discover all .doxa files in lib/stdlib/. If the directory is
+    // Discover all .doxa files in doxa_stdlib/lib/stdlib/. If the directory is
     // missing (e.g. running from a package that doesn't include the
     // stdlib), skip gracefully.
     if (!stdlibDir.existsSync()) {
-      test('lib/stdlib/ directory exists', () {
-        fail('expected lib/stdlib/ to exist');
+      test('doxa_stdlib/lib/stdlib/ directory exists', () {
+        fail('expected doxa_stdlib/lib/stdlib/ to exist');
       });
       return;
     }

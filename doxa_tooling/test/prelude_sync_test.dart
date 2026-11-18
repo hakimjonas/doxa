@@ -1,4 +1,4 @@
-/// The ambient prelude is a hard-coded mirror of `lib/stdlib/prelude.doxa`
+/// The ambient prelude is a hard-coded mirror of `doxa_stdlib/lib/stdlib/prelude.doxa`
 /// (`preludeSource` in `package:doxa/src/prelude.dart`). This test keeps
 /// the two sources structurally in sync: the embedded Eq and Acc must
 /// elaborate to the same data declarations as the file.
@@ -80,10 +80,10 @@ void _expectSameData(DataDecl expected, DataDecl actual, String where) {
 void main() {
   final embedded = _dataDecls(preludeSource);
   final fromFile = _dataDecls(
-    File('../lib/stdlib/prelude.doxa').readAsStringSync(),
+    File('../doxa_stdlib/lib/stdlib/prelude.doxa').readAsStringSync(),
   );
 
-  test('embedded prelude matches lib/stdlib/prelude.doxa', () {
+  test('embedded prelude matches doxa_stdlib/lib/stdlib/prelude.doxa', () {
     for (final name in ['Eq', 'Acc']) {
       _expectSameData(
         embedded.firstWhere((d) => d.name == name),

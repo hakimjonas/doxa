@@ -213,11 +213,12 @@ const _requiredDeclarations = [
 ];
 
 String _source(String body) {
-  final proofs = File('../lib/stdlib/proofs.doxa').readAsStringSync();
+  final proofs =
+      File('../doxa_stdlib/lib/stdlib/proofs.doxa').readAsStringSync();
   final missing = _requiredDeclarations.where((d) => !proofs.contains(d));
   final block = missing.isEmpty ? '' : _divAddModBlock;
   return '''
-import "../lib/stdlib/proofs.doxa"
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
 $block
 $body
 ''';
