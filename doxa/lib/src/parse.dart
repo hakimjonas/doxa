@@ -44,6 +44,16 @@ Result<ParseError, SProgram> parseProgram(String input) => _program.run(input);
 Result<ParseError, SExpr> parseExpr(String input) =>
     _ws.skipThen(_expr).thenSkip(_ws).thenSkip(eof()).run(input);
 
+/// Parse a bracketed expression list: `[e1, e2, ...]`.
+///
+/// Used by the REPL's `:step simp [e1, e2]` and by tests that need the
+/// same grammar as the tactic's lemma list.
+Result<ParseError, List<SExpr>> parseExprList(String input) => _ws
+    .skipThen(_sym('[').skipThen(_expr.sepBy(_sym(','))).thenSkip(_sym(']')))
+    .thenSkip(_ws)
+    .thenSkip(eof())
+    .run(input);
+
 /// Parse a single declaration. Useful for REPL-style use.
 Result<ParseError, SDecl> parseDecl(String input) =>
     _ws.skipThen(_decl).thenSkip(_ws).thenSkip(eof()).run(input);
@@ -1307,7 +1317,15 @@ final Parser<ParseError, STacticStep> _tacticStep =
       'induction',
     ).skipThen(_ident).map<STacticStep>(STacticInduction.new) |
     _keyword('revert').skipThen(_ident).map<STacticStep>(STacticRevert.new) |
+    _keyword('simp')
+        .skipThen(_tacticLemmaList.optional)
+        .map<STacticStep>((lemmas) => STacticSimp(lemmas ?? const <SExpr>[])) |
     _keyword('trivial').map<STacticStep>((_) => const STacticTrivial());
+
+/// A bracketed lemma list for `simp`: `[e1, e2, ...]`.
+final Parser<ParseError, List<SExpr>> _tacticLemmaList = _sym(
+  '[',
+).skipThen(defer(() => _expr).sepBy(_sym(','))).thenSkip(_sym(']'));
 
 /// A sequence of tactic steps separated by `;`: `step; step; ...`.
 final Parser<ParseError, List<STacticStep>> _tacticAlternative = _tacticStep

@@ -711,6 +711,8 @@ final class ReplSession {
         return _stepRevert(ps, tacticArg);
       case 'simpl':
         return _stepSimpl(ps);
+      case 'simp':
+        return _stepSimp(ps, tacticArg);
       case 'auto':
         return _stepAuto(ps, tacticArg);
       case 'omega':
@@ -915,6 +917,56 @@ final class ReplSession {
         if (!ps.metas.isSolved(ps.currentGoalMeta)) {
           output.write(_goalStatus(ps));
         }
+        return (ReplMeta(output.toString().trimRight()), this);
+      }(),
+      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+    };
+  }
+
+  /// Handle `:step simp` and `:step simp [lemmas]`.
+  ///
+  /// Normalises the goal and rewrites with the context's equality
+  /// hypotheses plus any listed lemmas, closing by `refl` when possible.
+  /// A partial simplification leaves the residual goal displayed.
+  ReplStep _stepSimp(_ProofSession ps, String arg) {
+    final lemmas = <Term>[];
+    if (arg.isNotEmpty) {
+      final parsed = parseExprList(arg);
+      final List<SExpr> exprs;
+      if (parsed is Success<ParseError, List<SExpr>>) {
+        exprs = parsed.value;
+      } else if (parsed is Partial<ParseError, List<SExpr>>) {
+        exprs = parsed.value;
+      } else {
+        return (
+          ReplError(
+            _formatParseFailure(parsed as Failure<ParseError, dynamic>),
+          ),
+          this,
+        );
+      }
+      for (final expr in exprs) {
+        try {
+          lemmas.add(
+            elabInferInCtx(ps.topEnv, ps.ctx, ps.binderNames, expr).$1,
+          );
+        } catch (_) {
+          return (const ReplMeta('simp: could not elaborate a lemma'), this);
+        }
+      }
+    }
+
+    final snap = _snapshot(ps);
+    final tstate = _queueState(ps);
+    final result = simp(lemmas)(tstate);
+    return switch (result) {
+      TacticOk() => () {
+        ps.undoStack.add(snap);
+        _solveMeta(ps, result.term);
+        _advanceToNextGoal(ps, result);
+        final output = StringBuffer();
+        output.writeln('Simplified.');
+        output.write(_goalStatus(ps));
         return (ReplMeta(output.toString().trimRight()), this);
       }(),
       TacticFail(:final message) => (ReplMeta('step failed: $message'), this),

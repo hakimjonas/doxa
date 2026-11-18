@@ -63,8 +63,11 @@ theorem identity : (A: Type) -> (x: A) -> Eq A x x := by {
 ```
 
 The tactic steps implemented by `by` blocks are `intro`, `exact`, `apply`,
-`refl`, `rewrite`, `induction`, and `trivial`. Semicolons sequence steps; `|`
-separates alternatives.
+`refl`, `rewrite`, `induction`, `revert`, `trivial`, and `simp`. `revert x`
+moves a local binder back into the goal. `simp` normalises the goal by
+evaluation and rewrites it with the equality hypotheses in context; an
+optional bracketed list adds equalities, as in `simp [plus_zero, plus_succ]`.
+Semicolons sequence steps; `|` separates alternatives.
 
 Function declarations accept explicit type parameters in `[...]`, implicit type parameters in `{...}`, and value parameters in `(...)`. At a call site, elaboration inserts metavariables for omitted implicit arguments.
 

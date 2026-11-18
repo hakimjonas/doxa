@@ -1212,6 +1212,18 @@ final class STacticTrivial extends STacticStep {
   String toString() => 'STacticTrivial';
 }
 
+/// `simp [lemmas]`: normalises the goal and rewrites with equality
+/// lemmas to a fixed point.
+final class STacticSimp extends STacticStep {
+  /// Extra equalities; empty means the context hypotheses alone.
+  final List<SExpr> lemmas;
+
+  /// The field.
+  const STacticSimp(this.lemmas);
+  @override
+  String toString() => 'STacticSimp(${lemmas.join(', ')})';
+}
+
 /// An intersection of typeclass constraints: `Eq & Ord`.
 ///
 /// Used in constrained type parameters like `[A: Eq & Ord]`.

@@ -1081,6 +1081,17 @@ class _Formatter {
     ]),
     STacticInduction(:final name) => _Doc.txt('induction $name'),
     STacticRevert(:final name) => _Doc.txt('revert $name'),
+    STacticSimp(:final lemmas) =>
+      lemmas.isEmpty
+          ? _Doc.txt('simp')
+          : _Doc.catAll([
+            _Doc.txt('simp ['),
+            for (var i = 0; i < lemmas.length; i++) ...[
+              if (i > 0) _Doc.txt(', '),
+              _visit(lemmas[i]),
+            ],
+            _Doc.txt(']'),
+          ]),
     STacticTrivial() => _Doc.txt('trivial'),
   };
 

@@ -283,7 +283,7 @@ theorem sample : (A: Type) -> A -> A = by { refl | intro A; intro x; exact x }
 ```
 
 Available commands: `intro name`, `exact expr`, `apply expr`, `refl`,
-`induction name`, `revert name`, `rewrite proof`, `trivial`.
+`induction name`, `revert name`, `rewrite proof`, `simp [lemmas]`, `trivial`.
 Alternatives are separated by `|`; the first alternative that closes
 every goal wins.
 
@@ -323,6 +323,41 @@ theorem plus_zero : (n: Nat) -> Eq Nat (plus n zero) n = by {
 induction hypotheses `ih`, `ih2`, ... in recursive-argument order. The
 names are in scope for the following steps, so the `succ` arm above can
 `rewrite ih`.
+
+### Simplifying
+
+`simp [lemmas]` normalises the goal by evaluation and rewrites it with
+equality lemmas until no rule applies. With no list, every equality-typed
+hypothesis in the local context is a rule; a bracketed list adds the named
+equalities. A rule may be Pi-typed: its binders are instantiated with
+metavariables and its conclusion is matched against subterms of the goal.
+The goal closes by `refl` when the two sides become convertible. When a
+rewrite applies and the goal remains, `simp` leaves the rewritten goal for
+the next step. When nothing applies and `refl` fails, it reports
+`simp: no progress`.
+
+The loop is bounded. After 100 rewrites, or when a normalised goal repeats,
+`simp` fails with `simp: rewrite limit exceeded` and names the last rule
+applied. It never returns a partially rewritten goal as if the proof were
+complete.
+
+Every equality hypothesis in context is a rule. Keep one out of the rewrite
+set by introducing it after `simp` runs, or by `revert`ing it first. The
+following proof uses `plus_zero` and `plus_succ` from the standard library:
+
+```doxa
+import "package:doxa_stdlib/stdlib/proofs.doxa"
+
+val plus_nested : (m: Nat) -> (n: Nat) ->
+    Eq Nat (plus (plus m (succ n)) zero) (succ (plus m n)) = by {
+  intro m;
+  intro n;
+  simp [plus_zero, plus_succ]
+}
+```
+
+`plus_zero` removes the outer `zero`, exposing the left side of `plus_succ`,
+and the second rewrite makes the sides convertible.
 
 For an indexed family the arm's goal comes from the recursor's motive:
 each method goal is the motive applied to the constructor's own result
@@ -516,6 +551,25 @@ Goal:
 restores the whole goal queue, so it also steps back from a later arm to
 an earlier one.
 
+### Simplifying
+
+`:step simp` normalises the goal and rewrites with the context's equality
+hypotheses. A bracketed list adds lemmas, as in `:step simp [plus_zero]`.
+A partial simplification displays the residual goal, so the next step can
+finish it:
+
+```
+> :step simp [h]
+Simplified.
+Goal:
+  Eq A (f y) (g y)
+Context:
+  h : Eq A x y
+  ...
+```
+
+`:step simpl` is kept as an alias for `:step simp` with no list.
+
 ### Inspecting and undoing
 
 ```
@@ -556,7 +610,8 @@ idProof : (A: Type) -> A -> A
 | `:step revert v`      | Move the innermost binder `v` back into the goal |
 | `:step constructor`   | Apply the first matching constructor |
 | `:step cases v`       | Case analysis on variable `v` (no IHs) |
-| `:step simpl`         | Normalise the goal |
+| `:step simp [lemmas]` | Normalise and rewrite with equality hypotheses |
+| `:step simpl`         | Alias for `:step simp` |
 | `:step trivial`       | Try refl, then context lookup |
 | `:step auto [depth]`  | Depth-bounded proof search (default depth 5) |
 | `:step omega`         | Arithmetic solver for `Nat` goals |
