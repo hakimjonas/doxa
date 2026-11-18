@@ -1320,6 +1320,14 @@ final Parser<ParseError, STacticStep> _tacticStep =
     _keyword('simp')
         .skipThen(_tacticLemmaList.optional)
         .map<STacticStep>((lemmas) => STacticSimp(lemmas ?? const <SExpr>[])) |
+    _keyword('cases').skipThen(_ident).map<STacticStep>(STacticCases.new) |
+    _keyword(
+      'constructor',
+    ).map<STacticStep>((_) => const STacticConstructor()) |
+    _keyword('auto')
+        .skipThen(_lex(_nat).optional)
+        .map<STacticStep>((depth) => STacticAuto(depth ?? 5)) |
+    _keyword('omega').map<STacticStep>((_) => const STacticOmega()) |
     _keyword('trivial').map<STacticStep>((_) => const STacticTrivial());
 
 /// A bracketed lemma list for `simp`: `[e1, e2, ...]`.

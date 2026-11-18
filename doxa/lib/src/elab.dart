@@ -1856,6 +1856,13 @@ List<String> _localScopeNames(_LocalScope scope) {
       STacticInduction(:final name) => _runInduction(name, state, currentEst),
       STacticRevert(:final name) => revert(name)(state),
       STacticSimp(:final lemmas) => _runSimp(lemmas, state, currentEst),
+      STacticCases(:final name) => tacticCases(name)(state),
+      STacticConstructor() => tacticConstructor(state),
+      STacticAuto(:final depth) =>
+        depth < 0 || depth > 20
+            ? const TacticFail('auto: depth must be between 0 and 20')
+            : auto(depth: depth)(state),
+      STacticOmega() => omega(state),
       STacticTrivial() => trivial(state),
     };
     switch (result) {

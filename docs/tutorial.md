@@ -283,7 +283,8 @@ theorem sample : (A: Type) -> A -> A = by { refl | intro A; intro x; exact x }
 ```
 
 Available commands: `intro name`, `exact expr`, `apply expr`, `refl`,
-`induction name`, `revert name`, `rewrite proof`, `simp [lemmas]`, `trivial`.
+`induction name`, `cases name`, `constructor`, `rewrite proof`,
+`simp [lemmas]`, `auto [depth]`, `omega`, `trivial`.
 Alternatives are separated by `|`; the first alternative that closes
 every goal wins.
 
@@ -358,6 +359,53 @@ val plus_nested : (m: Nat) -> (n: Nat) ->
 
 `plus_zero` removes the outer `zero`, exposing the left side of `plus_succ`,
 and the second rewrite makes the sides convertible.
+
+### Case analysis and constructors
+
+`cases x` splits a variable of inductive type into one goal per
+constructor, with the constructor's arguments in scope and named as
+`induction` names them. Unlike `induction`, no hypotheses are added:
+
+```doxa
+val two_cases : (n: Nat) -> Eq Nat (plus zero n) n = by {
+  intro n;
+  cases n;
+  refl;
+  refl
+}
+```
+
+`constructor` applies the first constructor whose result type matches the
+goal. A nullary constructor closes the goal; any other constructor leaves
+one goal per argument, in argument order. An argument type that mentions a
+local variable is a goal over that variable, so the proof may name it:
+
+```doxa
+data D: Nat -> Type {
+  d0: D zero;
+  d1: (n: Nat) -> D n -> D (succ n);
+}
+
+val d_succ : (n: Nat) -> D n -> D (succ n) = by {
+  intro n;
+  intro p;
+  constructor;
+  exact p
+}
+```
+
+### Search tactics
+
+`auto [depth]` tries `refl`, then `trivial`, then applications of the
+top-level names in scope, recursively to `depth` levels (default 5, accepted
+range 0 to 20). The search is bounded, so a larger depth costs more time and
+still does not guarantee a proof.
+
+`omega` normalises both sides of an equality and tries the arithmetic
+lemmas in scope (`plus_zero`, `plus_succ`, `plus_comm`, and related
+lemmas). It is a convenience for goals those lemmas close, not a decision
+procedure; when none applies it reports
+`omega: could not solve the arithmetic goal`.
 
 For an indexed family the arm's goal comes from the recursor's motive:
 each method goal is the motive applied to the constructor's own result
@@ -496,6 +544,12 @@ constructor's result indices, so it is the recursor's method goal. With
 `Eq A a a` for its constructor argument `a`, not `Eq A y x`. A compound
 scrutinee index gives the same treatment: inducting on
 `v : Vec A (succ n)` shows the `vnil` arm's goal as `Eq Nat zero zero`.
+
+`:step cases x` walks one goal per constructor in constructor order, with
+the constructor's arguments named in the context; `:goal` shows the current
+arm. `:step constructor` leaves one goal per argument of the constructor it
+picked, again in argument order; a nullary constructor closes the goal
+immediately, and the next `:step` targets the first open goal.
 
 ### Reverting a binder
 

@@ -1218,10 +1218,49 @@ final class STacticSimp extends STacticStep {
   /// Extra equalities; empty means the context hypotheses alone.
   final List<SExpr> lemmas;
 
-  /// The field.
+  /// Creates a `simp` step with an optional lemma list.
   const STacticSimp(this.lemmas);
   @override
   String toString() => 'STacticSimp(${lemmas.join(', ')})';
+}
+
+/// `cases name`: destructs a variable into one subgoal per constructor.
+final class STacticCases extends STacticStep {
+  /// The variable to destruct.
+  final String name;
+
+  /// Creates a `cases` step.
+  const STacticCases(this.name);
+  @override
+  String toString() => 'STacticCases($name)';
+}
+
+/// `constructor`: applies the first matching constructor of the goal.
+final class STacticConstructor extends STacticStep {
+  /// Creates a `constructor` step.
+  const STacticConstructor();
+  @override
+  String toString() => 'STacticConstructor';
+}
+
+/// `auto [depth]`: depth-bounded proof search.
+final class STacticAuto extends STacticStep {
+  /// The search depth; 5 when the source omits it.
+  final int depth;
+
+  /// Creates an `auto` step.
+  const STacticAuto(this.depth);
+  @override
+  String toString() => 'STacticAuto($depth)';
+}
+
+/// `omega`: normalises both sides of an arithmetic equality and tries the
+/// arithmetic lemmas in scope.
+final class STacticOmega extends STacticStep {
+  /// Creates an `omega` step.
+  const STacticOmega();
+  @override
+  String toString() => 'STacticOmega';
 }
 
 /// An intersection of typeclass constraints: `Eq & Ord`.

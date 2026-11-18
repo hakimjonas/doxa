@@ -200,6 +200,16 @@ final class ReplSession {
     );
   }
 
+  /// Commit [result] to the current goal unless the tactic already solved
+  /// it. Leaf tactics (`refl`, `trivial`, a nullary `constructor`) solve in
+  /// place; goal-creating tactics (`apply`, `rewrite`, `cases`, a
+  /// multi-argument `constructor`) leave the current meta open.
+  void _solveIfUnsolved(_ProofSession ps, TacticOk result) {
+    if (!ps.metas.isSolved(ps.currentGoalMeta)) {
+      _solveMeta(ps, result.term);
+    }
+  }
+
   /// The tactic state for the current goal, including the pending queue.
   TacticState _queueState(_ProofSession ps) => TacticState(
     ps.metas,
@@ -223,6 +233,19 @@ final class ReplSession {
     ps.closedGoalOverCtx,
     ps.goalTypeOverride,
   );
+
+  /// Restore a proof snapshot taken before a step. Used by `:undo` and by
+  /// a failed step, which may have solved intermediate metas before
+  /// returning [TacticFail].
+  void _restoreSnapshot(_ProofSession ps, _ProofSnapshot snap) {
+    ps.metas.restore(snap.metaSnapshot);
+    ps.currentGoalMeta = snap.currentGoalMeta;
+    ps.ctx = snap.ctx;
+    ps.binderNames = snap.binderNames;
+    ps.pendingGoals = snap.pendingGoals;
+    ps.closedGoalOverCtx = snap.closedGoalOverCtx;
+    ps.goalTypeOverride = snap.goalTypeOverride;
+  }
 
   /// Select the goal the next `:step` should target after [result] solved
   /// the current goal. Returns true when a goal is current.
@@ -907,7 +930,7 @@ final class ReplSession {
     return switch (result) {
       TacticOk() => () {
         ps.undoStack.add(snap);
-        _solveMeta(ps, result.term);
+        _solveIfUnsolved(ps, result);
         final generated = result.subMeta != null;
         _advanceToNextGoal(ps, result);
         final output = StringBuffer();
@@ -919,7 +942,10 @@ final class ReplSession {
         }
         return (ReplMeta(output.toString().trimRight()), this);
       }(),
-      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+      TacticFail(:final message) => () {
+        _restoreSnapshot(ps, snap);
+        return (ReplMeta('step failed: $message'), this);
+      }(),
     };
   }
 
@@ -962,14 +988,17 @@ final class ReplSession {
     return switch (result) {
       TacticOk() => () {
         ps.undoStack.add(snap);
-        _solveMeta(ps, result.term);
+        _solveIfUnsolved(ps, result);
         _advanceToNextGoal(ps, result);
         final output = StringBuffer();
         output.writeln('Simplified.');
         output.write(_goalStatus(ps));
         return (ReplMeta(output.toString().trimRight()), this);
       }(),
-      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+      TacticFail(:final message) => () {
+        _restoreSnapshot(ps, snap);
+        return (ReplMeta('step failed: $message'), this);
+      }(),
     };
   }
 
@@ -985,14 +1014,17 @@ final class ReplSession {
     return switch (result) {
       TacticOk() => () {
         ps.undoStack.add(snap);
-        _solveMeta(ps, result.term);
+        _solveIfUnsolved(ps, result);
         _advanceToNextGoal(ps, result);
         final output = StringBuffer();
         output.writeln('Auto succeeded.');
         output.write(_goalStatus(ps));
         return (ReplMeta(output.toString().trimRight()), this);
       }(),
-      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+      TacticFail(:final message) => () {
+        _restoreSnapshot(ps, snap);
+        return (ReplMeta('step failed: $message'), this);
+      }(),
     };
   }
 
@@ -1007,14 +1039,17 @@ final class ReplSession {
     return switch (result) {
       TacticOk() => () {
         ps.undoStack.add(snap);
-        _solveMeta(ps, result.term);
+        _solveIfUnsolved(ps, result);
         _advanceToNextGoal(ps, result);
         final output = StringBuffer();
         output.writeln('Omega succeeded.');
         output.write(_goalStatus(ps));
         return (ReplMeta(output.toString().trimRight()), this);
       }(),
-      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+      TacticFail(:final message) => () {
+        _restoreSnapshot(ps, snap);
+        return (ReplMeta('step failed: $message'), this);
+      }(),
     };
   }
 
@@ -1028,14 +1063,17 @@ final class ReplSession {
     return switch (result) {
       TacticOk() => () {
         ps.undoStack.add(snap);
-        _solveMeta(ps, result.term);
+        _solveIfUnsolved(ps, result);
         _advanceToNextGoal(ps, result);
         final output = StringBuffer();
         output.writeln('Constructor applied.');
         output.write(_goalStatus(ps));
         return (ReplMeta(output.toString().trimRight()), this);
       }(),
-      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+      TacticFail(:final message) => () {
+        _restoreSnapshot(ps, snap);
+        return (ReplMeta('step failed: $message'), this);
+      }(),
     };
   }
 
@@ -1053,14 +1091,17 @@ final class ReplSession {
     return switch (result) {
       TacticOk() => () {
         ps.undoStack.add(snap);
-        _solveMeta(ps, result.term);
+        _solveIfUnsolved(ps, result);
         _advanceToNextGoal(ps, result);
         final output = StringBuffer();
         output.writeln('Case analysis applied.');
         output.write(_goalStatus(ps));
         return (ReplMeta(output.toString().trimRight()), this);
       }(),
-      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+      TacticFail(:final message) => () {
+        _restoreSnapshot(ps, snap);
+        return (ReplMeta('step failed: $message'), this);
+      }(),
     };
   }
 
@@ -1186,13 +1227,7 @@ final class ReplSession {
     }
 
     final snap = ps.undoStack.removeLast();
-    ps.metas.restore(snap.metaSnapshot);
-    ps.currentGoalMeta = snap.currentGoalMeta;
-    ps.ctx = snap.ctx;
-    ps.binderNames = snap.binderNames;
-    ps.pendingGoals = snap.pendingGoals;
-    ps.closedGoalOverCtx = snap.closedGoalOverCtx;
-    ps.goalTypeOverride = snap.goalTypeOverride;
+    _restoreSnapshot(ps, snap);
 
     final output = StringBuffer();
     output.writeln('Undone.');

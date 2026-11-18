@@ -1092,6 +1092,11 @@ class _Formatter {
             ],
             _Doc.txt(']'),
           ]),
+    STacticCases(:final name) => _Doc.txt('cases $name'),
+    STacticConstructor() => _Doc.txt('constructor'),
+    STacticAuto(:final depth) =>
+      depth == 5 ? _Doc.txt('auto') : _Doc.txt('auto $depth'),
+    STacticOmega() => _Doc.txt('omega'),
     STacticTrivial() => _Doc.txt('trivial'),
   };
 
