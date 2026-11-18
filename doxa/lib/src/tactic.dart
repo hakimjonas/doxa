@@ -1105,38 +1105,53 @@ TacticResult Function(TacticState) auto({int depth = 5}) => (s) {
     final entry = topBindings[name];
     if (entry == null) continue;
 
-    // Build a TTop term for this lemma.
-    final lemmaTerm = TTop(name);
+    // `tacticApply` solves the current goal before this search knows
+    // whether its explicit arguments are provable. Keep a snapshot and
+    // restore it when this lemma does not finish, so the next candidate
+    // starts from the same unsolved goal.
+    final snapshot = s.metas.snapshot();
+    try {
+      // Build a TTop term for this lemma.
+      final lemmaTerm = TTop(name);
 
-    // Try apply on it.
-    final applyResult = tacticApply(lemmaTerm)(s);
-    if (applyResult is TacticOk) {
-      // If no subgoals, we're done.
-      if (applyResult.subMeta == null) return applyResult;
+      // Try apply on it.
+      final applyResult = tacticApply(lemmaTerm)(s);
+      if (applyResult is TacticOk) {
+        // With no explicit arguments the conclusion already matched; the
+        // current goal is solved and `tacticApply` committed the term.
+        if (applyResult.subGoals.isEmpty) return applyResult;
 
-      // Otherwise, recursively auto on each subgoal.
-      final metas = applyResult.metas;
-      final subMetas = <int>[applyResult.subMeta!];
-      // Collect all unsolved metas (apply creates one per Pi arg).
-      for (var i = 0; i < metas.length; i++) {
-        if (!metas.isSolved(i) && i != applyResult.subMeta) {
-          subMetas.add(i);
+        // Otherwise every explicit argument is a goal for the recursive
+        // search. An unsolved argument means this application is not a
+        // proof.
+        final metas = applyResult.metas;
+        var allOk = true;
+        for (final goal in applyResult.subGoals) {
+          if (metas.isSolved(goal.metaId)) continue;
+          final subState = TacticState(
+            metas,
+            goal.ctx,
+            goal.metaId,
+            goal.binderNames,
+            const [],
+            goal.displayType,
+            goal.closedOverCtx,
+          );
+          final subResult = auto(depth: depth - 1)(subState);
+          if (subResult is! TacticOk) {
+            allOk = false;
+            break;
+          }
+        }
+        if (allOk) {
+          return TacticOk(applyResult.term, metas);
         }
       }
-
-      var allOk = true;
-      for (final subMeta in subMetas) {
-        final subState = TacticState(metas, s.ctx, subMeta, s.binderNames);
-        final subResult = auto(depth: depth - 1)(subState);
-        if (subResult is! TacticOk) {
-          allOk = false;
-          break;
-        }
-      }
-      if (allOk) {
-        return TacticOk(applyResult.term, metas);
-      }
+    } catch (_) {
+      // A candidate the kernel rejects is not a proof; restore and try
+      // the next name.
     }
+    s.metas.restore(snapshot);
   }
 
   return TacticFail('auto: no proof found at depth $depth');
@@ -1564,7 +1579,7 @@ List<Value> _neutralSubvalues(Neutral neutral) {
 }
 
 /// `constructor`: apply the first matching constructor of the goal's
-/// inductive type.
+/// inductive type, leaving each explicit argument as a subgoal.
 TacticResult tacticConstructor(TacticState s) {
   final goalType = s.goalType;
   if (goalType is! VData) {
@@ -1575,37 +1590,68 @@ TacticResult tacticConstructor(TacticState s) {
   if (dataDecl == null) {
     return TacticFail('constructor: data type "$dataName" not found');
   }
-  final level = s.ctx.level;
   final dataArgs = goalType.args;
+  final paramCount = dataDecl.params.length;
+  final registries = ENil.withRegistries(
+    dataDecls: s.ctx.env.dataDecls,
+    topBindings: s.ctx.env.topBindings,
+  );
 
   for (final ctor in dataDecl.ctors) {
-    // Build fresh metas for each constructor argument.
-    var teleEnv = const ENil() as Env;
-    final paramCount = dataDecl.params.length;
-    for (var i = paramCount - 1; i >= 0; i--) {
+    // Constructor-argument types are closed under the data's params in
+    // declaration order, then the preceding constructor arguments. Each
+    // argument meta is closed over the tactic context and applied to its
+    // spine, the shape `tacticApply` gives an explicit argument, so a
+    // solution open in the context is lifted when the user supplies it.
+    Env teleEnv = registries;
+    for (var i = 0; i < paramCount; i++) {
       teleEnv = teleEnv.extend(dataArgs[i]);
     }
     final argMetas = <int>[];
-    var ctorTerm = TConstr(dataName, ctor.name, <Term>[]) as Term;
     final argTerms = <Term>[];
+    final argTypes = <Value>[];
     for (var j = 0; j < ctor.args.length; j++) {
       final argTypeV = eval(ctor.args[j].type, teleEnv);
-      final argMetaId = s.metas.freshTermMeta(argTypeV, s.ctx);
-      argMetas.add(argMetaId);
-      final argTerm = TMeta(argMetaId);
-      argTerms.add(argTerm);
-      teleEnv = teleEnv.extend(VNeutral(NVar(level + j)));
+      argTypes.add(argTypeV);
+      final closedType = closeValueOverCtx(argTypeV, s.ctx);
+      final metaId = s.metas.freshTermMeta(closedType, s.ctx);
+      argMetas.add(metaId);
+      var metaTerm = TMeta(metaId) as Term;
+      for (var k = s.ctx.level - 1; k >= 0; k--) {
+        metaTerm = TApp(metaTerm, TBound(k));
+      }
+      argTerms.add(metaTerm);
+      teleEnv = teleEnv.extend(eval(metaTerm, s.ctx.env));
     }
-    ctorTerm = TConstr(dataName, ctor.name, argTerms);
+    final ctorTerm = TConstr(dataName, ctor.name, argTerms);
 
     // Check if ctor term matches goal type.
     try {
       final ctorType = infer(s.ctx, ctorTerm);
       if (conv(s.ctx.level, ctorType, goalType, s: s) is ConvOk) {
-        solveCurrentGoal(s, ctorTerm);
-        // Return the first subgoal meta as current.
-        final subMeta = argMetas.isNotEmpty ? argMetas.first : null;
-        return TacticOk(ctorTerm, s.metas, subMeta: subMeta);
+        if (argMetas.isEmpty) {
+          // A nullary constructor is a leaf proof; no subgoals remain.
+          solveCurrentGoal(s, ctorTerm);
+          return TacticOk(ctorTerm, s.metas);
+        }
+        // Leave the current goal to the caller, which commits [ctorTerm]
+        // first and then works through the argument goals in order.
+        final subGoals = <TacticGoal>[
+          for (var j = 0; j < argMetas.length; j++)
+            TacticGoal(
+              argMetas[j],
+              s.ctx,
+              s.binderNames,
+              displayType: argTypes[j],
+              closedOverCtx: s.ctx,
+            ),
+        ];
+        return TacticOk(
+          ctorTerm,
+          s.metas,
+          subMeta: argMetas.first,
+          subGoals: subGoals,
+        );
       }
     } catch (_) {}
   }
@@ -1614,9 +1660,11 @@ TacticResult tacticConstructor(TacticState s) {
 
 /// `cases x`: destruct variable `x` into one subgoal per constructor.
 ///
-/// Like [induction] but without induction hypotheses.  For each
+/// Like [induction] but without induction hypotheses. For each
 /// constructor of `x`'s type, creates a subgoal for the goal with `x`
-/// replaced by that constructor applied to fresh neutrals.
+/// replaced by that constructor applied to fresh neutrals. Every arm is
+/// reported in [TacticOk.subGoals], with the constructor arguments in the
+/// arm's context and named as [induction] names them.
 TacticFn Function(String) tacticCases =
     (varName) => (s) {
       int? binderIdx;
@@ -1642,6 +1690,10 @@ TacticFn Function(String) tacticCases =
       final level = s.ctx.level;
       final goalType = s.goalType;
       final paramCount = dataDecl.params.length;
+      final registries = ENil.withRegistries(
+        dataDecls: s.ctx.env.dataDecls,
+        topBindings: s.ctx.env.topBindings,
+      );
 
       // Build motive: P = λ a => goalType[x := a]
       final xVal = VNeutral(NVar(level - 1 - binderIdx));
@@ -1656,34 +1708,88 @@ TacticFn Function(String) tacticCases =
 
       final methodMetas = <int>[];
       final methodTerms = <Term>[];
+      final methodGoals = <TacticGoal>[];
 
       for (final ctor in dataDecl.ctors) {
-        var teleEnv = const ENil() as Env;
-        for (var i = paramCount - 1; i >= 0; i--) {
+        // Constructor-argument types are closed under the data's params
+        // (outermost) and the preceding constructor arguments. Extend
+        // params in declaration order and each argument after it, the
+        // same telescope [induction] builds.
+        Env teleEnv = registries;
+        for (var i = 0; i < paramCount; i++) {
           teleEnv = teleEnv.extend(dataArgs[i]);
         }
+        final argTypes = <Value>[];
         final ctorArgs = <Value>[];
         for (var j = 0; j < ctor.args.length; j++) {
-          // ignore: unused_local_variable
           final argTypeV = eval(ctor.args[j].type, teleEnv);
-          ctorArgs.add(VNeutral(NVar(level + j)));
-          teleEnv = teleEnv.extend(VNeutral(NVar(level + j)));
+          argTypes.add(argTypeV);
+          final neutral = VNeutral(NVar(level + j));
+          ctorArgs.add(neutral);
+          teleEnv = teleEnv.extend(neutral);
         }
         final ctorResultV = VConstr(dataName, ctor.name, ctorArgs);
         final pCtorV = substNVar(goalType, scrutLevel, ctorResultV);
-        final methodBodyMeta = s.metas.freshTermMeta(pCtorV, s.ctx);
+
+        // The recursor's method for a recursive constructor still demands
+        // an induction hypothesis. `cases` does not hand it to the user;
+        // it is bound under an unusable `_` name so the arm goal, which
+        // does not mention it, is the only thing the next step sees.
+        final recArgPositions = <int>[
+          for (var j = 0; j < ctor.args.length; j++)
+            if (_typeMentionsData(argTypes[j], dataName)) j,
+        ];
+        final ihTypes = <Value>[
+          for (final j in recArgPositions)
+            substNVar(goalType, scrutLevel, ctorArgs[j]),
+        ];
+
+        // The arm's context carries the constructor arguments, so their
+        // neutrals are in scope when the user solves the arm. Binder
+        // names are innermost-first, matching every other tactic goal.
+        var armCtx = s.ctx;
+        for (final t in argTypes) {
+          armCtx = armCtx.extend(t);
+        }
+        var methodCtx = armCtx;
+        for (final t in ihTypes) {
+          methodCtx = methodCtx.extend(t);
+        }
+        final methodBodyMeta = s.metas.freshTermMeta(pCtorV, methodCtx);
         methodMetas.add(methodBodyMeta);
 
+        final argNames = <String>[
+          for (var j = 0; j < ctor.args.length; j++) _ctorArgName(ctor, j),
+        ];
+        methodGoals.add(
+          TacticGoal(methodBodyMeta, methodCtx, [
+            for (var i = ihTypes.length - 1; i >= 0; i--) '_',
+            for (var j = argNames.length - 1; j >= 0; j--) argNames[j],
+            ...s.binderNames,
+          ]),
+        );
+
+        // The method's lambda chain: arguments outermost, hypotheses
+        // innermost, the discipline [induction] uses.
         var body = TMeta(methodBodyMeta) as Term;
-        for (var j = ctor.args.length - 1; j >= 0; j--) {
-          final argTypeV = eval(ctor.args[j].type, teleEnv);
-          body = TLam(quote(level, argTypeV), body);
+        for (var i = ihTypes.length - 1; i >= 0; i--) {
+          body = TLam(
+            quote(level + argTypes.length + i, ihTypes[i]),
+            body,
+            name: '_',
+          );
+        }
+        for (var j = argTypes.length - 1; j >= 0; j--) {
+          body = TLam(quote(level + j, argTypes[j]), body, name: argNames[j]);
         }
         methodTerms.add(body);
       }
 
-      // Build the full recursor application.
-      var proofTerm = TRec(dataName) as Term;
+      // Build the full recursor application. Pick the eliminator whose
+      // motive targets the goal's sort, the way induction does: a
+      // Prop-sorted goal needs `T.ind`, not the Type default.
+      final motiveSort = _motiveSortFor(s.ctx, goalType);
+      var proofTerm = TRec(dataName, motiveSort: motiveSort) as Term;
       for (var i = 0; i < paramCount; i++) {
         proofTerm = TApp(proofTerm, quote(level, dataArgs[i]));
       }
@@ -1697,6 +1803,7 @@ TacticFn Function(String) tacticCases =
         proofTerm,
         s.metas,
         subMeta: methodMetas.isNotEmpty ? methodMetas.first : null,
+        subGoals: methodGoals,
       );
     };
 
