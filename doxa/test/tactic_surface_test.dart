@@ -215,4 +215,104 @@ val bad : (n: Nat) -> Eq Nat n (succ n) = by { intro n; omega }
       );
     });
   });
+
+  group('indexed cases', () {
+    test('cases on Vec Nat m reaches both arms with a constant goal', () {
+      final env = _elabAndCheck('''
+$_nat
+$_vec
+val vec_const : (m: Nat) -> Vec Nat m -> Nat = by {
+  intro m;
+  intro v;
+  cases v;
+  constructor;
+  constructor
 }
+''');
+      expect(_binding(env, 'vec_const').name, 'vec_const');
+    });
+
+    test('cases on VecN (succ n) uses the indices of each arm', () {
+      // P zero only accepts p0; P (succ k) only accepts p1 applied to k.
+      // The declaration checking therefore pins each arm's goal to the
+      // motive at that constructor's result indices.
+      final env = _elabAndCheck('''
+$_nat
+$_vecN
+$_parity
+val vecn_parity : (n: Nat) -> VecN (succ n) -> P (succ n) = by {
+  intro n;
+  intro v;
+  cases v;
+  constructor;
+  constructor;
+  exact k
+}
+''');
+      expect(_binding(env, 'vecn_parity').name, 'vecn_parity');
+    });
+
+    test('cases covers a two-index family', () {
+      final env = _elabAndCheck('''
+$_nat
+$_lt
+val lt_const : (a: Nat) -> (b: Nat) -> Lt a b -> Nat = by {
+  intro a;
+  intro b;
+  intro h;
+  cases h;
+  constructor;
+  constructor
+}
+''');
+      expect(_binding(env, 'lt_const').name, 'lt_const');
+    });
+
+    test('a wrong indexed arm term fails with a diagnostic', () {
+      expect(
+        () => _elabAndCheck('''
+$_nat
+$_vecN
+$_parity
+val bad : (n: Nat) -> VecN (succ n) -> P (succ n) = by {
+  intro n;
+  intro v;
+  cases v;
+  exact Type;
+  constructor;
+  exact k
+}
+'''),
+        _failsWith('exact: type mismatch'),
+      );
+    });
+  });
+}
+
+const _vec = '''
+data Vec[A: Type]: Nat -> Type {
+  vnil: Vec A zero;
+  vcons: (k: Nat) -> A -> Vec A k -> Vec A (succ k);
+}
+''';
+
+const _vecN = '''
+data VecN: Nat -> Type {
+  vnil: VecN zero;
+  vcons: (k: Nat) -> Nat -> VecN k -> VecN (succ k);
+}
+''';
+
+const _parity = '''
+data P: Nat -> Type {
+  p0: P zero;
+  p1: (k: Nat) -> P (succ k);
+}
+''';
+
+const _lt = '''
+data Lt: Nat -> Nat -> Prop {
+  lt_succ: (n: Nat) -> Lt n (succ n);
+  lt_trans: (n: Nat) -> (m: Nat) -> (k: Nat) -> Lt n m -> Lt m k -> Lt n k;
+}
+''';

@@ -709,6 +709,119 @@ TacticFn Function(String) induction =
 /// elaborator's name scope.
 TacticFn Function(int) inductionAt = _inductionAt;
 
+/// The motive shared by induction and `cases`.
+///
+/// [term] is `λ (indices) (scrutinee). goal`, and [value] is its
+/// evaluation. Applying [value] to a constructor's result indices and
+/// constructor instance is the recursor's method goal for that
+/// constructor.
+final class _ScrutineeMotive {
+  /// Number of data parameters.
+  final int paramCount;
+
+  /// Number of result indices.
+  final int indexCount;
+
+  /// The scrutinee type's parameters, in declaration order.
+  final List<Value> paramsV;
+
+  /// The scrutinee type's index values.
+  final List<Value> indicesV;
+
+  /// The motive term and its evaluation.
+  final Term term;
+  final Value value;
+
+  /// Registries for evaluating constructor telescopes.
+  final Env registries;
+
+  const _ScrutineeMotive({
+    required this.paramCount,
+    required this.indexCount,
+    required this.paramsV,
+    required this.indicesV,
+    required this.term,
+    required this.value,
+    required this.registries,
+  });
+}
+
+/// Build `λ (i_0: I_0) ... (i_k-1: I_k-1) (a: T params i). G`.
+///
+/// The motive abstracts the scrutinee and each result index, which is the
+/// shape every indexed recursor demands. A zero-index family gets the
+/// one-binder motive `λ (a: T params). G`.
+_ScrutineeMotive _buildScrutineeMotive(
+  TacticState s,
+  DataDecl dataDecl,
+  List<Value> dataArgs,
+  Value goalType,
+  int scrutLevel,
+) {
+  final level = s.ctx.level;
+  final paramCount = dataDecl.params.length;
+  final indexCount = dataDecl.indices.length;
+  final paramsV = dataArgs.sublist(0, paramCount);
+  final indicesV = dataArgs.sublist(paramCount);
+  final registries = ENil.withRegistries(
+    dataDecls: s.ctx.env.dataDecls,
+    topBindings: s.ctx.env.topBindings,
+  );
+
+  // Motive P = λ (i_0: I_0) ... (i_k-1: I_k-1) (a: T params i). G,
+  // abstracting the scrutinee and the scrutinee's indices. The
+  // recursor's motive type is `(indices) -> T params indices ->
+  // Sort`, so index binder t sits at level+t and the scrutinee
+  // binder at level+indexCount.
+  final indexDomains = <Term>[];
+  Env indexEnv = registries;
+  for (var i = 0; i < paramCount; i++) {
+    indexEnv = indexEnv.extend(paramsV[i]);
+  }
+  for (var t = 0; t < indexCount; t++) {
+    final indexTypeV = eval(dataDecl.indices[t].type, indexEnv);
+    indexDomains.add(quote(level + t, indexTypeV));
+    indexEnv = indexEnv.extend(VNeutral(NVar(level + t)));
+  }
+  final scrutBinderLevel = level + indexCount;
+  final scrutTypeV = VData(dataDecl.name, [
+    ...paramsV,
+    for (var t = 0; t < indexCount; t++) VNeutral(NVar(level + t)),
+  ]);
+  // The motive body is the goal with the scrutinee and each index
+  // value replaced by its binder. The body sits under all
+  // index binders plus the scrutinee binder, hence quoted at
+  // scrutBinderLevel+1.
+  Value motiveGoal = substNVar(
+    goalType,
+    scrutLevel,
+    VNeutral(NVar(scrutBinderLevel)),
+  );
+  for (var t = 0; t < indexCount; t++) {
+    motiveGoal = _abstractIndexValue(
+      ctx: s.ctx,
+      goal: motiveGoal,
+      index: indicesV[t],
+      binder: VNeutral(NVar(level + t)),
+      quoteLevel: scrutBinderLevel + 1,
+    );
+  }
+  final motiveBody = quote(scrutBinderLevel + 1, motiveGoal);
+  var motive = TLam(quote(scrutBinderLevel, scrutTypeV), motiveBody);
+  for (var t = indexCount - 1; t >= 0; t--) {
+    motive = TLam(indexDomains[t], motive);
+  }
+  return _ScrutineeMotive(
+    paramCount: paramCount,
+    indexCount: indexCount,
+    paramsV: paramsV,
+    indicesV: indicesV,
+    term: motive,
+    value: eval(motive, s.ctx.env),
+    registries: registries,
+  );
+}
+
 TacticFn Function(int) _inductionAt =
     (binderIdx) => (s) {
       final level = s.ctx.level;
@@ -742,64 +855,25 @@ TacticFn Function(int) _inductionAt =
       }
       final scrutLevel = (xVal.neutral as NVar).level;
 
-      final paramCount = dataDecl.params.length;
-      final indexCount = dataDecl.indices.length;
-      final paramsV = dataArgs.sublist(0, paramCount);
-      final indicesV = dataArgs.sublist(paramCount);
-      final registries = ENil.withRegistries(
-        dataDecls: s.ctx.env.dataDecls,
-        topBindings: s.ctx.env.topBindings,
-      );
-
-      // Motive P = λ (i_0: I_0) ... (i_k-1: I_k-1) (a: T params i). G,
-      // abstracting the scrutinee and the scrutinee's indices. The
-      // recursor's motive type is `(indices) -> T params indices ->
-      // Sort`, so index binder t sits at level+t and the scrutinee
-      // binder at level+indexCount.
-      final indexDomains = <Term>[];
-      Env indexEnv = registries;
-      for (var i = 0; i < paramCount; i++) {
-        indexEnv = indexEnv.extend(paramsV[i]);
-      }
-      for (var t = 0; t < indexCount; t++) {
-        final indexTypeV = eval(dataDecl.indices[t].type, indexEnv);
-        indexDomains.add(quote(level + t, indexTypeV));
-        indexEnv = indexEnv.extend(VNeutral(NVar(level + t)));
-      }
-      final scrutBinderLevel = level + indexCount;
-      final scrutTypeV = VData(dataName, [
-        ...paramsV,
-        for (var t = 0; t < indexCount; t++) VNeutral(NVar(level + t)),
-      ]);
-      // The motive body is the goal with the scrutinee and each index
-      // value replaced by its binder. The body sits under all
-      // index binders plus the scrutinee binder, hence quoted at
-      // scrutBinderLevel+1.
-      Value motiveGoal = substNVar(
+      final motiveInfo = _buildScrutineeMotive(
+        s,
+        dataDecl,
+        dataArgs,
         goalType,
         scrutLevel,
-        VNeutral(NVar(scrutBinderLevel)),
       );
-      for (var t = 0; t < indexCount; t++) {
-        motiveGoal = _abstractIndexValue(
-          ctx: s.ctx,
-          goal: motiveGoal,
-          index: indicesV[t],
-          binder: VNeutral(NVar(level + t)),
-          quoteLevel: scrutBinderLevel + 1,
-        );
-      }
-      final motiveBody = quote(scrutBinderLevel + 1, motiveGoal);
-      var motive = TLam(quote(scrutBinderLevel, scrutTypeV), motiveBody);
-      for (var t = indexCount - 1; t >= 0; t--) {
-        motive = TLam(indexDomains[t], motive);
-      }
+      final paramCount = motiveInfo.paramCount;
+      final indexCount = motiveInfo.indexCount;
+      final paramsV = motiveInfo.paramsV;
+      final indicesV = motiveInfo.indicesV;
+      final registries = motiveInfo.registries;
       // The recursor's method type is `arguments -> IHs -> P resultIndices
       // (C args)`. Evaluate the motive once and apply it directly: that
       // is definitionally the method type, including for a constructor
       // whose result indices do not unify with the scrutinee's (the
       // unreachable `vnil` in an induction on `Vec A (succ n)`).
-      final motiveV = eval(motive, s.ctx.env);
+      final motive = motiveInfo.term;
+      final motiveV = motiveInfo.value;
 
       // Build each constructor method and collect its subgoal.
       final methodGoals = <TacticGoal>[];
@@ -1677,7 +1751,10 @@ TacticFn Function(String) tacticCases =
       if (binderIdx == null) {
         return TacticFail('cases: variable "$varName" not in scope');
       }
-      final xType = s.ctx.lookupType(binderIdx);
+      final level = s.ctx.level;
+      Value normalize(Value v) =>
+          eval(inlineSolvedMetas(quote(level, v), s.metas), s.ctx.env);
+      final xType = normalize(s.ctx.lookupType(binderIdx));
       if (xType is! VData) {
         return const TacticFail('cases: variable is not of an inductive type');
       }
@@ -1687,24 +1764,30 @@ TacticFn Function(String) tacticCases =
       if (dataDecl == null) {
         return TacticFail('cases: data type "$dataName" not found');
       }
-      final level = s.ctx.level;
-      final goalType = s.goalType;
-      final paramCount = dataDecl.params.length;
-      final registries = ENil.withRegistries(
-        dataDecls: s.ctx.env.dataDecls,
-        topBindings: s.ctx.env.topBindings,
-      );
+      final goalType = normalize(s.goalType);
 
-      // Build motive: P = λ a => goalType[x := a]
       final xVal = VNeutral(NVar(level - 1 - binderIdx));
       if (xVal.neutral is! NVar) {
         return const TacticFail('cases: cannot build motive');
       }
       final scrutLevel = (xVal.neutral as NVar).level;
-      final freshVar = VNeutral(NVar(level));
-      final motiveV = substNVar(goalType, scrutLevel, freshVar);
-      final motiveBody = quote(level + 1, motiveV);
-      final motive = TLam(quote(level, xType), motiveBody);
+
+      // The recursor demands the indexed motive, the same construction
+      // induction uses: `λ (indices) (a: T params indices). G`.
+      final motiveInfo = _buildScrutineeMotive(
+        s,
+        dataDecl,
+        dataArgs,
+        goalType,
+        scrutLevel,
+      );
+      final paramCount = motiveInfo.paramCount;
+      final indexCount = motiveInfo.indexCount;
+      final paramsV = motiveInfo.paramsV;
+      final indicesV = motiveInfo.indicesV;
+      final registries = motiveInfo.registries;
+      final motive = motiveInfo.term;
+      final motiveV = motiveInfo.value;
 
       final methodMetas = <int>[];
       final methodTerms = <Term>[];
@@ -1717,7 +1800,7 @@ TacticFn Function(String) tacticCases =
         // same telescope [induction] builds.
         Env teleEnv = registries;
         for (var i = 0; i < paramCount; i++) {
-          teleEnv = teleEnv.extend(dataArgs[i]);
+          teleEnv = teleEnv.extend(paramsV[i]);
         }
         final argTypes = <Value>[];
         final ctorArgs = <Value>[];
@@ -1728,8 +1811,20 @@ TacticFn Function(String) tacticCases =
           ctorArgs.add(neutral);
           teleEnv = teleEnv.extend(neutral);
         }
-        final ctorResultV = VConstr(dataName, ctor.name, ctorArgs);
-        final pCtorV = substNVar(goalType, scrutLevel, ctorResultV);
+        // P(resultIndices) (C args): the recursor's method goal at the
+        // constructor's own indices and instance, the same computation
+        // induction's method goals use.
+        final ctorResultIndicesV = <Value>[
+          for (final t in ctor.resultIndices) eval(t, teleEnv),
+        ];
+        final ctorInstanceV = VConstr(dataName, ctor.name, [
+          ...paramsV,
+          ...ctorArgs,
+        ]);
+        final pCtorV = _applyMotive(motiveV, [
+          ...ctorResultIndicesV,
+          ctorInstanceV,
+        ]);
 
         // The recursor's method for a recursive constructor still demands
         // an induction hypothesis. `cases` does not hand it to the user;
@@ -1741,7 +1836,10 @@ TacticFn Function(String) tacticCases =
         ];
         final ihTypes = <Value>[
           for (final j in recArgPositions)
-            substNVar(goalType, scrutLevel, ctorArgs[j]),
+            _applyMotive(motiveV, [
+              ..._subIndices(argTypes[j], dataName, paramCount),
+              ctorArgs[j],
+            ]),
         ];
 
         // The arm's context carries the constructor arguments, so their
@@ -1794,6 +1892,9 @@ TacticFn Function(String) tacticCases =
         proofTerm = TApp(proofTerm, quote(level, dataArgs[i]));
       }
       proofTerm = TApp(proofTerm, motive);
+      for (var t = 0; t < indexCount; t++) {
+        proofTerm = TApp(proofTerm, quote(level, indicesV[t]));
+      }
       for (final m in methodTerms) {
         proofTerm = TApp(proofTerm, m);
       }
