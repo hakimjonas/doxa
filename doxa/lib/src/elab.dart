@@ -5012,21 +5012,21 @@ List<_FunBinder> _constraintBinders(SFunTypeParam tp) => [
     ),
 ];
 
-/// The binder order for a `fun`: type parameters, explicit value
-/// parameters, then one implicit dictionary per constraint.
+/// The binder order for a `fun`: type parameters in declaration order,
+/// the explicit value parameters, then one implicit dictionary per
+/// constraint in type-parameter order.
 ///
-/// A constrained type parameter is implicit: `[A: Eqb]` is inferred from
-/// the value arguments. The dictionary follows the explicit parameters so
-/// the type parameter is solved before instance search runs, matching the
-/// projection's order.
+/// A constrained type parameter keeps the icity of its group: `[A: Eqb]`
+/// is explicit, and constraints are accepted only on explicit groups. The
+/// dictionary follows the explicit parameters so the class parameter is
+/// solved from them before instance search runs, matching the projection's
+/// order.
 List<_FunBinder> _funBinders(SFunKind kind) => [
   for (final tp in kind.typeParams)
     _FunBinder(
       tp.name,
       tp.kind ?? const SExpr(STypeKind(null), DoxaSpan.synthetic),
-      tp.isImplicit || tp.constraints.isNotEmpty
-          ? Icit.implicit
-          : Icit.explicit,
+      tp.isImplicit ? Icit.implicit : Icit.explicit,
       tp.span,
     ),
   for (var i = 0; i < kind.params.length; i++)

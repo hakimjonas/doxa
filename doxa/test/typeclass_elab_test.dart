@@ -128,17 +128,17 @@ impl Eqb[Bool] {
   };
 }
 fun same[A: Eqb](x: A, y: A): Bool = eqb x y
-val natSame: Bool = same zero zero
-val boolSame: Bool = same true_ true_
+val natSame: Bool = same Nat zero zero
+val boolSame: Bool = same Bool true_ true_
 '''),
         ),
       );
 
-      // The constrained type parameter is implicit and the dictionary
-      // follows the explicit parameters.
+      // The constrained type parameter keeps the icity of its group, so
+      // A is explicit. The dictionary follows the explicit parameters.
       final same = env.bindings.firstWhere((b) => b.name == 'same');
       final pA = same.type as TPi;
-      expect(pA.icit, Icit.implicit);
+      expect(pA.icit, Icit.explicit);
       final pX = pA.codomain as TPi;
       expect(pX.icit, Icit.explicit);
       final pY = pX.codomain as TPi;
@@ -151,23 +151,47 @@ val boolSame: Bool = same true_ true_
       expect(_ctorName(_evalBinding(env, 'boolSame')), 'true_');
     });
 
-    test('an explicit type argument is not accepted for a constrained '
-        'parameter', () {
-      // `[A: Eqb]` is implicit in the generated type, so `same Nat zero zero`
-      // binds Nat to the first value parameter instead of A.
-      expect(
-        () => checkProgram(
-          pp(
-            _program('''
+    test('a missing explicit type argument fails at the first value', () {
+      // `same zero zero` mirrors `id zero`: the explicit type parameter
+      // receives zero, and the value parameter then checks it against
+      // Type. Pin both spans so the diagnostic is part of the contract.
+      final sameSource = _program('''
 impl Eqb[Nat] {
   fun eqb(x: Nat, y: Nat): Bool = true_;
 }
 fun same[A: Eqb](x: A, y: A): Bool = eqb x y
-val natSame: Bool = same Nat zero zero
-'''),
+val natSame: Bool = same zero zero
+''');
+      final sameZero = sameSource.indexOf(
+        'zero',
+        sameSource.indexOf('same zero'),
+      );
+      expect(
+        () => checkProgram(pp(sameSource)),
+        throwsA(
+          isA<TypeMismatch>().having(
+            (e) => e.span,
+            'span',
+            DoxaSpan(sameZero, sameZero + 'zero'.length),
           ),
         ),
-        throwsA(isA<TypeMismatch>()),
+      );
+
+      const idSource = '''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+fun id[A: Type](x: A): A = x
+val c : Nat = id zero
+''';
+      final idZero = idSource.indexOf('zero', idSource.indexOf('id zero'));
+      expect(
+        () => checkProgram(pp(idSource)),
+        throwsA(
+          isA<TypeMismatch>().having(
+            (e) => e.span,
+            'span',
+            DoxaSpan(idZero, idZero + 'zero'.length),
+          ),
+        ),
       );
     });
 

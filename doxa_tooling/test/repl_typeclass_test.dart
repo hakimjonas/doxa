@@ -52,7 +52,7 @@ impl Eqb[Nat] {
 
       // The registry reached _processDecl: a call with a constrained
       // parameter resolves its dictionary in check mode.
-      session = _declare(session, 'val r : Bool = same zero zero');
+      session = _declare(session, 'val r : Bool = same Nat zero zero');
       final (rType, _) = session.processInput(':type r');
       expect(rType, isA<ReplMeta>());
       expect((rType as ReplMeta).text, 'Bool');
