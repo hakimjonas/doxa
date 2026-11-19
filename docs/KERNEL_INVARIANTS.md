@@ -39,53 +39,66 @@ metas).env`, with the caller's top-binding registry merged in when supplied.
 It previously evaluated under an empty env, which threw on any escaped index;
 the declaration-site evaluation makes an open solution force correctly.
 
-`inlineSolvedMetas` substitutes a solved meta at the use-site walker depth.
-`_solutionAdmissibleAtDepth` is a hook for delayed records and returns
-true for every solved entry today, so a solved entry is inlined at any
-depth; the open gap below is the consequence.
+`inlineSolvedMetas` classifies each stored solution by
+`solutionHasFreeIndices`:
 
-`_validateSolvedMeta` inlines nested solutions at the default outer depth
-(0) and then checks the solution under the declaration-site context, so the
-audit and the inliner interpret the term with the same no-shift rule.
+- **Open**: the solution has a free `TBound` pointing into
+  `entry.localCtx`; its root lives at `entry.localCtx.level`. At a use
+  site whose ambient level is `d >= localCtx.level`, the free indices are
+  shifted by `d - localCtx.level`; below that the meta is left un-inlined.
+- **Closed**: no free indices; its own λ-chain binds the local context or
+  the unification spine, so its root lives at ambient 0 and it is
+  self-contained.
 
-### Open gap: deeper inlining of an open solution
+`_solutionAdmissibleAtDepth` expresses exactly this rule: a closed
+solution is always admissible, an open one only at
+`ambientLevel >= localCtx.level`.
 
-If an open solution (one with free indices into `localCtx`) is inlined under
-binders added after the meta was declared, its indices are short by the
-number of added binders. The intended fix is to shift the escaped indices by
-`useDepth - localCtx.level`.
+`_validateSolvedMeta` inlines nested solutions at the solution root's
+ambient (`localCtx.level` for an open solution, 0 for a closed one) and
+checks the solution under the declaration-site context.
 
-That shift was implemented and reverted. It breaks the tactic engine's
-nested solutions: `revert`, two indexed-induction proofs, and a `simp`
-residual all store inner-metas whose terms are already positioned for the
-enclosing λ-chain rather than for the meta's recorded `localCtx` (for
-example, `refl [TBound(1), TBound(0)]` at `localCtx.level == 2` nested under
-a meta at level 1). Shifting those terms by the ambient difference produces
-an ill-typed proof, and the audit rejects it with `expected VNeutral, got
-VType`.
+### Producer convention
 
-Closing the gap needs one of:
+The tactic engine already stores both shapes consistently:
 
-- close every tactic solution over its goal context at solve time, so all
-  stored solutions are closed λ-chains (this changes the tactic solver,
-  which this change deliberately leaves alone), or
-- a provenance-aware inliner that distinguishes an outer solution's own
-  free indices from indices inside an inlined nested solution.
+- **Open over `localCtx`**: `exact`, `refl`, `trivial`, `rewrite`'s
+  subgoal, `induction`/`cases` arm goals, `simp`'s direct solves, and
+  `intro`'s lambda body. Their free indices refer to the goal context.
+- **Closed over `localCtx`**: `apply`'s explicit arguments,
+  `constructor`'s argument metas, and `revert`'s reverted goal. They store
+  `closeTermOverCtx`'s λ-chain, which rebinds the context and leaves no
+  free indices.
 
-Until then a direct `MetaContext.solve` with an open term is safe to force
-at its declaration depth and to inline at that same depth, which is what the
-tactic engine does. Using such a term under additional binders is the
-remaining risk.
+`solutionHasFreeIndices` distinguishes the two structurally, so no
+producer needs a marker and none had to change. The earlier shift attempt
+failed because it treated every solution as open and walked the closed
+`revert` chain at `localCtx.level`, counting its context binders twice.
+
+### Two-level rule
+
+The inliner tracks the ambient context level at the position, not the
+number of binders entered since the walk root. Entering a binder raises
+the ambient by one. Substituting a closed solution resets nothing (it is
+self-contained); substituting an open solution sets its root ambient to
+its own `localCtx.level`. The shift of `d - localCtx.level` applies once,
+to the open solution's own escaped indices.
+
+`_validateSolvedMeta`, the two unifier solve-site inlines, and
+`_finalizeDeclBindings` pass the root ambient for the term they hand to
+`inlineSolvedMetas`, so the audit and the inliner use the same rule.
 
 ## Where solutions are evaluated and inlined
 
 - `_forceMetaHead`: declaration-site env, current `MetaContext` installed.
 - `_tryUnify`, `_tryFlexFlexIntersect`: `inlineSolvedMetas` with
-  `outerDepth: 0`, then `checkMetaSolution` under the declaration context.
-- `_validateSolvedMeta`: `inlineSolvedMetas(entry.solution, metas)` with the
-  default depth, checked under `installMetaContext(entry.localCtx, metas)`.
-- `_finalizeDeclBindings`: `inlineSolvedMetas` over each stored binding at
-  the top-level depth.
+  `outerDepth: 0` (their solutions are closed λ-chains over the unification
+  spine), then `checkMetaSolution` under the declaration context.
+- `_validateSolvedMeta`: `inlineSolvedMetas` with
+  `outerDepth: solutionHasFreeIndices(entry.solution) ? entry.localCtx.level
+  : 0`, checked under `installMetaContext(entry.localCtx, metas)`.
+- `_finalizeDeclBindings`: `inlineSolvedMetas` over each stored binding with
+  the default root ambient 0 (the binding term is at the top-level scope).
 
 ## Public entry points
 
@@ -102,7 +115,6 @@ themselves. `doxa/example/example.dart` uses `checkProgram`.
 
 ## Limits
 
-- The deeper-inlining gap above.
 - Pattern unification remains partial (deliberate; see the audit).
 - `auto` and `omega` are bounded conveniences.
 - A direct `MetaContext.solve` is trusted; only `checkDeclResult`'s audit
