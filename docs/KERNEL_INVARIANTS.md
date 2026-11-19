@@ -99,6 +99,14 @@ to the open solution's own escaped indices.
   : 0`, checked under `installMetaContext(entry.localCtx, metas)`.
 - `_finalizeDeclBindings`: `inlineSolvedMetas` over each stored binding with
   the default root ambient 0 (the binding term is at the top-level scope).
+- Tactic normalizers: `_inductionAt`'s goal/scrutinee normalization,
+  `tacticCases`'s goal/scrutinee normalization, and `_findSimpMatch`'s
+  right-endpoint inline, each `inlineSolvedMetas(..., outerDepth: level)`
+  for the `level` its `quote(level, ...)` uses.
+
+A caller passing a term quoted at context level `L` must pass
+`outerDepth: L`; the default 0 is only correct for a term rooted at the
+top-level scope or for a closed solution.
 
 ## Public entry points
 

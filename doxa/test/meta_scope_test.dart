@@ -66,5 +66,22 @@ void main() {
       expect(inlined, isA<TMeta>());
       expect((inlined as TMeta).id, m);
     });
+
+    test('the caller-supplied ambient drives the shift', () {
+      // A caller holding a term quoted at level 2 must pass outerDepth: 2.
+      // Omitting it (0) is below the declaration level and leaves the meta.
+      final metas = MetaContext();
+      final base = _base(metas);
+      final ctx = base.extend(const VType(LLevel(0)));
+      final m = metas.freshTermMeta(const VType(LLevel(0)), ctx);
+      metas.solve(m, const TBound(0));
+
+      final shifted = inlineSolvedMetas(TMeta(m), metas, outerDepth: 2);
+      expect(shifted, const TBound(1));
+
+      final untouched = inlineSolvedMetas(TMeta(m), metas);
+      expect(untouched, isA<TMeta>());
+      expect((untouched as TMeta).id, m);
+    });
   });
 }

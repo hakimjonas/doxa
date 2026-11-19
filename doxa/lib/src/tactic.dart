@@ -830,8 +830,10 @@ TacticFn Function(int) _inductionAt =
       // functions they mention). The index refinement walks values
       // structurally, so a solved `NMeta` where it expects an `NVar`
       // would silently skip the refinement.
-      Value normalize(Value v) =>
-          eval(inlineSolvedMetas(quote(level, v), s.metas), s.ctx.env);
+      Value normalize(Value v) => eval(
+        inlineSolvedMetas(quote(level, v), s.metas, outerDepth: level),
+        s.ctx.env,
+      );
       final xType = normalize(s.ctx.lookupType(binderIdx));
       if (xType is! VData) {
         return const TacticFail(
@@ -1474,6 +1476,7 @@ TacticFn Function(List<Term>) simp =
           final rhsTerm = inlineSolvedMetas(
             quote(level, rule.rhs),
             state.metas,
+            outerDepth: level,
           );
           final rhs = eval(rhsTerm, state.ctx.env);
           if (_simpRewriteChanges(goalType, candidate, rhs, level)) {
@@ -1759,8 +1762,10 @@ TacticFn Function(String) tacticCases =
         return TacticFail('cases: variable "$varName" not in scope');
       }
       final level = s.ctx.level;
-      Value normalize(Value v) =>
-          eval(inlineSolvedMetas(quote(level, v), s.metas), s.ctx.env);
+      Value normalize(Value v) => eval(
+        inlineSolvedMetas(quote(level, v), s.metas, outerDepth: level),
+        s.ctx.env,
+      );
       final xType = normalize(s.ctx.lookupType(binderIdx));
       if (xType is! VData) {
         return const TacticFail('cases: variable is not of an inductive type');
