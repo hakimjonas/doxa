@@ -283,7 +283,8 @@ theorem sample : (A: Type) -> A -> A = by { refl | intro A; intro x; exact x }
 ```
 
 Available commands: `intro name`, `exact expr`, `apply expr`, `refl`,
-`induction name`, `revert name`, `rewrite proof`, `trivial`.
+`induction name`, `cases name`, `constructor`, `rewrite proof`,
+`simp [lemmas]`, `auto [depth]`, `omega`, `trivial`.
 Alternatives are separated by `|`; the first alternative that closes
 every goal wins.
 
@@ -323,6 +324,90 @@ theorem plus_zero : (n: Nat) -> Eq Nat (plus n zero) n = by {
 induction hypotheses `ih`, `ih2`, ... in recursive-argument order. The
 names are in scope for the following steps, so the `succ` arm above can
 `rewrite ih`.
+
+### Simplifying
+
+`simp [lemmas]` normalises the goal by evaluation and rewrites it with
+equality lemmas until no rule applies. With no list, every equality-typed
+hypothesis in the local context is a rule; a bracketed list adds the named
+equalities. A rule may be Pi-typed: its binders are instantiated with
+metavariables and its conclusion is matched against subterms of the goal.
+The goal closes by `refl` when the two sides become convertible. When a
+rewrite applies and the goal remains, `simp` leaves the rewritten goal for
+the next step. When nothing applies and `refl` fails, it reports
+`simp: no progress`.
+
+The loop is bounded. After 100 rewrites, or when a normalised goal repeats,
+`simp` fails with `simp: rewrite limit exceeded` and names the last rule
+applied. It never returns a partially rewritten goal as if the proof were
+complete.
+
+Every equality hypothesis in context is a rule. Keep one out of the rewrite
+set by introducing it after `simp` runs, or by `revert`ing it first. The
+following proof uses `plus_zero` and `plus_succ` from the standard library:
+
+```doxa
+import "package:doxa_stdlib/stdlib/proofs.doxa"
+
+val plus_nested : (m: Nat) -> (n: Nat) ->
+    Eq Nat (plus (plus m (succ n)) zero) (succ (plus m n)) = by {
+  intro m;
+  intro n;
+  simp [plus_zero, plus_succ]
+}
+```
+
+`plus_zero` removes the outer `zero`, exposing the left side of `plus_succ`,
+and the second rewrite makes the sides convertible.
+
+### Case analysis and constructors
+
+`cases x` splits a variable of inductive type into one goal per
+constructor, with the constructor's arguments in scope and named as
+`induction` names them. Unlike `induction`, no usable hypothesis is
+added; a recursive constructor still carries the recursor's hypothesis
+binder, which the display shows as `_` and the arm goal does not mention:
+
+```doxa
+val two_cases : (n: Nat) -> Eq Nat (plus zero n) n = by {
+  intro n;
+  cases n;
+  refl;
+  refl
+}
+```
+
+`constructor` applies the first constructor whose result type matches the
+goal. A nullary constructor closes the goal; any other constructor leaves
+one goal per argument, in argument order. An argument type that mentions a
+local variable is a goal over that variable, so the proof may name it:
+
+```doxa
+data D: Nat -> Type {
+  d0: D zero;
+  d1: (n: Nat) -> D n -> D (succ n);
+}
+
+val d_succ : (n: Nat) -> D n -> D (succ n) = by {
+  intro n;
+  intro p;
+  constructor;
+  exact p
+}
+```
+
+### Search tactics
+
+`auto [depth]` tries `refl`, then `trivial`, then applications of the
+top-level names in scope, recursively to `depth` levels (default 5, accepted
+range 0 to 20). The search is bounded, so a larger depth costs more time and
+still does not guarantee a proof.
+
+`omega` normalises both sides of an equality and tries the arithmetic
+lemmas in scope (`plus_zero`, `plus_succ`, `plus_comm`, and related
+lemmas). It is a convenience for goals those lemmas close, not a decision
+procedure; when none applies it reports
+`omega: could not solve the arithmetic goal`.
 
 For an indexed family the arm's goal comes from the recursor's motive:
 each method goal is the motive applied to the constructor's own result
@@ -462,6 +547,14 @@ constructor's result indices, so it is the recursor's method goal. With
 scrutinee index gives the same treatment: inducting on
 `v : Vec A (succ n)` shows the `vnil` arm's goal as `Eq Nat zero zero`.
 
+`:step cases x` walks one goal per constructor in constructor order, with
+the constructor's arguments named in the context; `:goal` shows the current
+arm. A recursive constructor also shows the recursor's hypothesis binder
+as `_`, which the arm goal does not mention. `:step constructor` leaves one
+goal per argument of the constructor it picked, again in argument order; a
+nullary constructor closes the goal immediately, and the next `:step`
+targets the first open goal.
+
 ### Reverting a binder
 
 `:step revert x` moves the innermost binder back into the goal. The
@@ -516,6 +609,25 @@ Goal:
 restores the whole goal queue, so it also steps back from a later arm to
 an earlier one.
 
+### Simplifying
+
+`:step simp` normalises the goal and rewrites with the context's equality
+hypotheses. A bracketed list adds lemmas, as in `:step simp [plus_zero]`.
+A partial simplification displays the residual goal, so the next step can
+finish it:
+
+```
+> :step simp [h]
+Simplified.
+Goal:
+  Eq A (f y) (g y)
+Context:
+  h : Eq A x y
+  ...
+```
+
+`:step simpl` is kept as an alias for `:step simp` with no list.
+
 ### Inspecting and undoing
 
 ```
@@ -556,7 +668,8 @@ idProof : (A: Type) -> A -> A
 | `:step revert v`      | Move the innermost binder `v` back into the goal |
 | `:step constructor`   | Apply the first matching constructor |
 | `:step cases v`       | Case analysis on variable `v` (no IHs) |
-| `:step simpl`         | Normalise the goal |
+| `:step simp [lemmas]` | Normalise and rewrite with equality hypotheses |
+| `:step simpl`         | Alias for `:step simp` |
 | `:step trivial`       | Try refl, then context lookup |
 | `:step auto [depth]`  | Depth-bounded proof search (default depth 5) |
 | `:step omega`         | Arithmetic solver for `Nat` goals |

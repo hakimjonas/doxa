@@ -1744,6 +1744,7 @@ Term _elabTacticBlock(
   final rootSnapshot = metas.snapshot();
   var attemptStart = metas.length;
   var lastEst = state;
+  String? lastFail;
   for (final alt in kind.steps) {
     metas.restore(rootSnapshot);
     attemptStart = metas.length;
@@ -1755,6 +1756,9 @@ Term _elabTacticBlock(
     );
     final (result, newEst) = _runTacticSteps(alt, tstate, state);
     lastEst = newEst;
+    if (result is TacticFail) {
+      lastFail = result.message;
+    }
     if (result is TacticOk) {
       // The block is closed only when every meta allocated by this
       // attempt is solved, not merely the root. A tactic that creates
@@ -1765,18 +1769,26 @@ Term _elabTacticBlock(
         for (var i = attemptStart; i < metas.length; i++)
           if (!metas.isSolved(i)) i,
       ];
-      if (unsolved.isNotEmpty) continue;
+      if (unsolved.isNotEmpty) {
+        lastFail = 'unsolved metas: $unsolved';
+        continue;
+      }
       try {
         final term = metas.solutionOf(goalMetaId);
         _recordProofState(metas, span, goalMetaId, attemptStart, lastEst);
         return term;
       } catch (_) {
+        lastFail = 'goal meta unsolved';
         continue;
       }
     }
   }
   _recordProofState(metas, span, goalMetaId, attemptStart, lastEst);
-  throw TacticFailed('tactic block: no alternative succeeded', span);
+  throw TacticFailed(
+    'tactic block: no alternative succeeded'
+    '${lastFail == null ? '' : ' ($lastFail)'}',
+    span,
+  );
 }
 
 /// Record a proof-state snapshot for a `by` block, when the pipeline
@@ -1843,6 +1855,14 @@ List<String> _localScopeNames(_LocalScope scope) {
       STacticRewrite(:final expr) => _runRewrite(expr, state, currentEst),
       STacticInduction(:final name) => _runInduction(name, state, currentEst),
       STacticRevert(:final name) => revert(name)(state),
+      STacticSimp(:final lemmas) => _runSimp(lemmas, state, currentEst),
+      STacticCases(:final name) => tacticCases(name)(state),
+      STacticConstructor() => tacticConstructor(state),
+      STacticAuto(:final depth) =>
+        depth < 0 || depth > 20
+            ? const TacticFail('auto: depth must be between 0 and 20')
+            : auto(depth: depth)(state),
+      STacticOmega() => omega(state),
       STacticTrivial() => trivial(state),
     };
     switch (result) {
@@ -1923,6 +1943,18 @@ TacticResult _runApply(SExpr expr, TacticState tstate, _ElabState est) {
 TacticResult _runRewrite(SExpr expr, TacticState tstate, _ElabState est) {
   final (term, _) = _inferExpr(est, expr);
   return rewrite(term)(tstate);
+}
+
+TacticResult _runSimp(List<SExpr> lemmas, TacticState tstate, _ElabState est) {
+  final terms = <Term>[];
+  for (final expr in lemmas) {
+    try {
+      terms.add(_inferExpr(est, expr).$1);
+    } catch (_) {
+      return const TacticFail('simp: could not elaborate a lemma');
+    }
+  }
+  return simp(terms)(tstate);
 }
 
 TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {

@@ -1081,6 +1081,22 @@ class _Formatter {
     ]),
     STacticInduction(:final name) => _Doc.txt('induction $name'),
     STacticRevert(:final name) => _Doc.txt('revert $name'),
+    STacticSimp(:final lemmas) =>
+      lemmas.isEmpty
+          ? _Doc.txt('simp')
+          : _Doc.catAll([
+            _Doc.txt('simp ['),
+            for (var i = 0; i < lemmas.length; i++) ...[
+              if (i > 0) _Doc.txt(', '),
+              _visit(lemmas[i]),
+            ],
+            _Doc.txt(']'),
+          ]),
+    STacticCases(:final name) => _Doc.txt('cases $name'),
+    STacticConstructor() => _Doc.txt('constructor'),
+    STacticAuto(:final depth) =>
+      depth == 5 ? _Doc.txt('auto') : _Doc.txt('auto $depth'),
+    STacticOmega() => _Doc.txt('omega'),
     STacticTrivial() => _Doc.txt('trivial'),
   };
 

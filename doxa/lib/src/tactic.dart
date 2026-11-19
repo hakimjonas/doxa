@@ -543,120 +543,141 @@ TacticFn Function(Term) rewrite =
       if (eqArgs.length != 3) {
         return const TacticFail('rewrite: Eq has wrong arity');
       }
-      final aType = eqArgs[0]; // A : Type
-      final x = eqArgs[1]; // x : A
-      final y = eqArgs[2]; // y : A
-      final level = s.ctx.level;
-      final xLevel =
-          x is VNeutral && x.neutral is NVar ? (x.neutral as NVar).level : null;
-
-      // G[x := v] as a Term quoted at [quoteLevel], where the
-      // replacement `v` is the binder at de Bruijn index [boundIndex]
-      // of that scope. For an NVar `x`, substitute a neutral at the
-      // matching absolute level; otherwise replace the quoted subterm.
-      Term goalAt(int quoteLevel, int boundIndex) {
-        if (xLevel != null) {
-          return quote(
-            quoteLevel,
-            substNVar(
-              s.goalType,
-              xLevel,
-              VNeutral(NVar(quoteLevel - 1 - boundIndex)),
-            ),
-          );
-        }
-        final goalTerm = quote(quoteLevel, s.goalType);
-        final xTerm = quote(quoteLevel, x);
-        return _replaceTermInTerm(goalTerm, xTerm, TBound(boundIndex));
-      }
-
-      final aVar = VNeutral(NVar(level));
-      final bVar = VNeutral(NVar(level + 1));
-      final eqAB = VData('Eq', [aType, aVar, bVar]);
-
-      // sym p : Eq[A] y x. The method of Eq.rec for `refl` is
-      // `(z: A) -> P z z (refl z)`, so here it is the function
-      // `λ z. refl A z`.
-      final symMotive = TLam(
-        quote(level, aType),
-        TLam(
-          quote(level + 1, aType),
-          TLam(
-            quote(level + 2, eqAB),
-            quote(level + 3, VData('Eq', [aType, bVar, aVar])),
-          ),
-        ),
+      final transport = _rewriteTransport(
+        s,
+        aType: eqArgs[0],
+        x: eqArgs[1],
+        y: eqArgs[2],
+        proof: p,
+        goalType: s.goalType,
       );
-      final symMethod = TLam(
-        quote(level, aType),
-        TConstr('Eq', 'refl', [quote(level + 1, aType), const TBound(0)]),
-      );
-      var symProof = const TRec('Eq') as Term;
-      for (final arg in [
-        quote(level, aType),
-        symMotive,
-        quote(level, x),
-        quote(level, y),
-        symMethod,
-        p,
-      ]) {
-        symProof = TApp(symProof, arg);
-      }
-
-      // Main motive P a b e := G[x:=a] -> G[x:=b], under binders
-      // a (level), b (level+1), e (level+2). The Pi body is quoted at
-      // level+3; its codomain sits one binder deeper, so its quoted
-      // references are one index larger.
-      final motive = TLam(
-        quote(level, aType),
-        TLam(
-          quote(level + 1, aType),
-          TLam(
-            quote(level + 2, eqAB),
-            TPi(goalAt(level + 3, 2), goalAt(level + 4, 2)),
-          ),
-        ),
-      );
-
-      // Method `λ (z: A) (h: G[x:=z]). h`, whose type is
-      // `P z z (refl z) = G[x:=z] -> G[x:=z]`.
-      final method = TLam(
-        quote(level, aType),
-        TLam(goalAt(level + 1, 0), const TBound(0)),
-      );
-
-      // Base instantiated at the equation's left endpoint, y: the
-      // subgoal is G[x:=y].
-      final reflY = VConstr('Eq', 'refl', [aType, y]);
-      final subgoalTerm = goalAt(level + 3, 1);
-      final subgoalType = eval(
-        subgoalTerm,
-        s.ctx.env.extend(y).extend(y).extend(reflY),
-      );
-      final subMetaId = s.metas.freshTermMeta(subgoalType, s.ctx);
-
-      // Eq.rec A P y x (λ z h. h) (sym p) : G[x:=y] -> G,
-      // applied to the rewritten subgoal.
-      final motiveSort = _motiveSortFor(s.ctx, s.goalType);
-      var recursor = TRec('Eq', motiveSort: motiveSort) as Term;
-      for (final arg in [
-        quote(level, aType),
-        motive,
-        quote(level, y),
-        quote(level, x),
-        method,
-        symProof,
-      ]) {
-        recursor = TApp(recursor, arg);
-      }
-      final proofTerm = TApp(recursor, TMeta(subMetaId));
       return TacticOk(
-        proofTerm,
+        TApp(transport.recursor, TMeta(transport.subMeta)),
         s.metas,
-        subMeta: subMetaId,
-        subGoals: [TacticGoal(subMetaId, s.ctx, s.binderNames)],
+        subMeta: transport.subMeta,
+        subGoals: [TacticGoal(transport.subMeta, s.ctx, s.binderNames)],
       );
     };
+
+/// Build the transport proof `G[x:=y] -> G` for one rewrite step.
+///
+/// [x] is the occurrence being replaced (the equation's left endpoint for
+/// `rewrite`, the matched subterm for `simp`) and [y] its replacement.
+/// [proof] must inhabit `Eq A x y` up to conversion. Returns the recursor
+/// application and the fresh subgoal meta for `G[x:=y]`; the caller applies
+/// the recursor to a proof of that subgoal.
+({Term recursor, int subMeta}) _rewriteTransport(
+  TacticState s, {
+  required Value aType,
+  required Value x,
+  required Value y,
+  required Term proof,
+  required Value goalType,
+}) {
+  final level = s.ctx.level;
+  final xLevel =
+      x is VNeutral && x.neutral is NVar ? (x.neutral as NVar).level : null;
+
+  // G[x := v] as a Term quoted at [quoteLevel], where the
+  // replacement `v` is the binder at de Bruijn index [boundIndex]
+  // of that scope. For an NVar `x`, substitute a neutral at the
+  // matching absolute level; otherwise replace the quoted subterm.
+  Term goalAt(int quoteLevel, int boundIndex) {
+    if (xLevel != null) {
+      return quote(
+        quoteLevel,
+        substNVar(
+          goalType,
+          xLevel,
+          VNeutral(NVar(quoteLevel - 1 - boundIndex)),
+        ),
+      );
+    }
+    final goalTerm = quote(quoteLevel, goalType);
+    final xTerm = quote(quoteLevel, x);
+    return _replaceTermInTerm(goalTerm, xTerm, TBound(boundIndex));
+  }
+
+  final aVar = VNeutral(NVar(level));
+  final bVar = VNeutral(NVar(level + 1));
+  final eqAB = VData('Eq', [aType, aVar, bVar]);
+
+  // sym p : Eq[A] y x. The method of Eq.rec for `refl` is
+  // `(z: A) -> P z z (refl z)`, so here it is the function
+  // `λ z. refl A z`.
+  final symMotive = TLam(
+    quote(level, aType),
+    TLam(
+      quote(level + 1, aType),
+      TLam(
+        quote(level + 2, eqAB),
+        quote(level + 3, VData('Eq', [aType, bVar, aVar])),
+      ),
+    ),
+  );
+  final symMethod = TLam(
+    quote(level, aType),
+    TConstr('Eq', 'refl', [quote(level + 1, aType), const TBound(0)]),
+  );
+  var symProof = const TRec('Eq') as Term;
+  for (final arg in [
+    quote(level, aType),
+    symMotive,
+    quote(level, x),
+    quote(level, y),
+    symMethod,
+    proof,
+  ]) {
+    symProof = TApp(symProof, arg);
+  }
+
+  // Main motive P a b e := G[x:=a] -> G[x:=b], under binders
+  // a (level), b (level+1), e (level+2). The Pi body is quoted at
+  // level+3; its codomain sits one binder deeper, so its quoted
+  // references are one index larger.
+  final motive = TLam(
+    quote(level, aType),
+    TLam(
+      quote(level + 1, aType),
+      TLam(
+        quote(level + 2, eqAB),
+        TPi(goalAt(level + 3, 2), goalAt(level + 4, 2)),
+      ),
+    ),
+  );
+
+  // Method `λ (z: A) (h: G[x:=z]). h`, whose type is
+  // `P z z (refl z) = G[x:=z] -> G[x:=z]`.
+  final method = TLam(
+    quote(level, aType),
+    TLam(goalAt(level + 1, 0), const TBound(0)),
+  );
+
+  // Base instantiated at the equation's left endpoint, y: the
+  // subgoal is G[x:=y].
+  final reflY = VConstr('Eq', 'refl', [aType, y]);
+  final subgoalTerm = goalAt(level + 3, 1);
+  final subgoalType = eval(
+    subgoalTerm,
+    s.ctx.env.extend(y).extend(y).extend(reflY),
+  );
+  final subMetaId = s.metas.freshTermMeta(subgoalType, s.ctx);
+
+  // Eq.rec A P y x (λ z h. h) (sym p) : G[x:=y] -> G.
+  final motiveSort = _motiveSortFor(s.ctx, goalType);
+  var recursor = TRec('Eq', motiveSort: motiveSort) as Term;
+  for (final arg in [
+    quote(level, aType),
+    motive,
+    quote(level, y),
+    quote(level, x),
+    method,
+    symProof,
+  ]) {
+    recursor = TApp(recursor, arg);
+  }
+  return (recursor: recursor, subMeta: subMetaId);
+}
 
 /// `induction x`: produces subgoals per constructor of `x`'s type.
 ///
@@ -687,6 +708,119 @@ TacticFn Function(String) induction =
 /// Exposed for [_runInduction] in elab.dart which has access to the
 /// elaborator's name scope.
 TacticFn Function(int) inductionAt = _inductionAt;
+
+/// The motive shared by induction and `cases`.
+///
+/// [term] is `λ (indices) (scrutinee). goal`, and [value] is its
+/// evaluation. Applying [value] to a constructor's result indices and
+/// constructor instance is the recursor's method goal for that
+/// constructor.
+final class _ScrutineeMotive {
+  /// Number of data parameters.
+  final int paramCount;
+
+  /// Number of result indices.
+  final int indexCount;
+
+  /// The scrutinee type's parameters, in declaration order.
+  final List<Value> paramsV;
+
+  /// The scrutinee type's index values.
+  final List<Value> indicesV;
+
+  /// The motive term and its evaluation.
+  final Term term;
+  final Value value;
+
+  /// Registries for evaluating constructor telescopes.
+  final Env registries;
+
+  const _ScrutineeMotive({
+    required this.paramCount,
+    required this.indexCount,
+    required this.paramsV,
+    required this.indicesV,
+    required this.term,
+    required this.value,
+    required this.registries,
+  });
+}
+
+/// Build `λ (i_0: I_0) ... (i_k-1: I_k-1) (a: T params i). G`.
+///
+/// The motive abstracts the scrutinee and each result index, which is the
+/// shape every indexed recursor demands. A zero-index family gets the
+/// one-binder motive `λ (a: T params). G`.
+_ScrutineeMotive _buildScrutineeMotive(
+  TacticState s,
+  DataDecl dataDecl,
+  List<Value> dataArgs,
+  Value goalType,
+  int scrutLevel,
+) {
+  final level = s.ctx.level;
+  final paramCount = dataDecl.params.length;
+  final indexCount = dataDecl.indices.length;
+  final paramsV = dataArgs.sublist(0, paramCount);
+  final indicesV = dataArgs.sublist(paramCount);
+  final registries = ENil.withRegistries(
+    dataDecls: s.ctx.env.dataDecls,
+    topBindings: s.ctx.env.topBindings,
+  );
+
+  // Motive P = λ (i_0: I_0) ... (i_k-1: I_k-1) (a: T params i). G,
+  // abstracting the scrutinee and the scrutinee's indices. The
+  // recursor's motive type is `(indices) -> T params indices ->
+  // Sort`, so index binder t sits at level+t and the scrutinee
+  // binder at level+indexCount.
+  final indexDomains = <Term>[];
+  Env indexEnv = registries;
+  for (var i = 0; i < paramCount; i++) {
+    indexEnv = indexEnv.extend(paramsV[i]);
+  }
+  for (var t = 0; t < indexCount; t++) {
+    final indexTypeV = eval(dataDecl.indices[t].type, indexEnv);
+    indexDomains.add(quote(level + t, indexTypeV));
+    indexEnv = indexEnv.extend(VNeutral(NVar(level + t)));
+  }
+  final scrutBinderLevel = level + indexCount;
+  final scrutTypeV = VData(dataDecl.name, [
+    ...paramsV,
+    for (var t = 0; t < indexCount; t++) VNeutral(NVar(level + t)),
+  ]);
+  // The motive body is the goal with the scrutinee and each index
+  // value replaced by its binder. The body sits under all
+  // index binders plus the scrutinee binder, hence quoted at
+  // scrutBinderLevel+1.
+  Value motiveGoal = substNVar(
+    goalType,
+    scrutLevel,
+    VNeutral(NVar(scrutBinderLevel)),
+  );
+  for (var t = 0; t < indexCount; t++) {
+    motiveGoal = _abstractIndexValue(
+      ctx: s.ctx,
+      goal: motiveGoal,
+      index: indicesV[t],
+      binder: VNeutral(NVar(level + t)),
+      quoteLevel: scrutBinderLevel + 1,
+    );
+  }
+  final motiveBody = quote(scrutBinderLevel + 1, motiveGoal);
+  var motive = TLam(quote(scrutBinderLevel, scrutTypeV), motiveBody);
+  for (var t = indexCount - 1; t >= 0; t--) {
+    motive = TLam(indexDomains[t], motive);
+  }
+  return _ScrutineeMotive(
+    paramCount: paramCount,
+    indexCount: indexCount,
+    paramsV: paramsV,
+    indicesV: indicesV,
+    term: motive,
+    value: eval(motive, s.ctx.env),
+    registries: registries,
+  );
+}
 
 TacticFn Function(int) _inductionAt =
     (binderIdx) => (s) {
@@ -721,64 +855,25 @@ TacticFn Function(int) _inductionAt =
       }
       final scrutLevel = (xVal.neutral as NVar).level;
 
-      final paramCount = dataDecl.params.length;
-      final indexCount = dataDecl.indices.length;
-      final paramsV = dataArgs.sublist(0, paramCount);
-      final indicesV = dataArgs.sublist(paramCount);
-      final registries = ENil.withRegistries(
-        dataDecls: s.ctx.env.dataDecls,
-        topBindings: s.ctx.env.topBindings,
-      );
-
-      // Motive P = λ (i_0: I_0) ... (i_k-1: I_k-1) (a: T params i). G,
-      // abstracting the scrutinee and the scrutinee's indices. The
-      // recursor's motive type is `(indices) -> T params indices ->
-      // Sort`, so index binder t sits at level+t and the scrutinee
-      // binder at level+indexCount.
-      final indexDomains = <Term>[];
-      Env indexEnv = registries;
-      for (var i = 0; i < paramCount; i++) {
-        indexEnv = indexEnv.extend(paramsV[i]);
-      }
-      for (var t = 0; t < indexCount; t++) {
-        final indexTypeV = eval(dataDecl.indices[t].type, indexEnv);
-        indexDomains.add(quote(level + t, indexTypeV));
-        indexEnv = indexEnv.extend(VNeutral(NVar(level + t)));
-      }
-      final scrutBinderLevel = level + indexCount;
-      final scrutTypeV = VData(dataName, [
-        ...paramsV,
-        for (var t = 0; t < indexCount; t++) VNeutral(NVar(level + t)),
-      ]);
-      // The motive body is the goal with the scrutinee and each index
-      // value replaced by its binder. The body sits under all
-      // index binders plus the scrutinee binder, hence quoted at
-      // scrutBinderLevel+1.
-      Value motiveGoal = substNVar(
+      final motiveInfo = _buildScrutineeMotive(
+        s,
+        dataDecl,
+        dataArgs,
         goalType,
         scrutLevel,
-        VNeutral(NVar(scrutBinderLevel)),
       );
-      for (var t = 0; t < indexCount; t++) {
-        motiveGoal = _abstractIndexValue(
-          ctx: s.ctx,
-          goal: motiveGoal,
-          index: indicesV[t],
-          binder: VNeutral(NVar(level + t)),
-          quoteLevel: scrutBinderLevel + 1,
-        );
-      }
-      final motiveBody = quote(scrutBinderLevel + 1, motiveGoal);
-      var motive = TLam(quote(scrutBinderLevel, scrutTypeV), motiveBody);
-      for (var t = indexCount - 1; t >= 0; t--) {
-        motive = TLam(indexDomains[t], motive);
-      }
+      final paramCount = motiveInfo.paramCount;
+      final indexCount = motiveInfo.indexCount;
+      final paramsV = motiveInfo.paramsV;
+      final indicesV = motiveInfo.indicesV;
+      final registries = motiveInfo.registries;
       // The recursor's method type is `arguments -> IHs -> P resultIndices
       // (C args)`. Evaluate the motive once and apply it directly: that
       // is definitionally the method type, including for a constructor
       // whose result indices do not unify with the scrutinee's (the
       // unreachable `vnil` in an induction on `Vec A (succ n)`).
-      final motiveV = eval(motive, s.ctx.env);
+      final motive = motiveInfo.term;
+      final motiveV = motiveInfo.value;
 
       // Build each constructor method and collect its subgoal.
       final methodGoals = <TacticGoal>[];
@@ -1084,38 +1179,53 @@ TacticResult Function(TacticState) auto({int depth = 5}) => (s) {
     final entry = topBindings[name];
     if (entry == null) continue;
 
-    // Build a TTop term for this lemma.
-    final lemmaTerm = TTop(name);
+    // `tacticApply` solves the current goal before this search knows
+    // whether its explicit arguments are provable. Keep a snapshot and
+    // restore it when this lemma does not finish, so the next candidate
+    // starts from the same unsolved goal.
+    final snapshot = s.metas.snapshot();
+    try {
+      // Build a TTop term for this lemma.
+      final lemmaTerm = TTop(name);
 
-    // Try apply on it.
-    final applyResult = tacticApply(lemmaTerm)(s);
-    if (applyResult is TacticOk) {
-      // If no subgoals, we're done.
-      if (applyResult.subMeta == null) return applyResult;
+      // Try apply on it.
+      final applyResult = tacticApply(lemmaTerm)(s);
+      if (applyResult is TacticOk) {
+        // With no explicit arguments the conclusion already matched; the
+        // current goal is solved and `tacticApply` committed the term.
+        if (applyResult.subGoals.isEmpty) return applyResult;
 
-      // Otherwise, recursively auto on each subgoal.
-      final metas = applyResult.metas;
-      final subMetas = <int>[applyResult.subMeta!];
-      // Collect all unsolved metas (apply creates one per Pi arg).
-      for (var i = 0; i < metas.length; i++) {
-        if (!metas.isSolved(i) && i != applyResult.subMeta) {
-          subMetas.add(i);
+        // Otherwise every explicit argument is a goal for the recursive
+        // search. An unsolved argument means this application is not a
+        // proof.
+        final metas = applyResult.metas;
+        var allOk = true;
+        for (final goal in applyResult.subGoals) {
+          if (metas.isSolved(goal.metaId)) continue;
+          final subState = TacticState(
+            metas,
+            goal.ctx,
+            goal.metaId,
+            goal.binderNames,
+            const [],
+            goal.displayType,
+            goal.closedOverCtx,
+          );
+          final subResult = auto(depth: depth - 1)(subState);
+          if (subResult is! TacticOk) {
+            allOk = false;
+            break;
+          }
+        }
+        if (allOk) {
+          return TacticOk(applyResult.term, metas);
         }
       }
-
-      var allOk = true;
-      for (final subMeta in subMetas) {
-        final subState = TacticState(metas, s.ctx, subMeta, s.binderNames);
-        final subResult = auto(depth: depth - 1)(subState);
-        if (subResult is! TacticOk) {
-          allOk = false;
-          break;
-        }
-      }
-      if (allOk) {
-        return TacticOk(applyResult.term, metas);
-      }
+    } catch (_) {
+      // A candidate the kernel rejects is not a proof; restore and try
+      // the next name.
     }
+    s.metas.restore(snapshot);
   }
 
   return TacticFail('auto: no proof found at depth $depth');
@@ -1170,28 +1280,380 @@ TacticResult omega(TacticState s) {
   return const TacticFail('omega: could not solve the arithmetic goal');
 }
 
-/// `simpl`: normalise the goal via `nf()` (eval then quote).
+/// `simpl`: normalise the goal, then run `simp` with no extra lemmas.
 ///
-/// Replaces the goal with its normal form.  If the normal form differs
-/// from the original, a new subgoal is created for it; otherwise a
-/// `refl`-style proof closes the goal.
-TacticResult simpl(TacticState s) {
-  final goalType = s.goalType;
-  final level = s.ctx.level;
-  final origTerm = quote(level, goalType);
-  final nfValue = eval(origTerm, s.ctx.env);
-  final nfTerm = quote(level, nfValue);
-  if (origTerm == nfTerm) {
-    // Already in normal form — close via refl if Eq, else fail.
-    return refl(s);
+/// Kept as the REPL's historical `:step simpl` entry point.
+TacticResult simpl(TacticState s) => simp(const <Term>[])(s);
+
+/// Rewrite budget for one `simp` invocation.
+const int _simpRewriteBudget = 100;
+
+/// One equality the resolver may rewrite with.
+final class _SimpRuleSource {
+  /// Name used in diagnostics.
+  final String name;
+
+  /// The source's type, before Pi instantiation.
+  final Value type;
+
+  /// The source's proof term, before Pi instantiation.
+  final Term proof;
+
+  const _SimpRuleSource(this.name, this.type, this.proof);
+}
+
+/// `simp [lemmas]`: normalise the goal and rewrite with equality lemmas
+/// to a fixed point, closing by `refl` when the sides become convertible.
+///
+/// With no list, the equality-typed hypotheses in the local context are
+/// the rewrite set. A list adds elaborated expressions. There is no
+/// global lemma search and no attribute syntax.
+///
+/// A rule may have a Pi type. Every binder is instantiated with a fresh
+/// meta closed over the local context, as [tacticApply] does, and the
+/// instantiated type must reduce to `Eq A l r`. Matching traverses the
+/// goal type's subterms outermost first and uses the kernel's conversion
+/// checker as the matching relation; a successful match leaves the rule's
+/// metas solved.
+///
+/// Each rewrite replaces every occurrence of the matched subterm with the
+/// rule's right endpoint through the same transport construction
+/// [rewrite] uses. The goal is normalised before matching and after each
+/// rewrite. The loop stops on a repeated normalised goal or after
+/// [_simpRewriteBudget] rewrites and reports a diagnostic rather than
+/// returning a partial result.
+///
+/// Outcomes: the goal closes when `refl` applies; a rewrite or
+/// normalisation with the goal still open leaves the rewritten goal as
+/// the current subgoal; no rewrite and no `refl` fails with
+/// `simp: no progress` when nothing changed.
+TacticFn Function(List<Term>) simp =
+    (lemmas) => (s) {
+      final metas = s.metas;
+      final ctx = s.ctx;
+      final level = ctx.level;
+      final initialMeta = s.currentMeta;
+
+      final sources = <_SimpRuleSource>[];
+      var binder = ctx;
+      var index = 0;
+      while (binder is CCons) {
+        final name =
+            index < s.binderNames.length ? s.binderNames[index] : 'h$index';
+        sources.add(_SimpRuleSource(name, binder.type, TBound(index)));
+        binder = binder.rest;
+        index++;
+      }
+      for (var i = 0; i < lemmas.length; i++) {
+        final term = lemmas[i];
+        final Value type;
+        try {
+          type = infer(ctx, term);
+        } catch (_) {
+          return const TacticFail('simp: could not infer a lemma type');
+        }
+        final name = switch (term) {
+          TTop(:final name) => name,
+          TBound(:final index) when index < s.binderNames.length =>
+            s.binderNames[index],
+          _ => 'lemma${i + 1}',
+        };
+        sources.add(_SimpRuleSource(name, type, term));
+      }
+
+      TacticState stateFor(int meta) => TacticState(
+        metas,
+        ctx,
+        meta,
+        s.binderNames,
+        const [],
+        meta == initialMeta ? s.goalTypeOverride : null,
+        meta == initialMeta ? s.closedGoalOverCtx : null,
+      );
+
+      var tail = initialMeta;
+      var first = true;
+      var rewrites = 0;
+      String? lastRule;
+      final visited = <String>{};
+      Term Function(Term) initialFromTail = (t) => t;
+
+      void advance(int newMeta, Term Function(Term) stepForward) {
+        final previous = initialFromTail;
+        initialFromTail = (t) => previous(stepForward(t));
+        if (!first) {
+          metas.solve(tail, stepForward(TMeta(newMeta)));
+        } else {
+          first = false;
+        }
+        tail = newMeta;
+      }
+
+      TacticFail limitExceeded({required bool cycle}) {
+        final suffix = lastRule == null ? '' : '; last rule: $lastRule';
+        final count = cycle ? rewrites : _simpRewriteBudget;
+        return TacticFail(
+          'simp: rewrite limit exceeded after $count steps'
+          '${cycle ? ' (cycle detected)' : ''}$suffix',
+        );
+      }
+
+      while (true) {
+        final state = stateFor(tail);
+        final goalType = state.goalType;
+        final original = quote(level, goalType);
+        final normalValue = eval(original, ctx.env);
+        final normal = quote(level, normalValue);
+        if (normal != original) {
+          final next = metas.freshTermMeta(normalValue, ctx);
+          advance(next, (t) => t);
+          continue;
+        }
+
+        if (!visited.add(normal.toString())) {
+          return limitExceeded(cycle: true);
+        }
+
+        final reflTerm = _simpRefl(state);
+        if (reflTerm != null) {
+          if (tail == initialMeta) {
+            // Leave the initial meta for the caller, which owns the
+            // convention of solving the current goal with the result.
+            return TacticOk(reflTerm, metas, subMeta: tail);
+          }
+          metas.solve(tail, reflTerm);
+          return TacticOk(initialFromTail(reflTerm), metas, subMeta: tail);
+        }
+
+        final match = _findSimpMatch(state, sources, goalType);
+        if (match == null) {
+          if (tail == initialMeta) {
+            return const TacticFail('simp: no progress');
+          }
+          return TacticOk(initialFromTail(TMeta(tail)), metas, subMeta: tail);
+        }
+        if (rewrites >= _simpRewriteBudget) {
+          return limitExceeded(cycle: false);
+        }
+        final transport = _rewriteTransport(
+          state,
+          aType: match.aType,
+          x: match.x,
+          y: match.y,
+          proof: match.proof,
+          goalType: goalType,
+        );
+        advance(transport.subMeta, (t) => TApp(transport.recursor, t));
+        lastRule = match.ruleName;
+        rewrites++;
+      }
+    };
+
+/// Find one rule and one goal subterm that the kernel accepts as equal.
+///
+/// Candidates are visited outermost first. Each rule instantiation takes a
+/// [MetaContext] snapshot; a failed match restores it, so a rule that
+/// cannot be solved leaves no metas behind.
+({String ruleName, Value aType, Value x, Value y, Term proof})? _findSimpMatch(
+  TacticState state,
+  List<_SimpRuleSource> sources,
+  Value goalType,
+) {
+  final level = state.ctx.level;
+  for (final candidate in _valueSubterms(goalType, level)) {
+    for (final source in sources) {
+      final snapshot = state.metas.snapshot();
+      try {
+        final rule = _instantiateSimpRule(state, source);
+        if (rule == null) {
+          state.metas.restore(snapshot);
+          continue;
+        }
+        final matched = conv(level, rule.lhs, candidate, s: state) is ConvOk;
+        if (matched && rule.metaIds.every(state.metas.isSolved)) {
+          final rhsTerm = inlineSolvedMetas(
+            quote(level, rule.rhs),
+            state.metas,
+          );
+          final rhs = eval(rhsTerm, state.ctx.env);
+          if (_simpRewriteChanges(goalType, candidate, rhs, level)) {
+            return (
+              ruleName: source.name,
+              aType: rule.aType,
+              x: candidate,
+              y: rhs,
+              proof: rule.proof,
+            );
+          }
+        }
+      } catch (_) {
+        // A rule whose type or unifier state the kernel cannot handle is
+        // not a match; leave the metas as they were and keep searching.
+      }
+      state.metas.restore(snapshot);
+    }
   }
-  final subMetaId = s.metas.freshTermMeta(eval(nfTerm, s.ctx.env), s.ctx);
-  solveCurrentGoal(s, TMeta(subMetaId));
-  return TacticOk(TMeta(subMetaId), s.metas, subMeta: subMetaId);
+  return null;
+}
+
+/// Instantiate [source]'s Pi binders with fresh metas and require the
+/// result to be an `Eq` type. Returns `null` without restoring metas; the
+/// caller owns the snapshot.
+({Value aType, Value lhs, Value rhs, Term proof, List<int> metaIds})?
+_instantiateSimpRule(TacticState s, _SimpRuleSource source) {
+  var type = source.type;
+  var proof = source.proof;
+  final metaIds = <int>[];
+  while (type is VPi) {
+    final pi = type;
+    final closedType = closeValueOverCtx(pi.domain, s.ctx);
+    final metaId = s.metas.freshTermMeta(closedType, s.ctx);
+    metaIds.add(metaId);
+    var metaTerm = TMeta(metaId) as Term;
+    for (var k = s.ctx.level - 1; k >= 0; k--) {
+      metaTerm = TApp(metaTerm, TBound(k));
+    }
+    proof = TApp(proof, metaTerm);
+    final metaValue = eval(metaTerm, s.ctx.env);
+    type = eval(pi.codomain.body, pi.codomain.env.extend(metaValue));
+  }
+  if (type is! VData || type.name != 'Eq' || type.args.length != 3) {
+    return null;
+  }
+  return (
+    aType: type.args[0],
+    lhs: type.args[1],
+    rhs: type.args[2],
+    proof: proof,
+    metaIds: metaIds,
+  );
+}
+
+/// Whether replacing [x] with [y] changes [goalType] syntactically.
+///
+/// A rule whose endpoints normalise to the matched subterm cannot make
+/// progress; treating the match as a failure keeps the fixed-point loop
+/// from cycling on a no-op rewrite.
+bool _simpRewriteChanges(Value goalType, Value x, Value y, int level) {
+  final original = quote(level, goalType);
+  if (x is VNeutral && x.neutral is NVar) {
+    final xLevel = (x.neutral as NVar).level;
+    return quote(level, substNVar(goalType, xLevel, y)) != original;
+  }
+  return _replaceTermInTerm(original, quote(level, x), quote(level, y)) !=
+      original;
+}
+
+/// Build the `refl` term when the goal is an equality with convertible
+/// sides, without solving the goal.
+Term? _simpRefl(TacticState s) {
+  final goalType = s.goalType;
+  if (goalType is! VData || goalType.name != 'Eq') return null;
+  final args = goalType.args;
+  if (args.length != 3) return null;
+  final level = s.ctx.level;
+  final reflTerm = TConstr('Eq', 'refl', [
+    quote(level, args[0]),
+    quote(level, args[1]),
+  ]);
+  try {
+    if (conv(level, args[1], args[2], s: s) is! ConvOk) return null;
+    final inferred = infer(s.ctx, reflTerm);
+    if (conv(level, inferred, goalType, s: s) is ConvOk) return reflTerm;
+  } catch (_) {}
+  return null;
+}
+
+/// Enumerate [value]'s subterms, outermost first.
+///
+/// Covers data and constructor applications, neutral spines, Pi domains
+/// and codomains, and lambda domains and bodies. Bodies under a binder are
+/// opened with a fresh neutral at the current level so nested applications
+/// stay visible.
+List<Value> _valueSubterms(Value value, int level) {
+  final out = <Value>[];
+  void visit(Value v, int lvl) {
+    out.add(v);
+    switch (v) {
+      case VType() || VUnknown() || VProp() || VSProp():
+        break;
+      case VLam(:final domain, :final closure):
+        visit(domain, lvl);
+        visit(
+          eval(closure.body, closure.env.extend(VNeutral(NVar(lvl)))),
+          lvl + 1,
+        );
+      case VPi(:final domain, :final codomain):
+        visit(domain, lvl);
+        visit(
+          eval(codomain.body, codomain.env.extend(VNeutral(NVar(lvl)))),
+          lvl + 1,
+        );
+      case VNeutral(:final neutral):
+        for (final sub in _neutralSubvalues(neutral)) {
+          visit(sub, lvl);
+        }
+      case VData(:final args):
+        for (final arg in args) {
+          visit(arg, lvl);
+        }
+      case VConstr(:final args):
+        for (final arg in args) {
+          visit(arg, lvl);
+        }
+      case VRec(:final spine):
+        for (final arg in spine) {
+          visit(arg, lvl);
+        }
+      case VFun(:final spine):
+        for (final arg in spine) {
+          visit(arg, lvl);
+        }
+      case VMatch(:final scrutinee, :final motive):
+        visit(scrutinee, lvl);
+        if (motive != null) visit(motive, lvl);
+      case VQuot(:final carrier, :final relation):
+        visit(carrier, lvl);
+        visit(relation, lvl);
+      case VQuotMk(:final arg):
+        visit(arg, lvl);
+      case VQuotLift(:final quot, :final fn, :final proof):
+        visit(quot, lvl);
+        visit(fn, lvl);
+        visit(proof, lvl);
+      case VDelayed(:final closure, :final arg):
+        visit(arg, lvl);
+        visit(eval(closure.body, closure.env.extend(arg)), lvl);
+    }
+  }
+
+  visit(value, level);
+  return out;
+}
+
+/// The argument subvalues of a neutral spine.
+List<Value> _neutralSubvalues(Neutral neutral) {
+  final out = <Value>[];
+  void walk(Neutral n) {
+    switch (n) {
+      case NVar() || NTop() || NMeta():
+        break;
+      case NApp(:final fn, :final arg):
+        walk(fn);
+        out.add(arg);
+      case NStuck(:final value):
+        out.add(value);
+      case NProj(:final expr):
+        out.add(expr);
+    }
+  }
+
+  walk(neutral);
+  return out;
 }
 
 /// `constructor`: apply the first matching constructor of the goal's
-/// inductive type.
+/// inductive type, leaving each explicit argument as a subgoal.
 TacticResult tacticConstructor(TacticState s) {
   final goalType = s.goalType;
   if (goalType is! VData) {
@@ -1202,37 +1664,75 @@ TacticResult tacticConstructor(TacticState s) {
   if (dataDecl == null) {
     return TacticFail('constructor: data type "$dataName" not found');
   }
-  final level = s.ctx.level;
   final dataArgs = goalType.args;
+  final paramCount = dataDecl.params.length;
+  final level = s.ctx.level;
+  final paramTerms = <Term>[
+    for (var i = 0; i < paramCount; i++) quote(level, dataArgs[i]),
+  ];
+  final registries = ENil.withRegistries(
+    dataDecls: s.ctx.env.dataDecls,
+    topBindings: s.ctx.env.topBindings,
+  );
 
   for (final ctor in dataDecl.ctors) {
-    // Build fresh metas for each constructor argument.
-    var teleEnv = const ENil() as Env;
-    final paramCount = dataDecl.params.length;
-    for (var i = paramCount - 1; i >= 0; i--) {
+    // Constructor-argument types are closed under the data's params in
+    // declaration order, then the preceding constructor arguments. Each
+    // argument meta is closed over the tactic context and applied to its
+    // spine, the shape `tacticApply` gives an explicit argument, so a
+    // solution open in the context is lifted when the user supplies it.
+    Env teleEnv = registries;
+    for (var i = 0; i < paramCount; i++) {
       teleEnv = teleEnv.extend(dataArgs[i]);
     }
     final argMetas = <int>[];
-    var ctorTerm = TConstr(dataName, ctor.name, <Term>[]) as Term;
     final argTerms = <Term>[];
+    final argTypes = <Value>[];
     for (var j = 0; j < ctor.args.length; j++) {
       final argTypeV = eval(ctor.args[j].type, teleEnv);
-      final argMetaId = s.metas.freshTermMeta(argTypeV, s.ctx);
-      argMetas.add(argMetaId);
-      final argTerm = TMeta(argMetaId);
-      argTerms.add(argTerm);
-      teleEnv = teleEnv.extend(VNeutral(NVar(level + j)));
+      argTypes.add(argTypeV);
+      final closedType = closeValueOverCtx(argTypeV, s.ctx);
+      final metaId = s.metas.freshTermMeta(closedType, s.ctx);
+      argMetas.add(metaId);
+      var metaTerm = TMeta(metaId) as Term;
+      for (var k = s.ctx.level - 1; k >= 0; k--) {
+        metaTerm = TApp(metaTerm, TBound(k));
+      }
+      argTerms.add(metaTerm);
+      teleEnv = teleEnv.extend(eval(metaTerm, s.ctx.env));
     }
-    ctorTerm = TConstr(dataName, ctor.name, argTerms);
+    // A constructor term carries the data parameters first, then the
+    // constructor's own arguments; the kernel's constructor signature
+    // and the recursor's instance both use that order.
+    final ctorTerm = TConstr(dataName, ctor.name, [...paramTerms, ...argTerms]);
 
     // Check if ctor term matches goal type.
     try {
       final ctorType = infer(s.ctx, ctorTerm);
       if (conv(s.ctx.level, ctorType, goalType, s: s) is ConvOk) {
-        solveCurrentGoal(s, ctorTerm);
-        // Return the first subgoal meta as current.
-        final subMeta = argMetas.isNotEmpty ? argMetas.first : null;
-        return TacticOk(ctorTerm, s.metas, subMeta: subMeta);
+        if (argMetas.isEmpty) {
+          // A nullary constructor is a leaf proof; no subgoals remain.
+          solveCurrentGoal(s, ctorTerm);
+          return TacticOk(ctorTerm, s.metas);
+        }
+        // Leave the current goal to the caller, which commits [ctorTerm]
+        // first and then works through the argument goals in order.
+        final subGoals = <TacticGoal>[
+          for (var j = 0; j < argMetas.length; j++)
+            TacticGoal(
+              argMetas[j],
+              s.ctx,
+              s.binderNames,
+              displayType: argTypes[j],
+              closedOverCtx: s.ctx,
+            ),
+        ];
+        return TacticOk(
+          ctorTerm,
+          s.metas,
+          subMeta: argMetas.first,
+          subGoals: subGoals,
+        );
       }
     } catch (_) {}
   }
@@ -1241,9 +1741,11 @@ TacticResult tacticConstructor(TacticState s) {
 
 /// `cases x`: destruct variable `x` into one subgoal per constructor.
 ///
-/// Like [induction] but without induction hypotheses.  For each
+/// Like [induction] but without induction hypotheses. For each
 /// constructor of `x`'s type, creates a subgoal for the goal with `x`
-/// replaced by that constructor applied to fresh neutrals.
+/// replaced by that constructor applied to fresh neutrals. Every arm is
+/// reported in [TacticOk.subGoals], with the constructor arguments in the
+/// arm's context and named as [induction] names them.
 TacticFn Function(String) tacticCases =
     (varName) => (s) {
       int? binderIdx;
@@ -1256,7 +1758,10 @@ TacticFn Function(String) tacticCases =
       if (binderIdx == null) {
         return TacticFail('cases: variable "$varName" not in scope');
       }
-      final xType = s.ctx.lookupType(binderIdx);
+      final level = s.ctx.level;
+      Value normalize(Value v) =>
+          eval(inlineSolvedMetas(quote(level, v), s.metas), s.ctx.env);
+      final xType = normalize(s.ctx.lookupType(binderIdx));
       if (xType is! VData) {
         return const TacticFail('cases: variable is not of an inductive type');
       }
@@ -1266,55 +1771,137 @@ TacticFn Function(String) tacticCases =
       if (dataDecl == null) {
         return TacticFail('cases: data type "$dataName" not found');
       }
-      final level = s.ctx.level;
-      final goalType = s.goalType;
-      final paramCount = dataDecl.params.length;
+      final goalType = normalize(s.goalType);
 
-      // Build motive: P = λ a => goalType[x := a]
       final xVal = VNeutral(NVar(level - 1 - binderIdx));
       if (xVal.neutral is! NVar) {
         return const TacticFail('cases: cannot build motive');
       }
       final scrutLevel = (xVal.neutral as NVar).level;
-      final freshVar = VNeutral(NVar(level));
-      final motiveV = substNVar(goalType, scrutLevel, freshVar);
-      final motiveBody = quote(level + 1, motiveV);
-      final motive = TLam(quote(level, xType), motiveBody);
+
+      // The recursor demands the indexed motive, the same construction
+      // induction uses: `λ (indices) (a: T params indices). G`.
+      final motiveInfo = _buildScrutineeMotive(
+        s,
+        dataDecl,
+        dataArgs,
+        goalType,
+        scrutLevel,
+      );
+      final paramCount = motiveInfo.paramCount;
+      final indexCount = motiveInfo.indexCount;
+      final paramsV = motiveInfo.paramsV;
+      final indicesV = motiveInfo.indicesV;
+      final registries = motiveInfo.registries;
+      final motive = motiveInfo.term;
+      final motiveV = motiveInfo.value;
 
       final methodMetas = <int>[];
       final methodTerms = <Term>[];
+      final methodGoals = <TacticGoal>[];
 
       for (final ctor in dataDecl.ctors) {
-        var teleEnv = const ENil() as Env;
-        for (var i = paramCount - 1; i >= 0; i--) {
-          teleEnv = teleEnv.extend(dataArgs[i]);
+        // Constructor-argument types are closed under the data's params
+        // (outermost) and the preceding constructor arguments. Extend
+        // params in declaration order and each argument after it, the
+        // same telescope [induction] builds.
+        Env teleEnv = registries;
+        for (var i = 0; i < paramCount; i++) {
+          teleEnv = teleEnv.extend(paramsV[i]);
         }
+        final argTypes = <Value>[];
         final ctorArgs = <Value>[];
         for (var j = 0; j < ctor.args.length; j++) {
-          // ignore: unused_local_variable
           final argTypeV = eval(ctor.args[j].type, teleEnv);
-          ctorArgs.add(VNeutral(NVar(level + j)));
-          teleEnv = teleEnv.extend(VNeutral(NVar(level + j)));
+          argTypes.add(argTypeV);
+          final neutral = VNeutral(NVar(level + j));
+          ctorArgs.add(neutral);
+          teleEnv = teleEnv.extend(neutral);
         }
-        final ctorResultV = VConstr(dataName, ctor.name, ctorArgs);
-        final pCtorV = substNVar(goalType, scrutLevel, ctorResultV);
-        final methodBodyMeta = s.metas.freshTermMeta(pCtorV, s.ctx);
+        // P(resultIndices) (C args): the recursor's method goal at the
+        // constructor's own indices and instance, the same computation
+        // induction's method goals use.
+        final ctorResultIndicesV = <Value>[
+          for (final t in ctor.resultIndices) eval(t, teleEnv),
+        ];
+        final ctorInstanceV = VConstr(dataName, ctor.name, [
+          ...paramsV,
+          ...ctorArgs,
+        ]);
+        final pCtorV = _applyMotive(motiveV, [
+          ...ctorResultIndicesV,
+          ctorInstanceV,
+        ]);
+
+        // The recursor's method for a recursive constructor still demands
+        // an induction hypothesis. `cases` does not hand it to the user;
+        // it is bound under an unusable `_` name so the arm goal, which
+        // does not mention it, is the only thing the next step sees.
+        final recArgPositions = <int>[
+          for (var j = 0; j < ctor.args.length; j++)
+            if (_typeMentionsData(argTypes[j], dataName)) j,
+        ];
+        final ihTypes = <Value>[
+          for (final j in recArgPositions)
+            _applyMotive(motiveV, [
+              ..._subIndices(argTypes[j], dataName, paramCount),
+              ctorArgs[j],
+            ]),
+        ];
+
+        // The arm's context carries the constructor arguments, so their
+        // neutrals are in scope when the user solves the arm. Binder
+        // names are innermost-first, matching every other tactic goal.
+        var armCtx = s.ctx;
+        for (final t in argTypes) {
+          armCtx = armCtx.extend(t);
+        }
+        var methodCtx = armCtx;
+        for (final t in ihTypes) {
+          methodCtx = methodCtx.extend(t);
+        }
+        final methodBodyMeta = s.metas.freshTermMeta(pCtorV, methodCtx);
         methodMetas.add(methodBodyMeta);
 
+        final argNames = <String>[
+          for (var j = 0; j < ctor.args.length; j++) _ctorArgName(ctor, j),
+        ];
+        methodGoals.add(
+          TacticGoal(methodBodyMeta, methodCtx, [
+            for (var i = ihTypes.length - 1; i >= 0; i--) '_',
+            for (var j = argNames.length - 1; j >= 0; j--) argNames[j],
+            ...s.binderNames,
+          ]),
+        );
+
+        // The method's lambda chain: arguments outermost, hypotheses
+        // innermost, the discipline [induction] uses.
         var body = TMeta(methodBodyMeta) as Term;
-        for (var j = ctor.args.length - 1; j >= 0; j--) {
-          final argTypeV = eval(ctor.args[j].type, teleEnv);
-          body = TLam(quote(level, argTypeV), body);
+        for (var i = ihTypes.length - 1; i >= 0; i--) {
+          body = TLam(
+            quote(level + argTypes.length + i, ihTypes[i]),
+            body,
+            name: '_',
+          );
+        }
+        for (var j = argTypes.length - 1; j >= 0; j--) {
+          body = TLam(quote(level + j, argTypes[j]), body, name: argNames[j]);
         }
         methodTerms.add(body);
       }
 
-      // Build the full recursor application.
-      var proofTerm = TRec(dataName) as Term;
+      // Build the full recursor application. Pick the eliminator whose
+      // motive targets the goal's sort, the way induction does: a
+      // Prop-sorted goal needs `T.ind`, not the Type default.
+      final motiveSort = _motiveSortFor(s.ctx, goalType);
+      var proofTerm = TRec(dataName, motiveSort: motiveSort) as Term;
       for (var i = 0; i < paramCount; i++) {
         proofTerm = TApp(proofTerm, quote(level, dataArgs[i]));
       }
       proofTerm = TApp(proofTerm, motive);
+      for (var t = 0; t < indexCount; t++) {
+        proofTerm = TApp(proofTerm, quote(level, indicesV[t]));
+      }
       for (final m in methodTerms) {
         proofTerm = TApp(proofTerm, m);
       }
@@ -1324,6 +1911,7 @@ TacticFn Function(String) tacticCases =
         proofTerm,
         s.metas,
         subMeta: methodMetas.isNotEmpty ? methodMetas.first : null,
+        subGoals: methodGoals,
       );
     };
 
