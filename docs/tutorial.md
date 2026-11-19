@@ -711,10 +711,10 @@ for a non-indexed data type with one constructor.
 ## 11. Typeclasses
 
 A `typeclass` declaration produces a dictionary type and one projection per
-method. An `impl` declaration produces a dictionary value for a head type.
-Resolution happens during elaboration: a constrained parameter becomes an
-implicit dictionary parameter, and a method call inserts the dictionary it
-needs.
+method. An `impl` declaration produces a dictionary value for a head type,
+optionally applied to the instance's own type parameters. Resolution happens
+during elaboration: a constrained parameter becomes an implicit dictionary
+parameter, and a method call inserts the dictionary it needs.
 
 ```doxa
 data Nat : Type {
@@ -763,6 +763,55 @@ parameter is solved from them first. The call `same Nat zero zero` supplies
 `Nat` and resolves `Eqb[Nat]` by search. Inside `same`, `eqb x y` uses the
 dictionary parameter directly, so no search runs there.
 
+### Parameterised instances
+
+An instance can target a type constructor applied to its own parameters. A
+parameter group between `impl` and the class reference declares those
+parameters, using the same bracket and constraint syntax as `fun`.
+
+```doxa
+data List[A: Type] : Type {
+  nil : List A;
+  cons : A -> List A -> List A;
+}
+
+fun andb(a: Bool, b: Bool): Bool = match a {
+  case true_ => b
+  case false_ => false_
+}
+
+impl[A: Eqb] Eqb[List A] {
+  fun eqb(x: List A, y: List A): Bool = match x {
+    case nil => match y {
+      case nil => true_
+      case cons _ _ => false_
+    }
+    case cons h t => match y {
+      case nil => false_
+      case cons h2 t2 => andb (eqb h h2) (eqb t t2)
+    }
+  };
+}
+
+val listSame : Bool = eqb (cons zero nil) (cons zero nil)
+```
+
+`impl[A: Eqb] Eqb[List A]` elaborates to a binding
+`(A: Type) -> (inst: Eqb A) -> Eqb (List A)` with explicit binders. The
+method body runs with `A` and `inst` in scope: `eqb h h2` on the element type
+resolves to `inst`, and `eqb t t2` on the tail resolves to the instance being
+defined.
+
+Search for a goal `C T` takes the head of `T`, selects the instance
+registered at that head, and matches the arguments of `T` against the
+instance's target parameters positionally. Each constraint is discharged at
+the matched type with the depth counter decremented. At `List (List Nat)`,
+search uses the List instance twice and reaches the `Eqb Nat` instance.
+
+A failed inner discharge names the inner class and type. With no `Eqb Bool`,
+`eqb` at `List Bool` reports `NoInstanceFound` for `Eqb` at `Bool`, not for
+`List Bool`.
+
 This slice has these limits:
 
 - Superclasses are not implemented. `typeclass Ord[A]: Eqb[A]` is rejected
@@ -774,11 +823,19 @@ This slice has these limits:
   second declaration is rejected with `DuplicateDeclaration`.
 - Method default bodies are not implemented. Every instance supplies every
   method, and a missing method is rejected with `MissingInstanceMethod`.
-- An instance target must be a bare type constructor. `impl Eqb[List Nat]`
-  is rejected with `UnsupportedInstanceTarget`, and a call at `List Bool`
-  reports `NoInstanceFound` naming `List Bool`.
-- Search matches the target's head constructor and is depth-bounded at 8. A
-  miss is reported with `NoInstanceFound`, naming the class and the type.
+- A target is either a bare type constructor or a concrete head applied to
+  distinct instance parameters. A bare variable target such as
+  `impl[A: Eqb] Eqb[A]` is rejected with `UnsupportedInstanceTarget` because
+  search cannot make progress.
+- Closed target arguments are rejected. `impl Eqb[List Nat]` reports
+  `UnsupportedInstanceTarget`; a parameterised instance covers the same
+  ground.
+- Target arguments must be distinct. `impl[A: Eqb] Eqb[Pair A A]` is rejected
+  because matching would need consistency checking.
+- Search matches the target's head constructor, uses at most one instance per
+  class and head, and is depth-bounded at 8. A miss is reported with
+  `NoInstanceFound`, naming the class and type. A chain past the bound is
+  reported with `InstanceSearchDepthExceeded`.
 
 A class that is not passed as a constraint can still be used as an ordinary
 record type. A user-defined record is an explicit dictionary:
