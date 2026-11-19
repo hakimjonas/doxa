@@ -964,10 +964,17 @@ final class STypeclassKind extends SDeclKind {
       'STypeclassKind($name, $typeParams, superclass: $superclass, methods: $methods)';
 }
 
-/// An instance declaration: `impl Eq[Int] { fun equals(x, y) { x == y } }`.
+/// An instance declaration:
+/// `impl[A: Eq] Eq[List A] { fun equals(x, y) { x == y } }`.
 final class SImplKind extends SDeclKind {
   @override
   final String name;
+
+  /// The instance's own type parameters, empty for a bare instance.
+  ///
+  /// Uses the `fun` parameter syntax: `[A: Type]` explicit, `{A: Type}`
+  /// implicit, and constraints `[A: Eqb]` on explicit groups.
+  final List<SFunTypeParam> typeParams;
 
   /// The typeclass reference with arguments, e.g. `App(SIdent("Eq"), SIdent("Int"))`.
   final SExpr typeclassRef;
@@ -976,20 +983,28 @@ final class SImplKind extends SDeclKind {
   final List<SFunKind> members;
 
   /// Creates an instance declaration.
-  const SImplKind(this.typeclassRef, this.members, {this.name = ''});
+  const SImplKind(
+    this.typeParams,
+    this.typeclassRef,
+    this.members, {
+    this.name = '',
+  });
 
   @override
   bool operator ==(Object other) =>
       other is SImplKind &&
       other.name == name &&
+      other.typeParams == typeParams &&
       other.typeclassRef == typeclassRef &&
       other.members == members;
 
   @override
-  int get hashCode => Object.hash('SImplKind', name, typeclassRef, members);
+  int get hashCode =>
+      Object.hash('SImplKind', name, typeParams, typeclassRef, members);
 
   @override
-  String toString() => 'SImplKind($name, $typeclassRef, members: $members)';
+  String toString() =>
+      'SImplKind($name, $typeParams, $typeclassRef, members: $members)';
 }
 
 /// An inductive type declaration: `data Name[params] : indices -> sort { ctors }`.

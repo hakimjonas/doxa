@@ -1455,23 +1455,34 @@ final Parser<ParseError, SDecl> _typeclassDecl = position<ParseError>().flatMap(
       ),
 );
 
-/// An `impl` declaration: `impl Eq[Int] { fun equals(x, y) { x == y } }`.
+/// An `impl` declaration:
+/// `impl Eq[Int] { fun equals(x, y) { x == y } }` or
+/// `impl[A: Eq] Eq[List A] { ... }`.
+///
+/// The optional type-parameter groups come before the class reference and
+/// use the same bracket and constraint syntax as `fun`. No expression
+/// starts with `[`, so `[...]` after `impl` is unambiguous. A `{...}`
+/// group could also begin a block expression, but an instance without a
+/// class reference is invalid either way, so the two readings cannot both
+/// parse.
 ///
 /// Each member is a full `fun` declaration (starting with `fun` keyword).
 final Parser<ParseError, SDecl> _implDecl = position<ParseError>().flatMap(
   (start) => _keyword('impl')
-      .skipThen(_expr)
+      .skipThen(_funTypeParams)
       .flatMap(
-        (typeclassRef) => _sym('{')
-            .skipThen(_implFunMember.thenSkip(_sym(';').optional).many)
-            .thenSkip(_sym('}'))
-            .zip(position<ParseError>())
-            .map(
-              (pair) => SDecl(
-                SImplKind(typeclassRef, pair.$1),
-                DoxaSpan(start, pair.$2),
+        (typeParams) => _expr.flatMap(
+          (typeclassRef) => _sym('{')
+              .skipThen(_implFunMember.thenSkip(_sym(';').optional).many)
+              .thenSkip(_sym('}'))
+              .zip(position<ParseError>())
+              .map(
+                (pair) => SDecl(
+                  SImplKind(typeParams, typeclassRef, pair.$1),
+                  DoxaSpan(start, pair.$2),
+                ),
               ),
-            ),
+        ),
       ),
 );
 

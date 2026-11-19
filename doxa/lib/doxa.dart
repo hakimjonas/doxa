@@ -73,6 +73,7 @@ export 'src/elab.dart'
         TacticIncomplete,
         NoInstanceFound,
         OverlappingInstances,
+        InstanceSearchDepthExceeded,
         SPropFieldNotProofIrrelevant;
 export 'src/parse.dart';
 export 'src/surface.dart';

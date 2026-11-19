@@ -263,7 +263,7 @@ data List[A: Type] : Type {
 }
 ''';
 
-    test('an applied target is rejected', () {
+    test('a closed applied target is rejected', () {
       expect(
         () => checkProgram(
           pp('''
@@ -278,11 +278,7 @@ impl Eqb[List Nat] {
         throwsA(
           isA<UnsupportedInstanceTarget>()
               .having((e) => e.className, 'className', 'Eqb')
-              .having(
-                (e) => e.reason,
-                'reason',
-                contains('bare type constructor'),
-              ),
+              .having((e) => e.reason, 'reason', contains('closed argument')),
         ),
       );
     });

@@ -675,6 +675,8 @@ class _Formatter {
 
   void _visitImpl(SImplKind k) {
     _write('impl ');
+    _visitFunTypeParams(k.typeParams);
+    if (k.typeParams.isNotEmpty) _space();
     final (head, args) = _unwindApp(k.typeclassRef);
     if (head.kind is SIdentKind && args.isNotEmpty) {
       _writeDoc(_visit(head));
