@@ -32,6 +32,7 @@ import 'check.dart'
         DoxaCheckError,
         InductiveArityMismatch,
         InvalidMetaSolution,
+        NotAType,
         TypeMismatch,
         UnknownTypeReached;
 import 'ctx.dart';
@@ -192,19 +193,146 @@ final class QuotientUnsupported extends ElabError {
   String toString() => 'QuotientUnsupported';
 }
 
-/// A `typeclass` or `impl` declaration was supplied. The resolver does
-/// not thread dictionaries, search instances recursively, or project
-/// methods, so the surface is rejected until those features exist.
+/// A `typeclass` form outside the implemented first slice was supplied.
+///
+/// The implemented slice is a single-parameter class whose methods have
+/// signatures and no default bodies. [reason] names the rejected form
+/// when the generic message would hide it.
 final class TypeclassUnsupported extends ElabError {
   /// The source span of the declaration.
   @override
   final DoxaSpan span;
 
+  /// The narrow reason, or null for the generic message.
+  final String? reason;
+
   /// Creates a typeclass-unsupported error.
-  const TypeclassUnsupported(this.span);
+  const TypeclassUnsupported(this.span, {this.reason});
 
   @override
-  String toString() => 'TypeclassUnsupported';
+  String toString() =>
+      reason == null ? 'TypeclassUnsupported' : 'TypeclassUnsupported: $reason';
+}
+
+/// A `typeclass` declaration carries a superclass.
+///
+/// Superclasses are out of scope: the dictionary would need a parent
+/// dictionary field and search would have to resolve it, neither of which
+/// this slice implements.
+final class SuperclassUnsupported extends ElabError {
+  /// The class being declared.
+  final String className;
+
+  /// The superclass reference as written.
+  final String superclassName;
+
+  @override
+  final DoxaSpan span;
+
+  /// Creates a superclass-unsupported error.
+  const SuperclassUnsupported(this.className, this.superclassName, this.span);
+
+  @override
+  String toString() =>
+      'SuperclassUnsupported($className: $superclassName @ $span)';
+}
+
+/// An `impl` names a typeclass that is not declared in scope.
+final class UnknownTypeclass extends ElabError {
+  /// The class reference as written.
+  final String className;
+
+  @override
+  final DoxaSpan span;
+
+  /// Creates an unknown-typeclass error.
+  const UnknownTypeclass(this.className, this.span);
+
+  @override
+  String toString() => 'UnknownTypeclass($className @ $span)';
+}
+
+/// An `impl` applies a typeclass to the wrong number of type arguments.
+final class TypeclassArityMismatch extends ElabError {
+  /// The typeclass name.
+  final String className;
+
+  /// The number of parameters the class declares.
+  final int expected;
+
+  /// The number of arguments the implementation wrote.
+  final int got;
+
+  @override
+  final DoxaSpan span;
+
+  /// Creates a typeclass-arity error.
+  const TypeclassArityMismatch(
+    this.className,
+    this.expected,
+    this.got,
+    this.span,
+  );
+
+  @override
+  String toString() =>
+      'TypeclassArityMismatch($className: expected $expected, got $got @ $span)';
+}
+
+/// An `impl` omits a method that the class declares.
+final class MissingInstanceMethod extends ElabError {
+  /// The typeclass name.
+  final String className;
+
+  /// The missing method.
+  final String methodName;
+
+  @override
+  final DoxaSpan span;
+
+  /// Creates a missing-method error.
+  const MissingInstanceMethod(this.className, this.methodName, this.span);
+
+  @override
+  String toString() => 'MissingInstanceMethod($className.$methodName @ $span)';
+}
+
+/// An `impl` provides a method that the class does not declare.
+final class UnknownInstanceMethod extends ElabError {
+  /// The typeclass name.
+  final String className;
+
+  /// The unknown method.
+  final String methodName;
+
+  @override
+  final DoxaSpan span;
+
+  /// Creates an unknown-method error.
+  const UnknownInstanceMethod(this.className, this.methodName, this.span);
+
+  @override
+  String toString() => 'UnknownInstanceMethod($className.$methodName @ $span)';
+}
+
+/// An `impl` target is not headed by a named type constructor, so instance
+/// search cannot match it.
+final class UnsupportedInstanceTarget extends ElabError {
+  /// The typeclass name.
+  final String className;
+
+  /// The target as written.
+  final String targetType;
+
+  @override
+  final DoxaSpan span;
+
+  /// Creates an unsupported-target error.
+  const UnsupportedInstanceTarget(this.className, this.targetType, this.span);
+
+  @override
+  String toString() =>
+      'UnsupportedInstanceTarget($className for $targetType @ $span)';
 }
 
 /// A `match` expression has no ctor case AND no explicit `returning`
@@ -695,27 +823,27 @@ final class OverlappingInstances extends ElabError {
 
 /// Metadata about a registered typeclass.
 ///
-/// Populated only by the elaborator's class path, which the dispatch
-/// currently bypasses: `typeclass` declarations are rejected with
-/// [TypeclassUnsupported]. Instance resolution in `_insertImplicits`
-/// matches instances by name alone; no dictionary type is checked and
-/// no search is performed. Internal until typeclasses are completed
-/// (1.0 work).
+/// `_elabTypeclass` populates it from a `typeclass` declaration and
+/// `_elabImpl` appends entries to [instances]. The dictionary type and
+/// the projections are ordinary declarations; this record carries only
+/// the information that instance resolution needs.
 ///
-/// Exported because [TopEnv] carries the registry, but an instance
-/// entry cannot be built through the package's public surface:
-/// [InstanceInfo] is not exported.
+/// Exported because [TopEnv] carries the registry, but an instance entry
+/// cannot be built through the package's public surface: [InstanceInfo]
+/// is not exported.
 final class ClassInfo {
-  /// The typeclass name (e.g. "Eq").
+  /// The typeclass name (e.g. "Eq"). The class's dictionary type has the
+  /// same name.
   final String className;
 
   /// The type parameter names (e.g. ["A"]).
   final List<String> typeParams;
 
-  /// The method names and their surface types.
+  /// The method names and their surface types, in declaration order.
   final List<(String, SExpr)> methods;
 
-  /// Optional superclass name.
+  /// Optional superclass name. Always null in this slice: a class with a
+  /// superclass is rejected before registration.
   final String? superclassName;
 
   /// Registered instances for this class.
@@ -740,22 +868,51 @@ final class ClassInfo {
   );
 }
 
+/// A constraint an instance must discharge before it can be selected.
+///
+/// The surface `impl` form has no parameter telescope, so no instance
+/// declaration in this slice can carry a constraint. The field exists so
+/// the search recursion is written against the shape it will need when
+/// parameterised instances become expressible.
+final class InstanceConstraint {
+  /// The constrained typeclass.
+  final String className;
+
+  /// The head type constructor the constraint requires an instance for.
+  final String targetHead;
+
+  /// Creates an instance constraint.
+  const InstanceConstraint(this.className, this.targetHead);
+}
+
 /// A registered instance of a typeclass.
 ///
-/// Name-matching only: [targetType] is compared against the instance
-/// domain's argument name, and [bindingName] is inserted as a `TTop`
-/// reference. The binding's declared type is never checked at
-/// resolution. Internal until instance search and dictionary checking
-/// are completed (1.0 work); not exported from `package:doxa/doxa.dart`.
+/// [targetHead] is the head type constructor of the instance target
+/// (`Nat` for `impl Eqb[Nat]`). Registration rejects a second instance
+/// with the same class and head, and the search matches targets by that
+/// head.
+///
+/// Internal: not exported from `package:doxa/doxa.dart`.
 final class InstanceInfo {
-  /// The target type name (e.g. "Int").
+  /// The target type rendered for diagnostics (e.g. "Nat").
   final String targetType;
+
+  /// The head type constructor of the target (e.g. "Nat").
+  final String targetHead;
 
   /// The binding name of the instance value.
   final String bindingName;
 
+  /// Constraints the instance must discharge before selection.
+  final List<InstanceConstraint> constraints;
+
   /// Creates instance info.
-  const InstanceInfo(this.targetType, this.bindingName);
+  const InstanceInfo(
+    this.targetType,
+    this.targetHead,
+    this.bindingName, {
+    this.constraints = const [],
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1760,8 +1917,8 @@ Set<String> declNames(SDecl decl) {
       return names;
     case SImportKind(:final path):
       return {path};
-    case STypeclassKind(:final name):
-      return {name};
+    case STypeclassKind(:final name, :final methods):
+      return {name, for (final m in methods) m.name};
     case SImplKind():
       return {};
   }
@@ -2493,11 +2650,22 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
             argT = _inferExpr(state, argExprs[i]).$1;
           }
         } else {
-          // Right-deep non-innermost: arg is the previous result.
+          // Right-deep non-innermost: the argument is the previous
+          // result. Any leading implicit binders it still exposes are
+          // trailing implicits of the inner application; insert them
+          // before converting against the head's domain. Without this,
+          // an implicit argument left unconsumed by inference (a
+          // method projection's dictionary, for example) would be
+          // compared as a function type against the domain.
+          final (argTSrc, argVSrc) = _insertImplicits(
+            state,
+            resultT!,
+            resultV!,
+          );
           if (headVAsPi != null) {
             final sr = subtype(
               state.ctx.level,
-              resultV!,
+              argVSrc,
               headVAsPi.domain,
               dataDecls: state.ctx.dataDecls,
               metas: state.ctx.metas,
@@ -2505,14 +2673,14 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
             );
             if (sr is ConvMismatch) {
               throw TypeMismatch(
-                resultV,
+                argVSrc,
                 headVAsPi.domain,
                 sr,
                 level: state.ctx.level,
               );
             }
           }
-          argT = resultT!;
+          argT = argTSrc;
         }
 
         // 2b.5. A function-typed argument must not be an incomplete
@@ -3177,74 +3345,65 @@ Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
   // missing type instead of accepting a guessed one.
   if (curV is VUnknown) return (fT, fV);
   while (curV is VPi && curV.icit == Icit.implicit) {
-    // Check if this implicit is class-constrained (instance search).
-    final domain = curV.domain;
+    final pi = curV;
+    final domain = pi.domain;
     if (domain is VUnknown) {
-      // No name-matched instance resolution and no meta allocation
-      // against an unknown domain: stop peeling and let the consumer
-      // report the unknown.
+      // No instance resolution and no meta allocation against an unknown
+      // domain: stop peeling and let the consumer report the unknown.
       break;
     }
     if (domain is VData &&
         state.topEnv.classRegistry.containsKey(domain.name)) {
       final className = domain.name;
       final classInfo = state.topEnv.classRegistry[className]!;
-      // Try to find a matching instance. The domain args are the
-      // type parameters of the class (e.g. `Eq[Int]` → args = [Int]).
-      // Match against registered instances by checking if the
-      // instance's target type matches the domain args.
-      final candidates = <InstanceInfo>[];
-      for (final inst in classInfo.instances) {
-        // Simple name-based matching: check if the instance's
-        // target type name appears in the domain args.
-        // For this initial implementation, we do a basic structural
-        // match: if the domain has 1 arg that is a TTop or VNeutral
-        // matching the instance's targetType.
-        if (domain.args.length == 1) {
-          final argStr = _valueTypeName(domain.args.first);
-          if (argStr == inst.targetType) {
-            candidates.add(inst);
-          }
-        }
-      }
-      if (candidates.length == 1) {
-        // Exactly one matching instance — use it directly.
-        final instanceTerm = TTop(candidates.first.bindingName);
-        curT = switch (curT) {
-          TData(:final name, :final args) =>
-            TData(name, [...args, instanceTerm]) as Term,
-          TConstr(:final dataName, :final ctorName, :final args) => TConstr(
-            dataName,
-            ctorName,
-            [...args, instanceTerm],
-          ),
-          _ => TApp(curT, instanceTerm),
-        };
-        curV = eval(
-          curV.codomain.body,
-          curV.codomain.env.extend(eval(instanceTerm, state.ctx.env)),
+      // A class-constrained parameter in scope is the dictionary to use.
+      // This is checked before the global table so `[A: Eqb]` resolves
+      // to its own implicit dictionary even when a concrete instance
+      // exists for the type that the local parameter later stands for.
+      final localIndex = _localDictionaryIndex(state, className, domain);
+      final Term dictionary;
+      if (localIndex != null) {
+        dictionary = TBound(localIndex);
+      } else {
+        final target =
+            classInfo.typeParams.length == 1 && domain.args.length == 1
+                ? domain.args.first
+                : domain;
+        // Argument checking may have solved the class argument through
+        // conversion; the codomain closure still holds the metavariable
+        // neutral, so force it before reading the target's head.
+        final resolvedTarget = forceMetaHead(
+          target,
+          metas,
+          state.ctx.env.topBindings,
         );
-        continue;
-      }
-      if (candidates.isEmpty && domain.args.length == 1) {
-        // No instance found but args are concrete — error.
-        // If args contain metas, we defer by allocating a meta.
-        if (_isFullyConcrete(domain.args.first)) {
+        final found = _searchInstance(
+          state,
+          classInfo,
+          resolvedTarget,
+          _instanceSearchDepth,
+        );
+        // A failed search is reported, never deferred through a fresh
+        // metavariable: a dictionary inserted without an instance would
+        // be unproven.
+        if (found == null) {
           throw NoInstanceFound(
             className,
-            _valueTypeName(domain.args.first) ?? '?',
+            _renderInstanceTarget(state, resolvedTarget),
             state.topEnv.spanOf(className) ?? DoxaSpan.synthetic,
           );
         }
+        dictionary = found;
       }
-      if (candidates.length > 1) {
-        throw OverlappingInstances(
-          className,
-          _valueTypeName(domain.args.first) ?? '?',
-          candidates.map((c) => c.bindingName).toList(),
-          state.topEnv.spanOf(className) ?? DoxaSpan.synthetic,
-        );
-      }
+      final (appliedT, appliedV) = _consumeImplicit(
+        state,
+        curT,
+        pi,
+        dictionary,
+      );
+      curT = appliedT;
+      curV = appliedV;
+      continue;
     }
 
     // Allocate a fresh term-meta. To allow the solution to reference
@@ -3255,7 +3414,7 @@ Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
     // the value at the use site. Without this, a bare meta can
     // only solve to closed terms and implicit inference fails for
     // any function whose solution references a surrounding binder.
-    final closedType = closeValueOverCtx(curV.domain, state.ctx);
+    final closedType = closeValueOverCtx(pi.domain, state.ctx);
     final metaId = metas.freshTermMeta(closedType, state.ctx);
     // Build the meta applied to every outer bound variable. At this
     // depth, TBound(k) for k in [0, state.ctx.level) references
@@ -3277,9 +3436,127 @@ Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
     };
     // Open the codomain with the meta's value; the resulting Value
     // is fV with the implicit binder consumed.
-    curV = eval(curV.codomain.body, curV.codomain.env.extend(metaValue));
+    curV = eval(pi.codomain.body, pi.codomain.env.extend(metaValue));
   }
   return (curT, curV);
+}
+
+/// Apply one implicit argument [arg] to [t], advancing the head type from
+/// [pi] to its codomain. Data-type and constructor heads keep their
+/// argument spine (the kernel rejects an applied [TApp] there).
+(Term, Value) _consumeImplicit(_ElabState state, Term t, VPi pi, Term arg) {
+  final argV = eval(arg, state.ctx.env);
+  final newT = switch (t) {
+    TData(:final name, :final args) => TData(name, [...args, arg]) as Term,
+    TConstr(:final dataName, :final ctorName, :final args) => TConstr(
+      dataName,
+      ctorName,
+      [...args, arg],
+    ),
+    _ => TApp(t, arg),
+  };
+  final newV = eval(pi.codomain.body, pi.codomain.env.extend(argV));
+  return (newT, newV);
+}
+
+/// The de Bruijn index of an in-scope dictionary whose type converts with
+/// [domain], or null when no local binder supplies one.
+///
+/// Candidates are inspected innermost-first. A candidate that does not
+/// convert must leave the meta context as it found it, hence the
+/// snapshot/restore around each comparison.
+int? _localDictionaryIndex(_ElabState state, String className, VData domain) {
+  final metas = state.ctx.metas;
+  for (var i = 0; i < state.ctx.level; i++) {
+    final binderType = state.ctx.lookupType(i);
+    if (binderType is! VData || binderType.name != className) continue;
+    final snapshot = metas?.snapshot();
+    final result = subtype(
+      state.ctx.level,
+      binderType,
+      domain,
+      dataDecls: state.ctx.dataDecls,
+      metas: metas,
+      topBindings: state.ctx.env.topBindings,
+    );
+    if (result is ConvOk) return i;
+    if (snapshot != null) metas!.restore(snapshot);
+  }
+  return null;
+}
+
+/// Depth bound for instance search. A constraint chain deeper than this
+/// is rejected rather than explored.
+const _instanceSearchDepth = 8;
+
+/// Find a dictionary for [target] in [info]'s instance table.
+///
+/// Matching is by head type constructor. The instance's own constraints
+/// are discharged recursively under the same bound. Returns null when no
+/// instance matches; the caller turns that into [NoInstanceFound].
+Term? _searchInstance(
+  _ElabState state,
+  ClassInfo info,
+  Value target,
+  int depth,
+) {
+  final head = _valueTypeName(target);
+  if (head == null) return null;
+  return _searchInstanceHead(state, info.className, head, depth);
+}
+
+Term? _searchInstanceHead(
+  _ElabState state,
+  String className,
+  String head,
+  int depth,
+) {
+  if (depth <= 0) return null;
+  final info = state.topEnv.classRegistry[className];
+  if (info == null) return null;
+  final matches = <InstanceInfo>[
+    for (final instance in info.instances)
+      if (instance.targetHead == head) instance,
+  ];
+  if (matches.length > 1) {
+    throw OverlappingInstances(className, head, [
+      for (final m in matches) m.bindingName,
+    ], state.topEnv.spanOf(className) ?? DoxaSpan.synthetic);
+  }
+  if (matches.isEmpty) return null;
+  final instance = matches.single;
+  for (final constraint in instance.constraints) {
+    final nested = _searchInstanceHead(
+      state,
+      constraint.className,
+      constraint.targetHead,
+      depth - 1,
+    );
+    if (nested == null) return null;
+  }
+  return TTop(instance.bindingName);
+}
+
+/// Render an instance target for [NoInstanceFound].
+///
+/// A local variable is named from the elaborator's scope stack; anything
+/// else is quoted and pretty-printed. The fallback is "?" only when the
+/// value cannot be quoted at the current depth.
+String _renderInstanceTarget(_ElabState state, Value target) {
+  if (target is VNeutral && target.neutral is NVar) {
+    final level = (target.neutral as NVar).level;
+    final index = state.ctx.level - level - 1;
+    final names = _localScopeNames(state.names);
+    if (index >= 0 && index < names.length) return names[index];
+  }
+  try {
+    return prettyTerm(
+      quote(state.ctx.level, target),
+      outerDepth: state.ctx.level,
+    );
+  } catch (_) {
+    return _valueTypeName(target) ?? '?';
+  }
 }
 
 /// Try to extract a type name from a [Value] for instance resolution.
@@ -3292,26 +3569,6 @@ String? _valueTypeName(Value v) => switch (v) {
   VData(:final name) => name,
   VConstr(:final dataName) => dataName,
   _ => null,
-};
-
-/// Check whether a [Value] contains no metavariables (is fully concrete).
-bool _isFullyConcrete(Value v) => switch (v) {
-  VType() => true,
-  VUnknown() => false, // the absence of a type is never concrete
-  VProp() => true,
-  VSProp() => true,
-  VPi() => false, // Pi with unresolved codomain env might have metas
-  VData(:final args) => args.every(_isFullyConcrete),
-  VConstr(:final args) => args.every(_isFullyConcrete),
-  VNeutral(:final neutral) => _isNeutralConcrete(neutral),
-  _ => true,
-};
-
-bool _isNeutralConcrete(Neutral n) => switch (n) {
-  NTop() => true,
-  NVar() => true,
-  NProj(:final expr) => _isFullyConcrete(expr),
-  _ => false, // NMeta, NStuck etc. are not concrete
 };
 
 /// Compute the sort of a Pi-type from its domain-and-codomain sort
@@ -4156,50 +4413,96 @@ DeclResult _elabDecl(
         namespaceBindings: const {},
       );
 
-    case STypeclassKind():
-      throw TypeclassUnsupported(decl.span);
+    case STypeclassKind(
+      :final name,
+      :final typeParams,
+      :final methods,
+      :final superclass,
+    ):
+      return _elabTypeclass(
+        topEnv,
+        decl.span,
+        name,
+        typeParams,
+        methods,
+        superclass,
+        metas: metas,
+      );
 
-    case SImplKind():
-      throw TypeclassUnsupported(decl.span);
+    case SImplKind(:final typeclassRef, :final members):
+      return _elabImpl(topEnv, decl.span, typeclassRef, members, metas: metas);
   }
 }
 
-/// Build a synthetic lambda body from a method's body and param names.
-// ignore: unused_element
-Term _buildMethodLambda(
-  List<(String, SExpr)> params,
-  Term body,
-  List<Term> domains,
-) {
-  var result = body;
-  for (var i = params.length - 1; i >= 0; i--) {
-    result = TLam(domains[i], result, name: params[i].$1);
+/// Build the applied class type `C[P1, ..., Pn]` from identifier
+/// references to the class's parameters.
+SExpr _classApplication(String className, List<String> paramNames) {
+  const span = DoxaSpan.synthetic;
+  var result = SExpr(SIdentKind(className), span);
+  for (final p in paramNames) {
+    result = SExpr(SAppKind(result, SExpr(SIdentKind(p), span)), span);
   }
   return result;
 }
 
-/// Build a surface Pi type for a method: `(x1: T1) -> ... -> (xn: Tn) -> R`.
-// ignore: unused_element
-SExpr _buildMethodPiType(
-  String name,
-  List<(String, SExpr)> params,
-  SExpr retType,
-) {
-  var ty = retType;
-  const span = DoxaSpan.synthetic;
-  for (final p in params.reversed) {
-    ty = SExpr(SPiKind(p.$1, p.$2, ty), span);
+/// Peel a method's surface Pi chain into an ordered binder list plus its
+/// result type. Anonymous binders are named `_argN` so the generated
+/// projection can refer to them.
+(List<_FunBinder>, SExpr) _peelMethodType(SExpr type) {
+  final binders = <_FunBinder>[];
+  var cursor = type;
+  while (cursor.kind is SPiKind) {
+    final pi = cursor.kind as SPiKind;
+    binders.add(
+      _FunBinder(
+        pi.param ?? '_arg${binders.length}',
+        pi.domain,
+        pi.icit,
+        pi.paramSpan,
+      ),
+    );
+    cursor = pi.codomain;
   }
-  return ty;
+  return (binders, cursor);
 }
 
-/// Elaborate a `typeclass` declaration by desugaring it to a `data`
-/// declaration with a single `mk` constructor.
+/// Render a class reference for diagnostics.
+String _classRefName(SExpr ref) => switch (ref.kind) {
+  SIdentKind(:final name) => name,
+  SAppKind(:final fn) => _classRefName(fn),
+  SDotKind(:final qualifier, :final name) =>
+    '${_classRefName(qualifier)}.$name',
+  _ => '<expression>',
+};
+
+/// Render a closed value for diagnostics.
+String _prettyClosedValue(Value v) {
+  try {
+    return prettyTerm(quote(0, v), outerDepth: 0);
+  } catch (_) {
+    return _valueTypeName(v) ?? '?';
+  }
+}
+
+/// Elaborate a `typeclass` declaration into a dictionary data type and one
+/// projection per method.
 ///
-/// `typeclass Eq[A] { fun equals(x: A, y: A): Bool }`
-/// ↓
-/// `data Eq[A] : Type { mk : (equals: (x: A) -> (y: A) -> Bool) -> Eq[A] }`
-// ignore: unused_element
+/// `typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool }` produces
+///
+/// ```
+/// data Eqb[A: Type] : Type {
+///   mk_Eqb: (eqb: (x: A) -> (y: A) -> Bool) -> Eqb A;
+/// }
+/// ```
+///
+/// plus a projection
+/// `eqb : {A: Type} -> (x: A) -> (y: A) -> {inst: Eqb A} -> Bool`
+/// whose body applies the dictionary field. The projections are ordinary
+/// top-level bindings, so imports and the checker treat them as such.
+///
+/// The dictionary type is an ordinary inductive: one constructor, one
+/// field per method, no indices. `inst.method` therefore projects with the
+/// existing record machinery, and no kernel term form is added.
 DeclResult _elabTypeclass(
   TopEnv topEnv,
   DoxaSpan span,
@@ -4209,89 +4512,163 @@ DeclResult _elabTypeclass(
   SExpr? superclass, {
   MetaContext? metas,
 }) {
-  // Build the mk constructor's argument type.
-  // For superclasses, the first field is the superclass instance.
-  final ctorFields = <SExpr>[];
-  final ctorFieldNames = <String>[];
-
   if (superclass != null) {
-    // Superclass becomes first field: `(eqInst: Eq[A])`.
-    // Build `Eq[A]` from superclass expr applied to type param idents.
-    var superTy = superclass;
-    for (final tp in typeParams) {
-      superTy = SExpr(
-        SAppKind(superTy, SExpr(SIdentKind(tp.$1), DoxaSpan.synthetic)),
+    throw SuperclassUnsupported(name, _classRefName(superclass), span);
+  }
+  if (typeParams.length != 1) {
+    throw TypeclassUnsupported(
+      span,
+      reason:
+          'typeclass "$name" has ${typeParams.length} parameters; '
+          'only single-parameter classes are implemented',
+    );
+  }
+  final seenMethods = <String, DoxaSpan>{};
+  for (final method in methods) {
+    if (seenMethods.containsKey(method.name)) {
+      throw DuplicateDeclaration(method.name, seenMethods[method.name]!, span);
+    }
+    seenMethods[method.name] = span;
+    final existing = topEnv.spanOf(method.name);
+    if (existing != null) {
+      throw DuplicateDeclaration(method.name, existing, span);
+    }
+    if (method.defaultBody != null) {
+      throw TypeclassUnsupported(
+        span,
+        reason:
+            'default bodies on class methods are not implemented '
+            '("$name.${method.name}")',
+      );
+    }
+    if (method.type == null) {
+      throw TypeclassUnsupported(
+        span,
+        reason: 'method "$name.${method.name}" has no type',
+      );
+    }
+  }
+
+  final paramNames = [for (final tp in typeParams) tp.$1];
+  final resultType = _classApplication(name, paramNames);
+  var ctorType = resultType;
+  for (var i = methods.length - 1; i >= 0; i--) {
+    ctorType = SExpr(
+      SPiKind(methods[i].name, methods[i].type!, ctorType),
+      DoxaSpan.synthetic,
+    );
+  }
+  final ctorDecl = SCtorDecl('mk_$name', ctorType, DoxaSpan.synthetic);
+  final sDataKind = SDataKind(
+    name,
+    typeParams,
+    const SExpr(STypeKind(null), DoxaSpan.synthetic),
+    [ctorDecl],
+  );
+
+  final dataDecl = _elabData(topEnv, span, sDataKind);
+
+  // The projections mention the new dictionary type, so they elaborate
+  // against an environment that already contains it.
+  final scratch = TopEnv(
+    topEnv.bindings,
+    [...topEnv.dataDecls, dataDecl],
+    topEnv.classRegistry,
+    topEnv.namespaceBindings,
+    topEnv.importState,
+  );
+
+  final projections = <TopBinding>[];
+  for (final method in methods) {
+    final (methodBinders, returnType) = _peelMethodType(method.type!);
+    final usedNames = <String>{
+      ...paramNames,
+      for (final binder in methodBinders) binder.name,
+    };
+    var dictName = 'inst';
+    for (var n = 1; usedNames.contains(dictName); n++) {
+      dictName = 'inst$n';
+    }
+    final binders = <_FunBinder>[
+      for (final tp in typeParams)
+        _FunBinder(
+          tp.$1,
+          tp.$2 ?? const SExpr(STypeKind(null), DoxaSpan.synthetic),
+          Icit.implicit,
+        ),
+      ...methodBinders,
+      _FunBinder(dictName, _classApplication(name, paramNames), Icit.implicit),
+    ];
+    SExpr body = SExpr(
+      SDotKind(SExpr(SIdentKind(dictName), DoxaSpan.synthetic), method.name),
+      DoxaSpan.synthetic,
+    );
+    for (final binder in methodBinders) {
+      body = SExpr(
+        SAppKind(body, SExpr(SIdentKind(binder.name), DoxaSpan.synthetic)),
         DoxaSpan.synthetic,
       );
     }
-    ctorFields.add(superTy);
-    ctorFieldNames.add('superInst');
-  }
-
-  for (final m in methods) {
-    final methodType = m.type!;
-    ctorFields.add(methodType);
-    ctorFieldNames.add(m.name);
-  }
-
-  // Build the result type: `Eq[A]` applied to type params.
-  SExpr resultType = SExpr(SIdentKind(name), DoxaSpan.synthetic);
-  for (final tp in typeParams) {
-    resultType = SExpr(
-      SAppKind(resultType, SExpr(SIdentKind(tp.$1), DoxaSpan.synthetic)),
-      DoxaSpan.synthetic,
+    projections.add(
+      TopBinding(
+        name: method.name,
+        type: _buildFunType(scratch, binders, returnType, metas: metas),
+        term: _buildFunBody(scratch, binders, body, returnType, metas: metas),
+        span: span,
+      ),
     );
   }
 
-  // Build the ctor Pi chain: `(equals: (x: A) -> ...) -> Eq[A]`
-  SExpr ctorType = resultType;
-  for (var i = ctorFields.length - 1; i >= 0; i--) {
-    ctorType = SExpr(
-      SPiKind(ctorFieldNames[i], ctorFields[i], ctorType),
-      DoxaSpan.synthetic,
-    );
-  }
-
-  final ctorDecl = SCtorDecl('mk_$name', ctorType, DoxaSpan.synthetic);
-  const signature = SExpr(STypeKind(null), DoxaSpan.synthetic);
-  final sDataKind = SDataKind(name, typeParams, signature, [ctorDecl]);
-
-  // Elaborate the data declaration.
-  final dataDecl = _elabData(topEnv, span, sDataKind);
-  final recBindings = _makeRecBindings(topEnv, dataDecl, span);
-
-  // Register in classRegistry.
+  final recBindings = _makeRecBindings(scratch, dataDecl, span);
   final methodInfos = <(String, SExpr)>[
-    for (final m in methods) (m.name, m.type!),
+    for (final method in methods) (method.name, method.type!),
   ];
 
   return (
-    bindings: recBindings,
+    bindings: [...recBindings, ...projections],
     dataDecls: [dataDecl],
     corecursiveGroup: null,
     metas: metas,
     classRegistry: {
       name: ClassInfo(
         className: name,
-        typeParams: typeParams.map((t) => t.$1).toList(),
+        typeParams: paramNames,
         methods: methodInfos,
-        superclassName:
-            superclass != null
-                ? (superclass.kind is SIdentKind
-                    ? (superclass.kind as SIdentKind).name
-                    : null)
-                : null,
       ),
     },
-    namespaceBindings: const {},
+    namespaceBindings: {
+      name: {
+        for (final binding in recBindings) binding.name,
+        for (final ctor in dataDecl.ctors) ctor.name,
+        for (final method in methods) method.name,
+      },
+    },
   );
 }
 
-/// Elaborate an `impl` declaration: `impl Eq[Int] { fun equals(x, y) { ... } }`.
+/// Split an applied class reference into its class name and the argument
+/// expressions, outermost application last.
+(String, List<SExpr>) _typeclassRefSpine(SExpr ref) {
+  final args = <SExpr>[];
+  var cursor = ref;
+  while (cursor.kind is SAppKind) {
+    final app = cursor.kind as SAppKind;
+    args.add(app.arg);
+    cursor = app.fn;
+  }
+  return (_classRefName(cursor), args.reversed.toList());
+}
+
+/// Elaborate an `impl` declaration into a dictionary value.
 ///
-/// Desugars to a `val` binding whose value is the `mk(...)` constructor
-/// applied to the method implementations.
-// ignore: unused_element
+/// `impl Eqb[Nat] { fun eqb(x: Nat, y: Nat): Bool = ... }` becomes a
+/// binding `_impl_Eqb_Nat : Eqb Nat` whose value is the `mk_Eqb`
+/// constructor applied to the class argument and the method lambdas, plus
+/// an [InstanceInfo] in the class's registry.
+///
+/// The constructor application is kernel-checked against the dictionary
+/// type like any other term, so each method lambda is checked against the
+/// field type the class instantiated at the target type.
 DeclResult _elabImpl(
   TopEnv topEnv,
   DoxaSpan span,
@@ -4299,100 +4676,115 @@ DeclResult _elabImpl(
   List<SFunKind> members, {
   MetaContext? metas,
 }) {
-  // Resolve the typeclass reference to get the class name.
-  final String className;
-  switch (typeclassRef.kind) {
-    case SIdentKind(:final name):
-      className = name;
-    case SAppKind(:final fn):
-      if (fn.kind case SIdentKind(:final name)) {
-        className = name;
-      } else {
-        throw UnresolvedName('<complex typeclass ref>', typeclassRef.span);
-      }
-    default:
-      throw UnresolvedName('<complex typeclass ref>', typeclassRef.span);
-  }
-
+  final (className, argExprs) = _typeclassRefSpine(typeclassRef);
   final classInfo = topEnv.classRegistry[className];
   if (classInfo == null) {
-    throw UnresolvedName('typeclass "$className" not found', typeclassRef.span);
+    throw UnknownTypeclass(className, typeclassRef.span);
+  }
+  if (argExprs.length != classInfo.typeParams.length) {
+    throw TypeclassArityMismatch(
+      className,
+      classInfo.typeParams.length,
+      argExprs.length,
+      typeclassRef.span,
+    );
+  }
+  final classMethodNames = [for (final m in classInfo.methods) m.$1];
+  final provided = <String, SFunKind>{};
+  for (final member in members) {
+    if (!classMethodNames.contains(member.name)) {
+      throw UnknownInstanceMethod(className, member.name, span);
+    }
+    if (provided.containsKey(member.name)) {
+      throw DuplicateDeclaration(member.name, span, span);
+    }
+    for (final tp in member.typeParams) {
+      if (tp.constraints.isNotEmpty) {
+        throw TypeclassUnsupported(
+          span,
+          reason:
+              'constrained instance methods are not implemented '
+              '("$className.${member.name}")',
+        );
+      }
+    }
+    provided[member.name] = member;
+  }
+  for (final methodName in classMethodNames) {
+    if (!provided.containsKey(methodName)) {
+      throw MissingInstanceMethod(className, methodName, span);
+    }
   }
 
-  // Elaborate the typeclass reference to get its full type.
+  // The dictionary type and its arguments.
   final refTerm = _elabExpr(
     topEnv,
     const _LocalNil(),
     typeclassRef,
     metas: metas,
   );
-
-  // Build the constructor application: mk(method1, method2, ...)
-  // First, elaborate each method body as a lambda.
-  final methodTerms = <Term>[];
-
-  for (final member in members) {
-    // Find the corresponding method in the class.
-    final methodInfo =
-        classInfo.methods.where((m) => m.$1 == member.name).firstOrNull;
-    if (methodInfo == null) {
-      // Unknown method - this will be caught by type checking.
-      break;
+  final env = topEnv.toCtx().env;
+  final argTerms = <Term>[
+    for (final arg in argExprs)
+      _elabExpr(topEnv, const _LocalNil(), arg, metas: metas),
+  ];
+  final inferCtx = topEnv.toCtx(metas: metas);
+  for (final argTerm in argTerms) {
+    final argType = infer(inferCtx, argTerm);
+    if (argType is! VType && argType is! VProp && argType is! VSProp) {
+      throw NotAType(argType);
     }
-    final allBinders = <_FunBinder>[
-      for (final tp in member.typeParams)
-        _FunBinder(
-          tp.name,
-          tp.kind ?? const SExpr(STypeKind(null), DoxaSpan.synthetic),
-          tp.isImplicit ? Icit.implicit : Icit.explicit,
-        ),
-      for (final p in member.params) _FunBinder(p.$1, p.$2, Icit.explicit),
-    ];
-    final bodyTerm = _buildFunBody(
-      topEnv,
-      allBinders,
-      member.body,
-      member.returnType,
-      metas: metas,
-    );
-    methodTerms.add(bodyTerm);
+  }
+  final targetValue = eval(argTerms.first, env);
+  final targetType = _prettyClosedValue(targetValue);
+  final targetHead = _valueTypeName(targetValue);
+  if (targetHead == null) {
+    throw UnsupportedInstanceTarget(className, targetType, span);
   }
 
-  if (methodTerms.length != classInfo.methods.length) {
-    throw StateError(
-      'impl $className: expected ${classInfo.methods.length} methods, '
-      'got ${methodTerms.length}',
-    );
+  final instanceName = '_impl_${className}_$targetHead';
+  final overlap =
+      classInfo.instances
+          .where((instance) => instance.targetHead == targetHead)
+          .firstOrNull;
+  if (overlap != null) {
+    throw OverlappingInstances(className, targetType, [
+      overlap.bindingName,
+      instanceName,
+    ], span);
+  }
+  final existingSpan = topEnv.spanOf(instanceName);
+  if (existingSpan != null) {
+    throw DuplicateDeclaration(instanceName, existingSpan, span);
   }
 
-  // Build `mk` constructor term with all arguments (type args + methods).
-  // TConstr takes the full spine: data type params followed by ctor args.
-  final typeArgTerms = <Term>[];
-  switch (typeclassRef.kind) {
-    case SAppKind(:final arg):
-      typeArgTerms.add(_elabExpr(topEnv, const _LocalNil(), arg, metas: metas));
-    case _:
-      break;
-  }
-  final Term implTerm = TConstr(className, 'mk_$className', [
-    ...typeArgTerms,
+  final methodTerms = <Term>[
+    for (final methodName in classMethodNames)
+      _buildFunBody(
+        topEnv,
+        [
+          for (final tp in provided[methodName]!.typeParams)
+            _FunBinder(
+              tp.name,
+              tp.kind ?? const SExpr(STypeKind(null), DoxaSpan.synthetic),
+              tp.isImplicit ? Icit.implicit : Icit.explicit,
+              tp.span,
+            ),
+          for (final param in provided[methodName]!.params)
+            _FunBinder(param.$1, param.$2, Icit.explicit),
+        ],
+        provided[methodName]!.body,
+        provided[methodName]!.returnType,
+        metas: metas,
+      ),
+  ];
+
+  // `TConstr` carries the full spine: the data parameters, then the
+  // constructor arguments (one per method, in class order).
+  final implTerm = TConstr(className, 'mk_$className', [
+    ...argTerms,
     ...methodTerms,
   ]);
-
-  // Generate synthetic name for the instance.
-  final targetType = switch (typeclassRef.kind) {
-    SAppKind(:final arg) => switch (arg.kind) {
-      SIdentKind(:final name) => name,
-      _ => '',
-    },
-    _ => '',
-  };
-  final instanceName =
-      targetType.isNotEmpty
-          ? '_impl_${className}_$targetType'
-          : '_impl_$className';
-
-  // Determine target type for instance registration.
 
   return (
     bindings: [
@@ -4402,7 +4794,9 @@ DeclResult _elabImpl(
     corecursiveGroup: null,
     metas: metas,
     classRegistry: {
-      className: classInfo.withInstance(InstanceInfo(targetType, instanceName)),
+      className: classInfo.withInstance(
+        InstanceInfo(targetType, targetHead, instanceName),
+      ),
     },
     namespaceBindings: const {},
   );
@@ -4792,10 +5186,13 @@ TopBinding _elabFun(
   // `indexOfFromEnd(name)` succeeds at elab time. Because TTop is
   // name-indexed, a block mixing non-recursive and recursive members
   // cannot suffer index drift.
-  final scratchEnv = TopEnv([
-    ...topEnv.bindings,
-    ...preBindings,
-  ], topEnv.dataDecls);
+  final scratchEnv = TopEnv(
+    [...topEnv.bindings, ...preBindings],
+    topEnv.dataDecls,
+    topEnv.classRegistry,
+    topEnv.namespaceBindings,
+    topEnv.importState,
+  );
   final elaborated = <TopBinding>[];
   for (final m in members) {
     elaborated.add(_elabFun(scratchEnv, m.span, m.fun, metas: metas));
@@ -6106,7 +6503,14 @@ List<TopBinding> _makeRecBindings(
   // this helper after the DataDecl is built and added in the
   // decl-result path). We use `env.toCtx()` extended by the decl.
   if (dataDecl.sort is TProp) {
-    final ctx = TopEnv(env.bindings, [...env.dataDecls, dataDecl]).toCtx();
+    final ctx =
+        TopEnv(
+          env.bindings,
+          [...env.dataDecls, dataDecl],
+          env.classRegistry,
+          env.namespaceBindings,
+          env.importState,
+        ).toCtx();
     if (admitsSingletonElim(dataDecl, ctx)) {
       bindings.add(
         TopBinding(
@@ -6145,10 +6549,13 @@ DataDecl _elabData(TopEnv topEnv, DoxaSpan span, SDataKind kind) {
   final header = _elabDataHeader(topEnv, span, kind);
   // Scratch env with this data registered as a partial so its ctors'
   // signatures can reference the data name.
-  final scratchEnv = TopEnv(topEnv.bindings, [
-    ...topEnv.dataDecls,
-    header.partial(),
-  ]);
+  final scratchEnv = TopEnv(
+    topEnv.bindings,
+    [...topEnv.dataDecls, header.partial()],
+    topEnv.classRegistry,
+    topEnv.namespaceBindings,
+    topEnv.importState,
+  );
   final ctors = _elabDataCtors(header, scratchEnv, {kind.name});
   final paramsCovariant = _computeParamsCovariant(header.params, ctors);
   return DataDecl(
@@ -6253,7 +6660,13 @@ List<DataDecl> _elabDataBlock(
     final headerEnv =
         partials.isEmpty
             ? topEnv
-            : TopEnv(topEnv.bindings, [...topEnv.dataDecls, ...partials]);
+            : TopEnv(
+              topEnv.bindings,
+              [...topEnv.dataDecls, ...partials],
+              topEnv.classRegistry,
+              topEnv.namespaceBindings,
+              topEnv.importState,
+            );
     final h = _elabDataHeader(headerEnv, m.span, m.data);
     elaboratedHeaders[idx] = h;
     partials.add(h.partial());
@@ -6263,10 +6676,13 @@ List<DataDecl> _elabDataBlock(
   // Pass 2: scratch env with all partials (built by pass 1 in
   // topo order) registered, then elaborate each member's ctors
   // with mutualNames = all block member names.
-  final scratchEnv = TopEnv(topEnv.bindings, [
-    ...topEnv.dataDecls,
-    ...partials,
-  ]);
+  final scratchEnv = TopEnv(
+    topEnv.bindings,
+    [...topEnv.dataDecls, ...partials],
+    topEnv.classRegistry,
+    topEnv.namespaceBindings,
+    topEnv.importState,
+  );
   final mutualNames = blockMemberNames;
 
   final results = <DataDecl>[];

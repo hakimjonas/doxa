@@ -530,23 +530,88 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
         '  compatibility proof. `Quot(A, R)` still forms a type; use a data type',
       );
       sb.writeln('  or a setoid-style encoding.');
-    case TypeclassUnsupported(:final span):
+    case TypeclassUnsupported(:final span, :final reason):
+      sb.writeln("${c.error('error')}: typeclass form not supported");
+      sb.write(source.formatContext(span, color: c));
+      if (reason != null) {
+        sb.writeln('  $reason.');
+      } else {
+        sb.writeln(
+          '  The `typeclass` and `impl` surface is partially implemented:',
+        );
+        sb.writeln(
+          '  single-parameter classes with method signatures and instances',
+        );
+        sb.writeln('  resolve, but this form is outside that slice.');
+      }
+    case SuperclassUnsupported(
+      :final className,
+      :final superclassName,
+      :final span,
+    ):
       sb.writeln(
-        "${c.error('error')}: typeclass declarations and instances are not supported",
+        "${c.error('error')}: typeclass superclasses are not implemented",
       );
       sb.write(source.formatContext(span, color: c));
       sb.writeln(
-        '  The `typeclass` and `impl` surface is rejected: the resolver does not',
+        '  typeclass "$className: $superclassName" declares a superclass.',
       );
       sb.writeln(
-        '  thread class dictionaries, search instances recursively, or project',
+        '  Superclasses are out of scope; pass the parent dictionary explicitly.',
+      );
+    case UnknownTypeclass(:final className, :final span):
+      sb.writeln("${c.error('error')}: unknown typeclass");
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  The impl names typeclass "$className", which is not declared or imported.',
+      );
+    case TypeclassArityMismatch(
+      :final className,
+      :final expected,
+      :final got,
+      :final span,
+    ):
+      sb.writeln("${c.error('error')}: typeclass arity mismatch");
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  typeclass "$className" takes $expected type '
+        'argument${expected == 1 ? '' : 's'}, but this impl applies $got.',
+      );
+    case MissingInstanceMethod(
+      :final className,
+      :final methodName,
+      :final span,
+    ):
+      sb.writeln("${c.error('error')}: incomplete instance");
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  The impl for "$className" is missing method "$methodName".',
       );
       sb.writeln(
-        '  methods. The parser and formatter still handle the syntax. Use a record',
+        '  An instance must implement every method the class declares.',
+      );
+    case UnknownInstanceMethod(
+      :final className,
+      :final methodName,
+      :final span,
+    ):
+      sb.writeln("${c.error('error')}: unknown instance method");
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln('  typeclass "$className" has no method "$methodName".');
+    case UnsupportedInstanceTarget(
+      :final className,
+      :final targetType,
+      :final span,
+    ):
+      sb.writeln("${c.error('error')}: unsupported instance target");
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  The impl for "$className" targets "$targetType", which is not',
       );
       sb.writeln(
-        '  type with explicit dictionary arguments, or a plain data type.',
+        '  headed by a named type constructor. Instance search matches the',
       );
+      sb.writeln('  head constructor, so the target must be a data type.');
     case TacticFailed(:final message, :final span):
       sb.writeln("${c.error('error')}: tactic failed");
       sb.write(source.formatContext(span, color: c));
