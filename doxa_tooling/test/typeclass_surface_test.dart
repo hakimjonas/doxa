@@ -1,6 +1,5 @@
-/// Typeclass and impl declarations are rejected until resolution and
-/// method projection are implemented. The parser and formatter still
-/// handle the syntax.
+/// Typeclass surface through the CLI: a class and an instance elaborate,
+/// and unsupported forms report their named diagnostics.
 library;
 
 import 'dart:async';
@@ -66,7 +65,7 @@ class _BufferedSink implements IOSink {
 
 void main() {
   group('typeclass surface', () {
-    test('typeclass declaration is rejected', () {
+    test('typeclass declaration is accepted', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
 typeclass Default[A: Type] {
@@ -74,18 +73,40 @@ typeclass Default[A: Type] {
 }
 ''';
       final r = runSource(src);
-      expect(r.code, 1);
-      expect(
-        r.stderr,
-        contains('typeclass declarations and instances are not supported'),
-      );
-      expect(
-        r.stderr,
-        contains('The `typeclass` and `impl` surface is rejected'),
-      );
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
-    test('impl declaration is rejected', () {
+    test('impl declaration is accepted for a declared class', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+typeclass Default[A: Type] {
+  fun default(): A;
+}
+impl Default[Nat] {
+  fun default(): Nat = zero;
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('a superclass reports the named diagnostic', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+typeclass Default[A: Type] {
+  fun default(): A;
+}
+typeclass WithDefault[A: Type]: Default[A] {
+  fun withDefault(): A;
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('typeclass superclasses are not implemented'));
+      expect(r.stderr, contains('"WithDefault: Default"'));
+    });
+
+    test('an unknown class reports the named diagnostic', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
 impl Default[Nat] {
@@ -94,10 +115,8 @@ impl Default[Nat] {
 ''';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(
-        r.stderr,
-        contains('typeclass declarations and instances are not supported'),
-      );
+      expect(r.stderr, contains('unknown typeclass'));
+      expect(r.stderr, contains('"Default"'));
     });
   });
 }

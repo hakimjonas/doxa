@@ -155,6 +155,13 @@ final class ReplSession {
   /// Accumulated namespace-qualified name index.
   final Map<String, Set<String>> namespaceBindings;
 
+  /// Accumulated typeclass registry, merged from every declaration.
+  ///
+  /// Instance search reads this when the REPL elaborates a call with a
+  /// constrained parameter. Without it, a class and its instances would
+  /// elaborate but every later call would report no instance.
+  final Map<String, ClassInfo> classRegistry;
+
   /// Import resolution state, persisted across REPL declarations.
   final ImportState _importState;
 
@@ -173,6 +180,7 @@ final class ReplSession {
   ReplSession({
     this.bindings = const <TopBinding>[],
     this.dataDecls = const <DataDecl>[],
+    this.classRegistry = const {},
     this.namespaceBindings = const {},
     ImportState? importState,
   }) : _importState = importState ?? ImportState(),
@@ -181,6 +189,7 @@ final class ReplSession {
   ReplSession._({
     required this.bindings,
     required this.dataDecls,
+    required this.classRegistry,
     required this.namespaceBindings,
     required ImportState importState,
     required _ProofSession proofState,
@@ -339,7 +348,12 @@ final class ReplSession {
 
   /// Process [expr] as an expression: elaborate, infer, normalize.
   ReplResult _processExpr(SExpr expr, String input) {
-    final topEnv = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
+    final topEnv = TopEnv(
+      bindings,
+      dataDecls,
+      classRegistry,
+      namespaceBindings,
+    );
     try {
       final term = elabExpr(topEnv, expr);
       final ctx = topEnv.toCtx();
@@ -441,7 +455,12 @@ final class ReplSession {
         this,
       );
     }
-    final topEnv = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
+    final topEnv = TopEnv(
+      bindings,
+      dataDecls,
+      classRegistry,
+      namespaceBindings,
+    );
     try {
       final term = elabExpr(topEnv, expr);
       final ctx = topEnv.toCtx();
@@ -467,11 +486,15 @@ final class ReplSession {
 
   /// Process [decl] as a declaration: elaborate, check, return a new
   /// session with the declaration accumulated.
+  ///
+  /// Elaboration and checking failures return a [ReplError] with the same
+  /// session, so a bad declaration never terminates the process and never
+  /// poisons the accumulated state.
   ReplStep _processDecl(SDecl decl, String input) {
     final topEnv = TopEnv(
       bindings,
       dataDecls,
-      const {},
+      classRegistry,
       namespaceBindings,
       importState,
     );
@@ -481,6 +504,7 @@ final class ReplSession {
     try {
       final produced = elabDecl(topEnv, decl);
       final runningData = [...dataDecls, ...produced.dataDecls];
+      final runningClasses = {...classRegistry, ...produced.classRegistry};
       // For imports, include the import's own bindings so checkDeclResult
       // can verify cross-references within the imported module.
       final checkBindings =
@@ -490,7 +514,7 @@ final class ReplSession {
       final runningEnv = TopEnv(
         checkBindings,
         runningData,
-        const {},
+        runningClasses,
         namespaceBindings,
         importState,
       );
@@ -505,6 +529,7 @@ final class ReplSession {
       final newSession = ReplSession(
         bindings: newBindings,
         dataDecls: newDataDecls,
+        classRegistry: runningClasses,
         namespaceBindings: newNs,
         importState: importState,
       );
@@ -526,6 +551,10 @@ final class ReplSession {
         );
       }
       return (const ReplDeclResult(name: '', type: ''), newSession);
+    } on DoxaCheckError catch (e) {
+      return (ReplError(_formatCheckError(input, decl.span, e)), this);
+    } on ElabError catch (e) {
+      return (ReplError(_formatElabError(input, e)), this);
     } finally {
       importState.currentImportPath = prevPath;
     }
@@ -599,7 +628,12 @@ final class ReplSession {
       );
     }
 
-    final topEnv = TopEnv(bindings, dataDecls, const {}, namespaceBindings);
+    final topEnv = TopEnv(
+      bindings,
+      dataDecls,
+      classRegistry,
+      namespaceBindings,
+    );
     Term typeTerm;
     try {
       typeTerm = elabExpr(topEnv, typeExpr);
@@ -646,6 +680,7 @@ final class ReplSession {
       ReplSession._(
         bindings: bindings,
         dataDecls: dataDecls,
+        classRegistry: classRegistry,
         namespaceBindings: namespaceBindings,
         importState: importState,
         proofState: proofSession,
@@ -1311,6 +1346,7 @@ final class ReplSession {
       ReplSession(
         bindings: newBindings,
         dataDecls: dataDecls,
+        classRegistry: classRegistry,
         namespaceBindings: namespaceBindings,
       ),
     );
@@ -1326,6 +1362,7 @@ final class ReplSession {
       ReplSession(
         bindings: bindings,
         dataDecls: dataDecls,
+        classRegistry: classRegistry,
         namespaceBindings: namespaceBindings,
       ),
     );

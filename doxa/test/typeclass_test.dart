@@ -124,21 +124,55 @@ void main() {
     });
   });
 
-  group('Typeclass surface rejection', () {
-    test('typeclass declaration is rejected', () {
+  group('Typeclass elaboration', () {
+    test('typeclass declaration is accepted', () {
+      final env = elabProgram(
+        pp('''
+data Bool : Type { true_ : Bool; false_ : Bool; }
+typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool }
+'''),
+      );
+      expect(env.lookupData('Eqb'), isNotNull);
+      expect(env.bindings.any((b) => b.name == 'eqb'), isTrue);
+    });
+
+    test('impl declaration is accepted for a declared class', () {
+      final env = elabProgram(
+        pp('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+data Bool : Type { true_ : Bool; false_ : Bool; }
+typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool }
+impl Eqb[Nat] { fun eqb(x: Nat, y: Nat): Bool = true_ }
+'''),
+      );
+      expect(env.classRegistry['Eqb']!.instances.length, 1);
+    });
+
+    test('superclass is rejected', () {
       expect(
-        () =>
-            elabProgram(pp('typeclass Eq[A] { fun equals(x: A, y: A): Bool }')),
-        throwsA(isA<TypeclassUnsupported>()),
+        () => elabProgram(
+          pp('''
+data Bool : Type { true_ : Bool; false_ : Bool; }
+typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool }
+typeclass Ord[A: Type]: Eqb[A] { fun cmp(x: A, y: A): Bool }
+'''),
+        ),
+        throwsA(isA<SuperclassUnsupported>()),
       );
     });
 
-    test('impl declaration is rejected', () {
+    test('a second instance for the same head is rejected', () {
       expect(
         () => elabProgram(
-          pp('impl Eq[Int] { fun equals(x: Int, y: Int): Bool = true }'),
+          pp('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+data Bool : Type { true_ : Bool; false_ : Bool; }
+typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool }
+impl Eqb[Nat] { fun eqb(x: Nat, y: Nat): Bool = true_ }
+impl Eqb[Nat] { fun eqb(x: Nat, y: Nat): Bool = false_ }
+'''),
         ),
-        throwsA(isA<TypeclassUnsupported>()),
+        throwsA(isA<OverlappingInstances>()),
       );
     });
   });

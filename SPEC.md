@@ -156,24 +156,78 @@ quotient terms, and the checker verifies their formation and elimination rules.
 
 ## Typeclasses
 
-Typeclasses and implementations are declarations. A class contains `fun`
-method signatures, optionally with default bodies. An implementation names an
-applied class and provides `fun` members.
+A `typeclass` declaration produces a dictionary type and one projection per
+method. The dictionary type is an ordinary inductive with a single
+constructor and one field per method.
 
 ```doxa
-typeclass Semigroup[A: Type] {
-  fun combine(x: A, y: A): A;
-}
-
-impl Semigroup[Nat] {
-  fun combine(x: Nat, y: Nat): Nat = plus x y;
+typeclass Eqb[A: Type] {
+  fun eqb(x: A, y: A): Bool;
 }
 ```
 
-This is a syntax fragment because `Nat` and `plus` require declarations. An
-explicit type-parameter group may state constraints such as `[A: Eq & Ord]`.
-The elaborator records classes and implementations for constrained-argument
-resolution.
+elaborates to
+
+```doxa
+data Eqb[A: Type] : Type {
+  mk_Eqb: (eqb: (x: A) -> (y: A) -> Bool) -> Eqb A;
+}
+```
+
+together with the projection
+`eqb : {A: Type} -> (x: A) -> (y: A) -> {inst: Eqb A} -> Bool`. A projection
+binds the class parameters implicitly, then the method's explicit arguments,
+then the dictionary as an implicit binder after them; its body applies the
+dictionary field to the explicit arguments.
+
+An `impl` supplies the dictionary value for one type and registers it in the
+class's instance table.
+
+```doxa
+impl Eqb[Nat] {
+  fun eqb(x: Nat, y: Nat): Bool = ...;
+}
+```
+
+`Nat` requires a declaration, so this is a fragment.
+
+A constrained type parameter keeps the icity of its group. Constraints are
+accepted on explicit `[...]` parameters; the parser does not accept them in
+`{...}` groups. Its dictionary is an implicit argument placed after the
+explicit value parameters, so the class parameter is solved from them first.
+
+```doxa
+fun same[A: Eqb](x: A, y: A): Bool = eqb x y
+```
+
+A call supplies the type argument explicitly, as with any `[...]` parameter,
+and the dictionary is filled by instance search: `same Nat zero zero` supplies
+`Nat` and resolves `Eqb[Nat]`.
+
+A call-site dictionary is filled by matching the head type constructor of the
+required class argument against the registered instances; search is
+depth-bounded at 8. A parameter that is itself class-constrained in the local
+context supplies its dictionary without a search. A failed search is an error
+that names the class and the target type; the elaborator does not defer the
+dictionary through an unsolved metavariable.
+
+An instance target must be a bare type constructor. An applied target such as
+`impl Eqb[List Nat]` is rejected with `UnsupportedInstanceTarget`, and a call
+at an unregistered instantiation such as `List Bool` reports
+`NoInstanceFound` naming `List Bool`. Instance declarations cannot carry
+parameters or constraints, so the registry's constraint list is always empty.
+Coherence is global: at most one instance exists per class and head type, and
+a second instance is rejected with `OverlappingInstances`.
+
+Class method names are top-level projection names and share the global
+namespace; two classes cannot declare the same method name.
+
+This version does not implement superclasses, local instances, default method
+bodies, or classes with more than one parameter. A superclass is rejected with
+`SuperclassUnsupported`, a default method body with `TypeclassUnsupported`, a
+missing or unknown method with `MissingInstanceMethod` or
+`UnknownInstanceMethod`, an unknown class with `UnknownTypeclass`, and a
+wrong class-argument count with `TypeclassArityMismatch`.
 
 ## Scope
 

@@ -1310,6 +1310,19 @@ Term quote(int level, Value value) =>
 Term quoteWithMetas(int level, Value value, MetaContext metas) =>
     _drive(_Quote(value, level), <_Frame>[], null, metas: metas) as Term;
 
+/// Force [v] when its head is a solved metavariable, substituting the
+/// solution at its declaration site and re-applying the spine.
+///
+/// The elaborator's instance search uses this to see the head of a class
+/// argument that argument checking already solved: the codomain closure
+/// captured the argument as a metavariable neutral, and the solution
+/// lives in [metas].
+Value forceMetaHead(
+  Value v,
+  MetaContext metas, [
+  Map<String, TopBindingEntry>? topBindings,
+]) => _forceMetaHead(v, metas, topBindings);
+
 /// Compute the normal form of [term] in the empty environment.
 ///
 /// Single-loop: the driver evaluates then quotes without any intermediate
