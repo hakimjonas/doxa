@@ -6316,24 +6316,18 @@ Value _forceMetaHead(
   if (spine == null) return v;
   final entry = metas.lookup(spine.$1);
   if (entry is! TermMetaSolved) return v;
-  // Evaluate the solution under an empty env (topBindings threaded
-  // so TTop references resolve). Pattern-unification solutions are
-  // closed λ-chains whose body TBounds reference only the chain's
-  // own binders; `apply(VLam, arg)` below extends the closure env
-  // with each spine arg, and the body's TBounds resolve against
-  // that chain env.
-  //
-  // Lean and Agda both substitute a metavariable's solution without
-  // padding the environment: solution-internal indices resolve
-  // against the mvar's declared local context, and the spine is then
-  // applied as eliminations, with no decl-site fvar padding.
+  // Evaluate the solution at its declaration site, not under an empty
+  // env. `_solutionWellScopedUnderCtx` permits free indices that point
+  // into [entry.localCtx], so an open solution (for example a tactic
+  // proof committed under the goal's binders) is legal and must resolve
+  // those indices against the binders that were in scope when the meta
+  // was allocated. The current MetaContext is installed so nested
+  // solved metas force as usual. The caller's top-binding registry is
+  // merged when it has entries the decl-site env lacks (a meta declared
+  // with a bare CNil); `withTopBindings` preserves the binder chain.
+  final declEnv = installMetaContext(entry.localCtx, metas).env;
   final Env evalEnv =
-      topBindings == null
-          ? const ENil()
-          : ENil.withRegistries(
-            dataDecls: const <DataDecl>[],
-            topBindings: topBindings,
-          );
+      topBindings == null ? declEnv : declEnv.withTopBindings(topBindings);
   var result = eval(entry.solution, evalEnv);
   for (final arg in spine.$2) {
     result = apply(result, arg);
