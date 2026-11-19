@@ -1666,6 +1666,10 @@ TacticResult tacticConstructor(TacticState s) {
   }
   final dataArgs = goalType.args;
   final paramCount = dataDecl.params.length;
+  final level = s.ctx.level;
+  final paramTerms = <Term>[
+    for (var i = 0; i < paramCount; i++) quote(level, dataArgs[i]),
+  ];
   final registries = ENil.withRegistries(
     dataDecls: s.ctx.env.dataDecls,
     topBindings: s.ctx.env.topBindings,
@@ -1697,7 +1701,10 @@ TacticResult tacticConstructor(TacticState s) {
       argTerms.add(metaTerm);
       teleEnv = teleEnv.extend(eval(metaTerm, s.ctx.env));
     }
-    final ctorTerm = TConstr(dataName, ctor.name, argTerms);
+    // A constructor term carries the data parameters first, then the
+    // constructor's own arguments; the kernel's constructor signature
+    // and the recursor's instance both use that order.
+    final ctorTerm = TConstr(dataName, ctor.name, [...paramTerms, ...argTerms]);
 
     // Check if ctor term matches goal type.
     try {

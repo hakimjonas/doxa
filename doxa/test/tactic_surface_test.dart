@@ -153,6 +153,69 @@ val d_succ : (n: Nat) -> D n -> D (succ n) = by {
       expect(_binding(env, 'd_succ').name, 'd_succ');
     });
 
+    test('closes a parameterized nullary equality constructor', () {
+      final env = _elabAndCheck('''
+val eq_refl : (A: Type) -> (x: A) -> Eq A x x = by {
+  intro A;
+  intro x;
+  constructor
+}
+''');
+      expect(_binding(env, 'eq_refl').name, 'eq_refl');
+    });
+
+    test('closes nullary constructors of parameterized types', () {
+      final env = _elabAndCheck('''
+$_nat
+$_list
+$_option
+val list0 : List Nat = by { constructor }
+val option0 : Option Nat = by { constructor }
+''');
+      expect(_binding(env, 'list0').name, 'list0');
+      expect(_binding(env, 'option0').name, 'option0');
+    });
+
+    test('closes a parameterized indexed nullary constructor', () {
+      final env = _elabAndCheck('''
+$_nat
+$_vec
+val vnil0 : Vec Nat zero = by { constructor }
+''');
+      expect(_binding(env, 'vnil0').name, 'vnil0');
+    });
+
+    test('solves the index and leaves the value arguments on vcons', () {
+      // The goal index `succ n` determines the index argument, so only
+      // the head and tail are goals.
+      final env = _elabAndCheck('''
+$_nat
+$_vec
+val vcons1 : (n: Nat) -> (x: Nat) -> (xs: Vec Nat n) -> Vec Nat (succ n) = by {
+  intro n;
+  intro x;
+  intro xs;
+  constructor;
+  exact x;
+  exact xs
+}
+''');
+      expect(_binding(env, 'vcons1').name, 'vcons1');
+    });
+
+    test('rejects a goal with no matching constructor', () {
+      expect(
+        () => _elabAndCheck('''
+$_nat
+data D: Nat -> Type {
+  d0: D zero;
+}
+val bad : D (succ zero) = by { constructor }
+'''),
+        _failsWith('constructor: no constructor matches the goal'),
+      );
+    });
+
     test('rejects a non-inductive goal', () {
       expect(
         () => _elabAndCheck('''
@@ -293,6 +356,20 @@ const _vec = '''
 data Vec[A: Type]: Nat -> Type {
   vnil: Vec A zero;
   vcons: (k: Nat) -> A -> Vec A k -> Vec A (succ k);
+}
+''';
+
+const _list = '''
+data List[A: Type]: Type {
+  nil: List A;
+  cons: A -> List A -> List A;
+}
+''';
+
+const _option = '''
+data Option[A: Type]: Type {
+  none: Option A;
+  some: A -> Option A;
 }
 ''';
 
