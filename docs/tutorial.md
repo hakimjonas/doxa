@@ -364,7 +364,9 @@ and the second rewrite makes the sides convertible.
 
 `cases x` splits a variable of inductive type into one goal per
 constructor, with the constructor's arguments in scope and named as
-`induction` names them. Unlike `induction`, no hypotheses are added:
+`induction` names them. Unlike `induction`, no usable hypothesis is
+added; a recursive constructor still carries the recursor's hypothesis
+binder, which the display shows as `_` and the arm goal does not mention:
 
 ```doxa
 val two_cases : (n: Nat) -> Eq Nat (plus zero n) n = by {
@@ -547,9 +549,11 @@ scrutinee index gives the same treatment: inducting on
 
 `:step cases x` walks one goal per constructor in constructor order, with
 the constructor's arguments named in the context; `:goal` shows the current
-arm. `:step constructor` leaves one goal per argument of the constructor it
-picked, again in argument order; a nullary constructor closes the goal
-immediately, and the next `:step` targets the first open goal.
+arm. A recursive constructor also shows the recursor's hypothesis binder
+as `_`, which the arm goal does not mention. `:step constructor` leaves one
+goal per argument of the constructor it picked, again in argument order; a
+nullary constructor closes the goal immediately, and the next `:step`
+targets the first open goal.
 
 ### Reverting a binder
 
