@@ -747,8 +747,8 @@ impl Eqb[Bool] {
 
 fun same[A: Eqb](x: A, y: A): Bool = eqb x y
 
-val natSame : Bool = same Nat zero zero
-val boolSame : Bool = same Bool true_ true_
+val natSame : Bool = same zero zero
+val boolSame : Bool = same true_ true_
 ```
 
 `typeclass Eqb[A: Type]` produces the dictionary type `Eqb[A]`, a
@@ -757,10 +757,10 @@ single-constructor inductive with one field per method, and the projection
 instance for the same class and head is rejected with
 `OverlappingInstances`.
 
-`same` declares `A` as an explicit type parameter and the dictionary as an
-implicit parameter. The call `same Nat zero zero` supplies `Nat` explicitly
-and resolves `Eqb[Nat]` by search. Inside `same`, `eqb x y` uses the
-dictionary parameter directly, so no search runs there.
+`[A: Eqb]` is an implicit type parameter with a constraint. The dictionary
+argument is placed after the explicit parameters, so `same zero zero`
+infers `A = Nat` and resolves `Eqb[Nat]` by search. Inside `same`,
+`eqb x y` uses the dictionary parameter directly, so no search runs there.
 
 This slice has these limits:
 
@@ -768,11 +768,16 @@ This slice has these limits:
   with `SuperclassUnsupported`.
 - Instances are top-level only; there are no local instances.
 - Coherence is global: one instance per class and head type.
+- Method names share the global namespace, because each method becomes a
+  top-level projection. Two classes cannot declare the same method name; the
+  second declaration is rejected with `DuplicateDeclaration`.
 - Method default bodies are not implemented. Every instance supplies every
   method, and a missing method is rejected with `MissingInstanceMethod`.
-- Search matches the target's head constructor, discharges the instance's
-  own constraints recursively, and is depth-bounded at 8. A miss is
-  reported with `NoInstanceFound`, naming the class and the type.
+- An instance target must be a bare type constructor. `impl Eqb[List Nat]`
+  is rejected with `UnsupportedInstanceTarget`, and a call at `List Bool`
+  reports `NoInstanceFound` naming `List Bool`.
+- Search matches the target's head constructor and is depth-bounded at 8. A
+  miss is reported with `NoInstanceFound`, naming the class and the type.
 
 A class that is not passed as a constraint can still be used as an ordinary
 record type. A user-defined record is an explicit dictionary:
