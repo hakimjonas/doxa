@@ -5638,6 +5638,26 @@ ConvResult? _tryFlexFlexIntersect(
   // See `_tryUnify`'s matching comment for the rationale.
   if (!_solutionWellScopedUnderCtx(inlinedA, entryA.localCtx)) return null;
   if (!_solutionWellScopedUnderCtx(inlinedB, entryB.localCtx)) return null;
+  // A scoped solution can still be ill-typed: the two metas need only
+  // agree on their shared prefix by well-typing at the conversion site,
+  // and the fresh meta's type is read from A's Pi chain. Check both
+  // candidates before committing, exactly as `_tryUnify` does; a
+  // rejection leaves both metas unsolved so the caller reports the
+  // original mismatch.
+  try {
+    checkMetaSolution(
+      installMetaContext(entryA.localCtx, metas),
+      inlinedA,
+      entryA.typeExpected,
+    );
+    checkMetaSolution(
+      installMetaContext(entryB.localCtx, metas),
+      inlinedB,
+      entryB.typeExpected,
+    );
+  } on Object {
+    return null;
+  }
   metas.solve(idA, inlinedA);
   metas.solve(idB, inlinedB);
   return const ConvOk();
@@ -5736,6 +5756,19 @@ ConvResult? _tryConstApproxAtSameMeta(
   // the check for defense-in-depth and parity with the other
   // solve sites.
   if (!_solutionWellScopedUnderCtx(solution, entry.localCtx)) return null;
+  // Validate the candidate before committing. The construction is
+  // typed by design, but the check is the same guard every other solve
+  // site runs, so a construction bug cannot install an ill-typed
+  // solution through this path.
+  try {
+    checkMetaSolution(
+      installMetaContext(entry.localCtx, metas),
+      solution,
+      entry.typeExpected,
+    );
+  } on Object {
+    return null;
+  }
   metas.solve(id, solution);
   return const ConvOk();
 }
