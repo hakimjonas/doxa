@@ -315,8 +315,8 @@ final class UnknownInstanceMethod extends ElabError {
   String toString() => 'UnknownInstanceMethod($className.$methodName @ $span)';
 }
 
-/// An `impl` target is not headed by a named type constructor, so instance
-/// search cannot match it.
+/// An `impl` target is not a bare type constructor, so instance search
+/// cannot match it.
 final class UnsupportedInstanceTarget extends ElabError {
   /// The typeclass name.
   final String className;
@@ -327,8 +327,16 @@ final class UnsupportedInstanceTarget extends ElabError {
   @override
   final DoxaSpan span;
 
+  /// The narrow reason, or null when the target has no named head.
+  final String? reason;
+
   /// Creates an unsupported-target error.
-  const UnsupportedInstanceTarget(this.className, this.targetType, this.span);
+  const UnsupportedInstanceTarget(
+    this.className,
+    this.targetType,
+    this.span, {
+    this.reason,
+  });
 
   @override
   String toString() =>
@@ -4741,6 +4749,19 @@ DeclResult _elabImpl(
   if (targetHead == null) {
     throw UnsupportedInstanceTarget(className, targetType, span);
   }
+  // Instance search matches the target's head constructor, so an applied
+  // target would answer calls at other instantiations of the same head.
+  // Accept only a bare type constructor.
+  if (targetValue is VData && targetValue.args.isNotEmpty) {
+    throw UnsupportedInstanceTarget(
+      className,
+      targetType,
+      span,
+      reason:
+          'an instance target must be a bare type constructor; '
+          '"$targetType" is applied',
+    );
+  }
 
   final instanceName = '_impl_${className}_$targetHead';
   final overlap =
@@ -4991,30 +5012,40 @@ List<_FunBinder> _constraintBinders(SFunTypeParam tp) => [
     ),
 ];
 
+/// The binder order for a `fun`: type parameters, explicit value
+/// parameters, then one implicit dictionary per constraint.
+///
+/// A constrained type parameter is implicit: `[A: Eqb]` is inferred from
+/// the value arguments. The dictionary follows the explicit parameters so
+/// the type parameter is solved before instance search runs, matching the
+/// projection's order.
+List<_FunBinder> _funBinders(SFunKind kind) => [
+  for (final tp in kind.typeParams)
+    _FunBinder(
+      tp.name,
+      tp.kind ?? const SExpr(STypeKind(null), DoxaSpan.synthetic),
+      tp.isImplicit || tp.constraints.isNotEmpty
+          ? Icit.implicit
+          : Icit.explicit,
+      tp.span,
+    ),
+  for (var i = 0; i < kind.params.length; i++)
+    _FunBinder(
+      kind.params[i].$1,
+      kind.params[i].$2,
+      Icit.explicit,
+      i < kind.paramSpans.length ? kind.paramSpans[i] : DoxaSpan.synthetic,
+    ),
+  for (final tp in kind.typeParams) ..._constraintBinders(tp),
+];
+
 TopBinding _elabFun(
   TopEnv topEnv,
   DoxaSpan span,
   SFunKind kind, {
   MetaContext? metas,
 }) {
-  final allBinders = <_FunBinder>[
-    for (final tp in kind.typeParams) ...[
-      _FunBinder(
-        tp.name,
-        tp.kind ?? const SExpr(STypeKind(null), DoxaSpan.synthetic),
-        tp.isImplicit ? Icit.implicit : Icit.explicit,
-        tp.span,
-      ),
-      ..._constraintBinders(tp),
-    ],
-    for (var i = 0; i < kind.params.length; i++)
-      _FunBinder(
-        kind.params[i].$1,
-        kind.params[i].$2,
-        Icit.explicit,
-        i < kind.paramSpans.length ? kind.paramSpans[i] : DoxaSpan.synthetic,
-      ),
-  ];
+  final allBinders = _funBinders(kind);
   final funBodyTerm = _buildFunBody(
     topEnv,
     allBinders,
@@ -5141,26 +5172,7 @@ TopBinding _elabFun(
     final retType = m.fun.returnType;
     final typeTerm = _buildFunType(
       topEnv,
-      [
-        for (final tp in m.fun.typeParams) ...[
-          _FunBinder(
-            tp.name,
-            tp.kind ?? const SExpr(STypeKind(null), DoxaSpan.synthetic),
-            tp.isImplicit ? Icit.implicit : Icit.explicit,
-            tp.span,
-          ),
-          ..._constraintBinders(tp),
-        ],
-        for (var i = 0; i < m.fun.params.length; i++)
-          _FunBinder(
-            m.fun.params[i].$1,
-            m.fun.params[i].$2,
-            Icit.explicit,
-            i < m.fun.paramSpans.length
-                ? m.fun.paramSpans[i]
-                : DoxaSpan.synthetic,
-          ),
-      ],
+      _funBinders(m.fun),
       retType,
       metas: metas,
     );

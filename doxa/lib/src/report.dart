@@ -601,17 +601,26 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
     case UnsupportedInstanceTarget(
       :final className,
       :final targetType,
+      :final reason,
       :final span,
     ):
       sb.writeln("${c.error('error')}: unsupported instance target");
       sb.write(source.formatContext(span, color: c));
-      sb.writeln(
-        '  The impl for "$className" targets "$targetType", which is not',
-      );
-      sb.writeln(
-        '  headed by a named type constructor. Instance search matches the',
-      );
-      sb.writeln('  head constructor, so the target must be a data type.');
+      if (reason != null) {
+        sb.writeln('  $reason.');
+        sb.writeln(
+          '  Instance search matches the head constructor, so a target',
+        );
+        sb.writeln('  with type arguments cannot be registered.');
+      } else {
+        sb.writeln(
+          '  The impl for "$className" targets "$targetType", which is not',
+        );
+        sb.writeln(
+          '  headed by a named type constructor. Instance search matches the',
+        );
+        sb.writeln('  head constructor, so the target must be a data type.');
+      }
     case TacticFailed(:final message, :final span):
       sb.writeln("${c.error('error')}: tactic failed");
       sb.write(source.formatContext(span, color: c));

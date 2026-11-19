@@ -2,6 +2,7 @@
 /// instance search.
 library;
 
+import 'package:doxa/src/check.dart' show TypeMismatch;
 import 'package:doxa/src/elab.dart';
 import 'package:doxa/src/eval.dart';
 import 'package:doxa/src/parse.dart';
@@ -127,14 +128,47 @@ impl Eqb[Bool] {
   };
 }
 fun same[A: Eqb](x: A, y: A): Bool = eqb x y
-val natSame: Bool = same Nat zero zero
-val boolSame: Bool = same Bool true_ true_
+val natSame: Bool = same zero zero
+val boolSame: Bool = same true_ true_
 '''),
         ),
       );
 
+      // The constrained type parameter is implicit and the dictionary
+      // follows the explicit parameters.
+      final same = env.bindings.firstWhere((b) => b.name == 'same');
+      final pA = same.type as TPi;
+      expect(pA.icit, Icit.implicit);
+      final pX = pA.codomain as TPi;
+      expect(pX.icit, Icit.explicit);
+      final pY = pX.codomain as TPi;
+      expect(pY.icit, Icit.explicit);
+      final pInst = pY.codomain as TPi;
+      expect(pInst.icit, Icit.implicit);
+      expect((pInst.domain as TData).name, 'Eqb');
+
       expect(_ctorName(_evalBinding(env, 'natSame')), 'true_');
       expect(_ctorName(_evalBinding(env, 'boolSame')), 'true_');
+    });
+
+    test('an explicit type argument is not accepted for a constrained '
+        'parameter', () {
+      // `[A: Eqb]` is implicit in the generated type, so `same Nat zero zero`
+      // binds Nat to the first value parameter instead of A.
+      expect(
+        () => checkProgram(
+          pp(
+            _program('''
+impl Eqb[Nat] {
+  fun eqb(x: Nat, y: Nat): Bool = true_;
+}
+fun same[A: Eqb](x: A, y: A): Bool = eqb x y
+val natSame: Bool = same Nat zero zero
+'''),
+          ),
+        ),
+        throwsA(isA<TypeMismatch>()),
+      );
     });
 
     test('a second instance for the same class and head is rejected', () {
@@ -192,6 +226,92 @@ theorem bad : Bool := by { exact idBool (eqb red red) }
         ),
         throwsA(
           isA<NoInstanceFound>().having((e) => e.className, 'className', 'Eqb'),
+        ),
+      );
+    });
+  });
+
+  group('instance targets', () {
+    const listData = '''
+data List[A: Type] : Type {
+  nil : List A;
+  cons : A -> List A -> List A;
+}
+''';
+
+    test('an applied target is rejected', () {
+      expect(
+        () => checkProgram(
+          pp('''
+$_prelude
+$_eqbClass
+$listData
+impl Eqb[List Nat] {
+  fun eqb(x: List Nat, y: List Nat): Bool = true_;
+}
+'''),
+        ),
+        throwsA(
+          isA<UnsupportedInstanceTarget>()
+              .having((e) => e.className, 'className', 'Eqb')
+              .having(
+                (e) => e.reason,
+                'reason',
+                contains('bare type constructor'),
+              ),
+        ),
+      );
+    });
+
+    test('a call at an unregistered instantiation reports the class and '
+        'type', () {
+      expect(
+        () => checkProgram(
+          pp('''
+$_prelude
+$_eqbClass
+$listData
+val xs: List Bool = nil
+val bad: Bool = eqb xs xs
+'''),
+        ),
+        throwsA(
+          isA<NoInstanceFound>()
+              .having((e) => e.className, 'className', 'Eqb')
+              .having((e) => e.targetType, 'targetType', contains('List'))
+              .having((e) => e.targetType, 'targetType', contains('Bool')),
+        ),
+      );
+    });
+  });
+
+  group('class declarations', () {
+    test('two classes cannot share a method name', () {
+      expect(
+        () => checkProgram(
+          pp('''
+$_prelude
+typeclass ShowA[A: Type] {
+  fun show(x: A): Bool;
+}
+typeclass ShowB[A: Type] {
+  fun show(x: A): Bool;
+}
+'''),
+        ),
+        throwsA(
+          isA<DuplicateDeclaration>()
+              .having((e) => e.name, 'name', 'show')
+              .having(
+                (e) => e.previousSpan.start < e.span.start,
+                'previous span precedes the redeclaration',
+                isTrue,
+              )
+              .having(
+                (e) => e.previousSpan.isSynthetic || e.span.isSynthetic,
+                'both spans are source spans',
+                isFalse,
+              ),
         ),
       );
     });
