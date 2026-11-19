@@ -1498,7 +1498,15 @@ void _validateSolvedMeta(MetaContext metas, int id, TermMetaSolved entry) {
   try {
     checkMetaSolution(
       ctx,
-      inlineSolvedMetas(entry.solution, metas),
+      inlineSolvedMetas(
+        entry.solution,
+        metas,
+        // An open solution (free indices into localCtx) lives at the
+        // declaration ambient; a closed one (its own λ-chain binds the
+        // context) lives at 0. Match the root ambient the inliner assumes.
+        outerDepth:
+            solutionHasFreeIndices(entry.solution) ? entry.localCtx.level : 0,
+      ),
       entry.typeExpected,
     );
   } on DoxaCheckError catch (e) {

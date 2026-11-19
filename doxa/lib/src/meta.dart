@@ -453,20 +453,16 @@ Term inlineSolvedMetas(Term term, MetaContext metas, {int outerDepth = 0}) {
     TMeta(:final id) => () {
       final entry = metas.lookup(id);
       if (entry is! TermMetaSolved) return t;
-      // Scope-aware inline. The surrounding context (captured as
-      // [depth]) must admit the solution's declaration-site scope
-      // (from [entry.localCtx]) before we substitute. Lean 4
-      // instantiates solved metavariables eagerly but honors delayed
-      // assignment records via a spine match; Doxa's [TermMetaSolved]
-      // is the pattern-unification solved case, and a delayed-record
-      // analogue would refine this predicate to check a specific
-      // fvar spine.
+      // Two stored shapes are legal. An open solution has a free TBound
+      // referring into [entry.localCtx]; its root lives at that
+      // declaration ambient. A closed solution has no free indices (its
+      // own λ-chain binds the local context, or the unification spine),
+      // so its root lives at ambient 0. Classifying by free indices and
+      // walking each shape at its own root ambient is what makes a
+      // nested solution's ambient independent of the use site's.
+      final open = solutionHasFreeIndices(entry.solution);
       if (!_solutionAdmissibleAtDepth(entry, depth)) return t;
-      // Recurse into the solution at the same walker depth: the
-      // substituted term occupies the TMeta's position, so free
-      // indices continue to be interpreted relative to the same
-      // outer scope.
-      return walk(entry.solution, depth);
+      return walk(entry.solution, open ? entry.localCtx.level : 0);
     }(),
     TType() ||
     TUnknown() ||
@@ -548,28 +544,83 @@ Term inlineSolvedMetas(Term term, MetaContext metas, {int outerDepth = 0}) {
   return walk(term, outerDepth);
 }
 
-/// Predicate: does a caller walking at [walkerDepth] binders above
-/// the TMeta occurrence admit substituting [entry]'s stored solution?
+/// Whether [solution] has a free de Bruijn index, i.e. one not bound by a
+/// binder inside the solution itself.
 ///
-/// For pattern-unification solutions produced by `_tryUnify` /
-/// `_tryFlexFlexIntersect`, the solution is a closed λ-chain
-/// modulo nested metas (`_tryUnify`'s rename step maps every
-/// free TBound in the body into the λ-chain's own binders,
-/// enforced at solve time via a scope-well-formed check against
-/// [TermMetaSolved.localCtx]). Such solutions carry no free indices
-/// outside the λ-chain and can be substituted at any walker depth
-/// they are self-contained.
+/// This classifies a stored solution's shape. An open solution's free
+/// indices refer into the meta's declaration-site `localCtx`, so its root
+/// lives at `localCtx.level`. A closed solution (a λ-chain over the local
+/// context or over a unification spine) has none, so its root lives at
+/// ambient 0. [inlineSolvedMetas] and the declaration audit both use this
+/// classification to choose the ambient level of the solution root.
+bool solutionHasFreeIndices(Term solution) {
+  final stack = <(Term, int)>[(solution, 0)];
+  while (stack.isNotEmpty) {
+    final (current, depth) = stack.removeLast();
+    switch (current) {
+      case TBound(:final index):
+        if (index >= depth) return true;
+      case TType() ||
+          TUnknown() ||
+          TSProp() ||
+          TProp() ||
+          TFree() ||
+          TTop() ||
+          TRec() ||
+          TMeta():
+        break;
+      case TApp(:final fn, :final arg):
+        stack.add((fn, depth));
+        stack.add((arg, depth));
+      case TPi(:final domain, :final codomain):
+        stack.add((domain, depth));
+        stack.add((codomain, depth + 1));
+      case TLam(:final domain, :final body):
+        stack.add((domain, depth));
+        stack.add((body, depth + 1));
+      case TLet(:final domain, :final bound, :final body):
+        stack.add((domain, depth));
+        stack.add((bound, depth));
+        stack.add((body, depth + 1));
+      case TData(:final args):
+        for (final a in args) {
+          stack.add((a, depth));
+        }
+      case TConstr(:final args):
+        for (final a in args) {
+          stack.add((a, depth));
+        }
+      case TMatch(:final scrutinee, :final motive, :final cases):
+        stack.add((scrutinee, depth));
+        if (motive != null) stack.add((motive, depth));
+        for (final c in cases) {
+          stack.add((c.body, depth + c.nBinders));
+        }
+      case TQuot(:final carrier, :final relation):
+        stack.add((carrier, depth));
+        stack.add((relation, depth));
+      case TQuotMk(:final arg):
+        stack.add((arg, depth));
+      case TQuotLift(:final quot, :final fn, :final proof):
+        stack.add((quot, depth));
+        stack.add((fn, depth));
+        stack.add((proof, depth));
+      case TProj(:final expr):
+        stack.add((expr, depth));
+    }
+  }
+  return false;
+}
+
+/// Predicate: is [entry]'s solution usable at an occurrence whose ambient
+/// context level is [ambientLevel]?
 ///
-/// This predicate is a hook for future delayed records
-/// ([TermMetaDelayed]): a delayed record's "real" solution lives at a
-/// fresh meta's scope and is reachable only when the application
-/// spine at the use site exactly matches the required fvar spine. At
-/// that point the predicate becomes scope- and spine-sensitive.
-///
-/// For [TermMetaSolved] it unconditionally returns true, mirroring
-/// Lean: solved entries are inlined unconditionally; the delayed path
-/// the one that declines.
-bool _solutionAdmissibleAtDepth(TermMetaSolved entry, int walkerDepth) =>
-    // Solved pattern-unif solutions are closed λ-chains; admissible
-    // at any walker depth. Delayed records would extend this.
-    true;
+/// A closed solution is self-contained and usable anywhere. An open
+/// solution's free indices point into [TermMetaSolved.localCtx], so it is
+/// usable only where that whole context is in scope:
+/// `ambientLevel >= entry.localCtx.level`. Below that the inliner leaves
+/// the meta in place rather than shifting indices negative.
+bool _solutionAdmissibleAtDepth(TermMetaSolved entry, int ambientLevel) {
+  if (!solutionHasFreeIndices(entry.solution)) return true;
+  return ambientLevel >= entry.localCtx.level;
+}
