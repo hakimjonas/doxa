@@ -64,6 +64,9 @@ impredicative `Prop` sort with definitional proof irrelevance.
 **Surface syntax**
 - ML-family surface: `fun`, `val`, `data`, `match`, `import`, `theorem`
 - Implicit arguments (`{A: Type}`) and explicit type parameters (`[A: Type]`)
+- Typeclasses: single-parameter classes, bare-type-constructor instances,
+  constrained parameters with trailing dictionary arguments, and
+  depth-bounded instance search
 - Block expressions with `val` bindings
 - Tactics: `by { intro; exact; refl; … }`
 - Records with field projection
@@ -96,15 +99,16 @@ them with a dedicated error. They are not shipped features:
 | Surface | Current status | Error |
 |---|---|---|
 | Quotient construction `mk` and elimination `lift(f, proof)` | `Quot(A, R)` formation is available. The surface is gated, and the kernel API rejects the `TQuotMk` / `TQuotLift` terms directly, because the lift compatibility proof is not checked | `QuotientUnsupported` (surface), `QuotientTermUnsupported` (kernel API) |
-| `typeclass` and `impl` declarations | Parser, formatter, AST, and internal class registry only; the resolver does not thread dictionaries, search instances, or project methods | `TypeclassUnsupported` |
 | `termination_by` | Every annotation is rejected; the measure was never checked | `TerminationByUnsupported` |
 
 ## 1.0.0 scope
 
-Three surfaces in this plan are gated rather than implemented. The 1.0.0 scope
-must either complete them (kernel checking for the quotient lift proof,
-dictionary resolution for typeclasses, and a checked termination measure) or
-ship them gated with the diagnostics above. That decision is open.
+Two surfaces in this plan are gated rather than implemented: kernel checking
+for the quotient lift proof and a checked termination measure. The 1.0.0
+scope must either complete them or ship them gated with the diagnostics
+above. Typeclass declarations, instances, and instance search are partially
+implemented; the supported subset is described in the feature list and the
+known limitations below. That decision is open.
 
 ## What Doxa does not include
 
@@ -143,6 +147,16 @@ These are design non-goals, not omissions:
   terms directly (`QuotientTermUnsupported`), so a consumer that builds
   kernel terms cannot bypass the surface gate; quotation and evaluation still
   handle the terms for the 1.0 completion.
+- **Typeclass instance targets**: an instance must target a bare type
+  constructor. `impl Eqb[List Nat]` is rejected with
+  `UnsupportedInstanceTarget`. Parameterised instances are not implemented,
+  so the registry's constraint list is empty.
+- **Typeclass method names**: each method becomes a top-level projection, so
+  method names share the global namespace and two classes cannot declare the
+  same name.
+- **Typeclass scope**: superclasses, local instances, default method bodies,
+  and classes with more than one parameter are rejected with named
+  diagnostics.
 
 ## Installation
 
