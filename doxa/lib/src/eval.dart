@@ -5411,7 +5411,9 @@ ConvResult? _tryUnify(Value a, Value b, int level, MetaContext metas) {
   // when the solved `?N`'s solution itself contains de-Bruijn
   // references that get rebound). Inlining at solve time anchors
   // the semantics to the solve-site scope.
-  final inlinedSolution = inlineSolvedMetas(solution, metas);
+  // Unifier solutions are closed λ-chains over the spine; their root
+  // ambient is 0.
+  final inlinedSolution = inlineSolvedMetas(solution, metas, outerDepth: 0);
   // Solve-time scope check. Verify every free de-Bruijn index in the
   // candidate solution is valid under the meta's declaration-site
   // [localCtx], as Lean 4's assignment check does: a solve that would
@@ -5632,12 +5634,32 @@ ConvResult? _tryFlexFlexIntersect(
   final solutionB = buildSolution(varsB.length, entryB);
   // Inline solved nested metas before storing (see `_tryUnify`
   // for the rationale and Lean 4 parity citation).
-  final inlinedA = inlineSolvedMetas(solutionA, metas);
-  final inlinedB = inlineSolvedMetas(solutionB, metas);
+  final inlinedA = inlineSolvedMetas(solutionA, metas, outerDepth: 0);
+  final inlinedB = inlineSolvedMetas(solutionB, metas, outerDepth: 0);
   // solve-time scope check on both solutions.
   // See `_tryUnify`'s matching comment for the rationale.
   if (!_solutionWellScopedUnderCtx(inlinedA, entryA.localCtx)) return null;
   if (!_solutionWellScopedUnderCtx(inlinedB, entryB.localCtx)) return null;
+  // A scoped solution can still be ill-typed: the two metas need only
+  // agree on their shared prefix by well-typing at the conversion site,
+  // and the fresh meta's type is read from A's Pi chain. Check both
+  // candidates before committing, exactly as `_tryUnify` does; a
+  // rejection leaves both metas unsolved so the caller reports the
+  // original mismatch.
+  try {
+    checkMetaSolution(
+      installMetaContext(entryA.localCtx, metas),
+      inlinedA,
+      entryA.typeExpected,
+    );
+    checkMetaSolution(
+      installMetaContext(entryB.localCtx, metas),
+      inlinedB,
+      entryB.typeExpected,
+    );
+  } on Object {
+    return null;
+  }
   metas.solve(idA, inlinedA);
   metas.solve(idB, inlinedB);
   return const ConvOk();
@@ -5736,6 +5758,19 @@ ConvResult? _tryConstApproxAtSameMeta(
   // the check for defense-in-depth and parity with the other
   // solve sites.
   if (!_solutionWellScopedUnderCtx(solution, entry.localCtx)) return null;
+  // Validate the candidate before committing. The construction is
+  // typed by design, but the check is the same guard every other solve
+  // site runs, so a construction bug cannot install an ill-typed
+  // solution through this path.
+  try {
+    checkMetaSolution(
+      installMetaContext(entry.localCtx, metas),
+      solution,
+      entry.typeExpected,
+    );
+  } on Object {
+    return null;
+  }
   metas.solve(id, solution);
   return const ConvOk();
 }
@@ -6283,24 +6318,18 @@ Value _forceMetaHead(
   if (spine == null) return v;
   final entry = metas.lookup(spine.$1);
   if (entry is! TermMetaSolved) return v;
-  // Evaluate the solution under an empty env (topBindings threaded
-  // so TTop references resolve). Pattern-unification solutions are
-  // closed λ-chains whose body TBounds reference only the chain's
-  // own binders; `apply(VLam, arg)` below extends the closure env
-  // with each spine arg, and the body's TBounds resolve against
-  // that chain env.
-  //
-  // Lean and Agda both substitute a metavariable's solution without
-  // padding the environment: solution-internal indices resolve
-  // against the mvar's declared local context, and the spine is then
-  // applied as eliminations, with no decl-site fvar padding.
+  // Evaluate the solution at its declaration site, not under an empty
+  // env. `_solutionWellScopedUnderCtx` permits free indices that point
+  // into [entry.localCtx], so an open solution (for example a tactic
+  // proof committed under the goal's binders) is legal and must resolve
+  // those indices against the binders that were in scope when the meta
+  // was allocated. The current MetaContext is installed so nested
+  // solved metas force as usual. The caller's top-binding registry is
+  // merged when it has entries the decl-site env lacks (a meta declared
+  // with a bare CNil); `withTopBindings` preserves the binder chain.
+  final declEnv = installMetaContext(entry.localCtx, metas).env;
   final Env evalEnv =
-      topBindings == null
-          ? const ENil()
-          : ENil.withRegistries(
-            dataDecls: const <DataDecl>[],
-            topBindings: topBindings,
-          );
+      topBindings == null ? declEnv : declEnv.withTopBindings(topBindings);
   var result = eval(entry.solution, evalEnv);
   for (final arg in spine.$2) {
     result = apply(result, arg);

@@ -146,3 +146,27 @@ The abstract machine, the level/index split, the in-conversion unifier, the
 elaborator-mirrors-kernel discipline, and the multi-recursor scheme. These are
 correct and hard-won; a port that loses any of them loses the kernel's main
 advantages.
+
+## Resolution status (2026-11-19)
+
+The three soundness gaps in section 3 are closed:
+
+1. **Quotients.** The surface rejects `mk` and `lift`
+   (`QuotientUnsupported`), and the kernel rejects `TQuotMk` and
+   `TQuotLift` in both infer and check mode (`QuotientTermUnsupported`,
+   `QuotMkInInferMode`). Covered by `doxa/test/quotient_test.dart`.
+2. **Multi-parameter `termination_by`.** Every `termination_by` is
+   rejected before the recursion check can be skipped
+   (`TerminationByUnsupported`). Covered by
+   `doxa_tooling/test/wf_recursion_test.dart`, including the
+   multi-parameter and mutual-block cases.
+3. **Typeclasses.** `typeclass` and `impl` declarations are rejected
+   before registration (`TypeclassUnsupported`), so no class-constrained
+   implicit can resolve silently. Covered by
+   `doxa/test/typeclass_test.dart`.
+
+Meta-solution handling is summarised in
+[`KERNEL_INVARIANTS.md`](KERNEL_INVARIANTS.md): solve-site validation and
+declaration-site evaluation are closed; the deeper-inlining gap and its
+design constraint are recorded there, along with the checked
+`checkProgram` entry point.

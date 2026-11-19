@@ -1498,7 +1498,15 @@ void _validateSolvedMeta(MetaContext metas, int id, TermMetaSolved entry) {
   try {
     checkMetaSolution(
       ctx,
-      inlineSolvedMetas(entry.solution, metas),
+      inlineSolvedMetas(
+        entry.solution,
+        metas,
+        // An open solution (free indices into localCtx) lives at the
+        // declaration ambient; a closed one (its own λ-chain binds the
+        // context) lives at 0. Match the root ambient the inliner assumes.
+        outerDepth:
+            solutionHasFreeIndices(entry.solution) ? entry.localCtx.level : 0,
+      ),
       entry.typeExpected,
     );
   } on DoxaCheckError catch (e) {
@@ -1593,6 +1601,11 @@ Ctx _ctxWithMetas(Ctx base, MetaContext? metas) {
 /// The loop is a fold: each step produces a new [TopEnv] from the
 /// previous one plus the newly-elaborated declaration. No mutation
 /// of shared lists, a pure-functional fold.
+///
+/// This function does **not** kernel-check the bodies and does not audit
+/// solved metavariables. Call [checkProgram] to elaborate and check; this
+/// one is for callers that run [checkDeclResult] themselves, such as the
+/// tooling pipelines.
 TopEnv elabProgram(SProgram program) =>
     program.decls.fold(TopEnv.empty, (env, decl) {
       final produced = elabDecl(env, decl);
@@ -1601,6 +1614,47 @@ TopEnv elabProgram(SProgram program) =>
         [...env.dataDecls, ...produced.dataDecls],
         {...env.classRegistry, ...produced.classRegistry},
         mergeNamespace(env.namespaceBindings, produced.namespaceBindings),
+      );
+    });
+
+/// Elaborate and kernel-check a list of surface declarations into a
+/// [TopEnv].
+///
+/// Each declaration is elaborated against the running environment, then
+/// checked with [checkDeclResult] against the same running environment
+/// (with the declaration's own data and class registrations installed, as
+/// the tooling loops do). Every body is kernel-checked and every solved
+/// metavariable is audited before the declaration joins the result.
+///
+/// This is the library entry point for checking a standalone program.
+/// [elabProgram] elaborates without these checks. Neither function
+/// resolves `import` declarations; the tooling's pipelines handle imports
+/// before calling them.
+TopEnv checkProgram(SProgram program) =>
+    program.decls.fold(TopEnv.empty, (env, decl) {
+      final produced = elabDecl(env, decl);
+      final dataDecls = [...env.dataDecls, ...produced.dataDecls];
+      final classRegistry = {...env.classRegistry, ...produced.classRegistry};
+      final namespaceBindings = mergeNamespace(
+        env.namespaceBindings,
+        produced.namespaceBindings,
+      );
+      final checked = checkDeclResult(
+        TopEnv(
+          env.bindings,
+          dataDecls,
+          classRegistry,
+          namespaceBindings,
+          env.importState,
+        ),
+        produced,
+      );
+      return TopEnv(
+        [...env.bindings, ...checked],
+        dataDecls,
+        classRegistry,
+        namespaceBindings,
+        env.importState,
       );
     });
 
@@ -1658,6 +1712,10 @@ typedef DeclResult =
     });
 
 /// Elaborate a single declaration in the context of [topEnv].
+///
+/// This does not kernel-check the produced bodies and does not audit
+/// solved metavariables; call [checkDeclResult] on the result, or use
+/// [checkProgram] to elaborate and check a whole program.
 ///
 /// When [proofStateSink] is non-null, every `by { ... }` block in the
 /// declaration records an immutable [ProofStateBlock] snapshot into it

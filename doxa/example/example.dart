@@ -15,13 +15,13 @@ data Eq[A: Type] : A -> A -> Prop {
 void main() {
   final r = parseProgram('''
 $prelude
-val x = refl
+val id : (A: Type) -> (a: A) -> Eq A a a = (A: Type) => (a: A) => refl a
 ''');
   final prog = switch (r) {
     Success<ParseError, SProgram>(:final value) => value,
     Partial<ParseError, SProgram>(:final value) => value,
     _ => throw StateError('parse failed'),
   };
-  final env = elabProgram(prog);
-  print('Elaborated ${env.bindings.length} bindings');
+  final env = checkProgram(prog);
+  print('Checked ${env.bindings.length} bindings');
 }
