@@ -747,8 +747,8 @@ impl Eqb[Bool] {
 
 fun same[A: Eqb](x: A, y: A): Bool = eqb x y
 
-val natSame : Bool = same zero zero
-val boolSame : Bool = same true_ true_
+val natSame : Bool = same Nat zero zero
+val boolSame : Bool = same Bool true_ true_
 ```
 
 `typeclass Eqb[A: Type]` produces the dictionary type `Eqb[A]`, a
@@ -757,10 +757,11 @@ single-constructor inductive with one field per method, and the projection
 instance for the same class and head is rejected with
 `OverlappingInstances`.
 
-`[A: Eqb]` is an implicit type parameter with a constraint. The dictionary
-argument is placed after the explicit parameters, so `same zero zero`
-infers `A = Nat` and resolves `Eqb[Nat]` by search. Inside `same`,
-`eqb x y` uses the dictionary parameter directly, so no search runs there.
+`[A: Eqb]` is an explicit type parameter with a constraint. The dictionary
+is an implicit argument placed after the value parameters, so the class
+parameter is solved from them first. The call `same Nat zero zero` supplies
+`Nat` and resolves `Eqb[Nat]` by search. Inside `same`, `eqb x y` uses the
+dictionary parameter directly, so no search runs there.
 
 This slice has these limits:
 
