@@ -462,7 +462,12 @@ Term inlineSolvedMetas(Term term, MetaContext metas, {int outerDepth = 0}) {
       // nested solution's ambient independent of the use site's.
       final open = solutionHasFreeIndices(entry.solution);
       if (!_solutionAdmissibleAtDepth(entry, depth)) return t;
-      return walk(entry.solution, open ? entry.localCtx.level : 0);
+      final delta = depth - entry.localCtx.level;
+      final shifted =
+          open && delta != 0
+              ? _shiftFreeIndices(entry.solution, delta)
+              : entry.solution;
+      return walk(shifted, open ? entry.localCtx.level : 0);
     }(),
     TType() ||
     TUnknown() ||
@@ -610,6 +615,82 @@ bool solutionHasFreeIndices(Term solution) {
     }
   }
   return false;
+}
+
+/// Shift every free [TBound] in [term] by [shiftBy], preserving indices
+/// bound inside the term.
+///
+/// Used when an open solution is substituted at a use site deeper than
+/// its declaration site: a free index `i` at the declaration site becomes
+/// `i + shiftBy` at the use site, where
+/// `shiftBy = useSiteAmbient - localCtx.level`.
+Term _shiftFreeIndices(Term term, int shiftBy) {
+  if (shiftBy == 0) return term;
+  Term walk(Term t, int depth) => switch (t) {
+    TBound(:final index) when index >= depth => TBound(index + shiftBy),
+    TBound() ||
+    TType() ||
+    TUnknown() ||
+    TSProp() ||
+    TProp() ||
+    TFree() ||
+    TTop() ||
+    TRec() ||
+    TMeta() => t,
+    TApp(:final fn, :final arg) => TApp(walk(fn, depth), walk(arg, depth)),
+    TPi(:final domain, :final codomain, :final name, :final icit) => TPi(
+      walk(domain, depth),
+      walk(codomain, depth + 1),
+      name: name,
+      icit: icit,
+    ),
+    TLam(:final domain, :final body, :final name, :final icit) => TLam(
+      walk(domain, depth),
+      walk(body, depth + 1),
+      name: name,
+      icit: icit,
+    ),
+    TLet(:final domain, :final bound, :final body, :final name) => TLet(
+      walk(domain, depth),
+      walk(bound, depth),
+      walk(body, depth + 1),
+      name: name,
+    ),
+    TData(:final name, :final args) => TData(name, [
+      for (final a in args) walk(a, depth),
+    ]),
+    TConstr(:final dataName, :final ctorName, :final args) => TConstr(
+      dataName,
+      ctorName,
+      [for (final a in args) walk(a, depth)],
+    ),
+    TMatch(:final scrutinee, :final motive, :final cases) => TMatch(
+      walk(scrutinee, depth),
+      motive == null ? null : walk(motive, depth),
+      [
+        for (final c in cases)
+          TMatchCase(
+            c.ctorName,
+            c.nBinders,
+            walk(c.body, depth + c.nBinders),
+            c.binderNames,
+            span: c.span,
+          ),
+      ],
+    ),
+    TQuot(:final carrier, :final relation) => TQuot(
+      walk(carrier, depth),
+      walk(relation, depth),
+    ),
+    TQuotMk(:final arg) => TQuotMk(walk(arg, depth)),
+    TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
+      walk(quot, depth),
+      walk(fn, depth),
+      walk(proof, depth),
+    ),
+    TProj(:final expr, :final fieldName) => TProj(walk(expr, depth), fieldName),
+  };
+  return walk(term, 0);
 }
 
 /// Predicate: is [entry]'s solution usable at an occurrence whose ambient

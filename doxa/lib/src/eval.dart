@@ -5411,7 +5411,9 @@ ConvResult? _tryUnify(Value a, Value b, int level, MetaContext metas) {
   // when the solved `?N`'s solution itself contains de-Bruijn
   // references that get rebound). Inlining at solve time anchors
   // the semantics to the solve-site scope.
-  final inlinedSolution = inlineSolvedMetas(solution, metas);
+  // Unifier solutions are closed λ-chains over the spine; their root
+  // ambient is 0.
+  final inlinedSolution = inlineSolvedMetas(solution, metas, outerDepth: 0);
   // Solve-time scope check. Verify every free de-Bruijn index in the
   // candidate solution is valid under the meta's declaration-site
   // [localCtx], as Lean 4's assignment check does: a solve that would
@@ -5632,8 +5634,8 @@ ConvResult? _tryFlexFlexIntersect(
   final solutionB = buildSolution(varsB.length, entryB);
   // Inline solved nested metas before storing (see `_tryUnify`
   // for the rationale and Lean 4 parity citation).
-  final inlinedA = inlineSolvedMetas(solutionA, metas);
-  final inlinedB = inlineSolvedMetas(solutionB, metas);
+  final inlinedA = inlineSolvedMetas(solutionA, metas, outerDepth: 0);
+  final inlinedB = inlineSolvedMetas(solutionB, metas, outerDepth: 0);
   // solve-time scope check on both solutions.
   // See `_tryUnify`'s matching comment for the rationale.
   if (!_solutionWellScopedUnderCtx(inlinedA, entryA.localCtx)) return null;
