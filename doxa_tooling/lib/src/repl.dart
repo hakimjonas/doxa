@@ -355,17 +355,12 @@ final class ReplSession {
       namespaceBindings,
     );
     try {
-      final term = elabExpr(topEnv, expr);
-      final ctx = topEnv.toCtx();
-      final inferred = infer(ctx, term);
-      final typeStr = prettyTerm(
-        quote(bindings.length, inferred),
-        outerDepth: 0,
-      );
+      final result = elabExprWithType(topEnv, expr);
+      final typeStr = prettyTerm(result.type, outerDepth: 0);
 
       // Normal form: evaluate in the full accumulated env.
       final fullEnv = _buildFullEnv();
-      final nfTerm = quote(0, eval(term, fullEnv));
+      final nfTerm = quote(0, eval(result.term, fullEnv));
       final nfStr = prettyTerm(nfTerm, outerDepth: 0);
 
       return ReplExprResult(type: typeStr, normalForm: nfStr);
@@ -462,15 +457,10 @@ final class ReplSession {
       namespaceBindings,
     );
     try {
-      final term = elabExpr(topEnv, expr);
-      final ctx = topEnv.toCtx();
-      final inferred = infer(ctx, term);
-      final typeStr = prettyTerm(
-        quote(bindings.length, inferred),
-        outerDepth: 0,
-      );
+      final result = elabExprWithType(topEnv, expr);
+      final typeStr = prettyTerm(result.type, outerDepth: 0);
       final fullEnv = _buildFullEnv();
-      final nfTerm = quote(0, eval(term, fullEnv));
+      final nfTerm = quote(0, eval(result.term, fullEnv));
       final nfStr = prettyTerm(nfTerm, outerDepth: 0);
 
       return switch (mode) {

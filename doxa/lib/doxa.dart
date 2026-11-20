@@ -29,6 +29,7 @@ export 'src/elab.dart'
     show
         elabDecl,
         elabExpr,
+        elabExprWithType,
         elabExprInScope,
         elabCheckInCtx,
         elabInferInCtx,
