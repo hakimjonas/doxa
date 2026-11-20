@@ -71,8 +71,9 @@ final class TopBindingEntry {
   /// For a structurally-recursive `fun`, the de-Bruijn position (in
   /// left-to-right application order, counting ALL parameters including
   /// type params) of the designated decreasing argument, i.e. the
-  /// first explicit value parameter (SPEC §8.6). Null for non-recursive
-  /// bindings (`val`, `type`, recursors, non-recursive `fun`).
+  /// first explicit value parameter (SPEC, Structural recursion). Null for
+  /// non-recursive bindings (`val`, `type`, recursors, non-recursive
+  /// `fun`).
   ///
   /// When non-null, evaluating `TTop(name)` yields a guarded [VFun]
   /// instead of the raw [value]: the function stays stuck until its

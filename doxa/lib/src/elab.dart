@@ -14,9 +14,9 @@
 /// Top-level scope is sequential: a declaration sees every earlier
 /// declaration. `val`/`type` bodies are non-recursive (the bound name
 /// is not in scope in its own body), while a `fun` IS in scope in its
-/// own body, with the structural-recursion guard (SPEC §8.6) ensuring
-/// soundness; mutual `fun` / `data` blocks put every member in scope
-/// in every body.
+/// own body, with the structural-recursion guard (SPEC, Structural
+/// recursion) ensuring soundness; mutual `fun` / `data` blocks put every
+/// member in scope in every body.
 ///
 /// Block-scoped parameters (binders introduced by lambdas, Pis, and
 /// `fun` parameters) follow standard sequential scope: each binder
@@ -91,8 +91,8 @@ final class UnresolvedName extends ElabError {
 /// of the function's designated decreasing argument.
 ///
 /// The elaborator enforces CIC's structural-recursion rule
-/// (SPEC §8.6): recursion is accepted iff every call to the function
-/// (or any sibling in the same mutual block) passes, in the
+/// (SPEC, Structural recursion): recursion is accepted iff every call to
+/// the function (or any sibling in the same mutual block) passes, in the
 /// function's designated-decreasing-argument position, a value that
 /// is a syntactic strict sub-term of the caller's designated
 /// argument.
@@ -1244,9 +1244,9 @@ final class TopBinding {
 
   /// For a structurally-recursive `fun`, the position of the designated
   /// decreasing argument (first explicit value param, counting type
-  /// params; SPEC §8.6) and the total parameter count. Both null for
-  /// non-recursive bindings. Threaded into [TopBindingEntry] so eval can
-  /// build a guarded [VFun].
+  /// params; see SPEC, Structural recursion) and the total parameter
+  /// count. Both null for non-recursive bindings. Threaded into
+  /// [TopBindingEntry] so eval can build a guarded [VFun].
   final int? recDecreasingArg;
 
   /// Total parameter count of a recursive `fun`'s lambda chain. Null iff
@@ -5512,10 +5512,11 @@ TopBinding _elabFun(
   ]);
   // Stamp guarded-reduction metadata onto each recursive member's
   // binding. The designated decreasing argument is
-  // the first explicit value param (SPEC §8.6), or the `{struct name}`
-  // annotation if present. It sits in the lambda chain AFTER all type
-  // params, so its de-Bruijn position is `typeParams.length` by
-  // default, adjusted to the annotated param's position. A member
+  // the first explicit value param (SPEC, Structural recursion), or the
+  // `{struct name}` annotation if present. It sits in the lambda chain
+  // AFTER all type params, so its de-Bruijn position is
+  // `typeParams.length` by default, adjusted to the annotated param's
+  // position. A member
   // with no value params has no decreasing argument and is left
   // unguarded (it can't recurse structurally anyway). `recArity` is
   // the full param count.

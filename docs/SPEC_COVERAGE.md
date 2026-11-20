@@ -87,8 +87,8 @@ records the mapping. Where a clause has no direct test, the reason is noted.
 | §8.5 Coverage (every ctor handled) | `non_exhaustive_match.doxa`, `match_step5_unreachability_test.dart` | negative test + unreachability tests | Yes |
 | §8.5 Dependent motive (index refinement) | `vmatch_roundtrip_test.dart`, `match_reduction_audit_test.dart` | VMatch roundtrip + reduction tests | Yes |
 | §8.5 Non-indexed dependent motive not yet inferred | — | documented limitation in SPEC | Known gap |
-| §8.6 Structural recursion | `structural_recursion_walker_test.dart`, `non_structural_recursion.doxa`, `mutual_no_decrease.doxa`, `mutual_decreasing_cycle.doxa` | walker tests + positive/negative tests | Yes |
-| §8.6 `termination_by` annotations | `wf_recursion_test.dart` | rejection tests; no checked measure | No (surface rejected) |
+| Structural recursion | `structural_recursion_walker_test.dart`, `non_structural_recursion.doxa`, `mutual_no_decrease.doxa`, `mutual_decreasing_cycle.doxa` | walker tests + positive/negative tests | Yes |
+| Structural recursion (`termination_by`) | `wf_recursion_test.dart` | rejection tests; no checked measure | No (surface rejected) |
 | §8.7 Let-bindings (block expression) | `let_test.dart` | "Block parsing", "Block elaboration", "Block evaluation" | Yes |
 | §8.7 Mutual recursion (fun ... and ...) | `mutual_test.dart`, `mutual_data_test.dart` | "mutual fun", "mutual data" tests | Yes |
 | §8.8 Implicit arguments `{A: Type}` | `elab_test.dart` (implicit param parsing) | implicit argument tests | Yes |

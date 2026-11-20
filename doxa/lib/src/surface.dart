@@ -796,7 +796,7 @@ final class SFunKind extends SDeclKind {
 
   /// Optional `{struct <name>}` annotation naming a value parameter
   /// as the structurally decreasing argument. When null, the first
-  /// explicit value parameter is used (SPEC §8.6).
+  /// explicit value parameter is used (SPEC, Structural recursion).
   final String? structAnn;
 
   /// Well-founded termination measure: the value-parameter names
