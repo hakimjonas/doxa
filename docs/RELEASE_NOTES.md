@@ -1,4 +1,4 @@
-# Doxa v1.0.0 Release Notes
+# Release notes and 1.0 plan
 
 > Status: this document is the v1.0.0 plan, not the 0.8.4 release. The
 > release record is `CHANGELOG.md`.
@@ -8,6 +8,14 @@ ML / Scala 3 family, type-checks it bidirectionally, and normalises terms
 via Normalization by Evaluation. The kernel implements the Calculus of
 Inductive Constructions with predicative cumulative universes and an
 impredicative `Prop` sort with definitional proof irrelevance.
+
+## Current status
+
+Doxa is experimental and has no release. `doxa` 0.8.4 was published to pub.dev
+on 2026-11-12 and retracted the same day. `doxa_tooling` and `doxa_stdlib` have
+never been published. Publishing is on hold until the project is ready.
+[`README.md`](../README.md) is the release-status reference and
+[`SPEC.md`](../SPEC.md) is the normative language description.
 
 ## Feature list
 
@@ -44,19 +52,15 @@ impredicative `Prop` sort with definitional proof irrelevance.
 - K-free, intensional equality (UIP not even statable)
 
 **Standard library**
-| Module | Contents |
-|--------|----------|
-| `nat.doxa` | `Nat`, `plus`, `mult`, `pow`, `leq` |
-| `bool.doxa` | `Bool`, `and`, `or`, `not` |
-| `list.doxa` | `List[A]`, `map`, `fold`, `filter`, `length`, `append`, `reverse` |
-| `vec.doxa` | `Vec[A] n` (length-indexed), `vlength` |
-| `option.doxa` | `Option[A]`, `map`, `getOrElse` |
-| `eq.doxa` | `Eq`, `refl`, `sym`, `trans`, `cong`, `subst` |
-| `proofs.doxa` | `plus_comm`, `append_assoc`, `map_compose`, `succ_ne_zero`, `true_ne_false`, `vlength_index` |
+
+The standard library is the separate `doxa_stdlib` package.
+[`doxa_stdlib/README.md`](../doxa_stdlib/README.md) lists its modules, layout,
+and `package:` usage.
 
 **Tooling**
-- CLI type checker (`doxa check FILE`)
-- Interactive REPL (`doxa repl`): `:type`, `:show`, `:nf`
+- CLI (`doxa`): `check`, `repl`, `lsp`, and `fmt`
+- Interactive REPL (`doxa repl`): `:type`, `:norm`, `:browse`, `:search`,
+  `:goal`, `:step`, `:undo`, `:print`, `:qed`, and `:abort`
 - LSP language server (`doxa lsp`): hover, go-to-definition, completion, diagnostics
 - WasmGC browser demo (`doxa_tooling/web/doxa_check.wasm`)
 - Structured JSON output for programmatic consumers
@@ -67,9 +71,13 @@ impredicative `Prop` sort with definitional proof irrelevance.
 - Typeclasses: single-parameter classes, parameterised instances with linear
   targets, constrained parameters with trailing dictionary arguments, and
   depth-bounded instance search; the standard library provides `Eqb`
-  instances for `Nat`, `Bool`, and `List`
+  instances for `Nat`, `Bool`, and `List`. Superclasses, local instances,
+  default method bodies, and multi-parameter classes are not supported; see
+  [`SPEC.md`](../SPEC.md#typeclasses).
 - Block expressions with `val` bindings
-- Tactics: `by { intro; exact; refl; … }`
+- Tactics: `by { ... }` with `intro`, `exact`, `apply`, `refl`, `rewrite`,
+  `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`, and
+  `constructor`
 - Records with field projection
 - Quotient type formation: `Quot(A, R)`
 - SProp for strict proof irrelevance
@@ -86,11 +94,13 @@ impredicative `Prop` sort with definitional proof irrelevance.
   metas/unification, inductive types, pattern matching, structural recursion,
   quotient types, SProp, records, let-blocks, subtypes/cumulativity,
   Prop elimination, and tactic infrastructure
-- 19 negative test programs verifying error diagnostics
-- 54 positive test programs exercising the full language
-- Stack-safety regression tests at depths up to 100,000 binder/β-redex layers
+- 20 negative test programs verifying error diagnostics
+- 58 positive test programs exercising the full language
+- Stack-safety regression tests at depths up to 10,000 binder/β-redex layers
 - stdlib files type-checked on every commit
-- All 14 tutorial code blocks verified by automated extraction
+- Documentation `doxa` blocks are checked by
+  `doxa_tooling/test/doc_blocks_test.dart`; the current run checks 39 blocks
+  and skips 14 marked fragments
 
 ## Gated until implemented
 
@@ -175,9 +185,8 @@ dart run doxa check myfile.doxa
 
 ## Links
 
-- [Language specification](SPEC.md)
-- [Tutorial](docs/tutorial.md)
-- [SPEC coverage audit](docs/SPEC_COVERAGE.md)
-- [Syntax reference](SYNTAX.md)
-- [Standard library](../doxa_stdlib/lib/stdlib/)
-- [Proof examples](example/proofs.doxa)
+- [Language specification](../SPEC.md)
+- [Tutorial](tutorial.md)
+- [SPEC coverage audit](SPEC_COVERAGE.md)
+- [Standard library](../doxa_stdlib/README.md)
+- [Proof examples](../example/proofs.doxa)
