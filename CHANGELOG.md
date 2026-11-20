@@ -1,5 +1,49 @@
 # Changelog
 
+## Unreleased
+
+Publication status: `doxa` 0.8.4 remains retracted. `doxa_tooling` and
+`doxa_stdlib` have never been published. Publishing is on hold until the
+project is ready.
+
+**Kernel soundness**
+
+- Replaced the `TType(0)` sentinel with an explicit unknown marker (#7).
+- Resolved top-level bindings during inductive index evaluation (#8).
+- Completed the match, induction, and tactic soundness pass (#10).
+- Recorded the meta-solution audit and inlining discipline (#13).
+- Counted explicit type arguments when locating the structural-recursion
+  position (#16).
+
+**Proof authoring and tactics**
+
+- Added `simp`, `cases`, `constructor`, `auto`, and `omega` (#12).
+
+**Standard library and package imports**
+
+- Packaged the standard library as `doxa_stdlib` and resolved `package:`
+  imports through the project configuration (#11).
+- Added `Eqb` instances for `Nat`, `Bool`, and `List` (#17).
+
+**Typeclasses**
+
+- Implemented typeclass declarations, instances, and instance search,
+  replacing the 0.8.4 rejection (#14).
+- Added parameterised instances, recursive dictionary discharge, and the
+  self-recursion soundness fix (#15).
+
+**Records and projections**
+
+- Made every field of a product-form record project and lifted the one-method
+  class limit through the same field-type fix (#19).
+
+**Documentation and tooling**
+
+- Folded the syntax reference into `SPEC.md` and added a test that checks
+  `doxa` fences in the SPEC and README (#18).
+- Refreshed the tutorial and guide examples and extended the doc-block test
+  to the tutorial, proof guide, and arithmetic document (#20).
+
 ## 0.8.4 (2026-11-12)
 
 Publication status: `doxa` 0.8.4 was published to pub.dev on 2026-11-12 and

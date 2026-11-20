@@ -3,6 +3,11 @@
 The Doxa standard library: checked Doxa sources for the base types and
 the arithmetic development.
 
+Status: experimental; there is no current release. doxa 0.8.4 was published to
+pub.dev and retracted the same day, and doxa_tooling and doxa_stdlib have never
+been published. Publishing is on hold. The repository status is at
+https://github.com/hakimjonas/doxa#status.
+
 | Domain | Files |
 |---|---|
 | `Nat` | `nat.doxa` (`Nat`, `plus`, `mult`, `Lt`, comparison) |
