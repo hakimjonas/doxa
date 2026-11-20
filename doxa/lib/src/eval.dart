@@ -1295,8 +1295,12 @@ bool _termContainsMeta(Term t) {
 /// Apply [fn] to [arg]. β-reduces if [fn] is a [VLam], extends the spine
 /// if [fn] is a [VNeutral]. A non-function head is a kernel invariant
 /// violation (ill-typed term reached evaluation).
-Value apply(Value fn, Value arg) =>
-    _drive(_Apply(fn, arg), <_Frame>[], null) as Value;
+///
+/// [dataDecls] is threaded into the driver when the caller has an
+/// inductive registry. The VFun unfold path supplies it so a projection
+/// inside a recursive function's body can resolve the record's fields.
+Value apply(Value fn, Value arg, [List<DataDecl>? dataDecls]) =>
+    _drive(_Apply(fn, arg), <_Frame>[], dataDecls) as Value;
 
 /// Reify [value] to a [Term] at context depth [level].
 Term quote(int level, Value value) =>
@@ -2833,9 +2837,10 @@ Object _drive(
               var v = lam;
               // Apply all but the last via a fold; the loop is bounded
               // by spine length (small), and each `apply` re-enters the
-              // driver as its own bounded loop.
+              // driver as its own bounded loop. Pass the inductive
+              // registry so a projection in the unfolded body resolves.
               for (final a in newSpine) {
-                v = apply(v, a);
+                v = apply(v, a, dataDecls);
               }
               step = _YieldV(v);
             } else {

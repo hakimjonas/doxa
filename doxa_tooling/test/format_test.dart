@@ -342,6 +342,13 @@ fun f(x: Nat): Nat {
       _expectParses(formatted);
     });
 
+    test('prints an instance parameter group before the class reference', () {
+      const input = 'impl[A: Eqb] Eqb[List A] { }';
+      final formatted = formatSource(input);
+      expect(formatted, contains('impl [A: Eqb] Eqb[List A] {'));
+      _expectParses(formatted);
+    });
+
     test('keeps parentheses around low-precedence Pi domains', () {
       const input = 'val f: ((x: A) => x) -> B = f';
       const expected = 'val f: ((x: A) => x) -> B = f\n';

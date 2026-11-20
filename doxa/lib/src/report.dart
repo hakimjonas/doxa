@@ -608,10 +608,10 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
       sb.write(source.formatContext(span, color: c));
       if (reason != null) {
         sb.writeln('  $reason.');
+        sb.writeln('  Instance search matches the target head and matches the');
         sb.writeln(
-          '  Instance search matches the head constructor, so a target',
+          '  target arguments positionally against the instance parameters.',
         );
-        sb.writeln('  with type arguments cannot be registered.');
       } else {
         sb.writeln(
           '  The impl for "$className" targets "$targetType", which is not',
@@ -651,6 +651,22 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
         '${instanceNames.join(", ")}.',
       );
       sb.writeln('  Use a more specific instance or remove the overlap.');
+    case InstanceSearchDepthExceeded(
+      :final className,
+      :final targetType,
+      :final depth,
+      :final span,
+    ):
+      sb.writeln("${c.error('error')}: instance search depth exceeded");
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  Searching for "$className" at "$targetType" exceeded the depth '
+        'bound of $depth.',
+      );
+      sb.writeln(
+        '  The instance chain is too deep; the search is stopped rather '
+        'than continued.',
+      );
   }
   return sb.toString();
 }

@@ -748,6 +748,7 @@ String _elabErrorKind(ElabError error) => switch (error) {
   TacticIncomplete _ => 'tactic_incomplete',
   NoInstanceFound _ => 'no_instance_found',
   OverlappingInstances _ => 'overlapping_instances',
+  InstanceSearchDepthExceeded _ => 'instance_search_depth_exceeded',
 };
 
 String _prettyValueAt(Value value, int level) =>

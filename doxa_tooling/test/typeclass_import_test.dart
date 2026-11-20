@@ -60,4 +60,63 @@ val r: Bool = eqb zero zero
 
     expect(code, 0, reason: 'stderr: ${err.buffer}');
   });
+
+  test('an imported parameterised instance resolves at a concrete type', () {
+    final directory = Directory.systemTemp.createTempSync('doxa-typeclass-');
+    addTearDown(() => directory.deleteSync(recursive: true));
+
+    File('${directory.path}/eqb.doxa').writeAsStringSync('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+data Bool : Type { true_ : Bool; false_ : Bool; }
+data List[A: Type] : Type { nil : List A; cons : A -> List A -> List A; }
+typeclass Eqb[A: Type] {
+  fun eqb(x: A, y: A): Bool;
+}
+fun andb(a: Bool, b: Bool): Bool = match a {
+  case true_ => b
+  case false_ => false_
+}
+fun eqbNat(x: Nat, y: Nat): Bool = match x {
+  case zero => match y {
+    case zero => true_
+    case succ _ => false_
+  }
+  case succ n => match y {
+    case zero => false_
+    case succ m => eqbNat n m
+  }
+}
+fun eqbList{A: Type}(cmp: (x: A) -> (y: A) -> Bool, xs: List A, ys: List A): Bool {struct xs} = match xs {
+  case nil => match ys {
+    case nil => true_
+    case cons _ _ => false_
+  }
+  case cons h t => match ys {
+    case nil => false_
+    case cons h2 t2 => andb (cmp h h2) (eqbList cmp t t2)
+  }
+}
+impl Eqb[Nat] {
+  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
+}
+impl[A: Eqb] Eqb[List A] {
+  fun eqb(x: List A, y: List A): Bool =
+    eqbList ((x: A) => (y: A) => eqb x y) x y;
+}
+''');
+    final mainFile = File('${directory.path}/main.doxa')..writeAsStringSync('''
+import "eqb.doxa"
+val r: Bool = eqb (cons zero nil) (cons zero nil)
+''');
+
+    final source = SourceFile(
+      filename: mainFile.path,
+      text: mainFile.readAsStringSync(),
+    );
+    final out = _Sink();
+    final err = _Sink();
+    final code = checkSource(source, out: out, err: err);
+
+    expect(code, 0, reason: 'stderr: ${err.buffer}');
+  });
 }

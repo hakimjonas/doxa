@@ -64,8 +64,8 @@ impredicative `Prop` sort with definitional proof irrelevance.
 **Surface syntax**
 - ML-family surface: `fun`, `val`, `data`, `match`, `import`, `theorem`
 - Implicit arguments (`{A: Type}`) and explicit type parameters (`[A: Type]`)
-- Typeclasses: single-parameter classes, bare-type-constructor instances,
-  constrained parameters with trailing dictionary arguments, and
+- Typeclasses: single-parameter classes, parameterised instances with linear
+  targets, constrained parameters with trailing dictionary arguments, and
   depth-bounded instance search
 - Block expressions with `val` bindings
 - Tactics: `by { intro; exact; refl; … }`
@@ -147,16 +147,19 @@ These are design non-goals, not omissions:
   terms directly (`QuotientTermUnsupported`), so a consumer that builds
   kernel terms cannot bypass the surface gate; quotation and evaluation still
   handle the terms for the 1.0 completion.
-- **Typeclass instance targets**: an instance must target a bare type
-  constructor. `impl Eqb[List Nat]` is rejected with
-  `UnsupportedInstanceTarget`. Parameterised instances are not implemented,
-  so the registry's constraint list is empty.
+- **Typeclass instance targets**: an instance may target a type constructor
+  applied to distinct instance parameters (`impl[A: Eqb] Eqb[List A]`).
+  Closed target arguments such as `impl Eqb[List Nat]` are rejected with
+  `UnsupportedInstanceTarget`, as are repeated parameters and bare variable
+  targets. Coherence is one instance per class and head.
 - **Typeclass method names**: each method becomes a top-level projection, so
   method names share the global namespace and two classes cannot declare the
   same name.
 - **Typeclass scope**: superclasses, local instances, default method bodies,
   and classes with more than one parameter are rejected with named
-  diagnostics.
+  diagnostics. An instance method body does not see the instance being
+  defined; recursion is expressed through a top-level `fun`, which is
+  subject to the structural-recursion rule.
 
 ## Installation
 
