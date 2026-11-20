@@ -126,6 +126,7 @@ dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/nat.doxa
 dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/proofs.doxa
 dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/case_study.doxa
 dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/int.doxa
+dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/eqb_instances.doxa
 
 # 4. Doxa formatter on ALL stdlib .doxa files
 find doxa_stdlib/lib/stdlib -name '*.doxa' -exec dart run doxa_tooling/bin/doxa.dart fmt --check {} \;
