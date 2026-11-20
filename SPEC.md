@@ -205,19 +205,48 @@ and the dictionary is filled by instance search: `same Nat zero zero` supplies
 `Nat` and resolves `Eqb[Nat]`.
 
 A call-site dictionary is filled by matching the head type constructor of the
-required class argument against the registered instances; search is
-depth-bounded at 8. A parameter that is itself class-constrained in the local
-context supplies its dictionary without a search. A failed search is an error
-that names the class and the target type; the elaborator does not defer the
-dictionary through an unsolved metavariable.
+required class argument against the registered instances, then matching the
+argument types against the selected instance's parameters positionally. Each
+constraint the instance declares is discharged recursively at the matched
+type, with the depth bound decremented. Search is depth-bounded at 8. A
+parameter that is itself class-constrained in the local context supplies its
+dictionary without a search. A failed search is an error that names the class
+and the target type; a failed inner constraint names the inner class and
+inner type. The elaborator does not defer the dictionary through an unsolved
+metavariable.
 
-An instance target must be a bare type constructor. An applied target such as
-`impl Eqb[List Nat]` is rejected with `UnsupportedInstanceTarget`, and a call
-at an unregistered instantiation such as `List Bool` reports
-`NoInstanceFound` naming `List Bool`. Instance declarations cannot carry
-parameters or constraints, so the registry's constraint list is always empty.
-Coherence is global: at most one instance exists per class and head type, and
-a second instance is rejected with `OverlappingInstances`.
+An `impl` may declare its own type parameters between `impl` and the class
+reference, using the same group syntax as `fun`. A parameter group is
+required when the target applies a type constructor to the instance's
+parameters.
+
+```doxa
+impl[A: Eqb] Eqb[List A] {
+  fun eqb(x: List A, y: List A): Bool = ...;
+}
+```
+
+The target after the class name is either a bare type constructor or a
+concrete head applied to distinct parameters from the group. A bare variable
+target, a closed argument, a repeated parameter, and a parameter that does
+not appear in the target are rejected with `UnsupportedInstanceTarget` and a
+reason. The instance elaborates to a binding with explicit binders,
+`(A: Type) -> (inst: Eqb A) -> Eqb (List A)`, whose body builds the
+dictionary. Method bodies elaborate with the parameters and their
+dictionaries in scope. An instance method body does not see the instance
+being defined; recursion is expressed through a top-level `fun`, which is
+subject to the structural-recursion rule.
+
+Search selects the single instance registered at the goal's head, matches the
+goal's arguments against the instance's target parameters positionally, and
+discharges each constraint at the matched type. The result applies the
+instance binding to the matched arguments and the resolved dictionaries in
+binder order. A failed inner discharge reports `NoInstanceFound` for the
+inner class and type. A chain longer than the depth bound reports
+`InstanceSearchDepthExceeded`.
+
+At most one instance exists per class and head, so a second parameterised
+instance for the same head is rejected with `OverlappingInstances`.
 
 Class method names are top-level projection names and share the global
 namespace; two classes cannot declare the same method name.
