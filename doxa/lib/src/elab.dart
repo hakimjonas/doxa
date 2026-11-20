@@ -1303,9 +1303,7 @@ final class TopBinding {
 ///
 /// Absent (i.e. `null` on [DeclResult.corecursiveGroup]) for plain
 /// non-recursive bindings (`val`, `type`, auto-emitted `T.rec`,
-/// non-recursive `fun`); populated only on recursive/mutual paths,
-/// including an instance dictionary whose method body resolves that
-/// instance (for example `eqb` on a list tail).
+/// non-recursive `fun`); populated only on recursive/mutual paths.
 final class CorecursiveGroup {
   /// The group's members, aligned with [DeclResult.bindings].
   final List<CorecursiveMember> members;
@@ -1328,10 +1326,8 @@ final class CorecursiveMember {
 
   /// The surface `fun` declaration this member came from.
   ///
-  /// For a `fun` block this is the member itself; for an instance
-  /// dictionary it is the first method, whose body can resolve the
-  /// instance. Provenance only, consumed by orchestrators (CLI),
-  /// diagnostics, and later analysis passes; not by the core type-checker.
+  /// Provenance only, consumed by orchestrators (CLI), diagnostics,
+  /// and later analysis passes; not by the core type-checker.
   final SFunKind surfaceKind;
 
   /// Creates a co-recursive-group member.
@@ -5044,32 +5040,15 @@ DeclResult _elabImpl(
     metas: metas,
   );
 
-  // Method bodies elaborate with the instance registered, so a recursive
-  // call at the instance's own head (for example `eqb` on a list tail)
-  // resolves to the binding being defined. The pre-binding's value is
-  // stubbed as a neutral by `_shimState`; the check-time environment is
-  // pre-scoped by the one-member corecursive group below.
-  final scratchEnv = TopEnv(
-    [
-      ...topEnv.bindings,
-      TopBinding(
-        name: instanceName,
-        type: bindingType,
-        term: const TUnknown(),
-        span: span,
-        isPreBinding: true,
-      ),
-    ],
-    topEnv.dataDecls,
-    {...topEnv.classRegistry, className: classInfo.withInstance(instanceInfo)},
-    topEnv.namespaceBindings,
-    topEnv.importState,
-  );
-
+  // Method bodies are elaborated against the enclosing environment, which
+  // does not contain this instance. A call at the instance's own head is
+  // therefore a missing instance at elaboration time, not an unguarded
+  // recursive dictionary; recursion goes through a top-level `fun`, which
+  // the structural-recursion check covers.
   final methodTerms = <Term>[
     for (final methodName in classMethodNames)
       _buildFunBody(
-        scratchEnv,
+        topEnv,
         _funBinders(provided[methodName]!),
         provided[methodName]!.body,
         provided[methodName]!.returnType,
@@ -5097,14 +5076,7 @@ DeclResult _elabImpl(
       ),
     ],
     dataDecls: const <DataDecl>[],
-    // A method body may resolve its own instance, so the binding is
-    // checked with itself pre-scoped as a neutral, like a recursive fun.
-    corecursiveGroup:
-        classMethodNames.isEmpty
-            ? null
-            : CorecursiveGroup([
-              CorecursiveMember(0, provided[classMethodNames.first]!),
-            ]),
+    corecursiveGroup: null,
     metas: metas,
     classRegistry: {className: classInfo.withInstance(instanceInfo)},
     namespaceBindings: const {},
