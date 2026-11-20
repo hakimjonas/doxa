@@ -62,6 +62,18 @@ val two : Nat = succ (succ zero)
       expect(result.stdout, contains('OK:'));
     });
 
+    test('the Eqb domain package re-exports the class and its instances', () {
+      final file = File('${project.path}/eqb_use.doxa')..writeAsStringSync('''
+import "package:doxa_stdlib/stdlib/Eqb/package.doxa"
+
+val natSame : Bool = eqb zero zero
+val listSame : Bool = eqb (cons zero nil) (cons zero nil)
+''');
+      final result = _runFile(file);
+      expect(result.code, 0, reason: result.stderr);
+      expect(result.stdout, contains('OK:'));
+    });
+
     test('the CLI resolves the package URI end to end', () async {
       final file = File('${project.path}/cli.doxa')..writeAsStringSync('''
 import "package:doxa_stdlib/stdlib/nat.doxa"
