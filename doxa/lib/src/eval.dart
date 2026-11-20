@@ -461,7 +461,9 @@ final class _EvalProj extends _Frame {
 /// field's declared type from the record's constructor.
 final class _InferProjFieldType extends _Frame {
   final String fieldName;
-  const _InferProjFieldType(this.fieldName);
+  final Term qualifier;
+  final Env outerEnv;
+  const _InferProjFieldType(this.fieldName, this.qualifier, this.outerEnv);
 }
 
 /// Cross-mode frame. When a value is delivered, transition to quote mode
@@ -2679,7 +2681,7 @@ Object _drive(
           case TProj(:final expr, :final fieldName):
             // Infer the type of expr, then extract the field's type
             // from the record's constructor.
-            stack.add(_InferProjFieldType(fieldName));
+            stack.add(_InferProjFieldType(fieldName, expr, ctx.env));
             step = _Infer(ctx, expr);
         }
 
@@ -3568,7 +3570,11 @@ Object _drive(
             // body in the closure's env extended with the arg.
             step = _Eval(cod.body, cod.env.extend(value));
 
-          case _InferProjFieldType(:final fieldName):
+          case _InferProjFieldType(
+            :final fieldName,
+            :final qualifier,
+            :final outerEnv,
+          ):
             // `value` is the inferred type of the record expression.
             // It must be VData(name, params) for a record type.
             if (value is VData) {
@@ -3584,22 +3590,24 @@ Object _drive(
                 }
                 if (fieldIndex >= 0) {
                   final fieldTypeTerm = ctor.args[fieldIndex].type;
-                  // Build env: preceding args as placeholders, then params
-                  // + preceding fields. Fields after fieldIndex are NOT
-                  // pushed so de Bruijn indices in the field type resolve
-                  // correctly against (params + preceding fields only).
-                  Env env = const ENil();
+                  // The field telescope stores field `i`'s type under the
+                  // data parameters followed by fields `0 .. i-1`, with the
+                  // most recent binder innermost. Preceding fields evaluate
+                  // to their projections so a dependent field's type
+                  // mentions the actual projection.
+                  Env fieldEnv = const ENil();
+                  for (var j = 0; j < dDecl.params.length; j++) {
+                    fieldEnv = fieldEnv.extend(value.args[j]);
+                  }
                   for (var j = 0; j < fieldIndex; j++) {
-                    env = env.extend(VNeutral(NVar(1000 + j)));
+                    final prevName = ctor.args[j].name;
+                    fieldEnv = fieldEnv.extend(
+                      prevName == null
+                          ? VNeutral(NVar(1000 + j))
+                          : eval(TProj(qualifier, prevName), outerEnv),
+                    );
                   }
-                  for (
-                    var j = dDecl.params.length + fieldIndex - 1;
-                    j >= 0;
-                    j--
-                  ) {
-                    env = env.extend(value.args[j]);
-                  }
-                  step = _YieldV(eval(fieldTypeTerm, env));
+                  step = _YieldV(eval(fieldTypeTerm, fieldEnv));
                   break;
                 }
               }

@@ -2351,7 +2351,13 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
       try {
         final (qualT, qualV) = _inferExpr(state, qualifier);
         if (qualV is VData && _isRecord(qualV.name, state.topEnv.dataDecls)) {
-          final fieldType = _fieldType(qualV, name, state.topEnv.dataDecls);
+          final fieldType = _fieldType(
+            qualV,
+            name,
+            state.topEnv.dataDecls,
+            qualifier: qualT,
+            outerEnv: state.ctx.env,
+          );
           _recordSemInfo(
             state,
             expr.span,
@@ -7563,9 +7569,21 @@ bool _isRecord(String dataName, List<DataDecl> dataDecls) {
 // checker can also use it for consistent per-arm expected types.)
 
 /// Compute the type of [fieldName] in record type [dataV] (a VData with
-/// args containing the params). Looks up the field in the constructor's
-/// args telescope and evaluates its type under the param env.
-Value _fieldType(VData dataV, String fieldName, List<DataDecl> dataDecls) {
+/// args containing the params).
+///
+/// The constructor's field telescope stores field `i`'s type under the data
+/// parameters followed by fields `0 .. i-1`, with the most recent binder
+/// innermost. The environment below follows that order. When [qualifier] and
+/// [outerEnv] are supplied, a preceding field is evaluated as the projection
+/// `TProj(qualifier, name)`, so a dependent field's type mentions the actual
+/// projection instead of an unconstrained neutral.
+Value _fieldType(
+  VData dataV,
+  String fieldName,
+  List<DataDecl> dataDecls, {
+  Term? qualifier,
+  Env? outerEnv,
+}) {
   DataDecl? decl;
   for (final d in dataDecls) {
     if (d.name == dataV.name) {
@@ -7580,18 +7598,22 @@ Value _fieldType(VData dataV, String fieldName, List<DataDecl> dataDecls) {
   for (var i = 0; i < ctor.args.length; i++) {
     if (ctor.args[i].name == fieldName) {
       final fieldTypeTerm = ctor.args[i].type;
-      // Build env: preceding args as placeholders, then params
-      // + preceding fields. Fields after fieldIndex are NOT
-      // pushed so de Bruijn indices resolve correctly.
       final paramCount = decl.params.length;
-      Env env = const ENil();
+      Env fieldEnv = const ENil();
+      for (var j = 0; j < paramCount; j++) {
+        fieldEnv = fieldEnv.extend(dataV.args[j]);
+      }
       for (var j = 0; j < i; j++) {
-        env = env.extend(VNeutral(NVar(1000 + j)));
+        final prevName = ctor.args[j].name;
+        if (qualifier != null && outerEnv != null && prevName != null) {
+          fieldEnv = fieldEnv.extend(
+            eval(TProj(qualifier, prevName), outerEnv),
+          );
+        } else {
+          fieldEnv = fieldEnv.extend(VNeutral(NVar(1000 + j)));
+        }
       }
-      for (var j = paramCount + i - 1; j >= 0; j--) {
-        env = env.extend(dataV.args[j]);
-      }
-      return eval(fieldTypeTerm, env);
+      return eval(fieldTypeTerm, fieldEnv);
     }
   }
   throw StateError(
