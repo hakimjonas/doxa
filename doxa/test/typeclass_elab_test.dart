@@ -428,4 +428,52 @@ impl Eqb {
       );
     });
   });
+
+  group('multi-method classes', () {
+    test('a two-method class elaborates both projections and reduces', () {
+      final env = checkProgram(
+        pp(
+          _program('''
+typeclass Both[A: Type] {
+  fun f(x: A): A;
+  fun g(x: A): A;
+}
+impl Both[Nat] {
+  fun f(x: Nat): Nat = succ x;
+  fun g(x: Nat): Nat = x;
+}
+val fz: Nat = f zero
+val gz: Nat = g zero
+'''),
+        ),
+      );
+
+      final classInfo = env.classRegistry['Both']!;
+      expect(classInfo.methods.length, 2);
+      expect(env.bindings.where((b) => b.name == 'f'), hasLength(1));
+      expect(env.bindings.where((b) => b.name == 'g'), hasLength(1));
+      expect(_ctorName(_evalBinding(env, 'fz')), 'succ');
+      expect(_ctorName(_evalBinding(env, 'gz')), 'zero');
+    });
+
+    test('method types mention the class parameter', () {
+      final env = checkProgram(
+        pp(
+          _program('''
+typeclass Nested[A: Type] {
+  fun f(x: A): A;
+  fun g(x: A): A -> A;
+}
+impl Nested[Nat] {
+  fun f(x: Nat): Nat = x;
+  fun g(x: Nat): Nat -> Nat = (y: Nat) => y;
+}
+val gz: Nat = g zero (succ zero)
+'''),
+        ),
+      );
+
+      expect(_ctorName(_evalBinding(env, 'gz')), 'succ');
+    });
+  });
 }
