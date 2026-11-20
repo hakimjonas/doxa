@@ -38,13 +38,14 @@ the reason is noted in the gaps section.
 | Declarations — Structural recursion | An unapplied recursive reference is rejected | `doxa_tooling/test/structural_recursion_walker_test.dart` | "unapplied reference (passing function as value) rejected" | Yes |
 | Inductive types and matching | `data` signatures give indices then the target sort; constructor separators | `doxa_tooling/test/inductive_parse_test.dart` | "data Nat with zero and succ", "trailing semicolon after last ctor is accepted", "data Vec[A: Type] : Nat -> Type" | Yes |
 | Inductive types and matching | Constructor result shapes and positivity | `doxa_tooling/test/positivity_test.dart`, `positivity_violation.doxa` | "Nat", "Vec[A] : Nat -> Type", "the canonical Bad: (Bad -> Bad) -> Bad", negative program | Yes |
-| Inductive types and matching | Product-form declarations desugar to one `mk` constructor; projection is dotted | `doxa/test/record_test.dart` | "TProj projects \"fst\" from VConstr(Pair, mk)", "Record η" group | Yes |
+| Inductive types and matching | Product-form declarations desugar to one `mk` constructor; every field projects with dotted syntax | `doxa/test/record_surface_test.dart`, `doxa/test/record_test.dart` | "Point with two fields constructs and projects both", "a parameterised record projects both fields at Pair Nat", "a third field projects", "a dependent field type mentions the first projection", "a nested record projects through"; "TProj projects \"fst\" from VConstr(Pair, mk)" | Yes |
 | Inductive types and matching | Match arms, constructor binders, wildcard, and `returning` | `doxa_tooling/test/match_parse_test.dart` | "two arms: no separator between them", "ctor with multiple binders", "explicit motive attaches" | Yes |
 | Inductive types and matching | Duplicate arms and coverage | `non_exhaustive_match.doxa`, `doxa_tooling/test/match_step5_unreachability_test.dart` | "Vec[A] n: must cover both vnil and vcons", "duplicate_case.doxa" negative program | Yes |
 | Inductive types and matching | Indexed-family motive and reachability checks | `doxa/test/indexed_induction_test.dart`, `doxa_tooling/test/vmatch_roundtrip_test.dart` | "a Vec induction uses the refined length index and the IH", "a wrong compound-index arm still fails" | Yes |
 | Local bindings and quotients | Block bindings, `val rec`, optional local types, parenthesized argument position | `doxa/test/let_test.dart` | "block with one annotated binding parses to SLetKind", "elab infers an unannotated binding from the bound expr", "block checked against expected type (success)" | Yes |
 | Local bindings and quotients | Quotient formation and elimination forms | `doxa/test/quotient_test.dart`, `doxa_tooling/test/quotient_surface_test.dart` | "basic formation - Quot typechecks", "lift ι-reduction via eval of TQuotLift", "Quot(A, R) still forms a type" | Yes |
 | Typeclasses | A class elaborates to a dictionary and a projection | `doxa/test/typeclass_elab_test.dart` | "elaborates to a dictionary type and a projection" | Yes |
+| Typeclasses | A class may declare more than one method | `doxa/test/typeclass_elab_test.dart` | "a two-method class elaborates both projections and reduces", "method types mention the class parameter" | Yes |
 | Typeclasses | An `impl` registers a dictionary and a call reduces through it | `doxa/test/typeclass_elab_test.dart`, `doxa_tooling/test/typeclass_surface_test.dart` | "impl registers an instance and a call reduces through it", "impl declaration is accepted for a declared class" | Yes |
 | Typeclasses | Constrained explicit parameters place the dictionary after value parameters | `doxa/test/typeclass_elab_test.dart` | "a constrained parameter resolves for Nat and Bool" | Yes |
 | Typeclasses | A call supplies the type argument explicitly; the dictionary is searched | `doxa/test/typeclass_elab_test.dart` | "a missing explicit type argument fails at the first value" | Yes |
@@ -82,12 +83,15 @@ without a direct test. None prevents the test suite from passing.
 3. **Inductive types and matching — non-indexed dependent-motive inference** —
    `match` infers the motive for indexed arms. For a non-indexed dependent
    motive, users write `T.ind` or `T.rec`.
-4. **Inductive types and matching — multi-field projection** — `_fieldType`
-   (`doxa/lib/src/elab.dart`) builds its environment past the parameter list
-   for any field after the first, and the dotted-name path falls through to a
-   namespace lookup. `p.x` projects; `p.y` reports `no binding for "p.<field>"`.
-   This is the same `_fieldType` path that limits a typeclass to one method.
-5. **Typeclasses — multi-method classes** — a class with more than one method
-   is not usable, because the second method's projection hits the multi-field
-   projection gap in Inductive types and matching (`no binding for
-   "inst.<method>"`).
+4. **Inductive types and matching — one product-form record per module** —
+   every product-form declaration desugars to `mk`; a second one in the same
+   module reports `duplicate declaration "mk"`. Named constructor arguments
+   are the workaround.
+
+## Closed gaps
+
+The multi-field projection and multi-method class gaps are closed.
+`doxa/test/record_surface_test.dart` checks construction and projection for a
+two-field record, a parameterised record, a third field, a dependent field, and
+a nested record. `doxa/test/typeclass_elab_test.dart` checks a two-method class
+whose methods reduce and a class whose method types mention the parameter.

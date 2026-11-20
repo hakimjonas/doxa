@@ -26,8 +26,8 @@ Doxa requires Dart 3.7 or later.
   `constructor`.
 - Typeclasses with single-parameter classes, instance search, explicit type
   arguments, and parameterised instances. Superclasses, default method
-  bodies, local instances, multi-parameter classes, and multi-method classes
-  are not supported; see [`SPEC.md`](SPEC.md#typeclasses).
+  bodies, local instances, and multi-parameter classes are not supported;
+  see [`SPEC.md`](SPEC.md#typeclasses).
 - The standard-library package, with `Nat`, `Bool`, `List`, `Option`, `Vec`,
   `Sigma`, `Int`, `Rational`, equality, the `Eqb` class and its instances,
   and arithmetic lemmas. Programs reach it through `package:` imports.
