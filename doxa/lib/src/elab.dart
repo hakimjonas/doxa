@@ -1499,8 +1499,42 @@ final class TopEnv {
 /// name not in [topEnv] raises [UnresolvedName]. The produced term is
 /// in fully de-Bruijn-indexed form (no [TFree]) and is valid input to
 /// the evaluator.
-Term elabExpr(TopEnv topEnv, SExpr expr) =>
-    _elabExpr(topEnv, const _LocalNil(), expr);
+///
+/// Implicit arguments are inserted at application sites. Solved
+/// metavariables are inlined before the term is returned; an unsolved
+/// metavariable remains a [TMeta].
+Term elabExpr(TopEnv topEnv, SExpr expr) => elabExprWithType(topEnv, expr).term;
+
+/// Elaborate [expr] with a fresh [MetaContext] and return the term and
+/// its type.
+///
+/// [elabExpr] discards the type; callers that display a type without
+/// re-inferring the term use this entry point. Re-inferring a bare
+/// constructor term is not possible, because [infer] requires the full
+/// constructor spine, while elaboration resolves the constructor to its
+/// signature.
+///
+/// Solved metavariables are inlined into both returned terms. An
+/// unsolved metavariable remains a [TMeta] and renders as a
+/// metavariable.
+({Term term, Term type}) elabExprWithType(TopEnv topEnv, SExpr expr) {
+  final metas = MetaContext();
+  final state = _shimState(topEnv, const _LocalNil(), metas: metas);
+  var (term, typeValue) = _inferExpr(state, expr);
+  // An application can end on a trailing implicit binder, such as the
+  // dictionary of `eqb zero zero`. Infer mode does not consume it in the
+  // application loop, so finish it here. A bare identifier keeps its full
+  // signature; a partial application keeps the explicit Pi that remains.
+  if (expr.kind is SAppKind) {
+    (term, typeValue) = _insertImplicits(state, term, typeValue);
+  }
+  final level = state.ctx.level;
+  final type = quote(level, typeValue);
+  return (
+    term: inlineSolvedMetas(term, metas, outerDepth: level),
+    type: inlineSolvedMetas(type, metas, outerDepth: level),
+  );
+}
 
 /// Elaborate [expr] against [topEnv] with local binder [names] (innermost first).
 ///

@@ -113,8 +113,6 @@ pass. Phase 30 is the public launch. The known gaps below remain.
 
 ## Known gaps
 
-- The REPL `:type` and `:norm` commands elaborate in infer mode. An
-  application that omits implicit arguments does not elaborate there.
 - A module declares at most one product-form record; every product-form
   declaration desugars to `mk`.
 - Constructor names share a global namespace, so records cannot each declare

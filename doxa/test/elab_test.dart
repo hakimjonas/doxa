@@ -27,6 +27,36 @@ SProgram pp(String input) {
 /// Elaborate an expression in the empty top environment.
 Term ee(String src) => elabExpr(TopEnv.empty, pe(src));
 
+/// True when [t] contains a [TMeta] anywhere.
+bool hasMeta(Term t) => switch (t) {
+  TMeta() => true,
+  TApp(:final fn, :final arg) => hasMeta(fn) || hasMeta(arg),
+  TProj(:final expr) => hasMeta(expr),
+  TLam(:final domain, :final body) => hasMeta(domain) || hasMeta(body),
+  TLet(:final domain, :final bound, :final body) =>
+    hasMeta(domain) || hasMeta(bound) || hasMeta(body),
+  TData(:final args) => args.any(hasMeta),
+  TConstr(:final args) => args.any(hasMeta),
+  TPi(:final domain, :final codomain) => hasMeta(domain) || hasMeta(codomain),
+  TMatch(:final scrutinee, :final motive, :final cases) =>
+    hasMeta(scrutinee) ||
+        (motive != null && hasMeta(motive)) ||
+        cases.any((c) => hasMeta(c.body)),
+  TQuot(:final carrier, :final relation) =>
+    hasMeta(carrier) || hasMeta(relation),
+  TQuotMk(:final arg) => hasMeta(arg),
+  TQuotLift(:final quot, :final fn, :final proof) =>
+    hasMeta(quot) || hasMeta(fn) || hasMeta(proof),
+  TType() ||
+  TUnknown() ||
+  TProp() ||
+  TSProp() ||
+  TBound() ||
+  TFree() ||
+  TRec() ||
+  TTop() => false,
+};
+
 void main() {
   group('Expression elaboration: atoms', () {
     test('Type (no level) elaborates to Type 0', () {
@@ -400,6 +430,21 @@ fun f[A: Type](xs: List A): Nat {struct xs} = match xs {
         ),
         throwsA(isA<NonStructuralRecursion>()),
       );
+    });
+  });
+
+  group('Expression elaboration: implicit insertion', () {
+    test('elabExpr inserts and solves implicits for id2 zero', () {
+      final env = checkProgram(
+        pp('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+fun id2{A: Type}(x: A): A = x
+'''),
+      );
+      final term = elabExpr(env, pe('id2 zero'));
+      expect(hasMeta(term), isFalse, reason: 'term: $term');
+      final inferred = infer(env.toCtx(), term);
+      expect(inferred, isA<VData>().having((v) => v.name, 'name', 'Nat'));
     });
   });
 }

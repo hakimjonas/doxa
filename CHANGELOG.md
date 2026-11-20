@@ -43,6 +43,9 @@ project is ready.
   `doxa` fences in the SPEC and README (#18).
 - Refreshed the tutorial and guide examples and extended the doc-block test
   to the tutorial, proof guide, and arithmetic document (#20).
+- Solved implicit arguments in the REPL `:type` and `:norm` paths, so
+  expressions such as `id2 zero` and `refl zero` elaborate and show their
+  types.
 
 ## 0.8.4 (2026-11-12)
 
