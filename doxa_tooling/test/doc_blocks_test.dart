@@ -19,7 +19,13 @@ import '../bin/doxa.dart' show checkSource;
 
 /// Documents whose `doxa` fences are checked. Extend this list when another
 /// document starts carrying checked examples.
-const _documents = ['../SPEC.md', '../README.md'];
+const _documents = [
+  '../SPEC.md',
+  '../README.md',
+  '../docs/tutorial.md',
+  '../docs/proof-guide.md',
+  '../docs/arithmetic.md',
+];
 
 /// Marks a fence as a fragment that cannot be checked standalone.
 const _fragmentMarker = '<!-- doxa: fragment -->';

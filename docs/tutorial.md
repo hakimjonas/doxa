@@ -7,9 +7,10 @@ predicative universes and an impredicative `Prop` sort. The checker runs
 bidirectionally and normalises via Normalization by Evaluation. You can use
 it from the command line, as a Dart library, or in the browser via WasmGC.
 
-This tutorial walks through the language feature by feature. Every code
-block is a self-contained Doxa program that type-checks. The only ambient
-name is `Eq` (propositional equality), declared in the prelude.
+This tutorial walks through the language feature by feature. Every `doxa`
+block is a self-contained program that type-checks. The ambient prelude
+declares `Eq` (propositional equality) and `Acc` (accessibility); an example
+that needs anything else declares it.
 
 ---
 
@@ -73,9 +74,9 @@ practice.
 
 ## 3. Data types
 
-An inductive type declares its sort (`Type` or `Prop`), optional parameters
-and indices, and a semicolon-separated list of constructors. The `Nat`
-and `Bool` types are examples of simple data:
+An inductive type declares its sort (`Type`, `Prop`, or `SProp`), optional
+parameters and indices, and a semicolon-separated list of constructors. The
+`Nat` and `Bool` types are examples of simple data:
 
 ```doxa
 data Nat : Type {
@@ -283,8 +284,8 @@ theorem sample : (A: Type) -> A -> A = by { refl | intro A; intro x; exact x }
 ```
 
 Available commands: `intro name`, `exact expr`, `apply expr`, `refl`,
-`induction name`, `cases name`, `constructor`, `rewrite proof`,
-`simp [lemmas]`, `auto [depth]`, `omega`, `trivial`.
+`rewrite proof`, `induction name`, `cases name`, `revert name`, `trivial`,
+`simp [lemmas]`, `auto [depth]`, `omega`, `constructor`.
 Alternatives are separated by `|`; the first alternative that closes
 every goal wins.
 
@@ -305,6 +306,11 @@ goal it created is closed.
 An induction proof therefore reads as one step per arm:
 
 ```doxa
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
 fun plus(m: Nat, n: Nat): Nat = match m {
   case zero => n
   case succ k => succ (plus k n)
@@ -369,6 +375,16 @@ added; a recursive constructor still carries the recursor's hypothesis
 binder, which the display shows as `_` and the arm goal does not mention:
 
 ```doxa
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+fun plus(m: Nat, n: Nat): Nat = match m {
+  case zero => n
+  case succ k => succ (plus k n)
+}
+
 val two_cases : (n: Nat) -> Eq Nat (plus zero n) n = by {
   intro n;
   cases n;
@@ -383,6 +399,11 @@ one goal per argument, in argument order. An argument type that mentions a
 local variable is a goal over that variable, so the proof may name it:
 
 ```doxa
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
 data D: Nat -> Type {
   d0: D zero;
   d1: (n: Nat) -> D n -> D (succ n);
@@ -593,7 +614,8 @@ binder; revert the binders introduced after it first`.
 
 `:step apply lemma` shows one goal per explicit argument, in argument
 order. Closing the first makes the next argument current. Implicit
-arguments are filled by conversion and are not shown.
+arguments are filled by conversion and are not shown. With
+`two_nats : (a: Nat) -> (b: Nat) -> Nat` in scope:
 
 ```
 > :step apply two_nats
@@ -666,13 +688,13 @@ idProof : (A: Type) -> A -> A
 | `:step rewrite p`     | Rewrite using an equality proof `p` |
 | `:step induction v`   | Inductive case split on variable `v` |
 | `:step revert v`      | Move the innermost binder `v` back into the goal |
-| `:step constructor`   | Apply the first matching constructor |
-| `:step cases v`       | Case analysis on variable `v` (no IHs) |
+| `:step constructor`   | Apply the first matching constructor; parameterised arguments become goals |
+| `:step cases v`       | Case analysis on `v`; no induction hypotheses, hidden `_` recursor binder |
 | `:step simp [lemmas]` | Normalise and rewrite with equality hypotheses |
 | `:step simpl`         | Alias for `:step simp` |
 | `:step trivial`       | Try refl, then context lookup |
-| `:step auto [depth]`  | Depth-bounded proof search (default depth 5) |
-| `:step omega`         | Arithmetic solver for `Nat` goals |
+| `:step auto [depth]`  | Depth-bounded proof search (default 5, range 0 to 20) |
+| `:step omega`         | Bounded arithmetic convenience for `Nat` goals |
 | `:undo`               | Revert the last step |
 | `:print`              | Show the proof term so far |
 | `:abort`              | Abandon the proof |
@@ -702,6 +724,22 @@ val boxed : Box[Nat] = Box.mk (succ zero)
 val unboxed : Nat = boxed.value
 ```
 
+Every field projects. With two fields, both `p.x` and `p.y` check:
+
+```doxa
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+data Point : Type { x : Nat; y : Nat; }
+val p : Point = Point.mk zero (succ zero)
+val first : Nat = p.x
+val second : Nat = p.y
+```
+
+A module declares at most one product-form record: every product-form
+declaration desugars to `mk`, and a second `mk` is a duplicate declaration.
+Declare additional records with named constructor arguments, as in
+`data Segment: Type { seg: (start: Point) -> (end: Point) -> Segment; }`;
+`Segment.seg` projects through `start` and `end`.
+
 Record types support definitional eta: a record converts to the constructor
 applied to its projections. Field projection via dot notation is available
 for a non-indexed data type with one constructor.
@@ -711,10 +749,12 @@ for a non-indexed data type with one constructor.
 ## 11. Typeclasses
 
 A `typeclass` declaration produces a dictionary type and one projection per
-method. An `impl` declaration produces a dictionary value for a head type,
-optionally applied to the instance's own type parameters. Resolution happens
-during elaboration: a constrained parameter becomes an implicit dictionary
-parameter, and a method call inserts the dictionary it needs.
+method. A class may declare more than one method; each method becomes a
+projection and a dictionary field. An `impl` declaration produces a dictionary
+value for a head type, optionally applied to the instance's own type
+parameters. Resolution happens during elaboration: a constrained parameter
+becomes an implicit dictionary parameter, and a method call inserts the
+dictionary it needs.
 
 ```doxa
 data Nat : Type {
@@ -767,9 +807,31 @@ dictionary parameter directly, so no search runs there.
 
 An instance can target a type constructor applied to its own parameters. A
 parameter group between `impl` and the class reference declares those
-parameters, using the same bracket and constraint syntax as `fun`.
+parameters, using the same bracket and constraint syntax as `fun`. The block
+repeats the class and the `Nat` instance so it is self-contained.
 
 ```doxa
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+data Bool : Type {
+  true_ : Bool;
+  false_ : Bool;
+}
+
+typeclass Eqb[A: Type] {
+  fun eqb(x: A, y: A): Bool;
+}
+
+impl Eqb[Nat] {
+  fun eqb(x: Nat, y: Nat): Bool = match x {
+    case zero => true_
+    case succ n => false_
+  };
+}
+
 data List[A: Type] : Type {
   nil : List A;
   cons : A -> List A -> List A;
@@ -809,6 +871,16 @@ recursive comparison is a top-level `fun`; the structural-recursion check
 applies to `eqbList`, whose tail call `eqbList A t t2` passes a strict
 sub-term. The checker counts the explicit type argument before comparing the
 designated value position.
+
+The standard library ships the class and instances for `Nat`, `Bool`, and
+`List`. Importing the domain package brings them into scope:
+
+```doxa
+import "package:doxa_stdlib/stdlib/Eqb/package.doxa"
+
+val natSame : Bool = eqb zero zero
+val listSame : Bool = eqb (cons zero nil) (cons zero nil)
+```
 
 Search for a goal `C T` takes the head of `T`, selects the instance
 registered at that head, and matches the arguments of `T` against the
