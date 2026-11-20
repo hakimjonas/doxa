@@ -3,6 +3,9 @@
 The Doxa standard library: checked Doxa sources for the base types and
 the arithmetic development.
 
+Status: experimental, no release. The root [`README.md`](../README.md) records
+the release status and the publishing hold.
+
 | Domain | Files |
 |---|---|
 | `Nat` | `nat.doxa` (`Nat`, `plus`, `mult`, `Lt`, comparison) |
