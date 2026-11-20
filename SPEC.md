@@ -91,6 +91,27 @@ fun f(x: T, y: U): V termination_by (x, y) = body
 
 Mutual declarations join members with `and fun` or `and data`. The members of a mutual block are in scope in the block's bodies.
 
+### Structural recursion
+
+A recursive `fun` must be structurally recursive. Its designated argument is
+the first explicit value parameter, or the parameter named in a `{struct name}`
+annotation on the declaration. Every call to the function, including a call to
+a sibling in a `fun ... and ...` block, must pass a strict sub-term of the
+caller's designated argument in the callee's designated position. A strict
+sub-term is a pattern binder introduced by matching on the designated
+argument, or a pattern binder of a match on such a binder. An unapplied
+reference to a recursive function is rejected, because the eventual call
+cannot be checked.
+
+A call that supplies explicit type arguments passes them before its value
+arguments. The check counts those type arguments when it locates the
+designated value position. Implicit type parameters are supplied by
+elaboration, not by the call, and do not shift the position.
+
+Evaluation unfolds a recursive function only when its designated argument is a
+constructor, so a recursive call on an unrefined variable stays stuck instead
+of unfolding.
+
 ## Inductive types and matching
 
 `data` declares an inductive type and its constructors. Its signature ends in `Type`, `Prop`, or `SProp`; preceding arrow domains are indices. Constructor types use ordinary Doxa syntax. Constructor entries may be separated with `;` or `|`, and a trailing separator is accepted.

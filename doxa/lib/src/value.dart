@@ -190,7 +190,7 @@ final class VRec extends Value {
 
 /// A guarded recursive top-level function, partially or fully applied
 /// but STUCK because its designated decreasing argument is not yet a
-/// canonical constructor (SPEC §8.6 fix-reduction).
+/// canonical constructor (SPEC, Structural recursion).
 ///
 /// Background. A recursive `fun` (e.g. `map`, `append`, `plus`) is
 /// stored as a `VLam` chain whose innermost body is a `match` on the

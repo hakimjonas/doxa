@@ -14,9 +14,9 @@
 /// Top-level scope is sequential: a declaration sees every earlier
 /// declaration. `val`/`type` bodies are non-recursive (the bound name
 /// is not in scope in its own body), while a `fun` IS in scope in its
-/// own body, with the structural-recursion guard (SPEC §8.6) ensuring
-/// soundness; mutual `fun` / `data` blocks put every member in scope
-/// in every body.
+/// own body, with the structural-recursion guard (SPEC, Structural
+/// recursion) ensuring soundness; mutual `fun` / `data` blocks put every
+/// member in scope in every body.
 ///
 /// Block-scoped parameters (binders introduced by lambdas, Pis, and
 /// `fun` parameters) follow standard sequential scope: each binder
@@ -91,8 +91,8 @@ final class UnresolvedName extends ElabError {
 /// of the function's designated decreasing argument.
 ///
 /// The elaborator enforces CIC's structural-recursion rule
-/// (SPEC §8.6): recursion is accepted iff every call to the function
-/// (or any sibling in the same mutual block) passes, in the
+/// (SPEC, Structural recursion): recursion is accepted iff every call to
+/// the function (or any sibling in the same mutual block) passes, in the
 /// function's designated-decreasing-argument position, a value that
 /// is a syntactic strict sub-term of the caller's designated
 /// argument.
@@ -1244,9 +1244,9 @@ final class TopBinding {
 
   /// For a structurally-recursive `fun`, the position of the designated
   /// decreasing argument (first explicit value param, counting type
-  /// params; SPEC §8.6) and the total parameter count. Both null for
-  /// non-recursive bindings. Threaded into [TopBindingEntry] so eval can
-  /// build a guarded [VFun].
+  /// params; see SPEC, Structural recursion) and the total parameter
+  /// count. Both null for non-recursive bindings. Threaded into
+  /// [TopBindingEntry] so eval can build a guarded [VFun].
   final int? recDecreasingArg;
 
   /// Total parameter count of a recursive `fun`'s lambda chain. Null iff
@@ -5406,12 +5406,20 @@ TopBinding _elabFun(
   final memberDeclIdxs = <String, int>{
     for (final m in members) m.fun.name: _designatedArgIndex(m.fun) ?? 0,
   };
+  final memberTypeParamCounts = <String, int>{
+    for (final m in members) m.fun.name: _explicitTypeParamCount(m.fun),
+  };
+  final memberValueParamCounts = <String, int>{
+    for (final m in members) m.fun.name: m.fun.params.length,
+  };
   final unguardedCrossCalls = <_CrossCall>[];
   for (final m in members) {
     _checkStructuralRecursion(
       m.fun,
       memberNames,
       memberDeclIdxs,
+      memberTypeParamCounts: memberTypeParamCounts,
+      memberValueParamCounts: memberValueParamCounts,
       callerName: m.fun.name,
       unguardedCrossCalls: unguardedCrossCalls,
     );
@@ -5504,10 +5512,11 @@ TopBinding _elabFun(
   ]);
   // Stamp guarded-reduction metadata onto each recursive member's
   // binding. The designated decreasing argument is
-  // the first explicit value param (SPEC §8.6), or the `{struct name}`
-  // annotation if present. It sits in the lambda chain AFTER all type
-  // params, so its de-Bruijn position is `typeParams.length` by
-  // default, adjusted to the annotated param's position. A member
+  // the first explicit value param (SPEC, Structural recursion), or the
+  // `{struct name}` annotation if present. It sits in the lambda chain
+  // AFTER all type params, so its de-Bruijn position is
+  // `typeParams.length` by default, adjusted to the annotated param's
+  // position. A member
   // with no value params has no decreasing argument and is left
   // unguarded (it can't recurse structurally anyway). `recArity` is
   // the full param count.
@@ -5680,6 +5689,10 @@ void _checkDuplicate(TopEnv topEnv, SDecl decl) {
 /// argument, so any reference to a block member from its body is
 /// non-structural by definition.
 ///
+/// A call may supply the callee's explicit type arguments before its value
+/// arguments. The walker offsets the designated value position by that
+/// count; implicit type parameters never appear in an argument list.
+///
 /// Strict sub-term relation (syntactic):
 ///   * A pattern binder introduced by `match`ing on the designated
 ///     argument (or any strict sub-term of it) is itself a strict
@@ -5704,17 +5717,34 @@ void checkStructuralRecursion(
 ]) {
   final calls = <_CrossCall>[];
   final allKinds = [kind, ...blockKinds];
+  final typeParamCounts = <String, int>{
+    for (final k in allKinds) k.name: _explicitTypeParamCount(k),
+  };
+  final valueParamCounts = <String, int>{
+    for (final k in allKinds) k.name: k.params.length,
+  };
   for (final k in allKinds) {
     _checkStructuralRecursion(
       k,
       blockMembers,
       memberDeclIdxs,
+      memberTypeParamCounts: typeParamCounts,
+      memberValueParamCounts: valueParamCounts,
       callerName: k.name,
       unguardedCrossCalls: calls,
     );
   }
   _analyzeCrossCallCycles(calls, blockMembers);
 }
+
+/// The number of type arguments a call to [kind] supplies explicitly.
+///
+/// Implicit type parameters are inserted by the elaborator and never appear
+/// in a surface argument list, so they do not shift the value-argument
+/// positions. Constraints add implicit dictionary binders after the value
+/// parameters and do not appear in [SFunKind.params] either.
+int _explicitTypeParamCount(SFunKind kind) =>
+    kind.typeParams.where((tp) => !tp.isImplicit).length;
 
 /// Find the de-Bruijn position of a value parameter [name] in [fun].
 /// Returns the position counting type params first, so the first value
@@ -5772,9 +5802,9 @@ int _findParamIndex(SFunKind fun, String name) {
 
 /// Compute the position of the designated argument among the value params.
 /// Returns null when there is no designated argument. The returned index
-/// is relative to the value-param list only (not including type params),
-/// matching the arg position in application calls where type args are
-/// implicit/elided.
+/// is relative to the value-param list only (not including type params).
+/// The walker applies the callee's explicit type-argument count as an
+/// offset when indexing the call's argument list.
 int? _designatedArgIndex(SFunKind kind) {
   if (kind.params.isEmpty) return null;
   if (kind.structAnn != null) {
@@ -5791,6 +5821,8 @@ void _checkStructuralRecursion(
   SFunKind kind,
   Set<String> blockMembers,
   Map<String, int> memberDeclIdxs, {
+  required Map<String, int> memberTypeParamCounts,
+  required Map<String, int> memberValueParamCounts,
   required String callerName,
   required List<_CrossCall> unguardedCrossCalls,
 }) {
@@ -5819,6 +5851,8 @@ void _checkStructuralRecursion(
     subTerms: const <String>{},
     shadowed: shadowed,
     memberDeclIdxs: memberDeclIdxs,
+    memberTypeParamCounts: memberTypeParamCounts,
+    memberValueParamCounts: memberValueParamCounts,
     callerName: callerName,
     unguardedCrossCalls: unguardedCrossCalls,
   );
@@ -5830,6 +5864,8 @@ void _checkStructuralRecursion(
     subTerms: const <String>{},
     shadowed: shadowed,
     memberDeclIdxs: memberDeclIdxs,
+    memberTypeParamCounts: memberTypeParamCounts,
+    memberValueParamCounts: memberValueParamCounts,
     callerName: callerName,
     unguardedCrossCalls: unguardedCrossCalls,
   );
@@ -5842,6 +5878,8 @@ void _checkStructuralRecursion(
       subTerms: const <String>{},
       shadowed: const <String>{},
       memberDeclIdxs: memberDeclIdxs,
+      memberTypeParamCounts: memberTypeParamCounts,
+      memberValueParamCounts: memberValueParamCounts,
       callerName: callerName,
       unguardedCrossCalls: unguardedCrossCalls,
     );
@@ -5856,6 +5894,8 @@ void _checkStructuralRecursion(
         subTerms: const <String>{},
         shadowed: const <String>{},
         memberDeclIdxs: memberDeclIdxs,
+        memberTypeParamCounts: memberTypeParamCounts,
+        memberValueParamCounts: memberValueParamCounts,
         callerName: callerName,
         unguardedCrossCalls: unguardedCrossCalls,
       );
@@ -5928,6 +5968,8 @@ void _walkStepForInd(
   required Set<String> subTerms,
   required Set<String> shadowed,
   required Map<String, int> memberDeclIdxs,
+  required Map<String, int> memberTypeParamCounts,
+  required Map<String, int> memberValueParamCounts,
   required String callerName,
   required List<_CrossCall> unguardedCrossCalls,
 }) {
@@ -5943,6 +5985,8 @@ void _walkStepForInd(
       subTerms: subTerms,
       shadowed: shadowed,
       memberDeclIdxs: memberDeclIdxs,
+      memberTypeParamCounts: memberTypeParamCounts,
+      memberValueParamCounts: memberValueParamCounts,
       callerName: callerName,
       unguardedCrossCalls: unguardedCrossCalls,
     );
@@ -5956,6 +6000,8 @@ void _walkStepForInd(
     subTerms: {...subTerms, lam.param},
     shadowed: {...shadowed, lam.param},
     memberDeclIdxs: memberDeclIdxs,
+    memberTypeParamCounts: memberTypeParamCounts,
+    memberValueParamCounts: memberValueParamCounts,
     callerName: callerName,
     unguardedCrossCalls: unguardedCrossCalls,
   );
@@ -5972,6 +6018,8 @@ void _walkForRecursion({
   required Set<String> subTerms,
   required Set<String> shadowed,
   Map<String, int> memberDeclIdxs = const <String, int>{},
+  required Map<String, int> memberTypeParamCounts,
+  required Map<String, int> memberValueParamCounts,
   String callerName = '',
   List<_CrossCall> unguardedCrossCalls = const <_CrossCall>[],
 }) {
@@ -6001,6 +6049,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        memberTypeParamCounts: memberTypeParamCounts,
+        memberValueParamCounts: memberValueParamCounts,
         callerName: callerName,
         unguardedCrossCalls: unguardedCrossCalls,
       );
@@ -6013,12 +6063,24 @@ void _walkForRecursion({
       if (headKind is SIdentKind &&
           blockMembers.contains(headKind.name) &&
           !shadowed.contains(headKind.name)) {
-        // The designated-arg position is determined by [`designatedIdx`]
-        // when available (from `{struct name}` annotation), or defaults
-        // to index 0 (first explicit value param). Calls with explicit
-        // type args (e.g. `f[TypeArg] x`) flatten to `args = [TypeArg,
-        // x]`; that case is not distinguished here (it would need per-
-        // callee type-param counts). Implicit arguments sidestep it.
+        // A call may supply the callee's explicit type arguments before
+        // its value arguments. `memberDeclIdxs` is value-relative, so the
+        // offset is applied here: with `f A t`, the designated value
+        // position 0 is `args[1]`.
+        final calleeTypeArgs = memberTypeParamCounts[headKind.name];
+        final calleeValueArgs = memberValueParamCounts[headKind.name];
+        var offset = 0;
+        if (calleeTypeArgs != null && calleeValueArgs != null) {
+          if (calleeTypeArgs > 0 &&
+              args.length == calleeTypeArgs + calleeValueArgs) {
+            // The call supplies its type arguments.
+            offset = calleeTypeArgs;
+          } else if (args.length != calleeValueArgs) {
+            // Neither a full type-and-value call nor a call with the type
+            // arguments elided.
+            throw NonStructuralRecursion(headKind.name, expr.span);
+          }
+        }
         if (args.isEmpty) {
           throw NonStructuralRecursion(headKind.name, head.span);
         }
@@ -6031,18 +6093,18 @@ void _walkForRecursion({
         // callee's index (y_ is a sub-term of h).
         int daIdx;
         final calleeIdx = memberDeclIdxs[headKind.name];
-        if (calleeIdx != null && calleeIdx < args.length) {
-          final calleeArg = args[calleeIdx];
+        if (calleeIdx != null && offset + calleeIdx < args.length) {
+          final calleeArg = args[offset + calleeIdx];
           final calleeIdent = calleeArg.kind;
           final calleeName =
               calleeIdent is SIdentKind ? calleeIdent.name : null;
           if (calleeName != null && subTerms.contains(calleeName)) {
-            daIdx = calleeIdx;
+            daIdx = offset + calleeIdx;
           } else {
-            daIdx = designatedIdx ?? 0;
+            daIdx = offset + (designatedIdx ?? 0);
           }
         } else {
-          daIdx = designatedIdx ?? 0;
+          daIdx = offset + (designatedIdx ?? 0);
         }
         if (daIdx >= args.length) {
           throw NonStructuralRecursion(headKind.name, expr.span);
@@ -6077,6 +6139,8 @@ void _walkForRecursion({
             subTerms: subTerms,
             shadowed: shadowed,
             memberDeclIdxs: memberDeclIdxs,
+            memberTypeParamCounts: memberTypeParamCounts,
+            memberValueParamCounts: memberValueParamCounts,
             callerName: callerName,
             unguardedCrossCalls: unguardedCrossCalls,
           );
@@ -6114,6 +6178,8 @@ void _walkForRecursion({
                 subTerms: subTerms,
                 shadowed: shadowed,
                 memberDeclIdxs: memberDeclIdxs,
+                memberTypeParamCounts: memberTypeParamCounts,
+                memberValueParamCounts: memberValueParamCounts,
                 callerName: callerName,
                 unguardedCrossCalls: unguardedCrossCalls,
               );
@@ -6126,6 +6192,8 @@ void _walkForRecursion({
                 subTerms: subTerms,
                 shadowed: shadowed,
                 memberDeclIdxs: memberDeclIdxs,
+                memberTypeParamCounts: memberTypeParamCounts,
+                memberValueParamCounts: memberValueParamCounts,
                 callerName: callerName,
                 unguardedCrossCalls: unguardedCrossCalls,
               );
@@ -6142,6 +6210,8 @@ void _walkForRecursion({
             subTerms: subTerms,
             shadowed: shadowed,
             memberDeclIdxs: memberDeclIdxs,
+            memberTypeParamCounts: memberTypeParamCounts,
+            memberValueParamCounts: memberValueParamCounts,
             callerName: callerName,
             unguardedCrossCalls: unguardedCrossCalls,
           );
@@ -6153,6 +6223,8 @@ void _walkForRecursion({
             subTerms: subTerms,
             shadowed: shadowed,
             memberDeclIdxs: memberDeclIdxs,
+            memberTypeParamCounts: memberTypeParamCounts,
+            memberValueParamCounts: memberValueParamCounts,
             callerName: callerName,
             unguardedCrossCalls: unguardedCrossCalls,
           );
@@ -6168,6 +6240,8 @@ void _walkForRecursion({
           subTerms: subTerms,
           shadowed: shadowed,
           memberDeclIdxs: memberDeclIdxs,
+          memberTypeParamCounts: memberTypeParamCounts,
+          memberValueParamCounts: memberValueParamCounts,
           callerName: callerName,
           unguardedCrossCalls: unguardedCrossCalls,
         );
@@ -6180,6 +6254,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: {...shadowed, param},
         memberDeclIdxs: memberDeclIdxs,
+        memberTypeParamCounts: memberTypeParamCounts,
+        memberValueParamCounts: memberValueParamCounts,
         callerName: callerName,
         unguardedCrossCalls: unguardedCrossCalls,
       );
@@ -6192,6 +6268,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        memberTypeParamCounts: memberTypeParamCounts,
+        memberValueParamCounts: memberValueParamCounts,
         callerName: callerName,
         unguardedCrossCalls: unguardedCrossCalls,
       );
@@ -6203,6 +6281,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: param == null ? shadowed : {...shadowed, param},
         memberDeclIdxs: memberDeclIdxs,
+        memberTypeParamCounts: memberTypeParamCounts,
+        memberValueParamCounts: memberValueParamCounts,
         callerName: callerName,
         unguardedCrossCalls: unguardedCrossCalls,
       );
@@ -6216,6 +6296,8 @@ void _walkForRecursion({
           subTerms: subTerms,
           shadowed: shadowed,
           memberDeclIdxs: memberDeclIdxs,
+          memberTypeParamCounts: memberTypeParamCounts,
+          memberValueParamCounts: memberValueParamCounts,
           callerName: callerName,
           unguardedCrossCalls: unguardedCrossCalls,
         );
@@ -6228,6 +6310,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        memberTypeParamCounts: memberTypeParamCounts,
+        memberValueParamCounts: memberValueParamCounts,
         callerName: callerName,
         unguardedCrossCalls: unguardedCrossCalls,
       );
@@ -6239,6 +6323,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: {...shadowed, param},
         memberDeclIdxs: memberDeclIdxs,
+        memberTypeParamCounts: memberTypeParamCounts,
+        memberValueParamCounts: memberValueParamCounts,
         callerName: callerName,
         unguardedCrossCalls: unguardedCrossCalls,
       );
@@ -6251,6 +6337,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        memberTypeParamCounts: memberTypeParamCounts,
+        memberValueParamCounts: memberValueParamCounts,
         callerName: callerName,
         unguardedCrossCalls: unguardedCrossCalls,
       );
@@ -6263,6 +6351,8 @@ void _walkForRecursion({
           subTerms: subTerms,
           shadowed: shadowed,
           memberDeclIdxs: memberDeclIdxs,
+          memberTypeParamCounts: memberTypeParamCounts,
+          memberValueParamCounts: memberValueParamCounts,
           callerName: callerName,
           unguardedCrossCalls: unguardedCrossCalls,
         );
@@ -6292,6 +6382,8 @@ void _walkForRecursion({
               subTerms: extendedSubTerms,
               shadowed: extendedShadow,
               memberDeclIdxs: memberDeclIdxs,
+              memberTypeParamCounts: memberTypeParamCounts,
+              memberValueParamCounts: memberValueParamCounts,
               callerName: callerName,
               unguardedCrossCalls: unguardedCrossCalls,
             );
@@ -6304,6 +6396,8 @@ void _walkForRecursion({
               subTerms: subTerms,
               shadowed: shadowed,
               memberDeclIdxs: memberDeclIdxs,
+              memberTypeParamCounts: memberTypeParamCounts,
+              memberValueParamCounts: memberValueParamCounts,
               callerName: callerName,
               unguardedCrossCalls: unguardedCrossCalls,
             );
@@ -6318,6 +6412,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        memberTypeParamCounts: memberTypeParamCounts,
+        memberValueParamCounts: memberValueParamCounts,
         callerName: callerName,
         unguardedCrossCalls: unguardedCrossCalls,
       );
@@ -6329,6 +6425,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        memberTypeParamCounts: memberTypeParamCounts,
+        memberValueParamCounts: memberValueParamCounts,
         callerName: callerName,
         unguardedCrossCalls: unguardedCrossCalls,
       );
@@ -6341,6 +6439,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        memberTypeParamCounts: memberTypeParamCounts,
+        memberValueParamCounts: memberValueParamCounts,
         callerName: callerName,
         unguardedCrossCalls: unguardedCrossCalls,
       );
@@ -6353,6 +6453,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        memberTypeParamCounts: memberTypeParamCounts,
+        memberValueParamCounts: memberValueParamCounts,
         callerName: callerName,
         unguardedCrossCalls: unguardedCrossCalls,
       );
@@ -6364,6 +6466,8 @@ void _walkForRecursion({
         subTerms: subTerms,
         shadowed: shadowed,
         memberDeclIdxs: memberDeclIdxs,
+        memberTypeParamCounts: memberTypeParamCounts,
+        memberValueParamCounts: memberValueParamCounts,
         callerName: callerName,
         unguardedCrossCalls: unguardedCrossCalls,
       );

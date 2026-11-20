@@ -62,27 +62,27 @@ impl Eqb[Nat] {
 
 /// Structural helper for the List instance.
 ///
-/// The element comparison is passed in, so the helper needs no class
-/// constraint and the instance supplies its own dictionary through the
-/// closure. The tail comparison recurses through this helper, which is
-/// what the structural-recursion check sees.
+/// The helper carries the class constraint, so `eqb` on the element type
+/// uses its dictionary. The tail call passes the explicit type argument;
+/// the structural check counts it before comparing the designated value
+/// position. The instance delegates to this function because a method body
+/// cannot resolve its own instance.
 const _listHelper = '''
-fun eqbList{A: Type}(cmp: (x: A) -> (y: A) -> Bool, xs: List A, ys: List A): Bool {struct xs} = match xs {
+fun eqbList[A: Eqb](xs: List A, ys: List A): Bool {struct xs} = match xs {
   case nil => match ys {
     case nil => true_
     case cons _ _ => false_
   }
   case cons h t => match ys {
     case nil => false_
-    case cons h2 t2 => andb (cmp h h2) (eqbList cmp t t2)
+    case cons h2 t2 => andb (eqb h h2) (eqbList A t t2)
   }
 }
 ''';
 
 const _listInstance = '''
 impl[A: Eqb] Eqb[List A] {
-  fun eqb(x: List A, y: List A): Bool =
-    eqbList ((x: A) => (y: A) => eqb x y) x y;
+  fun eqb(x: List A, y: List A): Bool = eqbList A x y;
 }
 ''';
 

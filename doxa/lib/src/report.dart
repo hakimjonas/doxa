@@ -346,7 +346,10 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
       sb.writeln(
         '  from a `match` on the designated argument are valid strict',
       );
-      sb.writeln('  sub-terms. This is the SPEC §8.6 soundness rule');
+      sb.writeln(
+        '  sub-terms. This is the structural-recursion rule '
+        '(SPEC, Structural recursion)',
+      );
       sb.writeln('  for CIC termination.');
     case DataSortNotASort(:final dataName, :final span):
       sb.writeln(

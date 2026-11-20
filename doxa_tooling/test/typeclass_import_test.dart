@@ -86,22 +86,21 @@ fun eqbNat(x: Nat, y: Nat): Bool = match x {
     case succ m => eqbNat n m
   }
 }
-fun eqbList{A: Type}(cmp: (x: A) -> (y: A) -> Bool, xs: List A, ys: List A): Bool {struct xs} = match xs {
+fun eqbList[A: Eqb](xs: List A, ys: List A): Bool {struct xs} = match xs {
   case nil => match ys {
     case nil => true_
     case cons _ _ => false_
   }
   case cons h t => match ys {
     case nil => false_
-    case cons h2 t2 => andb (cmp h h2) (eqbList cmp t t2)
+    case cons h2 t2 => andb (eqb h h2) (eqbList A t t2)
   }
 }
 impl Eqb[Nat] {
   fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
 }
 impl[A: Eqb] Eqb[List A] {
-  fun eqb(x: List A, y: List A): Bool =
-    eqbList ((x: A) => (y: A) => eqb x y) x y;
+  fun eqb(x: List A, y: List A): Bool = eqbList A x y;
 }
 ''');
     final mainFile = File('${directory.path}/main.doxa')..writeAsStringSync('''
