@@ -34,32 +34,52 @@ The command surface is in `doxa_tooling/lib/src/repl.dart` and is covered by `re
 
 ## Kernel soundness status
 
-The external audit (`docs/KERNEL_AUDIT_2026-09-22.md`) prioritized three surface soundness gaps. Quotient `mk`/`lift` and `typeclass`/`impl` are now rejected with `QuotientUnsupported` and `TypeclassUnsupported`; every `termination_by` is rejected with `TerminationByUnsupported`. The internal quotient and class registries remain, unreachable from the surface.
+The external audit (`docs/KERNEL_AUDIT_2026-09-22.md`) prioritized three
+surface soundness gaps. Quotient `mk`/`lift` and every `termination_by` remain
+gated with `QuotientUnsupported` and `TerminationByUnsupported`. Typeclasses
+were implemented after the audit (#14, #15, #19); the remaining limits are in
+Phase 29.5.
 
 Remaining audit items:
 
-- `Nat`/`Int` arithmetic semantics: division by zero, overflow, and remainder sign are not specified and tested.
-- General pattern unification and indexed recursors beyond the current first-order refinement.
-- The `TType(0)` sentinel used for mutual pre-bindings.
+- General pattern unification and indexed recursors beyond the current
+  first-order refinement.
+
+The arithmetic semantics are specified in `docs/arithmetic.md` and tested, and
+#7 replaced the `TType(0)` sentinel with an explicit unknown marker.
 
 ---
 
 ## Phase 28 — Tactic expansion
 
-| Task | Effort | Description |
-|------|--------|-------------|
-| `apply` with hole-filling | 1-2 sessions | Current `apply f` requires exact match of conclusion to goal. Expansion: if `f : A → B → C` and goal is `C`, create two fresh subgoal metas for `A` and `B`. Return `f ?a ?b` as partial proof term with `?a`, `?b` as new goals. The `MetaContext` already supports this pattern. |
-| `:search <pattern>` | 1 session | Search scope (bindings + dataDecls + imported modules) for lemmas whose conclusion type structurally contains `<pattern>`. Uses `:browse` infrastructure. |
-| `simp` tactic | 1 session | Normalize the goal via `nf`/`conv`. Reduces `plus zero n` to `n`, `refl`-applied terms, etc. Single-pass rewrite against a built-in set of simplification lemmas. |
+| Task | Effort | Status | Description |
+|------|--------|--------|-------------|
+| `apply` with hole-filling | 1-2 sessions | **Done** | `apply f` creates one goal per explicit argument, in argument order; implicit arguments are filled by conversion and do not become goals. |
+| `:search <pattern>` | 1 session | **Done** | Search scope (bindings + dataDecls + imported modules) for lemmas whose conclusion type structurally contains `<pattern>`. Uses `:browse` infrastructure. |
+| `simp` tactic | 1 session | **Done** | Normalises the goal and rewrites with equality hypotheses. Explicit lemmas only; no attributes; no rewriting under a goal-type lambda. |
 
 ---
 
 ## Phase 29 — Tactic automation
 
-| Task | Effort | Description |
-|------|--------|-------------|
-| `auto` tactic | 2-3 sessions | Depth-bounded search: try `refl`, `trivial`, then `apply` on every lemma in scope. Configurable depth limit and recursion guard. Returns solved proof term or failure. |
-| `omega`-style arithmetic | 2-3 sessions | Decision procedure for Presburger arithmetic on `Nat` and `Int`. Normalizes to canonical form, then syntactically compares. Closes goals like `plus_comm`, `plus_assoc` automatically. |
+| Task | Effort | Status | Description |
+|------|--------|--------|-------------|
+| `auto` tactic | 2-3 sessions | **Done** | Depth-bounded search: tries `refl`, `trivial`, then `apply` on lemmas in scope. Depth 0 to 20; default 5. |
+| `omega`-style arithmetic | 2-3 sessions | **Done** | Normalises both sides and tries the arithmetic lemmas in scope. Lemma matching, not a decision procedure. |
+
+---
+
+## Phase 29.5 — Typeclasses
+
+| Task | Status |
+|------|--------|
+| Declarations, instances, and instance search | **Done** |
+| Parameterised instances and recursive dictionary discharge | **Done** |
+| Multi-method classes | **Done** |
+| Superclasses | Open |
+| Local instances | Open |
+| Default method bodies | Open |
+| Multi-parameter classes | Open |
 
 ---
 
@@ -82,8 +102,24 @@ Remaining audit items:
 | 25.5 - Case study completion | 1 | 1 | Done |
 | 26 - Interactive REPL | 2 | 3 | Done |
 | 27 - Documentation | 1.5 | 4.5 | Done |
-| 28 - Tactic expansion | 4 | 8.5 | Planned |
-| 29 - Tactic automation | 5 | 13.5 | Planned |
-| 30 - Gamified book | 6+ | 20+ | Planned |
+| 28 - Tactic expansion | 4 | 8.5 | Done |
+| 29 - Tactic automation | 5 | 13.5 | Done |
+| 29.5 - Typeclasses | 3 | 16.5 | Done, with the open items above |
+| Documentation and doc-block gate | 1 | 17.5 | Done |
+| 30 - Gamified book | 6+ | 23.5+ | Planned |
 
-Phases 25.5 through 27 are complete. Doxa has interactive proof construction and the proof guide. Phases 28 and 29 close the quality-of-life gap with mature systems. Phase 30 is the public launch.
+Phases 25.5 through 29.5 are complete, as is the documentation and doc-block
+pass. Phase 30 is the public launch. The known gaps below remain.
+
+## Known gaps
+
+- The REPL `:type` and `:norm` commands elaborate in infer mode. An
+  application that omits implicit arguments does not elaborate there.
+- A module declares at most one product-form record; every product-form
+  declaration desugars to `mk`.
+- Constructor names share a global namespace, so records cannot each declare
+  `mk`.
+- Quotient construction and elimination (`mk`, `lift`) are rejected until the
+  kernel checks the lift compatibility proof.
+- `termination_by` is rejected; recursive functions use structural recursion
+  or `Acc.rec` with `nat_wf`.
