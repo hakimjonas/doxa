@@ -358,7 +358,7 @@ final class SPiKind extends SExprKind {
 /// * [cases]: the case arms in source order. Each is either an
 ///   [SMatchCase] (a ctor pattern with binders) or an [SWildcardCase].
 ///   Arms take no separator; `case` is its own terminator. See
-///   SYNTAX.md's note on why this diverges from `data` ctor lists (where
+///   SPEC.md's note on why this diverges from `data` ctor lists (where
 ///   `;` is grammatically required).
 final class SMatchKind extends SExprKind {
   /// The scrutinee.

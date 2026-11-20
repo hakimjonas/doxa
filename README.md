@@ -42,7 +42,6 @@ val zeroPlus: (n: Nat) -> Eq[Nat] (plus zero n) n =
 ## Documentation
 
 - [`SPEC.md`](SPEC.md) describes implemented checker behavior.
-- [`SYNTAX.md`](SYNTAX.md) lists the accepted surface forms.
 - [`docs/tutorial.md`](docs/tutorial.md) introduces the language through checked examples.
 - [`docs/proof-guide.md`](docs/proof-guide.md) describes the natural-number descent used by the `sqrt2` case study.
 - [`example/README.md`](example/README.md) describes the small checked example.
