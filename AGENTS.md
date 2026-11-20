@@ -73,6 +73,15 @@ tutorials, specs, or comments. No AI-language tells, no em dashes, no
 set-piece constructions. All claims must be precise and verifiable against
 the kernel's actual behaviour.
 
+### Documentation code blocks
+
+`doxa_tooling/test/doc_blocks_test.dart` checks every `doxa` fenced block in
+`SPEC.md` and `README.md` as a standalone program. A block that cannot stand
+alone (it uses metavariables, needs an expected type, or needs surrounding
+context) carries `<!-- doxa: fragment -->` on the line before its opening
+fence. Extend the test's file list when another document starts carrying
+checked examples.
+
 ## Dart conventions and pana score
 
 - `dart format --set-exit-if-changed` on every package and the root.
