@@ -4,8 +4,10 @@
 formatting Doxa files, an interactive REPL, and an LSP server. It depends on
 the `doxa` kernel package.
 
-Status: experimental, no release. The root [`README.md`](../README.md) records
-the release status and the publishing hold.
+Status: experimental; there is no current release. doxa 0.8.4 was published to
+pub.dev and retracted the same day, and doxa_tooling and doxa_stdlib have never
+been published. Publishing is on hold. The repository status is at
+https://github.com/hakimjonas/doxa#status.
 
 The package requires Dart 3.7 or later and is licensed under GPL-3.0-or-later.
 Repository documentation, examples, and editor integrations are available at
