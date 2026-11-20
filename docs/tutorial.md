@@ -780,17 +780,20 @@ fun andb(a: Bool, b: Bool): Bool = match a {
   case false_ => false_
 }
 
+fun eqbList{A: Type}(cmp: (x: A) -> (y: A) -> Bool, xs: List A, ys: List A): Bool {struct xs} = match xs {
+  case nil => match ys {
+    case nil => true_
+    case cons _ _ => false_
+  }
+  case cons h t => match ys {
+    case nil => false_
+    case cons h2 t2 => andb (cmp h h2) (eqbList cmp t t2)
+  }
+}
+
 impl[A: Eqb] Eqb[List A] {
-  fun eqb(x: List A, y: List A): Bool = match x {
-    case nil => match y {
-      case nil => true_
-      case cons _ _ => false_
-    }
-    case cons h t => match y {
-      case nil => false_
-      case cons h2 t2 => andb (eqb h h2) (eqb t t2)
-    }
-  };
+  fun eqb(x: List A, y: List A): Bool =
+    eqbList ((x: A) => (y: A) => eqb x y) x y;
 }
 
 val listSame : Bool = eqb (cons zero nil) (cons zero nil)
@@ -798,9 +801,12 @@ val listSame : Bool = eqb (cons zero nil) (cons zero nil)
 
 `impl[A: Eqb] Eqb[List A]` elaborates to a binding
 `(A: Type) -> (inst: Eqb A) -> Eqb (List A)` with explicit binders. The
-method body runs with `A` and `inst` in scope: `eqb h h2` on the element type
-resolves to `inst`, and `eqb t t2` on the tail resolves to the instance being
-defined.
+method body runs with `A` and `inst` in scope, so the closure
+`(x: A) => (y: A) => eqb x y` compares elements through `inst`.
+
+An instance method body does not see the instance being defined, so the
+recursive comparison is a top-level `fun`; the structural-recursion check
+applies to `eqbList`, which compares the tail through its own recursive call.
 
 Search for a goal `C T` takes the head of `T`, selects the instance
 registered at that head, and matches the arguments of `T` against the
