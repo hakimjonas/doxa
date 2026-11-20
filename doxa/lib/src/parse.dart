@@ -520,7 +520,7 @@ final Parser<ParseError, SMatchCaseArm> _caseArm = position<ParseError>()
 
 /// `match expr ('returning' expr)? '{' case* '}'`.
 ///
-/// Match arms take no separator (SYNTAX.md): `case` is reserved and
+/// Match arms take no separator (SPEC.md, Inductive types and matching): `case` is reserved and
 /// is its own terminator; `}` closes the block. See the
 /// `data` ctor list for the contrast, ctor signatures are type
 /// expressions that would otherwise run into each other, so `;` is
@@ -751,7 +751,8 @@ final Parser<ParseError, SExpr> _atom = defer(() => _atomImpl);
 ///
 /// Applied as a left-folded application: `List[A]` → `App(List, A)`,
 /// `Map[K, V]` → `App(App(Map, K), V)`. This is the surface form that
-/// visually marks type-parameter slots at use sites; see SYNTAX.md.
+/// visually marks type-parameter slots at use sites; see SPEC.md, Terms and
+/// sorts.
 final Parser<ParseError, List<SExpr>> _typeArgs = _sym(
   '[',
 ).skipThen(defer(() => _expr).sepBy1(_sym(','))).thenSkip(_sym(']'));

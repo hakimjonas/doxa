@@ -1,109 +1,61 @@
-# SPEC Coverage Audit — Phase 22 Step 1
+# SPEC coverage audit
 
-Every clause in `SPEC.md` is mapped to at least one test. The table below
-records the mapping. Where a clause has no direct test, the reason is noted.
+Every testable clause in `SPEC.md` is mapped to at least one test. The table
+below records the mapping by SPEC section. Where a clause has no direct test,
+the reason is noted in the gaps section.
 
 ## Coverage table
 
-| SPEC clause | Test file | Test name(s) | Covers? |
-|---|---|---|---|
-| §1.1 Proof checker for CIC with predicative cumulative universes + impredicative Prop | `check_test.dart`, `subtype_test.dart`, `prop_test.dart` | "Pi sort rules (CIC with Prop)", "Universe discipline", "Cumulativity at universes" | Yes |
-| §1.1 Bidirectional type inference/checking | `check_test.dart` | "check mode", "check TLam against VPi descends under the Pi" | Yes |
-| §1.1 Normalization by Evaluation with β, η, ι, δ equivalence | `eval_test.dart`, `conv_test.dart`, `match_reduction_audit_test.dart` | "β-equivalence", "η-equivalence", "Church-Nat arithmetic" | Yes |
-| §1.1 Stack safety, O(N) structural operations | `check_test.dart`, `eval_test.dart`, `subtype_test.dart` | "Stack safety of the checker", "stack safety" group, "Stack safety of subtype" | Yes |
-| §1.1 Inductive types with parameters, indices, strict positivity | `inductive_*.dart` (tooling), `positivity_test.dart` | "positivity violation" negative test, tooling inductive tests | Yes |
-| §1.1 Primitive pattern matching, coverage + exhaustiveness | `match_elab_test.dart`, `match_kernel_test.dart` | "non_exhaustive_match" negative test, match checker tests | Yes |
-| §1.1 Metavariables + pattern unification + implicit arguments | `meta_unify_test.dart` | "Pattern unification: flex-rigid", "flex-flex", "scope check" | Yes |
-| §1.1 Propositional equality as ordinary inductive, K-free | `auto_refl_mismatch.doxa`, `uip_not_statable.doxa` | negative tests verify Eq requirements | Yes |
-| §1.1 Standard library (Nat, Bool, List, Option, Vec, Eq) | `stdlib_test.dart` | stdlib type-checks via `stdlib_test.dart` | Yes |
-| §1.1 Error messages cite source locations with binder names | `report_test.dart` | "End-to-end: preserved names in diagnostics", "SPEC §6.2 tier 1" | Yes |
-| §1.1 Surface syntax in ML/Scala 3 family | `parse_test.dart` | "atoms", "application", "arrows and binders", "declarations" | Yes |
-| §1.1 Small, auditable kernel | `smoke_test.dart` | implicit via all existing tests | Yes |
-| §1.1 dart2wasm compilation | `wasm_entry_test.dart` | WASM entrypoint test | Yes |
-| §1.1a SProp sort | `sprop_test.dart` | "SProp parses and elaborates", "SProp conversion", "SProp data" | Yes |
-| §1.1a Records as kernel primitives with definitional η | `record_test.dart` | "Record η", "Projection from VConstr" | Yes |
-| §1.1a Modules and imports | `import_test.dart` | import tests | Yes |
-| §1.1a Tactics | `tactic_test.dart` | "tactic elaboration", "intro and exact prove" | Yes |
-| §1.1a Typeclass/instance search | `typeclass_test.dart` | parsing/AST plus surface rejection | No (surface rejected) |
-| §1.1a Quotient types | `quotient_test.dart`, `quotient_surface_test.dart` | `Quot(A, R)` formation; `mk`/`lift` rejected | Partial (surface rejected) |
-| §1.1a Well-founded recursion (`Acc`, `strong_ind`) | `wf_recursion_test.dart`, `recursor_dependent_pi_test.dart` | `Acc.rec` reduction and `strong_ind` computation | Yes |
-| §1.1a Written tutorial | `docs/tutorial.md` | 14 code blocks verified by automated extraction | Yes |
-| §1.1a Universe polymorphism | `eval_test.dart`, `conv_test.dart`, `subtype_test.dart` | "Type 3 converts with Type 3", "Level ADT", "_levelEq", "_levelGte", "Pi sort LMax" | Yes |
-| §1.3 No mutable state, effects, IO | — | design property, not testable | Design |
-| §1.3 No HoTT, Cubical, univalence | — | design property, not testable | Design |
-| §1.3 No full higher-order unification | `meta_unify_test.dart` | "non-distinct-var spine fails the pattern restriction" | Yes |
-| §1.3 No classical axioms in kernel | — | design property | Design |
-| §1.3 No extraction | — | design property | Design |
-| §2 Transparency (no implicit arguments beyond user-written) | `elab_test.dart` | "Expression elaboration: atoms" — name resolution is explicit | Yes |
-| §2 Small kernel | — | design constraint, measured by line count | Design |
-| §2 Honest errors | `report_test.dart` | All report tests, especially "TypeMismatch includes diff path" | Yes |
-| §2 Surface-aligned with ML family | `parse_test.dart` | All parse tests | Yes |
-| §3.1 Five core forms mapping | `term_test.dart` | Term ADT tests | Yes |
-| §3.1 `A -> B` sugar for non-dependent arrow | `parse_test.dart`, `elab_test.dart` | "non-dependent arrow A -> B", "A -> B (non-dep arrow...)" | Yes |
-| §3.2 Locally nameless variable representation | `elab_test.dart` | "Expression elaboration: binders produce de Bruijn" | Yes |
-| §3.2 Name hints for diagnostics, not semantics | `conv_test.dart`, `elab_test.dart` | "Lambda domain annotations are NOT compared", "Name hints" group | Yes |
-| §3.2 `open`/`close` operations | `term_test.dart` | term_test.dart covers open/close | Yes |
-| §3.3 Typing rules (Ax_n, Var, Pi, Lam, App, Conv) | `check_test.dart` | "infer: basic terms", "infer: Pi", "infer: App", "infer: Lam" | Yes |
-| §3.3 `≡` is definitional equality, strict on universe levels | `conv_test.dart`, `subtype_test.dart` | "Universe equality (strict)", "Equality vs subtype" | Yes |
-| §3.3 Cumulative subtyping `Type n ≤ Type (n+1)` | `subtype_test.dart` | "Cumulativity at universes", "Pi subtype variance" | Yes |
-| §3.4 Bidirectional algorithm: check/infer | `check_test.dart` | "check mode", "infer: basic terms" | Yes |
-| §3.4 Lambdas without annotation cannot be inferred | `check_test.dart` | implicit via "infer: Lam (Pi synthesis)" | Yes |
-| §4.1 Value ADT (VType, VPi, VLam, VNeutral) | `eval_test.dart` | "eval: basic terms" | Yes |
-| §4.1 Closure/Env representation | `eval_test.dart` | "Env.lookup" | Yes |
-| §4.1 Name hints on VLam/VPi | `elab_test.dart` | "Name hints" group, "names survive the full parse → elab → eval → quote round trip" | Yes |
-| §4.1 Persistent cons-list Env | `eval_test.dart` | "extension does not mutate the tail" | Yes |
-| §4.2 `eval`, `apply`, `quote` | `eval_test.dart` | "eval: basic terms", "eval: β-reduction", "quote" | Yes |
-| §4.2 de Bruijn levels for quoting | `eval_test.dart` | "quoting a 10,000-deep nested VLam structure is stack-safe" | Yes |
-| §4.3 Conversion: α, β, η, strict on universes | `conv_test.dart` | "α-equivalence", "β-equivalence", "η-equivalence", "Universe equality" | Yes |
-| §4.3 Lambda domain annotations NOT compared | `conv_test.dart` | "Lambda domain annotations are NOT compared" | Yes |
-| §4.3 Name hints not compared in conv | `conv_test.dart` | implicit via "differently-annotated identity functions are equivalent" | Yes |
-| §4.4 NbE rationale (no substitution, short-lived closures) | — | design rationale | Design |
-| §4.5 Defunctionalized interpreter, stack safety | `eval_test.dart`, `check_test.dart` | "stack safety" groups in both files | Yes |
-| §4.5 Linear-time invariant, O(N) structural ops | `check_test.dart` | "Stack safety of the checker" group with performance bounds | Yes |
-| §5.1 Grammar (BNF) | `parse_test.dart` | All parse tests | Yes |
-| §5.1 Type-level application `[args]` | `parse_test.dart` | "fun with type params" | Yes |
-| §5.1 Nestable block comments | `parse_test.dart` | "nested block comment" | Yes |
-| §5.2 Surface-to-kernel mapping | `elab_test.dart` | "fun desugaring", "Application desugaring" | Yes |
-| §5.2 `fun` is sugar for `val` with lambda + Pi | `elab_test.dart` | "fun desugaring" | Yes |
-| §5.3 Church-encoded examples | `check_test.dart`, `eval_test.dart` | "Church-Nat type check", "Church-Nat arithmetic" | Yes |
-| §5.4 Everyday Language documentation | — | documentation only, not testable | Docs |
-| §6.1 Error kinds (Parse, Elab, Check) | `report_test.dart` | "Check error reports", "Elab error reports", "Parse error reports" | Yes |
-| §6.2 Example output format | `report_test.dart` | "TypeMismatch format", "TypeMismatch includes diff path" | Yes |
-| §6.3 Conversion path via diff function | `report_test.dart` | "Diff walker" group, "Diff walker: binder names" | Yes |
-| §7.2 dart2wasm deployment target | `wasm_entry_test.dart` | WASM entrypoint test | Yes |
-| §8.2 CIC with Prop, impredicative | `prop_test.dart` | "Pi sort rules (CIC with Prop)", "Prop : Type 1" | Yes |
-| §8.2 Definitional proof irrelevance of Prop | `conv_test.dart` | "Prop definitional proof irrelevance" group | Yes |
-| §8.2 Prop-elimination restriction | `prop_elim_into_type.doxa`, `prop_elim_informative_arg.doxa` | negative tests | Yes |
-| §8.2 Singleton-elimination exception | `conv_test.dart` | implicit via Eq.rec working on Prop | Yes |
-| §8.2 No propositional extensionality in kernel | — | design property | Design |
-| §8.3 Cumulativity `Type n ≤ Type (n+1)` | `subtype_test.dart` | "Cumulativity at universes" | Yes |
-| §8.3 Pi variance (codomain covariant, domain contravariant) | `subtype_test.dart` | "Pi subtype variance" | Yes |
-| §8.3 Definitional equality stays strict (`n = m`) | `subtype_test.dart`, `conv_test.dart` | "Equality vs subtype", "Universe equality (strict)" | Yes |
-| §8.4 Inductive types (data, parameters, indices) | `inductive_parse_test.dart`, `inductive_elab_test.dart`, `inductive_kernel_test.dart` | tooling inductive tests | Yes |
-| §8.4 Positivity check | `positivity_test.dart`, `positivity_violation.doxa` | "positivity violation" in both | Yes |
-| §8.4 Kernel term variants (TData, TConstr, TMatch) | `eval.dart` (implicit via all match/inductive tests) | all match + inductive suite | Yes |
-| §8.4 Known limitations (header independence, mutual-recursor) | — | documented limitation | Known gap |
-| §8.5 Pattern matching (match primitive) | `match_elab_test.dart`, `match_kernel_test.dart`, `match_reduction_audit_test.dart` | match tests | Yes |
-| §8.5 Coverage (every ctor handled) | `non_exhaustive_match.doxa`, `match_step5_unreachability_test.dart` | negative test + unreachability tests | Yes |
-| §8.5 Dependent motive (index refinement) | `vmatch_roundtrip_test.dart`, `match_reduction_audit_test.dart` | VMatch roundtrip + reduction tests | Yes |
-| §8.5 Non-indexed dependent motive not yet inferred | — | documented limitation in SPEC | Known gap |
-| Structural recursion | `structural_recursion_walker_test.dart`, `non_structural_recursion.doxa`, `mutual_no_decrease.doxa`, `mutual_decreasing_cycle.doxa` | walker tests + positive/negative tests | Yes |
-| Structural recursion (`termination_by`) | `wf_recursion_test.dart` | rejection tests; no checked measure | No (surface rejected) |
-| §8.7 Let-bindings (block expression) | `let_test.dart` | "Block parsing", "Block elaboration", "Block evaluation" | Yes |
-| §8.7 Mutual recursion (fun ... and ...) | `mutual_test.dart`, `mutual_data_test.dart` | "mutual fun", "mutual data" tests | Yes |
-| §8.8 Implicit arguments `{A: Type}` | `elab_test.dart` (implicit param parsing) | implicit argument tests | Yes |
-| §8.8 Pattern unification only | `meta_unify_test.dart` | "Pattern unification" groups | Yes |
-| §8.8 Meta-variables as first-class kernel concept | `meta_test.dart` | meta tests | Yes |
-| §8.9 `Eq` as ordinary indexed inductive | `eq.doxa` stdlib file, implicit via all Eq tests | stdlib type-checks | Yes |
-| §8.9 Auto-`refl` synthesis | `auto_refl_mismatch.doxa` | negative test, plus implicit via proofs.doxa | Yes |
-| §8.9 Intensional, K-free, not HoTT | `uip_not_statable.doxa` | negative test verifies UIP is not statable | Yes |
-| §8.9 Eq at Prop sort → proof irrelevance of equality | `conv_test.dart` | "Prop definitional proof irrelevance" | Yes |
-| §8.9 Eq.rec and J rule | `eq.doxa` stdlib — subst, sym, trans, cong derived | stdlib type-checks | Yes |
-| §8.10 Standard library | `stdlib_test.dart` | stdlib verifier | Yes |
-| §8.10 Canonical proofs listed | `proofs.doxa` | type-checks via stdlib test | Yes |
-| §8.11 Diagnostics for elaboration features | negative programs 1-19 | each error kind has a negative test program | Yes |
-| §8.12 Permanent non-goals | — | design property | Design |
-| §8.13 Documentation (runable intro) | `example/proofs.doxa` | example exists | Yes |
+| SPEC section | Clause | Test file | Test name(s) | Covers? |
+|---|---|---|---|---|
+| Pipeline | `doxa check` loads the prelude, resolves imports, parses, elaborates, and checks | `doxa_tooling/test/programs_test.dart` | "Positive programs (must type-check)", "Negative programs (must fail with matching diagnostic)" | Yes |
+| Pipeline | The prelude declares `Eq` and `Acc` | `doxa_tooling/test/prelude_sync_test.dart` | "embedded prelude matches doxa_stdlib/lib/stdlib/prelude.doxa" | Yes |
+| Pipeline | Relative, selective, and aliased imports | `doxa_tooling/test/import_test.dart` | "import \"stdlib/nat.doxa\" makes Nat, plus, etc. available", "import paths resolve relative to importing file", "transitive import works (list imports nat which imports bool)" | Yes |
+| Pipeline | `package:` imports resolve through the nearest package configuration and never fall back | `doxa_tooling/test/package_import_test.dart` | "checkSource resolves the library through the configuration", "reports a missing configuration instead of falling back" | Yes |
+| Pipeline | A missing, undeclared, or malformed package specifier is an error | `doxa_tooling/test/package_import_test.dart` | "names a package missing from the configuration", "reports a malformed package specifier" | Yes |
+| Pipeline | Dotted names are accepted where a name is expected | `doxa/test/dotted_name_test.dart` | "Nat.rec parses as SDotKind", "Nat.rec elaborates to TTop referring to the Nat.rec binding" | Yes |
+| Terms and sorts | One expression grammar; de Bruijn locals and named top-level references | `doxa/test/elab_test.dart` | "(x: Type) => x elaborates to TLam(Type 0, TBound(0))", "fun id[A: Type](x: A): A = x" | Yes |
+| Terms and sorts | Inference and checking modes; an unannotated lambda needs an expected Pi type | `doxa/test/check_test.dart` | "check mode", "infer: Lam (Pi synthesis)" | Yes |
+| Terms and sorts | Evaluation, quotation, and conversion; transparent definitions unfold | `doxa/test/eval_test.dart`, `doxa/test/conv_test.dart` | "eval: β-reduction", "β-equivalence", "η-equivalence" | Yes |
+| Terms and sorts | An opaque declaration stays opaque to conversion | `doxa/test/opaque_test.dart` | "opaque x does NOT unfold when compared to its body", "opaque fun applied stays stuck as NApp(NTop(...), ...)" | Yes |
+| Terms and sorts | Comments nest; identifiers and dotted names have the stated lexical form | `doxa/test/parse_test.dart` | "identifier", "nested block comment" | Yes |
+| Terms and sorts | Application associates left; brackets are a postfix form | `doxa/test/parse_test.dart`, `doxa_tooling/test/inductive_parse_test.dart` | "f x y is left-associative: ((f x) y)", "Vec[A] n: bracket app then juxtaposed value arg" | Yes |
+| Terms and sorts | Lambda and Pi forms, implicit binders, right association | `doxa/test/parse_test.dart` | "non-dependent arrow A -> B", "right-associative: A -> B -> C", "dependent Pi (A: Type) -> A", "lambda (x: Type) => x", "unannotated lambda (x) => x" | Yes |
+| Terms and sorts | `Type` accepts a level; `Prop` and `SProp` do not | `doxa/test/parse_test.dart`, `doxa/test/prop_test.dart`, `doxa/test/sprop_test.dart` | "Type 3", "Prop is reserved", "SProp is reserved" | Yes |
+| Terms and sorts | `Prop` is impredicative | `doxa/test/prop_test.dart` | "(A: Prop) -> A  is in Prop (impredicative)" | Yes |
+| Terms and sorts | Universes are cumulative and Pi types vary by position | `doxa/test/subtype_test.dart` | "Type 0 checks against Type 1 (upward)", "covariant codomain: lambda into Type 0 fits codomain Type 2", "contravariant domain: got accepts broader, expected narrower, OK" | Yes |
+| Terms and sorts | Cumulativity does not cross sorts; conversion stays strict on levels | `doxa/test/subtype_test.dart`, `doxa/test/conv_test.dart` | "Prop does NOT check against Type 0", "Type 0 does NOT check against Prop", "Type 0 does NOT convert with Type 1" | Yes |
+| Terms and sorts | SProp field restriction; Prop-elimination restriction | `doxa/test/sprop_test.dart`, `prop_elim_into_type.doxa`, `prop_elim_informative_arg.doxa` | "SProp data declarations", "SProp data field restrictions"; negative programs | Yes |
+| Declarations | Top-level declaration kinds; the theorem marker may be `:=` or `=` | `doxa/test/parse_test.dart`, `doxa/test/tactic_test.dart` | "val x = y", "type alias", "theorem with = works (no :=)", "theorem with := works" | Yes |
+| Declarations | `val`, `opaque val`, `type`, and `theorem` forms | `doxa/test/elab_test.dart`, `doxa/test/opaque_test.dart` | "val x: Type 1 = Type produces a TopBinding", "val without type annotation infers Type", "opaque x conv x is ConvOk (name identity)" | Yes |
+| Declarations | The thirteen `by` steps | `doxa/test/tactic_test.dart`, `doxa/test/simp_test.dart`, `doxa/test/revert_test.dart`, `doxa/test/tactic_surface_test.dart` | "intro and exact prove (A: Type) -> A -> A", "closes a definitional equality by normalisation and refl", "id_revert round-trips through the tactic and checks", "walks both arms of Nat", "leaves one reachable goal per argument", "closes a goal from a hypothesis", "closes with plus_zero in scope" | Yes |
+| Declarations | Semicolons sequence steps; `|` separates alternatives | `doxa/test/tactic_test.dart` | "by { intro x; exact x } parses", "by { refl | trivial } parses (alternatives)" | Yes |
+| Declarations | Explicit and implicit parameter groups; `&`-separated constraints | `doxa/test/parse_test.dart`, `doxa/test/typeclass_elab_test.dart` | "fun mixing explicit and implicit type params", "a constrained parameter resolves for Nat and Bool" | Yes |
+| Declarations | `{struct name}` and `termination_by` annotations | `doxa_tooling/test/structural_recursion_walker_test.dart`, `doxa_tooling/test/wf_recursion_test.dart` | "{struct} on a later param is accepted", "termination_by on simple fun is rejected" | Yes |
+| Declarations | Mutual `fun` and mutual `data` blocks | `doxa_tooling/test/mutual_test.dart`, `doxa_tooling/test/mutual_data_test.dart` | "fun + and parses to SFunBlockKind", "two data decls chained with `and data` parse as SDataBlockKind", "Even/Odd: both DataDecls registered with cross-references" | Yes |
+| Declarations — Structural recursion | The designated argument and the strict sub-term rule | `doxa_tooling/test/structural_recursion_walker_test.dart`, `non_structural_recursion.doxa`, `mutual_no_decrease.doxa` | "plus on Nat: recursion on designated first arg", "self-call with the designated arg itself fails" | Yes |
+| Declarations — Structural recursion | Explicit type arguments offset the designated value position | `doxa_tooling/test/structural_recursion_walker_test.dart`, `doxa/test/elab_test.dart` | "the designated position is offset by the type argument", "lenExplicit A t is accepted, checked, and reduces", "implicit type parameters do not shift the value position" | Yes |
+| Declarations — Structural recursion | An unapplied recursive reference is rejected | `doxa_tooling/test/structural_recursion_walker_test.dart` | "unapplied reference (passing function as value) rejected" | Yes |
+| Inductive types and matching | `data` signatures give indices then the target sort; constructor separators | `doxa_tooling/test/inductive_parse_test.dart` | "data Nat with zero and succ", "trailing semicolon after last ctor is accepted", "data Vec[A: Type] : Nat -> Type" | Yes |
+| Inductive types and matching | Constructor result shapes and positivity | `doxa_tooling/test/positivity_test.dart`, `positivity_violation.doxa` | "Nat", "Vec[A] : Nat -> Type", "the canonical Bad: (Bad -> Bad) -> Bad", negative program | Yes |
+| Inductive types and matching | Product-form declarations desugar to one `mk` constructor; projection is dotted | `doxa/test/record_test.dart` | "TProj projects \"fst\" from VConstr(Pair, mk)", "Record η" group | Yes |
+| Inductive types and matching | Match arms, constructor binders, wildcard, and `returning` | `doxa_tooling/test/match_parse_test.dart` | "two arms: no separator between them", "ctor with multiple binders", "explicit motive attaches" | Yes |
+| Inductive types and matching | Duplicate arms and coverage | `non_exhaustive_match.doxa`, `doxa_tooling/test/match_step5_unreachability_test.dart` | "Vec[A] n: must cover both vnil and vcons", "duplicate_case.doxa" negative program | Yes |
+| Inductive types and matching | Indexed-family motive and reachability checks | `doxa/test/indexed_induction_test.dart`, `doxa_tooling/test/vmatch_roundtrip_test.dart` | "a Vec induction uses the refined length index and the IH", "a wrong compound-index arm still fails" | Yes |
+| Local bindings and quotients | Block bindings, `val rec`, optional local types, parenthesized argument position | `doxa/test/let_test.dart` | "block with one annotated binding parses to SLetKind", "elab infers an unannotated binding from the bound expr", "block checked against expected type (success)" | Yes |
+| Local bindings and quotients | Quotient formation and elimination forms | `doxa/test/quotient_test.dart`, `doxa_tooling/test/quotient_surface_test.dart` | "basic formation - Quot typechecks", "lift ι-reduction via eval of TQuotLift", "Quot(A, R) still forms a type" | Yes |
+| Typeclasses | A class elaborates to a dictionary and a projection | `doxa/test/typeclass_elab_test.dart` | "elaborates to a dictionary type and a projection" | Yes |
+| Typeclasses | An `impl` registers a dictionary and a call reduces through it | `doxa/test/typeclass_elab_test.dart`, `doxa_tooling/test/typeclass_surface_test.dart` | "impl registers an instance and a call reduces through it", "impl declaration is accepted for a declared class" | Yes |
+| Typeclasses | Constrained explicit parameters place the dictionary after value parameters | `doxa/test/typeclass_elab_test.dart` | "a constrained parameter resolves for Nat and Bool" | Yes |
+| Typeclasses | A call supplies the type argument explicitly; the dictionary is searched | `doxa/test/typeclass_elab_test.dart` | "a missing explicit type argument fails at the first value" | Yes |
+| Typeclasses | Depth-bounded search and nested-constraint discharge | `doxa/test/parameterised_instance_test.dart` | "a missing element instance names the inner class and type", "a chain deeper than the bound reports the depth diagnostic" | Yes |
+| Typeclasses | Parameterised instances with explicit type arguments | `doxa/test/parameterised_instance_test.dart`, `doxa_tooling/test/package_import_test.dart` | "a List instance is a binding with explicit parameters and reduces at List Nat", "the Eqb domain package re-exports the class and its instances" | Yes |
+| Typeclasses | Instance-target validation rejects unsupported shapes | `doxa/test/parameterised_instance_test.dart` | "invalid target shapes are rejected with their reasons" | Yes |
+| Typeclasses | Overlapping instances are rejected | `doxa/test/parameterised_instance_test.dart`, `doxa/test/typeclass_elab_test.dart` | "a second List instance is rejected as overlapping", "a second instance for the same class and head is rejected" | Yes |
+| Typeclasses | Instance bodies do not see the instance being defined | `doxa/test/parameterised_instance_test.dart` | "a bare instance body cannot resolve its own instance", "a parameterised instance body cannot resolve its own instance" | Yes |
+| Typeclasses | Method names share the global namespace | `doxa/test/typeclass_elab_test.dart` | "two classes cannot share a method name" | Yes |
+| Typeclasses | Unsupported class forms report their named diagnostics | `doxa/test/typeclass_elab_test.dart`, `doxa_tooling/test/typeclass_surface_test.dart` | "superclasses are rejected with the class and parent names", "a partial instance is rejected naming the missing method", "an unknown method is rejected", "an unknown class is rejected" | Yes |
+| Documentation blocks | Every unmarked `doxa` block in `SPEC.md` and `README.md` is a checked program | `doxa_tooling/test/doc_blocks_test.dart` | "doxa blocks in the normative documents check" | Yes |
 
 ## Metatheoretic claims
 
@@ -117,10 +69,25 @@ records the mapping. Where a clause has no direct test, the reason is noted.
 
 ## Gaps
 
-The following SPEC clauses describe known limitations that do not block release:
+The following limitations are implemented behavior that the SPEC records
+without a direct test. None prevents the test suite from passing.
 
-1. **§8.4 Known limitation: Mutual-data header independence** — Documented gap; cross-sibling references in headers fail with `UnresolvedName`.
-2. **§8.4 Known limitation: Cross-recursor ι-reductions** — Documented gap; `mutual fun` + `match` subsumes the use case.
-3. **§8.5 Non-indexed dependent-motive inference** — Not yet inferred by match; users write `T.ind`/`T.rec` as a complete alternative. Documented as planned ergonomic extension.
-   
-No implementation gap blocks release; every gap is documented in SPEC as a known limitation, and the documented alternative (eliminators) is functional.
+1. **Inductive types and matching — mutual-data header independence** — a
+   data declaration's header cannot refer to a sibling member of the same
+   mutual block; such a reference fails with `UnresolvedName`.
+2. **Inductive types and matching — cross-recursor ι-reductions** — a mutual
+   `data` block produces one recursor per member; a call from one member's
+   recursor to a sibling's is not wired as an ι-reduction. A `mutual fun`
+   block with `match` covers the same use case.
+3. **Inductive types and matching — non-indexed dependent-motive inference** —
+   `match` infers the motive for indexed arms. For a non-indexed dependent
+   motive, users write `T.ind` or `T.rec`.
+4. **Inductive types and matching — multi-field projection** — `_fieldType`
+   (`doxa/lib/src/elab.dart`) builds its environment past the parameter list
+   for any field after the first, and the dotted-name path falls through to a
+   namespace lookup. `p.x` projects; `p.y` reports `no binding for "p.<field>"`.
+   This is the same `_fieldType` path that limits a typeclass to one method.
+5. **Typeclasses — multi-method classes** — a class with more than one method
+   is not usable, because the second method's projection hits the multi-field
+   projection gap in Inductive types and matching (`no binding for
+   "inst.<method>"`).

@@ -1,8 +1,8 @@
 # Doxa implementation specification
 
 This document describes behavior implemented by the current Doxa parser,
-elaborator, checker, evaluator, and command-line tool. `SYNTAX.md` is the
-surface-syntax reference.
+elaborator, checker, evaluator, and command-line tool. It is the normative
+description of the surface syntax and the implemented typing rules.
 
 ## Pipeline
 
@@ -20,6 +20,7 @@ undeclared package, or a malformed specifier is a resolution error; the
 resolver never falls back to a relative path. The parser accepts an
 unqualified import, a selective import, an alias, or both:
 
+<!-- doxa: fragment -->
 ```doxa
 import "nat.doxa"
 import "package:doxa_stdlib/stdlib/nat.doxa"
@@ -27,12 +28,17 @@ import "nat.doxa" { Nat, zero } as N
 ```
 
 This is a syntax fragment, not a standalone program, because the referenced
-file must exist. Dotted names such as `Nat.ind` and `N.zero` are accepted where
-a name is expected.
+file must exist.
 
 ## Terms and sorts
 
 Doxa uses one expression grammar for terms and types. The implementation uses de Bruijn indices for local binders and named references for top-level definitions. Elaboration resolves source names before type checking.
+
+Newlines are whitespace. Line comments start with `//`; block comments use `/*` and `*/` and may nest. Identifiers start with a letter or `_`, then contain letters, digits, or `_`. A dotted name appends one or more `.name` suffixes to an identifier expression; `Nat.ind` and `N.zero` are accepted where a name is expected.
+
+Application is juxtaposition and associates to the left: `f x y` parses as `(f x) y`. Brackets are a postfix form on an identifier and contain one or more comma-separated expressions; `List[A]` applies `List` to `A`, and a term after a bracket form is ordinary application, so `Vec[A] n` applies the result to `n`.
+
+Lambdas use `(x: A) => body` or `{x: A} => body`, and curly binders are implicit. The unannotated `(x) => body` requires an expected Pi type. Pi types use `(x: A) -> B`, `{x: A} -> B`, or `A -> B`; `A -> B -> C` associates to the right, and the non-dependent arrow has an unnamed explicit binder.
 
 The checker has inference and checking modes. An unannotated lambda requires
 an expected function type. Evaluation produces values; quotation reifies values
@@ -43,7 +49,9 @@ unfold during conversion. An opaque declaration remains opaque to conversion:
 opaque fun id[A: Type](x: A): A = x
 ```
 
-`Type`, `Prop`, and `SProp` are sorts. `Type` accepts an optional decimal universe level, such as `Type 0`. That decimal token is a universe level, not a general term literal. `Prop` and `SProp` do not take a level argument.
+`Type`, `Prop`, and `SProp` are sorts. `Type` accepts an optional decimal universe level, such as `Type 0`. That decimal token is a universe level, not a general term literal. `Prop` and `SProp` do not take a level argument. `Prop` is impredicative: a dependent function type whose codomain is in `Prop` is itself in `Prop`.
+
+Universe levels are cumulative during checking: `Type n` checks against `Type m` when `n <= m`. Pi types are covariant in the codomain and contravariant in the domain. Definitional equality remains strict on levels, and cumulativity does not cross sorts: `Prop` does not check against `Type 0`, and `Type 0` does not check against `Prop`.
 
 `SProp` has dedicated parser, term, value, and checking support. The elaborator
 requires fields of an SProp-sorted inductive to be SProp-sorted. It also checks
@@ -56,6 +64,19 @@ Top-level declarations include `val`, `type`, `fun`, `data`, `theorem`,
 `typeclass`, `impl`, and `import`. `theorem name : T := proof` elaborates as a
 typed value declaration. The theorem marker may also be `=`.
 
+<!-- doxa: fragment -->
+```doxa
+val x: T = expr
+val x = expr
+opaque val x: T = expr
+type Name = T
+theorem name: T := proof
+theorem name: T = proof
+```
+
+A type alias, value declaration, and theorem are top-level declarations. The
+type on a non-recursive `val` may be omitted, and `opaque` also precedes `fun`.
+
 ```doxa
 theorem identity : (A: Type) -> (x: A) -> Eq A x x := by {
   intro A; intro x; refl
@@ -64,7 +85,8 @@ theorem identity : (A: Type) -> (x: A) -> Eq A x x := by {
 
 The tactic steps implemented by `by` blocks are `intro`, `exact`, `apply`,
 `refl`, `rewrite`, `induction`, `cases`, `revert`, `trivial`, `simp`,
-`auto`, `omega`, and `constructor`. `revert x` moves a local binder back
+`auto`, `omega`, and `constructor`. A block is written `by { step; ... }`, and
+`intro` takes an optional binder name. `revert x` moves a local binder back
 into the goal. `simp` normalises the goal by evaluation and rewrites it with
 the equality hypotheses in context; an optional bracketed list adds
 equalities, as in `simp [plus_zero, plus_succ]`. `cases x` destructs a
@@ -76,15 +98,22 @@ depth. `omega` normalises both sides of an equality and tries the arithmetic
 lemmas in scope; it is not a decision procedure. Semicolons sequence steps;
 `|` separates alternatives.
 
-Function declarations accept explicit type parameters in `[...]`, implicit type parameters in `{...}`, and value parameters in `(...)`. At a call site, elaboration inserts metavariables for omitted implicit arguments.
+Function declarations accept explicit type parameters in `[...]`, implicit type parameters in `{...}`, and value parameters in `(...)`. An explicit group may state `&`-separated constraints. Value parameters are comma-separated and have type annotations. At a call site, elaboration inserts metavariables for omitted implicit arguments.
 
 ```doxa
-fun id{A: Type}(x: A): A = x
+fun id[A: Type](x: A): A = x
+fun idImplicit{A: Type}(x: A): A = x
 ```
 
-The parser also accepts `{struct name}` and `termination_by (name, ...)` after a function's result type. These are declaration fragments because `T`, `U`, `V`, and `body` require definitions:
+The parser also accepts mixed and implicit-first groups, `{struct name}`, and
+`termination_by (name, ...)` after a function's result type. These are
+declaration fragments because `T`, `U`, `V`, and `body` require definitions:
 
+<!-- doxa: fragment -->
 ```doxa
+fun f[A]{B: Type}(x: A): B = body
+fun f[A: Eqb](x: A): A = body
+opaque fun f(x: T): U = body
 fun f(x: T): U {struct x} = body
 fun f(x: T, y: U): V termination_by (x, y) = body
 ```
@@ -120,6 +149,11 @@ of unfolding.
 data Nat: Type {
   zero: Nat | succ: Nat -> Nat;
 }
+
+data Vec[A: Type]: Nat -> Type {
+  vnil: Vec[A] zero |
+  vcons: (n: Nat) -> A -> Vec[A] n -> Vec[A] (succ n);
+}
 ```
 
 The elaborator checks constructor result shapes and positivity. It records data
@@ -135,9 +169,11 @@ data Point[A: Type]: Type {
 }
 ```
 
-Projection uses dotted syntax such as `p.x`. There is no `record` keyword.
+Construct values with the qualified constructor name, as in `Point.mk x y`. The unqualified `mk` is reserved for quotient construction and is rejected for a product-form declaration.
 
-`match` examines an inductive value. A constructor arm introduces one binder per constructor argument. `case _ => body` is a wildcard arm. Arms do not need a separator, and `returning` supplies an optional motive.
+Projection uses dotted syntax such as `p.x`. Only the first field of a product-form declaration projects in this version; a later field reports an unresolved name such as `no binding for "p.y"`. Multi-field projection is a known gap, and it is why classes are limited to one method. There is no `record` keyword.
+
+`match` examines an inductive value. A constructor arm introduces one binder per constructor argument; a constructor pattern is a constructor name followed by zero or more binders. `case _ => body` is a wildcard arm. Arms do not need a separator, and `returning` supplies an optional motive.
 
 ```doxa
 data Nat: Type { zero: Nat; succ: Nat -> Nat; }
@@ -154,16 +190,17 @@ additional motive and reachability checks for indexed-family matches.
 ## Local bindings and quotients
 
 A block expression has zero or more local `val` bindings, each followed by
-`;`, and a final result expression. A local binding can use `val rec`.
+`;`, and a final result expression. A local binding can use `val rec`. The type
+on a non-recursive local `val` may be omitted. A block used as an application
+argument must be parenthesized, as in `f ({ val x = y; x })`.
 
 ```doxa
-{ val x: Type 1 = Type; x }
+val block: Type 2 = { val x: Type 1 = Type; x }
 ```
-
-This is an expression fragment; the checked form appears in `SYNTAX.md` with a surrounding value declaration and expected type.
 
 Quotient expressions have these surface forms:
 
+<!-- doxa: fragment -->
 ```doxa
 Quot(A, R)
 mk value
@@ -177,11 +214,13 @@ quotient terms, and the checker verifies their formation and elimination rules.
 
 ## Typeclasses
 
-A `typeclass` declaration produces a dictionary type and one projection per
-method. The dictionary type is an ordinary inductive with a single
-constructor and one field per method.
+A `typeclass` declaration produces a dictionary type and one projection for
+its method. The dictionary type is an ordinary inductive with a single
+constructor and one field for the method.
 
 ```doxa
+import "package:doxa_stdlib/stdlib/bool.doxa"
+
 typeclass Eqb[A: Type] {
   fun eqb(x: A, y: A): Bool;
 }
@@ -190,6 +229,8 @@ typeclass Eqb[A: Type] {
 elaborates to
 
 ```doxa
+import "package:doxa_stdlib/stdlib/bool.doxa"
+
 data Eqb[A: Type] : Type {
   mk_Eqb: (eqb: (x: A) -> (y: A) -> Bool) -> Eqb A;
 }
@@ -204,13 +245,15 @@ dictionary field to the explicit arguments.
 An `impl` supplies the dictionary value for one type and registers it in the
 class's instance table.
 
+<!-- doxa: fragment -->
 ```doxa
 impl Eqb[Nat] {
   fun eqb(x: Nat, y: Nat): Bool = ...;
 }
 ```
 
-`Nat` requires a declaration, so this is a fragment.
+The body elides the comparison, and `Nat` and `Bool` require declarations, so
+this is a fragment.
 
 A constrained type parameter keeps the icity of its group. Constraints are
 accepted on explicit `[...]` parameters; the parser does not accept them in
@@ -218,6 +261,8 @@ accepted on explicit `[...]` parameters; the parser does not accept them in
 explicit value parameters, so the class parameter is solved from them first.
 
 ```doxa
+import "package:doxa_stdlib/stdlib/eqb.doxa"
+
 fun same[A: Eqb](x: A, y: A): Bool = eqb x y
 ```
 
@@ -241,11 +286,14 @@ reference, using the same group syntax as `fun`. A parameter group is
 required when the target applies a type constructor to the instance's
 parameters.
 
+<!-- doxa: fragment -->
 ```doxa
-impl[A: Eqb] Eqb[List A] {
+impl [A: Eqb] Eqb[List A] {
   fun eqb(x: List A, y: List A): Bool = ...;
 }
 ```
+
+The body and `List` are elided, so this is a fragment.
 
 The target after the class name is either a bare type constructor or a
 concrete head applied to distinct parameters from the group. A bare variable
@@ -278,6 +326,18 @@ bodies, or classes with more than one parameter. A superclass is rejected with
 missing or unknown method with `MissingInstanceMethod` or
 `UnknownInstanceMethod`, an unknown class with `UnknownTypeclass`, and a
 wrong class-argument count with `TypeclassArityMismatch`.
+
+A class with more than one method is not usable, because the second method's
+projection hits the multi-field projection gap (see Inductive types and
+matching). Only single-method classes are implemented.
+
+## Documentation blocks
+
+Every `doxa` fenced block in this document is a complete program checked by
+`doxa_tooling/test/doc_blocks_test.dart`, unless the line before the fence is
+`<!-- doxa: fragment -->`. A fragment uses metavariables such as `A`, `T`,
+`body`, or `value`, needs an expected type, or needs surrounding context, so it
+cannot be checked as a standalone program.
 
 ## Scope
 
