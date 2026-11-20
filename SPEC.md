@@ -186,6 +186,8 @@ val second: Nat = p.y
 
 There is no `record` keyword.
 
+A module declares at most one product-form record: every product-form declaration desugars to a constructor named `mk`, and a second `mk` in the same module is rejected as a duplicate declaration. Declare additional records with named constructor arguments, as in `data Segment: Type { seg: (start: Point) -> (end: Point) -> Segment; }`. The qualified constructor `Segment.seg` projects through `start` and `end`.
+
 `match` examines an inductive value. A constructor arm introduces one binder per constructor argument; a constructor pattern is a constructor name followed by zero or more binders. `case _ => body` is a wildcard arm. Arms do not need a separator, and `returning` supplies an optional motive.
 
 ```doxa
@@ -220,10 +222,12 @@ mk value
 lift(function, compatibilityProof)
 ```
 
-These quotient forms are expression fragments. `mk` is accepted in check mode
-against an expected quotient type. `lift` is completed by a surrounding
-application that supplies a quotient argument. The elaborator emits dedicated
-quotient terms, and the checker verifies their formation and elimination rules.
+These quotient forms are expression fragments. `Quot(A, R)` forms a type.
+`mk` and `lift` are rejected at the surface with `QuotientUnsupported`, and the
+kernel API rejects the `TQuotMk` and `TQuotLift` terms with
+`QuotientTermUnsupported`, because the lift compatibility proof is not checked.
+No quotient elimination is available. The forms above are listed for the
+planned completion and do not check.
 
 ## Typeclasses
 

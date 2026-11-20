@@ -83,6 +83,10 @@ without a direct test. None prevents the test suite from passing.
 3. **Inductive types and matching — non-indexed dependent-motive inference** —
    `match` infers the motive for indexed arms. For a non-indexed dependent
    motive, users write `T.ind` or `T.rec`.
+4. **Inductive types and matching — one product-form record per module** —
+   every product-form declaration desugars to `mk`; a second one in the same
+   module reports `duplicate declaration "mk"`. Named constructor arguments
+   are the workaround.
 
 ## Closed gaps
 
