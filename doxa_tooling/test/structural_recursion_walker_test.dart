@@ -94,6 +94,42 @@ fun f(n: Nat): Nat = match n {
     });
   });
 
+  group('explicit type arguments', () {
+    test('the designated position is offset by the type argument', () {
+      final fun = _parseFun('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+data List[A: Type] : Type { nil : List A; cons : A -> List A -> List A; }
+fun lenExplicit[A: Type](xs: List A): Nat {struct xs} = match xs {
+  case nil => zero
+  case cons _ t => succ (lenExplicit A t)
+}
+''');
+      checkStructuralRecursion(fun, {'lenExplicit'});
+    });
+
+    test('a call with neither the value nor the type-and-value count is '
+        'rejected', () {
+      final fun = _parseFun('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+data List[A: Type] : Type { nil : List A; cons : A -> List A -> List A; }
+fun f[A: Type](xs: List A): Nat {struct xs} = match xs {
+  case nil => zero
+  case cons _ t => f A zero t
+}
+''');
+      expect(
+        () => checkStructuralRecursion(fun, {'f'}),
+        throwsA(
+          isA<NonStructuralRecursion>().having(
+            (e) => e.calleeName,
+            'calleeName',
+            'f',
+          ),
+        ),
+      );
+    });
+  });
+
   group('negative: non-structural recursion rejected', () {
     test('self-call with the designated arg itself fails', () {
       // `loop n`: n is the designated arg, not a strict sub-term of itself.

@@ -289,4 +289,117 @@ void main() {
       expect((v as VType).level, const LLevel(0));
     });
   });
+
+  group('structural recursion: explicit type arguments', () {
+    test('lenExplicit A t is accepted, checked, and reduces', () {
+      final env = checkProgram(
+        pp('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+data List[A: Type] : Type { nil : List A; cons : A -> List A -> List A; }
+fun lenExplicit[A: Type](xs: List A): Nat {struct xs} = match xs {
+  case nil => zero
+  case cons _ t => succ (lenExplicit A t)
+}
+val n: Nat = lenExplicit Nat (cons zero (cons zero nil))
+'''),
+      );
+      final binding = env.bindings.firstWhere((b) => b.name == 'n');
+      final value = eval(binding.term, env.toCtx().env);
+      expect(value, isA<VConstr>());
+      final outer = value as VConstr;
+      expect(outer.ctorName, 'succ');
+      final middle = outer.args.last as VConstr;
+      expect(middle.ctorName, 'succ');
+      expect((middle.args.last as VConstr).ctorName, 'zero');
+    });
+
+    test('passing the whole list at the designated position is rejected', () {
+      expect(
+        () => checkProgram(
+          pp('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+data List[A: Type] : Type { nil : List A; cons : A -> List A -> List A; }
+fun lenExplicit[A: Type](xs: List A): Nat {struct xs} = match xs {
+  case nil => zero
+  case cons _ t => succ (lenExplicit A xs)
+}
+'''),
+        ),
+        throwsA(isA<NonStructuralRecursion>()),
+      );
+    });
+
+    test('implicit type parameters do not shift the value position', () {
+      checkProgram(
+        pp('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+data List[A: Type] : Type { nil : List A; cons : A -> List A -> List A; }
+fun lenMixed[A: Type]{B: Type}(xs: List B): Nat {struct xs} = match xs {
+  case nil => zero
+  case cons _ t => succ (lenMixed A t)
+}
+'''),
+      );
+    });
+
+    test('{struct} on a later parameter offsets past the type argument', () {
+      const source = '''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+data List[A: Type] : Type { nil : List A; cons : A -> List A -> List A; }
+fun f[A: Type](n: Nat, xs: List A): Nat {struct xs} = match xs {
+  case nil => n
+  case cons _ t => f A n t
+}
+''';
+      checkProgram(pp(source));
+      expect(
+        () => checkProgram(pp(source.replaceFirst('f A n t', 'f A n xs'))),
+        throwsA(isA<NonStructuralRecursion>()),
+      );
+    });
+
+    test('mutual recursion with explicit type arguments is accepted, and '
+        'the both-whole variant is rejected', () {
+      const positive = '''
+data Bool : Type { true_ : Bool; false_ : Bool; }
+data List[A: Type] : Type { nil : List A; cons : A -> List A -> List A; }
+fun even[A: Type](xs: List A): Bool {struct xs} = match xs {
+  case nil => true_
+  case cons _ t => odd A t
+}
+and odd[A: Type](xs: List A): Bool {struct xs} = match xs {
+  case nil => false_
+  case cons _ t => even A t
+}
+''';
+      checkProgram(pp(positive));
+      expect(
+        () => checkProgram(
+          pp(
+            positive
+                .replaceFirst('odd A t', 'odd A xs')
+                .replaceFirst('even A t', 'even A xs'),
+          ),
+        ),
+        throwsA(isA<NonStructuralRecursion>()),
+      );
+    });
+
+    test('a call with neither the value nor the type-and-value count is '
+        'rejected', () {
+      expect(
+        () => checkProgram(
+          pp('''
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+data List[A: Type] : Type { nil : List A; cons : A -> List A -> List A; }
+fun f[A: Type](xs: List A): Nat {struct xs} = match xs {
+  case nil => zero
+  case cons _ t => f A zero t
+}
+'''),
+        ),
+        throwsA(isA<NonStructuralRecursion>()),
+      );
+    });
+  });
 }
