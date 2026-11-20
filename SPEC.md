@@ -169,9 +169,22 @@ data Point[A: Type]: Type {
 }
 ```
 
-Construct values with the qualified constructor name, as in `Point.mk x y`. The unqualified `mk` is reserved for quotient construction and is rejected for a product-form declaration.
+Construct values with the qualified constructor name, as in `Point.mk x y`. The unqualified `mk` is reserved for quotient construction and is rejected for a product-form declaration. Every field projects with dotted syntax:
 
-Projection uses dotted syntax such as `p.x`. Only the first field of a product-form declaration projects in this version; a later field reports an unresolved name such as `no binding for "p.y"`. Multi-field projection is a known gap, and it is why classes are limited to one method. There is no `record` keyword.
+```doxa
+import "package:doxa_stdlib/stdlib/nat.doxa"
+
+data Point: Type {
+  x: Nat;
+  y: Nat;
+}
+
+val p: Point = Point.mk zero (succ zero)
+val first: Nat = p.x
+val second: Nat = p.y
+```
+
+There is no `record` keyword.
 
 `match` examines an inductive value. A constructor arm introduces one binder per constructor argument; a constructor pattern is a constructor name followed by zero or more binders. `case _ => body` is a wildcard arm. Arms do not need a separator, and `returning` supplies an optional motive.
 
@@ -214,9 +227,9 @@ quotient terms, and the checker verifies their formation and elimination rules.
 
 ## Typeclasses
 
-A `typeclass` declaration produces a dictionary type and one projection for
-its method. The dictionary type is an ordinary inductive with a single
-constructor and one field for the method.
+A `typeclass` declaration produces a dictionary type and one projection per
+method. The dictionary type is an ordinary inductive with a single
+constructor and one field per method.
 
 ```doxa
 import "package:doxa_stdlib/stdlib/bool.doxa"
@@ -326,10 +339,6 @@ bodies, or classes with more than one parameter. A superclass is rejected with
 missing or unknown method with `MissingInstanceMethod` or
 `UnknownInstanceMethod`, an unknown class with `UnknownTypeclass`, and a
 wrong class-argument count with `TypeclassArityMismatch`.
-
-A class with more than one method is not usable, because the second method's
-projection hits the multi-field projection gap (see Inductive types and
-matching). Only single-method classes are implemented.
 
 ## Documentation blocks
 
