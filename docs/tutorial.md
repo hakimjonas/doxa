@@ -665,6 +665,23 @@ Context:
   A : Type
 ```
 
+### Inspecting types and normal forms
+
+`:type` shows the type of an expression, and `:norm` shows its normal form.
+Both insert implicit arguments. With `Nat` from §3 and
+`id2{A: Type}(x: A): A = x` in scope:
+
+```
+> :type id2 zero
+Nat
+
+> :norm id2 zero
+zero
+
+> :type refl zero
+Eq Nat zero zero
+```
+
 ### Finishing
 
 ```
