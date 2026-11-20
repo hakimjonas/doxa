@@ -40,37 +40,54 @@ fun andb(a: Bool, b: Bool): Bool = match a {
 }
 ''';
 
+/// Structural helper for the Nat instance.
+const _natHelper = '''
+fun eqbNat(x: Nat, y: Nat): Bool = match x {
+  case zero => match y {
+    case zero => true_
+    case succ _ => false_
+  }
+  case succ n => match y {
+    case zero => false_
+    case succ m => eqbNat n m
+  }
+}
+''';
+
 const _natInstance = '''
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = match x {
-    case zero => match y {
-      case zero => true_
-      case succ _ => false_
-    }
-    case succ n => match y {
-      case zero => false_
-      case succ m => eqb n m
-    }
-  };
+  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
+}
+''';
+
+/// Structural helper for the List instance.
+///
+/// The element comparison is passed in, so the helper needs no class
+/// constraint and the instance supplies its own dictionary through the
+/// closure. The tail comparison recurses through this helper, which is
+/// what the structural-recursion check sees.
+const _listHelper = '''
+fun eqbList{A: Type}(cmp: (x: A) -> (y: A) -> Bool, xs: List A, ys: List A): Bool {struct xs} = match xs {
+  case nil => match ys {
+    case nil => true_
+    case cons _ _ => false_
+  }
+  case cons h t => match ys {
+    case nil => false_
+    case cons h2 t2 => andb (cmp h h2) (eqbList cmp t t2)
+  }
 }
 ''';
 
 const _listInstance = '''
 impl[A: Eqb] Eqb[List A] {
-  fun eqb(x: List A, y: List A): Bool = match x {
-    case nil => match y {
-      case nil => true_
-      case cons _ _ => false_
-    }
-    case cons h t => match y {
-      case nil => false_
-      case cons h2 t2 => andb (eqb h h2) (eqb t t2)
-    }
-  };
+  fun eqb(x: List A, y: List A): Bool =
+    eqbList ((x: A) => (y: A) => eqb x y) x y;
 }
 ''';
 
-String _program(String body) => '$_prelude\n$_eqbClass\n$_andb\n$body';
+String _program(String body) =>
+    '$_prelude\n$_eqbClass\n$_andb\n$_natHelper\n$_listHelper\n$body';
 
 /// Evaluate a named top-level binding in [env].
 Value _evalBinding(TopEnv env, String name) {
@@ -118,6 +135,20 @@ val r: Bool = eqb (cons zero nil) (cons zero nil)
       expect(info.constraints.length, 1);
       expect(info.constraints.single.className, 'Eqb');
       expect(info.constraints.single.parameterName, 'A');
+
+      expect(_ctorName(_evalBinding(env, 'r')), 'true_');
+    });
+
+    test('the helper-based instance recurses on the tail and reduces', () {
+      final env = checkProgram(
+        pp(
+          _program('''
+$_natInstance
+$_listInstance
+val r: Bool = eqb (cons zero (cons zero nil)) (cons zero (cons zero nil))
+'''),
+        ),
+      );
 
       expect(_ctorName(_evalBinding(env, 'r')), 'true_');
     });
@@ -279,6 +310,57 @@ val r: Bool = sameList Nat (cons zero nil) (cons zero nil)
       );
 
       expect(_ctorName(_evalBinding(env, 'r')), 'true_');
+    });
+  });
+
+  group('instance self-resolution', () {
+    test('a bare instance body cannot resolve its own instance', () {
+      expect(
+        () => checkProgram(
+          pp(
+            _program('''
+data Void : Type {}
+typeclass Boom[A: Type] {
+  fun boom(x: A): Void;
+}
+impl Boom[Nat] {
+  fun boom(x: Nat): Void = boom x;
+}
+val v : Void = boom zero
+'''),
+          ),
+        ),
+        throwsA(
+          isA<NoInstanceFound>()
+              .having((e) => e.className, 'className', 'Boom')
+              .having((e) => e.targetType, 'targetType', 'Nat'),
+        ),
+      );
+    });
+
+    test('a parameterised instance body cannot resolve its own instance', () {
+      expect(
+        () => checkProgram(
+          pp(
+            _program('''
+data Void : Type {}
+typeclass Boom[A: Type] {
+  fun boom(x: A): Void;
+}
+impl[A: Type] Boom[List A] {
+  fun boom(x: List A): Void = boom x;
+}
+val xs : List Nat = nil
+val v : Void = boom xs
+'''),
+          ),
+        ),
+        throwsA(
+          isA<NoInstanceFound>()
+              .having((e) => e.className, 'className', 'Boom')
+              .having((e) => e.targetType, 'targetType', 'List A'),
+        ),
+      );
     });
   });
 }

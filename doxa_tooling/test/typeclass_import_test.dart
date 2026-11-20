@@ -76,29 +76,32 @@ fun andb(a: Bool, b: Bool): Bool = match a {
   case true_ => b
   case false_ => false_
 }
+fun eqbNat(x: Nat, y: Nat): Bool = match x {
+  case zero => match y {
+    case zero => true_
+    case succ _ => false_
+  }
+  case succ n => match y {
+    case zero => false_
+    case succ m => eqbNat n m
+  }
+}
+fun eqbList{A: Type}(cmp: (x: A) -> (y: A) -> Bool, xs: List A, ys: List A): Bool {struct xs} = match xs {
+  case nil => match ys {
+    case nil => true_
+    case cons _ _ => false_
+  }
+  case cons h t => match ys {
+    case nil => false_
+    case cons h2 t2 => andb (cmp h h2) (eqbList cmp t t2)
+  }
+}
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = match x {
-    case zero => match y {
-      case zero => true_
-      case succ _ => false_
-    }
-    case succ n => match y {
-      case zero => false_
-      case succ m => eqb n m
-    }
-  };
+  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
 }
 impl[A: Eqb] Eqb[List A] {
-  fun eqb(x: List A, y: List A): Bool = match x {
-    case nil => match y {
-      case nil => true_
-      case cons _ _ => false_
-    }
-    case cons h t => match y {
-      case nil => false_
-      case cons h2 t2 => andb (eqb h h2) (eqb t t2)
-    }
-  };
+  fun eqb(x: List A, y: List A): Bool =
+    eqbList ((x: A) => (y: A) => eqb x y) x y;
 }
 ''');
     final mainFile = File('${directory.path}/main.doxa')..writeAsStringSync('''
