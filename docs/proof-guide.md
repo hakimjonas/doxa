@@ -34,7 +34,8 @@ lemmas.
 
 The even function computes parity by structural recursion:
 
-```
+<!-- doxa: fragment -->
+```doxa
 fun even(n: Nat): Bool = match n {
   case zero => true_
   case succ n_ => match even n_ {
@@ -46,7 +47,8 @@ fun even(n: Nat): Bool = match n {
 
 A helper parity_flip_b expresses the recurrence:
 
-```
+<!-- doxa: fragment -->
+```doxa
 fun parity_flip_b(b: Bool): Bool = match b {
   case true_ => false_
   case false_ => true_
@@ -65,7 +67,8 @@ even_succ_succ_eq_even and plus_succ.
 
 The parity of a sum is determined by the parities of the summands:
 
-```
+<!-- doxa: fragment -->
+```doxa
 val even_plus_parity : (a: Nat) -> (b: Nat) ->
   Eq Bool (even (plus a b)) (parity_comb (even a) (even b))
 ```
@@ -89,7 +92,8 @@ even_double, and the induction hypothesis.
 
 If n^2 = 2*m^2 then n is even:
 
-```
+<!-- doxa: fragment -->
+```doxa
 val sqrt2_parity : (n: Nat) -> (m: Nat) ->
   Eq Nat (square n) (mult two (square m)) -> Eq Bool (even n) true_
 ```
@@ -103,7 +107,8 @@ uses `even_double`, transports along the equality hypothesis, and applies
 `Lt` is the strict ordering used by the accessibility proof and the
 strong-induction principle:
 
-```
+<!-- doxa: fragment -->
+```doxa
 data Lt : Nat -> Nat -> Prop {
   lt_succ : (n: Nat) -> Lt n (succ n);
   lt_trans : (n: Nat) -> (m: Nat) -> (k: Nat) -> Lt n m -> Lt m k -> Lt n k;
@@ -157,9 +162,9 @@ The final case analysis is on `t`:
 
 ## 6. Verification
 
-```
-doxa_tooling/build/doxa check doxa_stdlib/lib/stdlib/proofs.doxa      # 83 declarations
-doxa_tooling/build/doxa check doxa_stdlib/lib/stdlib/case_study.doxa  # 127 declarations
+```sh
+dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/proofs.doxa      # 115 declarations
+dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/case_study.doxa  # 158 declarations
 ```
 
 Both files type-check with the current CLI.

@@ -35,7 +35,8 @@ The two conventions follow Lean 4's `Nat.div` and `Nat.mod`:
 
 Both are proved in `doxa_stdlib/lib/stdlib/proofs.doxa`:
 
-```
+<!-- doxa: fragment -->
+```doxa
 div_zero : (m: Nat) -> Eq Nat (div m zero) zero
 mod_zero : (m: Nat) -> Eq Nat (mod m zero) m
 ```
@@ -80,7 +81,8 @@ by eliminating `b` with the equation in the motive.
 `mod` and `div` are total because both loops are structurally recursive on a
 `Nat` fuel argument, not on the dividend directly:
 
-```
+<!-- doxa: fragment -->
+```doxa
 fun mod_acc(k: Nat, m: Nat, n: Nat): Nat
 fun div_acc(k: Nat, m: Nat, n: Nat): Nat
 ```
@@ -168,7 +170,8 @@ proof; the other thirteen are `val` bindings built from `Nat.ind`.
 
 `Int` is the inductive type
 
-```
+<!-- doxa: fragment -->
+```doxa
 data Int: Type {
   pos: Nat -> Int;
   neg: Nat -> Int;
