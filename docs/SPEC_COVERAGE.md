@@ -82,7 +82,12 @@ without a direct test. None prevents the test suite from passing.
 3. **Inductive types and matching — non-indexed dependent-motive inference** —
    `match` infers the motive for indexed arms. For a non-indexed dependent
    motive, users write `T.ind` or `T.rec`.
-4. **Typeclasses — multi-method classes** — a class with more than one method
-   elaborates its dictionary but does not resolve the second method's
-   projection (`no binding for "inst.<method>"`), so only single-method
-   classes are usable.
+4. **Inductive types and matching — multi-field projection** — `_fieldType`
+   (`doxa/lib/src/elab.dart`) builds its environment past the parameter list
+   for any field after the first, and the dotted-name path falls through to a
+   namespace lookup. `p.x` projects; `p.y` reports `no binding for "p.<field>"`.
+   This is the same `_fieldType` path that limits a typeclass to one method.
+5. **Typeclasses — multi-method classes** — a class with more than one method
+   is not usable, because the second method's projection hits the multi-field
+   projection gap in Inductive types and matching (`no binding for
+   "inst.<method>"`).
