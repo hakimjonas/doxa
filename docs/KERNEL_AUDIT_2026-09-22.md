@@ -1,8 +1,13 @@
 # Doxa kernel: external audit
 
+> Historical record (2026-09-22): this is the external audit, kept for
+> provenance. Its findings are not current rules. See the resolution status at
+> the end and [`KERNEL_INVARIANTS.md`](KERNEL_INVARIANTS.md) for the current
+> metavariable rules.
+
 **Status:** audit note (2026-09-22), written by an external reviewer for the next
-Doxa work session. It is not a Doxa-authored document. Delete or move it as
-convenient. Claims are against the sources at this revision.
+Doxa work session. It is not a Doxa-authored document. Claims are against the
+sources at this revision.
 
 ## 1. What Doxa is
 
