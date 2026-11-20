@@ -1,0 +1,61 @@
+// Eqb instances for Nat, Bool, and List.
+//
+// The class lives in eqb.doxa, so a module that does not want these
+// instances can import the class alone.
+import "eqb.doxa"
+
+import "nat.doxa"
+
+import "bool.doxa"
+
+import "list.doxa"
+// Structural equality on Nat.
+
+fun eqbNat(x: Nat, y: Nat): Bool = match x {
+  case zero => match y {
+    case zero => true_
+    case succ _ => false_
+  }
+  case succ n => match y {
+    case zero => false_
+    case succ m => eqbNat n m
+  }
+}
+// Structural equality on Bool.
+
+fun eqbBool(x: Bool, y: Bool): Bool = match x {
+  case true_ => match y {
+    case true_ => true_
+    case false_ => false_
+  }
+  case false_ => match y {
+    case true_ => false_
+    case false_ => true_
+  }
+}
+// Structural equality on List: the element comparison uses the Eqb
+// dictionary for A, and the tail comparison recurses on a strict
+// sub-term of xs.
+
+fun eqbList[A: Eqb](xs: List A, ys: List A): Bool {struct xs} = match xs {
+  case nil => match ys {
+    case nil => true_
+    case cons _ _ => false_
+  }
+  case cons h t => match ys {
+    case nil => false_
+    case cons h2 t2 => and_ (eqb h h2) (eqbList A t t2)
+  }
+}
+
+impl Eqb[Nat] {
+  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
+}
+
+impl Eqb[Bool] {
+  fun eqb(x: Bool, y: Bool): Bool = eqbBool x y;
+}
+
+impl [A: Eqb] Eqb[List A] {
+  fun eqb(x: List A, y: List A): Bool = eqbList A x y;
+}

@@ -1,0 +1,9 @@
+// Equality typeclass.
+//
+// The class is separate from its instances so a module can import the
+// class alone and supply its own instances.
+import "bool.doxa"
+
+typeclass Eqb[A: Type] {
+  fun eqb(x: A, y: A): Bool;
+}

@@ -8,6 +8,7 @@ the arithmetic development.
 | `Nat` | `nat.doxa` (`Nat`, `plus`, `mult`, `Lt`, comparison) |
 | `Bool` | `bool.doxa` |
 | `Eq` | `eq.doxa` (`sym`, `trans`, `cong`, `subst`) |
+| `Eqb` | `eqb.doxa` (class), `eqb_instances.doxa` (instances for `Nat`, `Bool`, `List`) |
 | `List` | `list.doxa` |
 | `Option` | `option.doxa` |
 | `Vec` | `vec.doxa` (length-indexed vectors) |
@@ -91,3 +92,7 @@ of falling back to a relative path.
 The domain re-exports remain available:
 `import "package:doxa_stdlib/stdlib/Nat/package.doxa"` reaches the same
 declarations.
+
+`import "package:doxa_stdlib/stdlib/Eqb/package.doxa"` brings the `Eqb`
+class and its `Nat`, `Bool`, and `List` instances, so `eqb` resolves at
+those types without a local class.

@@ -25,6 +25,8 @@ void main() {
       'bool.doxa',
       'proofs.doxa',
       'prelude.doxa',
+      'eqb.doxa',
+      'eqb_instances.doxa',
     ]) {
       expect(
         File('$stdlibRootPath/$name').existsSync(),
@@ -37,6 +39,11 @@ void main() {
       isTrue,
       reason: 'missing Nat/package.doxa re-export',
     );
+    expect(
+      File('$stdlibRootPath/Eqb/package.doxa').existsSync(),
+      isTrue,
+      reason: 'missing Eqb/package.doxa re-export',
+    );
   });
 
   test('the checker accepts a stdlib file through the packaged root', () async {
@@ -48,19 +55,21 @@ void main() {
       );
       return;
     }
-    final target = '$stdlibRootPath/nat.doxa';
-    final result = await Process.run(Platform.resolvedExecutable, [
-      checker.path,
-      'check',
-      target,
-    ]);
-    expect(
-      result.exitCode,
-      0,
-      reason:
-          'doxa check $target failed\n'
-          'stdout:\n${result.stdout}\n'
-          'stderr:\n${result.stderr}',
-    );
+    for (final name in ['nat.doxa', 'eqb_instances.doxa']) {
+      final target = '$stdlibRootPath/$name';
+      final result = await Process.run(Platform.resolvedExecutable, [
+        checker.path,
+        'check',
+        target,
+      ]);
+      expect(
+        result.exitCode,
+        0,
+        reason:
+            'doxa check $target failed\n'
+            'stdout:\n${result.stdout}\n'
+            'stderr:\n${result.stderr}',
+      );
+    }
   });
 }

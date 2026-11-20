@@ -66,7 +66,8 @@ impredicative `Prop` sort with definitional proof irrelevance.
 - Implicit arguments (`{A: Type}`) and explicit type parameters (`[A: Type]`)
 - Typeclasses: single-parameter classes, parameterised instances with linear
   targets, constrained parameters with trailing dictionary arguments, and
-  depth-bounded instance search
+  depth-bounded instance search; the standard library provides `Eqb`
+  instances for `Nat`, `Bool`, and `List`
 - Block expressions with `val` bindings
 - Tactics: `by { intro; exact; refl; … }`
 - Records with field projection
