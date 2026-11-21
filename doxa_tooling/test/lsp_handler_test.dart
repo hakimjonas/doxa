@@ -1556,6 +1556,198 @@ void main() {
       expect(restored!['result'], isNotNull);
     });
   });
+
+  group('LspHandler partial semantics', () {
+    const source = '''
+data Status : Type {
+  ready : Status;
+  blocked : Status;
+}
+
+val good : Status = ready
+val bad : Status = missing
+''';
+
+    test('semantic features use the checked prefix of a failing document', () {
+      final handler = LspHandler();
+      final notifications = <Map<String, dynamic>>[];
+      handler.onNotification = notifications.add;
+      const uri = 'file:///workspace/partial.doxa';
+      handler.handle(_didOpen(uri, source));
+
+      final diagnostics = _lastDiagnostics(notifications);
+      expect(diagnostics, isNotEmpty);
+
+      final good = _sourcePosition(source, 'good');
+      final hover = handler.handle(
+        _linePositionRequest(
+          1,
+          'textDocument/hover',
+          uri,
+          good.line,
+          good.character,
+        ),
+      );
+      expect(hover!['result'], isNotNull);
+
+      final definition = handler.handle(
+        _linePositionRequest(
+          2,
+          'textDocument/definition',
+          uri,
+          good.line,
+          good.character,
+        ),
+      );
+      expect(definition!['result'], isNotNull);
+
+      final references = handler.handle(
+        _linePositionRequest(
+          3,
+          'textDocument/references',
+          uri,
+          good.line,
+          good.character,
+          context: {'includeDeclaration': true},
+        ),
+      );
+      expect(references!['result'], isNotEmpty);
+
+      final rename = handler.handle(
+        _linePositionRequest(
+          4,
+          'textDocument/rename',
+          uri,
+          good.line,
+          good.character,
+          newName: 'good2',
+        ),
+      );
+      expect(
+        (rename!['result'] as Map<String, dynamic>)['changes'],
+        isNotEmpty,
+      );
+
+      final assignment = _sourcePosition(source, 'val good : Status = ');
+      final completion = handler.handle(
+        _linePositionRequest(
+          5,
+          'textDocument/completion',
+          uri,
+          assignment.line,
+          assignment.character + 'val good : Status = '.length,
+        ),
+      );
+      final items =
+          (completion!['result'] as Map<String, dynamic>)['items']
+              as List<dynamic>;
+      expect(items, isNotEmpty);
+    });
+
+    test('names in the failing declaration have no semantic result', () {
+      final handler = LspHandler();
+      const uri = 'file:///workspace/partial.doxa';
+      handler.handle(_didOpen(uri, source));
+
+      final missing = _sourcePosition(source, 'missing');
+      final hover = handler.handle(
+        _linePositionRequest(
+          1,
+          'textDocument/hover',
+          uri,
+          missing.line,
+          missing.character,
+        ),
+      );
+      expect(hover!['result'], isNull);
+
+      final definition = handler.handle(
+        _linePositionRequest(
+          2,
+          'textDocument/definition',
+          uri,
+          missing.line,
+          missing.character,
+        ),
+      );
+      expect(definition!['result'], isNull);
+    });
+
+    test('a parse error has diagnostics and no semantic results', () {
+      final handler = LspHandler();
+      final notifications = <Map<String, dynamic>>[];
+      handler.onNotification = notifications.add;
+      const uri = 'file:///workspace/parse-error.doxa';
+      const broken = 'val broken : Type =\n';
+      handler.handle(_didOpen(uri, broken));
+
+      final diagnostics = _lastDiagnostics(notifications);
+      expect(diagnostics, isNotEmpty);
+
+      final brokenPos = _sourcePosition(broken, 'broken');
+      final hover = handler.handle(
+        _linePositionRequest(
+          1,
+          'textDocument/hover',
+          uri,
+          brokenPos.line,
+          brokenPos.character,
+        ),
+      );
+      expect(hover!['result'], isNull);
+
+      final definition = handler.handle(
+        _linePositionRequest(
+          2,
+          'textDocument/definition',
+          uri,
+          brokenPos.line,
+          brokenPos.character,
+        ),
+      );
+      expect(definition!['result'], isNull);
+    });
+
+    test('repairing the failing declaration restores full results', () {
+      final handler = LspHandler();
+      final notifications = <Map<String, dynamic>>[];
+      handler.onNotification = notifications.add;
+      const uri = 'file:///workspace/partial.doxa';
+      handler.handle(_didOpen(uri, source));
+
+      final repaired = source.replaceFirst('missing', 'ready');
+      handler.handle(_didChange(uri, repaired, version: 2));
+
+      final repairedDiagnostics = _lastDiagnostics(notifications);
+      expect(repairedDiagnostics, isEmpty);
+
+      final use = _sourcePosition(repaired, 'val bad : Status = ');
+      final character = use.character + 'val bad : Status = '.length;
+      final hover = handler.handle(
+        _linePositionRequest(3, 'textDocument/hover', uri, use.line, character),
+      );
+      expect(hover!['result'], isNotNull);
+
+      final definition = handler.handle(
+        _linePositionRequest(
+          4,
+          'textDocument/definition',
+          uri,
+          use.line,
+          character,
+        ),
+      );
+      expect(definition!['result'], isNotNull);
+    });
+  });
+}
+
+List<dynamic> _lastDiagnostics(List<Map<String, dynamic>> notifications) {
+  final message = notifications.lastWhere(
+    (message) => message['method'] == 'textDocument/publishDiagnostics',
+  );
+  final params = message['params'] as Map<String, dynamic>;
+  return params['diagnostics'] as List<dynamic>;
 }
 
 Map<String, dynamic> _didOpen(String uri, String text, {int version = 1}) => {
