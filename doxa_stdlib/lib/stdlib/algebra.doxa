@@ -12,6 +12,10 @@
 // instance proves it over that instance's operation. `AddCommMonoid` and
 // `CommMonoid` embed their monoid as a superclass dictionary, so a constraint
 // `[A: AddCommMonoid]` supplies `AddMonoid A` by projection.
+//
+// `sum` folds a list with `add` and `azero`. `sumViaComm` takes the
+// commutative constraint and uses the same fold through the derived parent
+// dictionary.
 import "proofs.doxa"
 
 typeclass AddMonoid[A: Type] {
@@ -74,3 +78,10 @@ impl [A: Type] AddMonoid[List A] {
   fun add_zero_left(xs: List A): Eq (List A) (append nil xs) xs = refl xs;
   fun add_zero_right(xs: List A): Eq (List A) (append xs nil) xs = append_nil A xs;
 }
+
+fun sum[A: AddMonoid](xs: List A): A = match xs {
+  case nil => azero
+  case cons x rest => add x (sum A rest)
+}
+
+fun sumViaComm[A: AddCommMonoid](xs: List A): A = sum A xs
