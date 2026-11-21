@@ -138,6 +138,7 @@ const Set<String> _reserved = {
   'Quot',
   'typeclass',
   'impl',
+  'calc',
 };
 
 /// A raw identifier, one letter or underscore, then alphanumeric/underscore.
@@ -715,6 +716,7 @@ final Parser<ParseError, void> _atomStart =
     (char('(').as<void>(null) |
             _rawKeyword('Type').as<void>(null) |
             _rawKeyword('Prop').as<void>(null) |
+            _rawKeyword('calc').as<void>(null) |
             _rawIdent.as<void>(null))
         .lookAhead;
 
@@ -824,6 +826,28 @@ final Parser<ParseError, SExpr> _identAtom = position<ParseError>().flatMap(
   }),
 );
 
+/// One step of a `calc` chain: `expr '=' expr (':=' | '=') expr`.
+///
+/// The first `=` is the relation being chained; the second (optionally
+/// written `:=`) separates the step's right endpoint from its proof. The
+/// endpoint and proof expressions use the ordinary expression grammar, so
+/// `=` is never an operator inside them.
+final Parser<ParseError, SCalcStep> _calcStep = position<ParseError>().flatMap(
+  (start) => defer(() => _expr).flatMap(
+    (lhs) => _sym('=')
+        .skipThen(defer(() => _expr))
+        .flatMap(
+          (rhs) => (_sym(':').skipThen(_sym('=')) | _sym('='))
+              .skipThen(defer(() => _expr))
+              .zip(position<ParseError>())
+              .map(
+                (pair) =>
+                    SCalcStep(lhs, rhs, pair.$1, DoxaSpan(start, pair.$2)),
+              ),
+        ),
+  ),
+);
+
 final Parser<ParseError, SExpr> _atomImpl = () {
   // Order: sort keywords first (so they're not eaten by ident), then
   // parenthesized expression, then a brace block, then quotient forms,
@@ -878,6 +902,16 @@ final Parser<ParseError, SExpr> _atomImpl = () {
         .zip(position<ParseError>())
         .map((pair) => SExpr(SByKind(pair.$1), DoxaSpan(start, pair.$2))),
   );
+  // Equality chain: `calc(e1 = e2 := p; e2 = e3 := q)`.
+  final calcAtom = position<ParseError>().flatMap(
+    (start) => _keyword('calc')
+        .skipThen(_sym('('))
+        .skipThen(_calcStep.sepBy1(_sym(';')))
+        .thenSkip(_sym(')'))
+        .zip(position<ParseError>())
+        .map((pair) => SExpr(SCalcKind(pair.$1), DoxaSpan(start, pair.$2))),
+  );
+
   return typeAtom |
       propAtom |
       spropAtom |
@@ -887,6 +921,7 @@ final Parser<ParseError, SExpr> _atomImpl = () {
       mkAtom |
       liftAtom |
       byAtom |
+      calcAtom |
       _identAtom;
 }();
 

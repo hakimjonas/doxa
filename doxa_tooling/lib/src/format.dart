@@ -766,6 +766,7 @@ class _Formatter {
       ],
     ]),
     SByKind(:final steps) => _visitBy(steps),
+    SCalcKind(:final steps) => _visitCalc(steps),
   };
 
   _Doc _visitApp(SExpr fn, SExpr arg) {
@@ -808,7 +809,8 @@ class _Formatter {
     SByKind() ||
     SQuotKind() ||
     SQuotMkKind() ||
-    SQuotLiftKind() => true,
+    SQuotLiftKind() ||
+    SCalcKind() => true,
     _ => false,
   };
 
@@ -821,7 +823,8 @@ class _Formatter {
     SByKind() ||
     SQuotKind() ||
     SQuotMkKind() ||
-    SQuotLiftKind() => true,
+    SQuotLiftKind() ||
+    SCalcKind() => true,
     _ => false,
   };
 
@@ -1063,6 +1066,47 @@ class _Formatter {
       _Doc.txt('}'),
     ];
     return _Doc.catAll(parts);
+  }
+
+  /// Prints a chain one step per line, wrapped in `calc(...)`.
+  ///
+  /// The hard line breaks are deliberate: a chain reads as a sequence of
+  /// named steps, and keeping each step on its own line makes a long
+  /// chain scannable. A body of this shape puts `calc(` on the
+  /// continuation line of the enclosing declaration.
+  _Doc _visitCalc(List<SCalcStep> steps) {
+    final stepDocs = <_Doc>[];
+    for (var i = 0; i < steps.length; i++) {
+      final step = steps[i];
+      stepDocs.add(
+        _Doc.catAll([
+          _takeCommentsBeforeDoc(step.span.start),
+          _visit(step.lhs),
+          _Doc.txt(' = '),
+          _visit(step.rhs),
+          _Doc.txt(' := '),
+          _visit(step.proof),
+          if (i < steps.length - 1) _Doc.txt(';'),
+        ]),
+      );
+    }
+    return _Doc.catAll([
+      _Doc.txt('calc('),
+      _Doc.nst(
+        _indentSize,
+        _Doc.catAll([
+          _Doc.hardLine,
+          _Doc.catAll([
+            for (var i = 0; i < stepDocs.length; i++) ...[
+              if (i > 0) _Doc.hardLine,
+              stepDocs[i],
+            ],
+          ]),
+        ]),
+      ),
+      _Doc.hardLine,
+      _Doc.txt(')'),
+    ]);
   }
 
   _Doc _visitTacticStep(STacticStep step) => switch (step) {

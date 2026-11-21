@@ -2977,6 +2977,9 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
         expr.span,
       );
 
+    case SCalcKind(:final steps):
+      return _inferCalc(state, steps);
+
     case SByKind():
       throw TacticFailed(
         'by { ... } requires an expected type (check mode)',
@@ -3274,6 +3277,127 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
     throw TypeMismatch(inferred, expected, result, level: state.ctx.level);
   }
   return term;
+}
+
+/// Elaborate a `calc` chain.
+///
+/// The first endpoint is inferred; its type fixes the carrier `A`, which
+/// must be a `Type` (`Eq` takes its carrier there). Every later endpoint is
+/// checked against `A`, and each step's proof is checked against
+/// `Eq A lhs rhs`. A step's left endpoint must convert with the previous
+/// step's right endpoint, so the steps compose. The chain elaborates to a
+/// right fold of transitivity, so a one-step chain is its own proof.
+(Term, Value) _inferCalc(_ElabState state, List<SCalcStep> steps) {
+  final level = state.ctx.level;
+  final (firstTerm, carrier) = _inferExpr(state, steps.first.lhs);
+  final carrierSort = infer(state.ctx, quote(level, carrier));
+  if (carrierSort is! VType) {
+    throw NotAType(carrierSort);
+  }
+
+  Value eqOf(Value lhs, Value rhs) => VData('Eq', [carrier, lhs, rhs]);
+
+  final lhsValues = <Value>[eval(firstTerm, state.ctx.env)];
+  final rhsValues = <Value>[];
+  final proofs = <Term>[];
+  for (var i = 0; i < steps.length; i++) {
+    final step = steps[i];
+    if (i > 0) {
+      final lhsTerm = _checkExpr(state, step.lhs, carrier);
+      final lhsValue = eval(lhsTerm, state.ctx.env);
+      final prev = rhsValues[i - 1];
+      final c = conv(
+        level,
+        lhsValue,
+        prev,
+        dataDecls: state.ctx.dataDecls,
+        metas: state.ctx.metas,
+        topBindings: state.ctx.env.topBindings,
+      );
+      if (c is ConvMismatch) {
+        throw TypeMismatch(
+          lhsValue,
+          prev,
+          c,
+          level: level,
+          span: step.lhs.span,
+        );
+      }
+      lhsValues.add(lhsValue);
+    }
+    final rhsTerm = _checkExpr(state, step.rhs, carrier);
+    final rhsValue = eval(rhsTerm, state.ctx.env);
+    final proof = _checkExpr(state, step.proof, eqOf(lhsValues[i], rhsValue));
+    rhsValues.add(rhsValue);
+    proofs.add(proof);
+  }
+
+  final last = rhsValues.last;
+  var chain = proofs.last;
+  for (var i = steps.length - 2; i >= 0; i--) {
+    chain = _eqTrans(
+      level,
+      carrier,
+      lhsValues[i],
+      rhsValues[i],
+      last,
+      proofs[i],
+      chain,
+    );
+  }
+  return (chain, eqOf(lhsValues.first, last));
+}
+
+/// The transitivity proof for two equalities.
+///
+/// From `p : Eq A x y` and `q : Eq A y z`, build
+/// `Eq.rec A (λ a b e. Eq A b z -> Eq A a z) x y (λ w r. r) p q`,
+/// which inhabits `Eq A x z`. The method's type, `Eq A w z -> Eq A w z`,
+/// is the motive at `refl w` because the motive ignores the proof.
+Term _eqTrans(
+  int level,
+  Value carrier,
+  Value x,
+  Value y,
+  Value z,
+  Term p,
+  Term q,
+) {
+  final aVar = VNeutral(NVar(level));
+  final bVar = VNeutral(NVar(level + 1));
+  final eqAB = VData('Eq', [carrier, aVar, bVar]);
+  final motive = TLam(
+    quote(level, carrier),
+    TLam(
+      quote(level + 1, carrier),
+      TLam(
+        quote(level + 2, eqAB),
+        TPi(
+          quote(level + 3, VData('Eq', [carrier, bVar, z])),
+          quote(level + 4, VData('Eq', [carrier, aVar, z])),
+        ),
+      ),
+    ),
+  );
+  final method = TLam(
+    quote(level, carrier),
+    TLam(
+      quote(level + 1, VData('Eq', [carrier, VNeutral(NVar(level)), z])),
+      const TBound(0),
+    ),
+  );
+  Term rec = const TRec('Eq');
+  for (final arg in [
+    quote(level, carrier),
+    motive,
+    quote(level, x),
+    quote(level, y),
+    method,
+    p,
+  ]) {
+    rec = TApp(rec, arg);
+  }
+  return TApp(rec, q);
 }
 
 /// If [expr] is a constructor-headed application, return its data
@@ -4122,6 +4246,7 @@ Term _elabExpr(
     case SQuotKind():
     case SQuotMkKind():
     case SQuotLiftKind():
+    case SCalcKind():
     case SIntersectionKind():
     case SByKind():
       final (term, _) = _inferExpr(
@@ -6962,6 +7087,24 @@ void _walkForRecursion({
         callerName: callerName,
         unguardedCrossCalls: unguardedCrossCalls,
       );
+    case SCalcKind(:final steps):
+      for (final step in steps) {
+        for (final part in [step.lhs, step.rhs, step.proof]) {
+          _walkForRecursion(
+            expr: part,
+            blockMembers: blockMembers,
+            designated: designated,
+            designatedIdx: designatedIdx,
+            subTerms: subTerms,
+            shadowed: shadowed,
+            memberDeclIdxs: memberDeclIdxs,
+            memberTypeParamCounts: memberTypeParamCounts,
+            memberValueParamCounts: memberValueParamCounts,
+            callerName: callerName,
+            unguardedCrossCalls: unguardedCrossCalls,
+          );
+        }
+      }
     case SIntersectionKind():
     case SByKind():
       return;
@@ -7051,6 +7194,15 @@ bool _hasRecursiveReferenceAt(
     case SQuotLiftKind(:final fn, :final proof):
       return _hasRecursiveReferenceAt(fn, blockMembers, shadowed) ||
           _hasRecursiveReferenceAt(proof, blockMembers, shadowed);
+    case SCalcKind(:final steps):
+      for (final step in steps) {
+        if (_hasRecursiveReferenceAt(step.lhs, blockMembers, shadowed) ||
+            _hasRecursiveReferenceAt(step.rhs, blockMembers, shadowed) ||
+            _hasRecursiveReferenceAt(step.proof, blockMembers, shadowed)) {
+          return true;
+        }
+      }
+      return false;
     case SIntersectionKind():
     case SByKind():
       return false;
@@ -7692,6 +7844,12 @@ void _collectRefs(
     case SQuotLiftKind(:final fn, :final proof):
       _collectRefs(fn, blockMembers, shadowed, acc);
       _collectRefs(proof, blockMembers, shadowed, acc);
+    case SCalcKind(:final steps):
+      for (final step in steps) {
+        _collectRefs(step.lhs, blockMembers, shadowed, acc);
+        _collectRefs(step.rhs, blockMembers, shadowed, acc);
+        _collectRefs(step.proof, blockMembers, shadowed, acc);
+      }
     case SIntersectionKind():
     case SByKind():
       break;
