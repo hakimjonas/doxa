@@ -53,8 +53,10 @@ void main() {
     });
 
     test('fun declaration single-expression body', () {
+      // `plus x x` and `x + x` are the same tree; the printer spells the
+      // four standard-library operations infix.
       const input = 'fun double(x: Nat) : Nat = plus x x';
-      const expected = 'fun double(x: Nat): Nat = plus x x\n';
+      const expected = 'fun double(x: Nat): Nat = x + x\n';
       expect(formatSource(input), equals(expected));
     });
 
@@ -80,13 +82,13 @@ void main() {
 
     test('fun declaration with struct annotation', () {
       const input = 'fun f(a: Nat, b: Nat) : Nat {struct a} = plus a b';
-      const expected = 'fun f(a: Nat, b: Nat): Nat {struct a} = plus a b\n';
+      const expected = 'fun f(a: Nat, b: Nat): Nat {struct a} = a + b\n';
       expect(formatSource(input), equals(expected));
     });
 
     test('fun declaration with multiple params', () {
       const input = 'fun add(x: Nat, y: Nat) : Nat = plus x y';
-      const expected = 'fun add(x: Nat, y: Nat): Nat = plus x y\n';
+      const expected = 'fun add(x: Nat, y: Nat): Nat = x + y\n';
       expect(formatSource(input), equals(expected));
     });
 

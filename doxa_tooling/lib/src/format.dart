@@ -713,7 +713,7 @@ class _Formatter {
       level == null ? _Doc.txt('Type') : _Doc.txt('Type $level'),
     SPropKind() => _Doc.txt('Prop'),
     SSPropKind() => _Doc.txt('SProp'),
-    SAppKind(:final fn, :final arg) => _visitApp(fn, arg),
+    SAppKind() => _visitAppExpr(expr),
     SLamKind(:final param, :final domain, :final body, :final icit) =>
       _visitLam(param, domain, body, isImplicit: icit == Icit.implicit),
     SPiKind(:final param, :final domain, :final codomain, :final icit) =>
@@ -769,15 +769,27 @@ class _Formatter {
     SCalcKind(:final steps) => _visitCalc(steps),
   };
 
-  _Doc _visitApp(SExpr fn, SExpr arg) {
-    final args = <SExpr>[arg];
-    var head = fn;
-    while (head.kind is SAppKind) {
-      final app = head.kind as SAppKind;
-      args.add(app.arg);
-      head = app.fn;
+  /// Application, printed in the infix spelling when it is one.
+  ///
+  /// A parsed `a + b` and a hand-written `plus a b` are the same tree, so the
+  /// printer always chooses the infix form for the four operators at exactly
+  /// two arguments. Re-parsing that form rebuilds the same application, so the
+  /// choice is stable. An operator applied to more than two arguments keeps
+  /// the third onward in juxtaposition, with the infix result parenthesized:
+  /// `plus a b c` prints as `(a + b) c`.
+  _Doc _visitAppExpr(SExpr expr) {
+    final (head, args) = _unwindApp(expr);
+    final infix = _infixAtHead(head);
+    if (infix != null && args.length >= 2) {
+      final infixDoc = _visitInfix(infix, args[0], args[1]);
+      if (args.length == 2) return infixDoc;
+      return _Doc.catAll([
+        _Doc.txt('('),
+        infixDoc,
+        _Doc.txt(')'),
+        for (final arg in args.skip(2)) ...[_Doc.space, _visitAppArgument(arg)],
+      ]);
     }
-    final orderedArgs = args.reversed.toList();
     final fnDoc = _visit(head);
     final wrappedFn =
         _needsAppFunctionParens(head)
@@ -786,20 +798,104 @@ class _Formatter {
     return _Doc.grp(
       _Doc.catAll([
         wrappedFn,
-        for (final appArg in orderedArgs) ...[
+        for (final appArg in args) ...[
           _Doc.nst(
             _indentSize,
-            _Doc.catAll([
-              _Doc.line,
-              _needsAppArgumentParens(appArg)
-                  ? _Doc.catAll([_Doc.txt('('), _visit(appArg), _Doc.txt(')')])
-                  : _visit(appArg),
-            ]),
+            _Doc.catAll([_Doc.line, _visitAppArgument(appArg)]),
           ),
         ],
       ]),
     );
   }
+
+  _Doc _visitAppArgument(SExpr arg) =>
+      _needsAppArgumentParens(arg)
+          ? _Doc.catAll([_Doc.txt('('), _visit(arg), _Doc.txt(')')])
+          : _visit(arg);
+
+  /// The operator [head] names, or null if it names none of the four.
+  static final Map<String, ({String symbol, int bindingPower, bool associates})>
+  _infixByName = {
+    for (final op in doxaInfixOperators)
+      op.name: (
+        symbol: op.symbol,
+        bindingPower: op.bindingPower,
+        associates: op.associates,
+      ),
+  };
+
+  ({String symbol, int bindingPower, bool associates})? _infixAtHead(
+    SExpr head,
+  ) =>
+      head.kind is SIdentKind
+          ? _infixByName[(head.kind as SIdentKind).name]
+          : null;
+
+  /// The operator [expr] applies to exactly two arguments, if any.
+  ({String symbol, int bindingPower, bool associates})? _infixShape(
+    SExpr expr,
+  ) {
+    if (expr.kind is! SAppKind) return null;
+    final fn = (expr.kind as SAppKind).fn;
+    return fn.kind is SAppKind ? _infixAtHead((fn.kind as SAppKind).fn) : null;
+  }
+
+  /// Print `lhs op rhs` at [op]'s precedence.
+  _Doc _visitInfix(
+    ({String symbol, int bindingPower, bool associates}) op,
+    SExpr lhs,
+    SExpr rhs,
+  ) => _Doc.catAll([
+    _visitInfixOperand(op, lhs, left: true),
+    _Doc.txt(' ${op.symbol} '),
+    _visitInfixOperand(op, rhs, left: false),
+  ]);
+
+  /// Print an infix operand, parenthesized only where precedence requires it.
+  ///
+  /// Left-associative operators need parentheses on an operand of equal power
+  /// only on the right (`a + (b + c)`); non-associative operators need them on
+  /// either side, because the level cannot chain at all.
+  _Doc _visitInfixOperand(
+    ({String symbol, int bindingPower, bool associates}) op,
+    SExpr operand, {
+    required bool left,
+  }) {
+    final precedence = _topPrecedence(operand);
+    final needsParens =
+        op.associates
+            ? precedence < op.bindingPower ||
+                (!left && precedence == op.bindingPower)
+            : precedence <= op.bindingPower;
+    return needsParens
+        ? _Doc.catAll([_Doc.txt('('), _visit(operand), _Doc.txt(')')])
+        : _visit(operand);
+  }
+
+  /// Binding power of [expr]'s outermost operator.
+  ///
+  /// Application has no operator in the surface but binds tighter than every
+  /// infix operator, so it reports the application power. The forms that
+  /// swallow the rest of the expression (lambdas, Pi types, blocks, matches,
+  /// tactic blocks, calc chains, quotients, intersections) report 0: as an
+  /// infix operand they need parentheses.
+  int _topPrecedence(SExpr expr) => switch (expr.kind) {
+    SAppKind() => _infixShape(expr)?.bindingPower ?? _appPrecedence,
+    SLamKind() ||
+    SPiKind() ||
+    SLetKind() ||
+    SMatchKind() ||
+    SByKind() ||
+    SCalcKind() ||
+    SQuotKind() ||
+    SQuotMkKind() ||
+    SQuotLiftKind() ||
+    SIntersectionKind() => 0,
+    _ => _appPrecedence,
+  };
+
+  /// Binding power of application, above every declared operator.
+  static const int _appPrecedence = 100;
 
   bool _needsAppFunctionParens(SExpr expr) => switch (expr.kind) {
     SLamKind() ||

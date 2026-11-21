@@ -44,7 +44,7 @@ fun eqbList[A: Eqb](xs: List A, ys: List A): Bool {struct xs} = match xs {
   }
   case cons h t => match ys {
     case nil => false_
-    case cons h2 t2 => and_ (eqb h h2) (eqbList A t t2)
+    case cons h2 t2 => and_ (h == h2) (eqbList A t t2)
   }
 }
 
