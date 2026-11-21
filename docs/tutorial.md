@@ -285,7 +285,10 @@ theorem sample : (A: Type) -> A -> A = by { refl | intro A; intro x; exact x }
 
 Available commands: `intro name`, `exact expr`, `apply expr`, `refl`,
 `rewrite proof`, `induction name`, `cases name`, `revert name`, `trivial`,
-`simp [lemmas]`, `auto [depth]`, `omega`, `constructor`.
+`simp [lemmas]`, `auto [depth]`, `omega`, `constructor`, and
+`have name: T = proof`. The no-proof form `have name: T` leaves the fact as a
+subgoal. `calc(...)` is a term rather than a step: it stands where an
+expression can, including inside `exact`.
 Alternatives are separated by `|`; the first alternative that closes
 every goal wins.
 
@@ -751,6 +754,7 @@ idProof : (A: Type) -> A -> A
 | `:step trivial`       | Try refl, then context lookup |
 | `:step auto [depth]`  | Depth-bounded proof search (default 5, range 0 to 20) |
 | `:step omega`         | Bounded arithmetic convenience for `Nat` goals |
+| `:step have name: T [= p]` | Add a local fact; without the proof, the fact becomes a subgoal |
 | `:undo`               | Revert the last step |
 | `:print`              | Show the proof term so far |
 | `:abort`              | Abandon the proof |
