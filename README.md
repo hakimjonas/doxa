@@ -23,9 +23,9 @@ Doxa requires Dart 3.7 or later.
 - Dependent functions and a bidirectional checker.
 - Universes with cumulativity, plus the impredicative `Prop` sort and `SProp`.
 - Indexed inductive types with dependent elimination and derived eliminators.
-- The thirteen `by` steps: `intro`, `exact`, `apply`, `refl`, `rewrite`,
-  `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`, and
-  `constructor`.
+- The fourteen `by` steps: `intro`, `exact`, `apply`, `refl`, `rewrite`,
+  `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`,
+  `constructor`, and `have`, plus `calc` chains for equality proofs.
 - Typeclasses with single-parameter classes, instance search, explicit type
   arguments, parameterised instances, superclasses with the derived parent
   dictionary, local dictionaries, and multi-parameter classes. Default

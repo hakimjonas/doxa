@@ -40,6 +40,31 @@ Application is juxtaposition and associates to the left: `f x y` parses as `(f x
 
 Lambdas use `(x: A) => body` or `{x: A} => body`, and curly binders are implicit. The unannotated `(x) => body` requires an expected Pi type. Pi types use `(x: A) -> B`, `{x: A} -> B`, or `A -> B`; `A -> B -> C` associates to the right, and the non-dependent arrow has an unnamed explicit binder.
 
+`calc` chains equalities as named steps. The form is
+`calc(e1 = e2 := p1; ...; en = e(n+1) := pn)`: a parenthesised, non-empty
+list of steps separated by `;`, each naming two endpoints and a proof. The
+first endpoint is inferred, and its type `A` is the type of every endpoint;
+each later endpoint is checked against `A`. Each proof must inhabit
+`Eq A lhs rhs`, and a step's left endpoint must be the previous step's right
+endpoint up to conversion. The chain elaborates to the transitivity proof
+`Eq A e1 e(n+1)`, so a one-step chain is its own proof. The carrier `A` must
+be a `Type`, because `Eq` takes its carrier there: a chain over propositions
+is rejected as not a type. `calc` is a reserved word and a term, so it stands
+where any expression can, including as an application argument and inside
+`exact`.
+
+```doxa
+import "package:doxa_stdlib/stdlib/proofs.doxa"
+
+val rotate : (a: Nat) -> (b: Nat) ->
+    Eq Nat (plus (plus a b) zero) (plus b a) =
+  (a: Nat) => (b: Nat) => calc(
+    plus (plus a b) zero = plus a (plus b zero) := plus_assoc a b zero;
+    plus a (plus b zero) = plus a b := cong ((x: Nat) => plus a x) (plus_zero b);
+    plus a b = plus b a := plus_comm a b
+  )
+```
+
 The checker has inference and checking modes. An unannotated lambda requires
 an expected function type. Evaluation produces values; quotation reifies values
 to terms; conversion compares values. Transparent top-level definitions can
@@ -85,9 +110,15 @@ theorem identity : (A: Type) -> (x: A) -> Eq A x x := by {
 
 The tactic steps implemented by `by` blocks are `intro`, `exact`, `apply`,
 `refl`, `rewrite`, `induction`, `cases`, `revert`, `trivial`, `simp`,
-`auto`, `omega`, and `constructor`. A block is written `by { step; ... }`, and
-`intro` takes an optional binder name. `revert x` moves a local binder back
-into the goal. `simp` normalises the goal by evaluation and rewrites it with
+`auto`, `omega`, `constructor`, and `have`. A block is written
+`by { step; ... }`, and `intro` takes an optional binder name. `revert x`
+moves a local binder back into the goal. `have name: T = proof` elaborates
+`T` and the proof in the current context, adds a binder `name: T` to the
+context, and continues on the main goal in the extended context. Without the
+proof, `have name: T` makes the fact a subgoal; the fact's goal is closed
+before the main goal, and the fact is not in scope in its own type or proof.
+
+`simp` normalises the goal by evaluation and rewrites it with
 the equality hypotheses in context; an optional bracketed list adds
 equalities, as in `simp [plus_zero, plus_succ]`. `cases x` destructs a
 variable into one subgoal per constructor, without induction hypotheses.

@@ -102,7 +102,7 @@ and `package:` usage.
 - Stack-safety regression tests at depths up to 10,000 binder/β-redex layers
 - stdlib files type-checked on every commit
 - Documentation `doxa` blocks are checked by
-  `doxa_tooling/test/doc_blocks_test.dart`; the current run checks 42 blocks
+  `doxa_tooling/test/doc_blocks_test.dart`; the current run checks 45 blocks
   and skips 20 marked fragments
 
 ## Gated until implemented
