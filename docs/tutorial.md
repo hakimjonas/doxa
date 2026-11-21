@@ -1014,9 +1014,10 @@ This slice has these limits:
   second declaration is rejected with `DuplicateDeclaration`.
 - Method default bodies are not implemented. Every instance supplies every
   method, and a missing method is rejected with `MissingInstanceMethod`.
-- A target is either a bare type constructor, a concrete head applied to
-  distinct instance parameters, or (for a multi-parameter class) a bare
-  instance parameter that matches any goal argument. A bare variable target
+- For a single-parameter class, a target is a bare type constructor or a type
+  constructor applied to distinct instance parameters. For a multi-parameter
+  class, each target position is one of those two forms and the positions may
+  mix; a bare instance parameter is the wildcard form. A bare variable target
   for a single-parameter class, such as `impl[A: Eqb] Eqb[A]`, is rejected
   with `UnsupportedInstanceTarget` because search cannot make progress.
 - Closed applied target arguments are rejected. `impl Eqb[List Nat]` reports

@@ -291,7 +291,9 @@ more than one parameter follows the same rule.
 An `impl` of a subclass resolves the parent dictionary by instance search at
 registration, with the instance's own parameters and their dictionaries in
 scope. A missing parent is `NoInstanceFound` naming the parent class and its
-target type.
+target type. The parent instance must be in scope when the subclass instance
+is elaborated. A parent instance declared later is not visible at
+registration.
 
 Search for a class prefers a direct instance. When none matches, it considers
 direct subclasses whose superclass is the requested class, builds the
@@ -315,7 +317,15 @@ typeclass Pair[A: Type, B: Type] {
 elaborates to `mk_Pair: (fst: (x: A) -> (y: B) -> A) -> Pair A B` and the
 projection `fst : {A: Type} -> {B: Type} -> (x: A) -> (y: B) -> {inst: Pair A B} -> A`.
 
-An instance applies each class argument to a distinct instance parameter:
+An instance applies the class to one target per parameter. Each target
+position is either a bare type constructor, as in
+`impl Convert[Nat, Bool]`, or a type constructor applied to distinct
+instance parameters, as in `impl[G: Type, X: Type] Pair[G, X]`. A target may
+mix the two forms, as in `impl[A: Type] Pair[A, Nat]`. A type constructor
+applied to a closed argument, such as `List Nat`, is rejected with
+`UnsupportedInstanceTarget`. A bare instance parameter is the wildcard form
+and matches any goal argument at that position; for a single-parameter class
+a bare variable target remains rejected.
 
 <!-- doxa: fragment -->
 ```doxa
@@ -324,13 +334,17 @@ impl[G: Type, X: Type] Pair[G, X] {
 }
 ```
 
+<!-- doxa: fragment -->
+```doxa
+impl Convert[Nat, Bool] {
+  fun conv(x: Nat, y: Bool): Bool = y;
+}
+```
+
 Search matches the goal's class arguments positionally against the instance's
 targets. A head or argument-count mismatch at any position is not an instance.
-A bare instance parameter is the wildcard form and matches any goal argument
-at that position; for a single-parameter class a bare variable target remains
-rejected. A closed applied argument, a repeated parameter, and a parameter
-that does not appear in the target are rejected with
-`UnsupportedInstanceTarget` and a reason.
+A repeated parameter and a parameter that does not appear in the target are
+rejected with `UnsupportedInstanceTarget` and a reason.
 
 At most one instance exists per class and tuple of target heads, so a second
 instance with the same tuple is rejected with `OverlappingInstances`.
