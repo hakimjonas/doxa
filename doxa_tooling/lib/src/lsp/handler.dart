@@ -9,6 +9,7 @@ import 'dart:io' show File, Platform, stderr;
 import 'package:doxa/doxa.dart';
 import 'package:rumil/rumil.dart'
     show Failure, IncrementalStrategy, ParseError, Partial, Success, TextEdit;
+import '../cached_imports.dart';
 import '../web_check.dart';
 import '../parse_tree.dart' show parseProgramTree;
 import '../syntax.dart' show DoxaGreen;
@@ -1567,7 +1568,7 @@ final class LspHandler {
         );
         // Cache import resolution for subsequent edits.
         if (output.imports != null) {
-          _cachedImports = output.imports as CachedImports?;
+          _cachedImports = output.imports;
           final document = _activeDocument;
           if (document != null) {
             document.importedPaths
@@ -1673,9 +1674,7 @@ final class LspHandler {
     for (final document in _documents.values) {
       // A failing document has no last success but may still hold the
       // resolved imports from the partial check.
-      final imports =
-          document.cachedImports ??
-          (document.lastSuccess?.imports as CachedImports?);
+      final imports = document.cachedImports ?? document.lastSuccess?.imports;
       if (imports != null) {
         sources.addAll(imports.importState.sourceFiles);
       }

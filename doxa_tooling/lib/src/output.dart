@@ -10,7 +10,7 @@ import 'dart:convert';
 
 import 'package:doxa/doxa.dart';
 
-import 'web_check.dart' show CachedImports;
+import 'cached_imports.dart';
 
 /// The result of checking a Doxa source file.
 sealed class CheckOutput {
@@ -47,7 +47,9 @@ final class CheckSuccess extends CheckOutput {
 
   /// Resolved import state that can be reused on subsequent checks
   /// to avoid re-processing transitive imports on every edit.
-  final dynamic imports;
+  ///
+  /// Not serialised by [toJson].
+  final CachedImports? imports;
 
   /// Creates a success result.
   const CheckSuccess({
