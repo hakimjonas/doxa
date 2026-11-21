@@ -347,7 +347,11 @@ A repeated parameter and a parameter that does not appear in the target are
 rejected with `UnsupportedInstanceTarget` and a reason.
 
 At most one instance exists per class and tuple of target heads, so a second
-instance with the same tuple is rejected with `OverlappingInstances`.
+instance with the same tuple is rejected with `OverlappingInstances`. A goal
+that matches more than one registered instance (for example, a wildcard
+instance and a concrete instance at the same argument types) is reported as
+`OverlappingInstances` at the use site, naming both bindings. Search does not
+prefer the more specific instance.
 
 ### Local dictionaries
 
