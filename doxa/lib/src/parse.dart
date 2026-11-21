@@ -878,7 +878,6 @@ final Parser<ParseError, SExpr> _atomImpl = () {
         .zip(position<ParseError>())
         .map((pair) => SExpr(SByKind(pair.$1), DoxaSpan(start, pair.$2))),
   );
-
   return typeAtom |
       propAtom |
       spropAtom |
@@ -1329,7 +1328,28 @@ final Parser<ParseError, STacticStep> _tacticStep =
         .skipThen(_lex(_nat).optional)
         .map<STacticStep>((depth) => STacticAuto(depth ?? 5)) |
     _keyword('omega').map<STacticStep>((_) => const STacticOmega()) |
-    _keyword('trivial').map<STacticStep>((_) => const STacticTrivial());
+    _keyword('trivial').map<STacticStep>((_) => const STacticTrivial()) |
+    _keyword('have')
+        .skipThen(_ident)
+        .flatMap(
+          (name) => _sym(':')
+              .skipThen(defer(() => _expr))
+              .flatMap(
+                (type) => (_sym(':').skipThen(_sym('=')) | _sym('='))
+                    .skipThen(defer(() => _expr))
+                    .optional
+                    .map<STacticStep>(
+                      (proof) => STacticHave(name, type, proof),
+                    ),
+              ),
+        );
+
+/// Parse one tactic step, as written after `:step` in the REPL.
+///
+/// Returns the same [STacticStep] the by-block parser produces, so the
+/// REPL and a `by` block accept identical surface syntax.
+Result<ParseError, STacticStep> parseTacticStep(String input) =>
+    _ws.skipThen(_tacticStep).thenSkip(_ws).thenSkip(eof()).run(input);
 
 /// A bracketed lemma list for `simp`: `[e1, e2, ...]`.
 final Parser<ParseError, List<SExpr>> _tacticLemmaList = _sym(

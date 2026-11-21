@@ -1100,6 +1100,11 @@ class _Formatter {
       depth == 5 ? _Doc.txt('auto') : _Doc.txt('auto $depth'),
     STacticOmega() => _Doc.txt('omega'),
     STacticTrivial() => _Doc.txt('trivial'),
+    STacticHave(:final name, :final type, :final proof) => _Doc.catAll([
+      _Doc.txt('have $name: '),
+      _visit(type),
+      if (proof != null) ...[_Doc.txt(' = '), _visit(proof)],
+    ]),
   };
 
   // -------------------------------------------------------------------------

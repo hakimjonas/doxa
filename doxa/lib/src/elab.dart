@@ -2234,6 +2234,13 @@ List<String> _localScopeNames(_LocalScope scope) {
             : auto(depth: depth)(state),
       STacticOmega() => omega(state),
       STacticTrivial() => trivial(state),
+      STacticHave(:final name, :final type, :final proof) => _runHave(
+        name,
+        type,
+        proof,
+        state,
+        currentEst,
+      ),
     };
     switch (result) {
       case TacticOk(:final term, :final metas, :final subMeta):
@@ -2301,6 +2308,27 @@ TacticResult _runExact(SExpr expr, TacticState tstate, _ElabState est) {
     }
   }
   return exact(term)(tstate);
+}
+
+/// Run a `have` step: elaborate the declared type, check the proof against
+/// it (when given), and add the fact to the goal context.
+TacticResult _runHave(
+  String name,
+  SExpr typeExpr,
+  SExpr? proofExpr,
+  TacticState tstate,
+  _ElabState est,
+) {
+  final (typeTerm, sort) = _inferExpr(est, typeExpr);
+  if (sort is! VType && sort is! VProp && sort is! VSProp) {
+    throw NotAType(sort);
+  }
+  final typeValue = eval(typeTerm, tstate.ctx.env);
+  Term? proof;
+  if (proofExpr != null) {
+    proof = _checkExpr(est, proofExpr, typeValue);
+  }
+  return haveFact(tstate, name, typeTerm, proof: proof);
 }
 
 TacticResult _runApply(SExpr expr, TacticState tstate, _ElabState est) {

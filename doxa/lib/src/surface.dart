@@ -1278,6 +1278,30 @@ final class STacticOmega extends STacticStep {
   String toString() => 'STacticOmega';
 }
 
+/// `have name : T = proof` or `have name : T`: adds a local fact.
+///
+/// The declared type and the optional proof are elaborated in the tactic's
+/// current context. Without a proof the fact becomes a subgoal, worked on
+/// before the main goal; with a proof the fact is bound directly and the
+/// main goal is the only subgoal.
+final class STacticHave extends STacticStep {
+  /// The fact's name.
+  final String name;
+
+  /// The fact's declared type.
+  final SExpr type;
+
+  /// The proof, or null when the fact is left as a subgoal.
+  final SExpr? proof;
+
+  /// Creates a `have` step.
+  const STacticHave(this.name, this.type, [this.proof]);
+
+  @override
+  String toString() =>
+      'STacticHave($name, $type${proof == null ? '' : ', $proof'})';
+}
+
 /// An intersection of typeclass constraints: `Eq & Ord`.
 ///
 /// Used in constrained type parameters like `[A: Eq & Ord]`.
