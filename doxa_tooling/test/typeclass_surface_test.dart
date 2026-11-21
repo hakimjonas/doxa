@@ -104,6 +104,12 @@ typeclass WithDefault[A: Type]: Default[A] {
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
+    test('a class law that uses an operation projection checks', () {
+      final fixture = File('test/fixtures/class_laws_algebra.doxa');
+      final r = runSource(fixture.readAsStringSync(), filename: fixture.path);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
     test('an unknown class reports the named diagnostic', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"

@@ -81,6 +81,7 @@ val id : (A: Type) -> A -> A = (A: Type) => (x: A) => x
         ],
         dataDecls: const <DataDecl>[],
         corecursiveGroup: null,
+        prescopeBindings: false,
         metas: metas,
         classRegistry: const <String, ClassInfo>{},
         namespaceBindings: const <String, Set<String>>{},
