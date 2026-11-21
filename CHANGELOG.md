@@ -46,6 +46,8 @@ project is ready.
 - Solved implicit arguments in the REPL `:type` and `:norm` paths, so
   expressions such as `id2 zero` and `refl zero` elaborate and show their
   types.
+- Kept LSP hover, definition, references, rename, and completion available on
+  the checked prefix of a document with a type error.
 
 ## 0.8.4 (2026-11-12)
 

@@ -19,6 +19,14 @@ From a source checkout:
 dart run bin/doxa.dart check ../example/proofs.doxa
 ```
 
+## Language server
+
+`doxa lsp` publishes diagnostics and serves hover, definition, references,
+rename, completion, document symbols, folding, signature help, semantic
+tokens, and formatting. Semantic requests use the checked declaration prefix
+when a document has an error; a name inside the failing declaration returns no
+result until that declaration checks.
+
 Local development uses a path override. Create `doxa_tooling/pubspec_overrides.yaml`:
 
 ```yaml
