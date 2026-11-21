@@ -1656,6 +1656,33 @@ List<TopBinding> checkDeclResult(TopEnv topEnv, DeclResult result) {
   final metas = result.metas;
   final group = result.corecursiveGroup;
   if (group == null) {
+    if (result.prescopeBindings) {
+      // Class projections form a small telescope: a law projection's
+      // type may name an operation projection produced by the same
+      // declaration. Evaluate each binding's type and install its value
+      // before moving on, so earlier siblings resolve. A forward
+      // reference has no entry yet and fails. The value installed is the
+      // checked term, not a neutral, so a law type that applies an
+      // operation projection converts against the dictionary field.
+      final baseCtx = _ctxWithMetas(topEnv.toCtx(), metas);
+      final stubs = <String, TopBindingEntry>{};
+      for (final binding in result.bindings) {
+        final ctx = _ctxWithTopBindings(baseCtx, stubs, metas: metas);
+        final typeV = eval(binding.type, ctx.env);
+        final term =
+            metas != null
+                ? inlineSolvedMetas(binding.term, metas)
+                : binding.term;
+        check(ctx, term, typeV);
+        final valueV = eval(term, ctx.env);
+        stubs[binding.name] = TopBindingEntry(
+          typeV,
+          valueV,
+          isOpaque: binding.isOpaque,
+        );
+      }
+      return _finishDeclBindings(result.bindings, metas);
+    }
     // Pre-seed self-referencing bindings (termination_by funs that
     // reference themselves via TTop).  Without this, checking the
     // body fails because TTop(name) can't resolve to the binding
@@ -1969,6 +1996,12 @@ typedef DeclResult =
       List<TopBinding> bindings,
       List<DataDecl> dataDecls,
       CorecursiveGroup? corecursiveGroup,
+      // When true, `checkDeclResult` evaluates and installs each produced
+      // binding in declaration order, so a later binding's type may name
+      // an earlier sibling. Used by `typeclass`, whose law projections
+      // mention operation projections produced by the same declaration.
+      // False for declarations whose bindings do not reference each other.
+      bool prescopeBindings,
       // The per-declaration MetaContext. Populated when elaboration
       // allocated fresh metas via `insert'` (or any other insertion
       // mechanism). Consumers that re-check the elaborated term (notably
@@ -4626,6 +4659,7 @@ DeclResult _elabDecl(
         dataDecls: const <DataDecl>[],
         corecursiveGroup: null,
         metas: metas,
+        prescopeBindings: false,
         classRegistry: const {},
         namespaceBindings: const {},
       );
@@ -4646,6 +4680,7 @@ DeclResult _elabDecl(
         dataDecls: const <DataDecl>[],
         corecursiveGroup: null,
         metas: metas,
+        prescopeBindings: false,
         classRegistry: const {},
         namespaceBindings: const {},
       );
@@ -4669,6 +4704,7 @@ DeclResult _elabDecl(
         corecursiveGroup:
             blockResult.group.members.isEmpty ? null : blockResult.group,
         metas: metas,
+        prescopeBindings: false,
         classRegistry: const {},
         namespaceBindings: const {},
       );
@@ -4689,6 +4725,7 @@ DeclResult _elabDecl(
         dataDecls: [dataDecl],
         corecursiveGroup: null,
         metas: metas,
+        prescopeBindings: false,
         classRegistry: const {},
         namespaceBindings: {kind.name: nsNames},
       );
@@ -4710,6 +4747,7 @@ DeclResult _elabDecl(
         dataDecls: dataDecls,
         corecursiveGroup: null,
         metas: metas,
+        prescopeBindings: false,
         classRegistry: const {},
         namespaceBindings: {
           for (final d in dataDecls)
@@ -4749,6 +4787,7 @@ DeclResult _elabDecl(
         corecursiveGroup:
             blockResult.group.members.isEmpty ? null : blockResult.group,
         metas: metas,
+        prescopeBindings: false,
         classRegistry: const {},
         namespaceBindings: const {},
       );
@@ -4958,7 +4997,7 @@ DeclResult _elabTypeclass(
     [ctorDecl],
   );
 
-  final dataDecl = _elabData(topEnv, span, sDataKind);
+  final dataDecl = _elabData(topEnv, span, sDataKind, metas: metas);
 
   // The projections mention the new dictionary type, so they elaborate
   // against an environment that already contains it.
@@ -4970,7 +5009,28 @@ DeclResult _elabTypeclass(
     topEnv.importState,
   );
 
+  final methodInfos = <(String, SExpr)>[
+    for (final method in methods) (method.name, method.type!),
+  ];
+  final classInfo = ClassInfo(
+    className: name,
+    typeParams: paramNames,
+    methods: methodInfos,
+    superclassName: superclassName,
+    superclassParameters: superclassParameters,
+  );
+
   final projections = <TopBinding>[];
+  // The class being declared is not registered yet, so install its
+  // ClassInfo in the projection environment. A law projection whose
+  // dictionary is a subclass needs it to derive the parent field.
+  var projectionEnv = TopEnv(
+    scratch.bindings,
+    scratch.dataDecls,
+    {...scratch.classRegistry, name: classInfo},
+    scratch.namespaceBindings,
+    scratch.importState,
+  );
   for (final method in methods) {
     final (methodBinders, returnType) = _peelMethodType(method.type!);
     final usedNames = <String>{
@@ -5001,35 +5061,40 @@ DeclResult _elabTypeclass(
         DoxaSpan.synthetic,
       );
     }
-    projections.add(
-      TopBinding(
-        name: method.name,
-        type: _buildFunType(scratch, binders, returnType, metas: metas),
-        term: _buildFunBody(scratch, binders, body, returnType, metas: metas),
-        span: span,
+    final projection = TopBinding(
+      name: method.name,
+      type: _buildFunType(projectionEnv, binders, returnType, metas: metas),
+      term: _buildFunBody(
+        projectionEnv,
+        binders,
+        body,
+        returnType,
+        metas: metas,
       ),
+      span: span,
+    );
+    projections.add(projection);
+    // A law's type may name an operation declared earlier in the class.
+    // Make each finished projection visible to the later ones; a later
+    // operation is not in this environment, so a forward reference fails.
+    projectionEnv = TopEnv(
+      [...projectionEnv.bindings, projection],
+      projectionEnv.dataDecls,
+      projectionEnv.classRegistry,
+      projectionEnv.namespaceBindings,
+      projectionEnv.importState,
     );
   }
 
   final recBindings = _makeRecBindings(scratch, dataDecl, span);
-  final methodInfos = <(String, SExpr)>[
-    for (final method in methods) (method.name, method.type!),
-  ];
 
   return (
     bindings: [...recBindings, ...projections],
     dataDecls: [dataDecl],
     corecursiveGroup: null,
     metas: metas,
-    classRegistry: {
-      name: ClassInfo(
-        className: name,
-        typeParams: paramNames,
-        methods: methodInfos,
-        superclassName: superclassName,
-        superclassParameters: superclassParameters,
-      ),
-    },
+    prescopeBindings: true,
+    classRegistry: {name: classInfo},
     namespaceBindings: {
       name: {
         for (final binding in recBindings) binding.name,
@@ -5358,22 +5423,61 @@ DeclResult _elabImpl(
     metas: metas,
   );
 
-  // Method bodies are elaborated against the enclosing environment, which
-  // does not contain this instance. A call at the instance's own head is
-  // therefore a missing instance at elaboration time, not an unguarded
-  // recursive dictionary; recursion goes through a top-level `fun`, which
-  // the structural-recursion check covers.
-  final methodTerms = <Term>[
-    for (final methodName in classMethodNames)
-      _buildFunBody(
-        topEnv,
-        _funBinders(provided[methodName]!),
-        provided[methodName]!.body,
-        provided[methodName]!.returnType,
-        metas: metas,
-        contextBinders: implBinders,
-      ),
-  ];
+  // Method bodies are checked against the dictionary's field type at the
+  // instance's target, with the earlier fields substituted by the terms
+  // built so far. A law therefore sees the instance's own operations, not
+  // the top-level projections, which would need the instance being
+  // defined. The field type comes from the class declaration, so no
+  // self-referential dictionary is introduced.
+  final classDecl = implState.topEnv.lookupData(className);
+  if (classDecl == null || classDecl.ctors.isEmpty) {
+    throw StateError('typeclass "$className" has no dictionary declaration');
+  }
+  final ctor = classDecl.ctors.first;
+  final fieldValues = <String, Value>{};
+  if (superclassName != null) {
+    fieldValues[_superclassField] = eval(
+      superclassDictionary!,
+      implState.ctx.env,
+    );
+  }
+  final methodTerms = <Term>[];
+  for (final methodName in classMethodNames) {
+    final method = provided[methodName]!;
+    final fieldIndex = ctor.args.indexWhere((arg) => arg.name == methodName);
+    if (fieldIndex < 0) {
+      throw StateError('typeclass "$className" has no field "$methodName"');
+    }
+    Env fieldEnv = ENil.withRegistries(
+      dataDecls: implState.topEnv.dataDecls,
+      topBindings: implState.ctx.env.topBindings,
+    );
+    for (var i = 0; i < classInfo.typeParams.length; i++) {
+      fieldEnv = fieldEnv.extend(argValues[i]);
+    }
+    for (var i = 0; i < fieldIndex; i++) {
+      final previousName = ctor.args[i].name;
+      final previousValue =
+          previousName == null ? null : fieldValues[previousName];
+      if (previousValue == null) {
+        throw StateError(
+          'typeclass "$className" field "$previousName" has no value',
+        );
+      }
+      fieldEnv = fieldEnv.extend(previousValue);
+    }
+    final fieldType = eval(ctor.args[fieldIndex].type, fieldEnv);
+    final (term, _) = _buildFunBodyFromFieldType(
+      topEnv,
+      fieldType,
+      _funBinders(method),
+      method.body,
+      metas: metas,
+      contextBinders: implBinders,
+    );
+    methodTerms.add(term);
+    fieldValues[methodName] = eval(term, implState.ctx.env);
+  }
 
   // `TConstr` carries the full spine: the data parameters, then the
   // constructor arguments (the superclass dictionary when present, then
@@ -5401,6 +5505,7 @@ DeclResult _elabImpl(
     dataDecls: const <DataDecl>[],
     corecursiveGroup: null,
     metas: metas,
+    prescopeBindings: false,
     classRegistry: {className: classInfo.withInstance(instanceInfo)},
     namespaceBindings: const {},
   );
@@ -5437,6 +5542,7 @@ DeclResult _processImport(
       dataDecls: const <DataDecl>[],
       corecursiveGroup: null,
       metas: MetaContext()..semInfos = <SemInfo>[],
+      prescopeBindings: false,
       classRegistry: const {},
       namespaceBindings: const {},
     );
@@ -5568,6 +5674,7 @@ DeclResult _processImport(
       dataDecls: localDataDecls,
       corecursiveGroup: null,
       metas: MetaContext()..semInfos = <SemInfo>[],
+      prescopeBindings: false,
       classRegistry: localClassRegistry,
       namespaceBindings: nsMap,
     );
@@ -5920,6 +6027,39 @@ Term _buildFunBody(
   // path fires for dependent matches.
   final result = _checkExpr(state, body, returnV);
   return _wrapLambdas(domains, binders, result);
+}
+
+/// Build a method body against an already elaborated field type.
+///
+/// The field type comes from the class dictionary at the instance's
+/// target, with its earlier fields substituted. Its Pi chain supplies the
+/// expected result type, so a law body sees the instance's operations
+/// without the instance dictionary being in scope.
+(Term, List<Term>) _buildFunBodyFromFieldType(
+  TopEnv topEnv,
+  Value fieldType,
+  List<_FunBinder> binders,
+  SExpr body, {
+  MetaContext? metas,
+  List<_FunBinder> contextBinders = const [],
+}) {
+  final state = _shimState(topEnv, const _LocalNil(), metas: metas);
+  final (contextState, _) = _pushBinders(state, contextBinders);
+  final (innerState, domains) = _pushBinders(contextState, binders);
+  var current = fieldType;
+  var binderState = contextState;
+  for (final binder in binders) {
+    if (current is! VPi) {
+      throw StateError(
+        'field type for "${binder.name}" has no Pi at this binder',
+      );
+    }
+    binderState = binderState.push(binder.name, current.domain, binder.span);
+    final argument = eval(const TBound(0), binderState.ctx.env);
+    current = _evalPiCodomain(binderState, current, argument);
+  }
+  final result = _checkExpr(innerState, body, current);
+  return (_wrapLambdas(domains, binders, result), domains);
 }
 
 /// Push [binders] onto [state], returning the extended state and the
@@ -7043,8 +7183,9 @@ bool _termIsSPropSorted(Term t, List<DataDecl> dataDecls) {
 List<CtorDecl> _elabDataCtors(
   _DataHeader header,
   TopEnv scratchEnv,
-  Set<String> mutualNames,
-) {
+  Set<String> mutualNames, {
+  MetaContext? metas,
+}) {
   final ctors = <CtorDecl>[];
   final kind = header.kind;
   final params = header.params;
@@ -7055,7 +7196,7 @@ List<CtorDecl> _elabDataCtors(
   // `_buildFunType`: SApp's check-mode arg elab requires correct
   // binder types, so we can't use the `_shimState` unknown marker
   // for params.
-  var ctorState = _shimState(scratchEnv, const _LocalNil());
+  var ctorState = _shimState(scratchEnv, const _LocalNil(), metas: metas);
   var teleEnv = ctorState.ctx.env;
   for (final p in params) {
     final paramTypeV = eval(p.type, teleEnv);
@@ -7248,7 +7389,12 @@ List<TopBinding> _makeRecBindings(
 /// Orchestrates [_elabDataHeader] and [_elabDataCtors] with a
 /// self-only mutual-names set. See [_elabDataBlock] for the mutual
 /// case.
-DataDecl _elabData(TopEnv topEnv, DoxaSpan span, SDataKind kind) {
+DataDecl _elabData(
+  TopEnv topEnv,
+  DoxaSpan span,
+  SDataKind kind, {
+  MetaContext? metas,
+}) {
   // Check ctor names don't collide with each other or with existing
   // top-level names.
   final ctorSeen = <String, DoxaSpan>{};
@@ -7274,7 +7420,7 @@ DataDecl _elabData(TopEnv topEnv, DoxaSpan span, SDataKind kind) {
     topEnv.namespaceBindings,
     topEnv.importState,
   );
-  final ctors = _elabDataCtors(header, scratchEnv, {kind.name});
+  final ctors = _elabDataCtors(header, scratchEnv, {kind.name}, metas: metas);
   final paramsCovariant = _computeParamsCovariant(header.params, ctors);
   return DataDecl(
     name: kind.name,
@@ -7916,7 +8062,15 @@ Value _fieldType(
     if (ctor.args[i].name == fieldName) {
       final fieldTypeTerm = ctor.args[i].type;
       final paramCount = decl.params.length;
-      Env fieldEnv = const ENil();
+      // Keep the enclosing registries: a class dictionary field's type
+      // can name a top-level projection from a parent class.
+      Env fieldEnv =
+          outerEnv == null
+              ? const ENil()
+              : ENil.withRegistries(
+                dataDecls: outerEnv.dataDecls,
+                topBindings: outerEnv.topBindings,
+              );
       for (var j = 0; j < paramCount; j++) {
         fieldEnv = fieldEnv.extend(dataV.args[j]);
       }

@@ -63,6 +63,7 @@ DeclResult _decl(String name, Term type, Term body, MetaContext metas) => (
   ],
   dataDecls: const <DataDecl>[],
   corecursiveGroup: null,
+  prescopeBindings: false,
   metas: metas,
   classRegistry: const <String, ClassInfo>{},
   namespaceBindings: const <String, Set<String>>{},
