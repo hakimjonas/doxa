@@ -1031,6 +1031,29 @@ This slice has these limits:
   with `NoInstanceFound`, naming the class and type. A chain past the bound is
   reported with `InstanceSearchDepthExceeded`.
 
+### The algebra library
+
+The standard library ships monoids and commutative monoids.
+`AddCommMonoid` and `CommMonoid` embed their monoid as a superclass
+dictionary, so an `AddCommMonoid` dictionary also supplies `AddMonoid`.
+`sum` folds a list with `add` and `azero`, and `sumViaComm` takes the
+commutative constraint:
+
+```doxa
+import "package:doxa_stdlib/stdlib/algebra.doxa"
+
+val two : Nat = sum Nat (cons (succ zero) (cons (succ zero) nil))
+val two_eq : Eq Nat two (succ (succ zero)) = refl two
+val viaComm : Nat = sumViaComm Nat (cons (succ zero) (cons (succ zero) nil))
+val viaComm_eq : Eq Nat viaComm (succ (succ zero)) = refl viaComm
+```
+
+Both folds reduce the two-element list to `succ (succ zero)`, so `refl`
+proves both equations. The explicit `Nat` supplies the class parameter, and
+the dictionary comes from the `AddMonoid Nat` and `AddCommMonoid Nat`
+instances by search. `sumViaComm` reaches `AddMonoid` through the
+`AddCommMonoid` dictionary's parent field.
+
 A class that is not passed as a constraint can still be used as an ordinary
 record type. A user-defined record is an explicit dictionary:
 

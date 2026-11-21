@@ -69,12 +69,14 @@ and `package:` usage.
 **Surface syntax**
 - ML-family surface: `fun`, `val`, `data`, `match`, `import`, `theorem`
 - Implicit arguments (`{A: Type}`) and explicit type parameters (`[A: Type]`)
-- Typeclasses: single-parameter classes, parameterised instances with linear
-  targets, constrained parameters with trailing dictionary arguments, and
-  depth-bounded instance search; the standard library provides `Eqb`
-  instances for `Nat`, `Bool`, and `List`. Superclasses, local instances,
-  default method bodies, and multi-parameter classes are not supported; see
-  [`SPEC.md`](../SPEC.md#typeclasses).
+- Typeclasses: single-parameter classes, superclasses with the derived parent
+  dictionary, multi-parameter classes, local dictionaries, parameterised
+  instances with linear targets, constrained parameters with trailing
+  dictionary arguments, and depth-bounded instance search. The standard
+  library provides `Eqb` instances for `Nat`, `Bool`, and `List`, and the
+  algebra classes `AddMonoid`, `AddCommMonoid`, `Monoid`, and `CommMonoid`
+  with `Nat` and `List` instances plus `sum` and `sumViaComm`. Default method
+  bodies are not supported; see [`SPEC.md`](../SPEC.md#typeclasses).
 - Block expressions with `val` bindings
 - Tactics: `by { ... }` with `intro`, `exact`, `apply`, `refl`, `rewrite`,
   `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`, and
@@ -100,8 +102,8 @@ and `package:` usage.
 - Stack-safety regression tests at depths up to 10,000 binder/β-redex layers
 - stdlib files type-checked on every commit
 - Documentation `doxa` blocks are checked by
-  `doxa_tooling/test/doc_blocks_test.dart`; the current run checks 39 blocks
-  and skips 14 marked fragments
+  `doxa_tooling/test/doc_blocks_test.dart`; the current run checks 42 blocks
+  and skips 20 marked fragments
 
 ## Gated until implemented
 
@@ -167,11 +169,11 @@ These are design non-goals, not omissions:
 - **Typeclass method names**: each method becomes a top-level projection, so
   method names share the global namespace and two classes cannot declare the
   same name.
-- **Typeclass scope**: superclasses, local instances, default method bodies,
-  and classes with more than one parameter are rejected with named
-  diagnostics. An instance method body does not see the instance being
-  defined; recursion is expressed through a top-level `fun`, which is
-  subject to the structural-recursion rule.
+- **Typeclass scope**: a method with a default body is rejected with
+  `TypeclassUnsupported`, so every instance supplies every method. An
+  instance method body does not see the instance being defined; recursion is
+  expressed through a top-level `fun`, which is subject to the
+  structural-recursion rule.
 
 ## Installation
 
