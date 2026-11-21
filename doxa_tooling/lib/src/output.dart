@@ -10,6 +10,8 @@ import 'dart:convert';
 
 import 'package:doxa/doxa.dart';
 
+import 'cached_imports.dart';
+
 /// The result of checking a Doxa source file.
 sealed class CheckOutput {
   /// Base constructor.
@@ -45,7 +47,9 @@ final class CheckSuccess extends CheckOutput {
 
   /// Resolved import state that can be reused on subsequent checks
   /// to avoid re-processing transitive imports on every edit.
-  final dynamic imports;
+  ///
+  /// Not serialised by [toJson].
+  final CachedImports? imports;
 
   /// Creates a success result.
   const CheckSuccess({
@@ -184,8 +188,46 @@ final class CheckFailure extends CheckOutput {
   /// contribute the goals recorded before the failure.
   final List<ProofStateBlock> proofState;
 
+  /// Per-declaration info for the declarations that completed before the
+  /// first failing declaration.
+  ///
+  /// The prefix is conservative: declarations after the first error are
+  /// not included even when their own elaboration succeeded, because their
+  /// positions depend on the failed declaration's bindings. Not serialised
+  /// by [toJson], so the CLI's structured contract is unchanged.
+  final List<DeclInfo> declarations;
+
+  /// Per-position semantic metadata for the same checked prefix.
+  ///
+  /// Sorted by [SemInfo.span.start]. Positions inside the failing
+  /// declaration have no entry. Not serialised by [toJson].
+  final List<SemInfo> semInfo;
+
+  /// Number of declarations checked in the partial prefix.
+  ///
+  /// Uses the same counting rule as [CheckSuccess.count]. Not serialised
+  /// by [toJson].
+  final int checkedCount;
+
+  /// Resolved imports for the checked document, or null when no current
+  /// cache exists.
+  ///
+  /// A declaration failure carries the session's resolved imports: the
+  /// checked prefix and the failing declaration still refer to imported
+  /// names. Parse and import-resolution failures carry null because the
+  /// text or import graph did not produce a usable baseline. Not
+  /// serialised by [toJson].
+  final CachedImports? imports;
+
   /// Creates a failure result.
-  const CheckFailure({required this.errors, this.proofState = const []});
+  const CheckFailure({
+    required this.errors,
+    this.proofState = const [],
+    this.declarations = const [],
+    this.semInfo = const [],
+    this.checkedCount = 0,
+    this.imports,
+  });
 
   /// Joined message text (backward compat).
   String get message => errors.map((e) => e.message).join('\n\n');

@@ -9,6 +9,7 @@ import 'dart:io' show File, Platform, stderr;
 import 'package:doxa/doxa.dart';
 import 'package:rumil/rumil.dart'
     show Failure, IncrementalStrategy, ParseError, Partial, Success, TextEdit;
+import '../cached_imports.dart';
 import '../web_check.dart';
 import '../parse_tree.dart' show parseProgramTree;
 import '../syntax.dart' show DoxaGreen;
@@ -31,6 +32,11 @@ final class _DocumentState {
   String text;
   int version;
   CheckSuccess? lastSuccess;
+
+  /// Semantic metadata from the latest check. On success this mirrors
+  /// [lastSuccess]; on a failure it carries the checked prefix before the
+  /// first failing declaration.
+  _SemanticSource? semantics;
   Map<String, int> frequency = <String, int>{};
   CachedImports? cachedImports;
   IncrementalCheckSession? checkSession;
@@ -39,16 +45,29 @@ final class _DocumentState {
   IncrementalStrategy? lastReparseStrategy;
 }
 
+/// Declarations and semantic metadata from a check. A success populates
+/// the full lists; a failure populates the prefix before its first error.
+final class _SemanticSource {
+  const _SemanticSource({required this.declarations, required this.semInfo});
+
+  final List<DeclInfo> declarations;
+  final List<SemInfo> semInfo;
+
+  bool get isEmpty => declarations.isEmpty && semInfo.isEmpty;
+}
+
 final class _IndexedDocument {
   const _IndexedDocument({
     required this.uri,
     required this.text,
-    required this.success,
+    required this.declarations,
+    required this.semInfo,
   });
 
   final String uri;
   final String text;
-  final CheckSuccess success;
+  final List<DeclInfo> declarations;
+  final List<SemInfo> semInfo;
 }
 
 final class _SymbolTarget {
@@ -75,8 +94,9 @@ final class LspHandler {
   String get _documentUri => _activeDocument?.uri ?? '';
   String get _documentText => _activeDocument?.text ?? '';
   set _documentText(String value) => _activeDocument?.text = value;
-  CheckSuccess? get _lastSuccess => _activeDocument?.lastSuccess;
   set _lastSuccess(CheckSuccess? value) => _activeDocument?.lastSuccess = value;
+  _SemanticSource? get _semantics => _activeDocument?.semantics;
+  set _semantics(_SemanticSource? value) => _activeDocument?.semantics = value;
   Map<String, int> get _freq => _activeDocument?.frequency ?? const {};
   set _freq(Map<String, int> value) => _activeDocument?.frequency = value;
   CachedImports? get _cachedImports => _activeDocument?.cachedImports;
@@ -540,15 +560,15 @@ final class LspHandler {
     final prefix = _wordPrefixAt(offset);
     final typeByName = <String, String>{};
     final defKindByName = <String, String>{};
-    if (_lastSuccess != null) {
-      // Build a type map from SemInfo entries.
-      for (final info in _lastSuccess!.semInfo) {
+    if (_semantics != null) {
+      // Build a type map from SemInfo entries in the checked prefix.
+      for (final info in _semantics!.semInfo) {
         if (info.span.start <= offset) {
           typeByName[info.name] = info.type;
         }
       }
       // Also map declaration kinds to decide symbol kind labels.
-      for (final decl in _lastSuccess!.declarations) {
+      for (final decl in _semantics!.declarations) {
         if (decl.span.start <= offset) {
           if (decl.type != null) {
             typeByName.putIfAbsent(decl.name, () => decl.type!);
@@ -610,9 +630,9 @@ final class LspHandler {
       ));
     }
 
-    // Semantic tokens from the last successful type-check.
-    if (_lastSuccess != null) {
-      for (final info in _lastSuccess!.semInfo) {
+    // Semantic tokens from the checked prefix.
+    if (_semantics != null) {
+      for (final info in _semantics!.semInfo) {
         final span = info.span;
         if (span.isSynthetic) continue;
         final length = span.end - span.start;
@@ -633,7 +653,7 @@ final class LspHandler {
       // for them. Imported data declarations likewise need a source-level
       // fallback when they appear in data-only files.
       final declarationTypes = <String, LspSemanticTokenType>{
-        for (final declaration in _lastSuccess!.declarations)
+        for (final declaration in _semantics!.declarations)
           declaration.name: switch (declaration.kind) {
             'data' => LspSemanticTokenType.type_,
             'ctor' => LspSemanticTokenType.enumMember,
@@ -815,11 +835,11 @@ final class LspHandler {
     Object? id,
     Map<String, dynamic> params,
   ) {
-    if (_lastSuccess == null) {
+    if (_semantics == null) {
       return {'jsonrpc': '2.0', 'id': id, 'result': <Map<String, dynamic>>[]};
     }
     final symbols = <LspDocumentSymbol>[];
-    for (final decl in _lastSuccess!.declarations) {
+    for (final decl in _semantics!.declarations) {
       final pos = _positionAt(decl.span.start);
       final endPos = _positionAt(decl.span.end);
       final namePos = _positionAt(
@@ -925,15 +945,15 @@ final class LspHandler {
 
     // Look up the function's type from semInfo or declarations.
     String? funcType;
-    if (_lastSuccess != null) {
-      for (final info in _lastSuccess!.semInfo) {
+    if (_semantics != null) {
+      for (final info in _semantics!.semInfo) {
         if (info.name == funcName && info.span.start <= offset) {
           funcType = info.type;
           break;
         }
       }
       if (funcType == null) {
-        for (final decl in _lastSuccess!.declarations) {
+        for (final decl in _semantics!.declarations) {
           if (decl.name == funcName && decl.span.start <= offset) {
             funcType = decl.type;
             break;
@@ -1000,11 +1020,11 @@ final class LspHandler {
     Object? id,
     Map<String, dynamic> params,
   ) {
-    if (_lastSuccess == null) {
+    if (_semantics == null) {
       return {'jsonrpc': '2.0', 'id': id, 'result': <Map<String, dynamic>>[]};
     }
     final lenses = <LspCodeLens>[];
-    for (final decl in _lastSuccess!.declarations) {
+    for (final decl in _semantics!.declarations) {
       final pos = _positionAt(decl.span.start);
       final typeStr = decl.type ?? decl.kind;
       lenses.add(
@@ -1033,11 +1053,11 @@ final class LspHandler {
     Map<String, dynamic> params,
   ) {
     final hints = <Map<String, dynamic>>[];
-    if (_lastSuccess == null) {
+    if (_semantics == null) {
       return {'jsonrpc': '2.0', 'id': id, 'result': hints};
     }
 
-    for (final decl in _lastSuccess!.declarations) {
+    for (final decl in _semantics!.declarations) {
       final type = decl.type;
       if (type == null) continue;
       final nameOffset = _definitionNameOffset(
@@ -1263,7 +1283,7 @@ final class LspHandler {
       }
     }
     for (final document in _indexedDocuments()) {
-      for (final info in document.success.semInfo) {
+      for (final info in document.semInfo) {
         if (!_matchesTarget(info, document, target)) continue;
         final reference = _referenceNameSpan(info, target.name, document.text);
         if (reference == null || !seen.add(_spanKey(document, reference))) {
@@ -1344,7 +1364,7 @@ final class LspHandler {
     if (includeLocal) {
       final document = _activeIndexedDocument;
       if (document != null) {
-        for (final local in document.success.semInfo) {
+        for (final local in document.semInfo) {
           final definition = local.defSpan;
           if (local.kind != SemInfoKind.localVar ||
               definition == null ||
@@ -1372,7 +1392,7 @@ final class LspHandler {
       final name = _unqualifiedName(info.name);
       final definitionUri = _definitionUriFor(info, _activeIndexedDocument!);
       final definitionDocument = _documentForUri(definitionUri);
-      final declaration = definitionDocument?.success.declarations.where(
+      final declaration = definitionDocument?.declarations.where(
         (declaration) =>
             declaration.span == definitionSpan &&
             declaration.name == name &&
@@ -1456,24 +1476,26 @@ final class LspHandler {
 
   _IndexedDocument? get _activeIndexedDocument {
     final document = _activeDocument;
-    final success = document?.lastSuccess;
-    return document == null || success == null
+    final semantics = document?.semantics;
+    return document == null || semantics == null
         ? null
         : _IndexedDocument(
           uri: document.uri,
           text: document.text,
-          success: success,
+          declarations: semantics.declarations,
+          semInfo: semantics.semInfo,
         );
   }
 
   Iterable<_IndexedDocument> _indexedDocuments() sync* {
     for (final document in _documents.values) {
-      final success = document.lastSuccess;
-      if (success == null) continue;
+      final semantics = document.semantics;
+      if (semantics == null) continue;
       yield _IndexedDocument(
         uri: document.uri,
         text: document.text,
-        success: success,
+        declarations: semantics.declarations,
+        semInfo: semantics.semInfo,
       );
     }
     yield* _importSnapshots.values;
@@ -1523,6 +1545,7 @@ final class LspHandler {
       _lastSuccess = null;
       _cachedImports = null;
       _checkSession = null;
+      _semantics = null;
       _publishDiagnostics([
         LspDiagnostic(
           range: const LspRange(
@@ -1539,9 +1562,13 @@ final class LspHandler {
     switch (output) {
       case CheckSuccess _:
         _lastSuccess = output;
+        _semantics = _SemanticSource(
+          declarations: output.declarations,
+          semInfo: output.semInfo,
+        );
         // Cache import resolution for subsequent edits.
         if (output.imports != null) {
-          _cachedImports = output.imports as CachedImports?;
+          _cachedImports = output.imports;
           final document = _activeDocument;
           if (document != null) {
             document.importedPaths
@@ -1561,7 +1588,30 @@ final class LspHandler {
         _publishDiagnostics(<LspDiagnostic>[]);
       case final CheckFailure failure:
         _lastSuccess = null;
-        _cachedImports = null;
+        // Keep the resolved imports: the checked prefix and the failing
+        // declaration still refer to imported names. Parse and
+        // import-resolution failures carry no cache.
+        _cachedImports = failure.imports;
+        if (failure.imports != null) {
+          final document = _activeDocument;
+          if (document != null) {
+            document.importedPaths
+              ..clear()
+              ..addAll(failure.imports!.importState.sourceFiles.keys);
+          }
+        }
+        _semantics =
+            failure.declarations.isEmpty && failure.semInfo.isEmpty
+                ? null
+                : _SemanticSource(
+                  declarations: failure.declarations,
+                  semInfo: failure.semInfo,
+                );
+        _freq = <String, int>{};
+        for (final info in failure.semInfo) {
+          _freq[info.name] = (_freq[info.name] ?? 0) + 1;
+        }
+        _refreshImportSnapshots();
         final source = SourceFile(filename: _documentUri, text: _documentText);
         final diagnostics = <LspDiagnostic>[];
         for (final error in failure.errors) {
@@ -1622,7 +1672,9 @@ final class LspHandler {
   void _refreshImportSnapshots() {
     final sources = <String, SourceFile>{};
     for (final document in _documents.values) {
-      final imports = document.lastSuccess?.imports as CachedImports?;
+      // A failing document has no last success but may still hold the
+      // resolved imports from the partial check.
+      final imports = document.cachedImports ?? document.lastSuccess?.imports;
       if (imports != null) {
         sources.addAll(imports.importState.sourceFiles);
       }
@@ -1649,7 +1701,8 @@ final class LspHandler {
         next[uri] = _IndexedDocument(
           uri: Uri.file(path).toString(),
           text: entry.value.text,
-          success: output,
+          declarations: output.declarations,
+          semInfo: output.semInfo,
         );
       }
     }
@@ -1747,8 +1800,8 @@ final class LspHandler {
 
   /// Look up the [SemInfo] at a given byte [offset].
   SemInfo? _infoAt(int offset) {
-    if (_lastSuccess == null) return null;
-    final infos = _lastSuccess!.semInfo;
+    final infos = _semantics?.semInfo;
+    if (infos == null) return null;
     // Binary search: find the last SemInfo with span.start <= offset.
     var lo = 0;
     var hi = infos.length - 1;
@@ -1774,10 +1827,11 @@ final class LspHandler {
   /// Returns the declaration whose name occupies [offset]. Declaration names
   /// are binders, so elaboration does not emit SemInfo for their own spans.
   DeclInfo? _declarationAt(int offset) {
-    if (_lastSuccess == null) return null;
+    final declarations = _semantics?.declarations;
+    if (declarations == null) return null;
     final word = _wordAt(offset);
     if (word == null) return null;
-    for (final declaration in _lastSuccess!.declarations) {
+    for (final declaration in declarations) {
       if (declaration.name != word) continue;
       final nameOffset = _documentText.indexOf(word, declaration.span.start);
       if (nameOffset >= declaration.span.start &&
@@ -2064,7 +2118,7 @@ final class LspHandler {
               : targetScope.data.ctors.firstWhere((c) => c.name == word).span;
       final definitionUri = _canonicalDocumentUri(_documentUri);
       for (final document in _indexedDocuments()) {
-        for (final info in document.success.semInfo) {
+        for (final info in document.semInfo) {
           if (info.kind != kind || info.defSpan != defSpan) continue;
           if (_definitionUriFor(info, document) != definitionUri) continue;
           final reference = _referenceNameSpan(info, word, document.text);
@@ -2298,8 +2352,9 @@ final class LspHandler {
   }
 
   DeclInfo? _declarationNamed(String name) {
-    if (_lastSuccess == null) return null;
-    for (final declaration in _lastSuccess!.declarations) {
+    final declarations = _semantics?.declarations;
+    if (declarations == null) return null;
+    for (final declaration in declarations) {
       if (declaration.name == name) return declaration;
     }
     return null;
@@ -2375,7 +2430,7 @@ final class LspHandler {
     Map<String, dynamic> params,
     T? Function(int offset) builder,
   ) {
-    if (_lastSuccess == null) return null;
+    if (_semantics == null) return null;
     final offset = _offsetFromParams(params);
     return builder(offset);
   }
