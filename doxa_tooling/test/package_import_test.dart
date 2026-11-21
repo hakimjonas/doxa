@@ -74,6 +74,24 @@ val listSame : Bool = eqb (cons zero nil) (cons zero nil)
       expect(result.stdout, contains('OK:'));
     });
 
+    test(
+      'the Algebra domain package supplies the instances and both folds',
+      () {
+        final file = File('${project.path}/algebra_use.doxa')
+          ..writeAsStringSync('''
+import "package:doxa_stdlib/stdlib/Algebra/package.doxa"
+
+val two : Nat = sum Nat (cons (succ zero) (cons (succ zero) nil))
+val two_eq : Eq Nat two (succ (succ zero)) = refl two
+val viaComm : Nat = sumViaComm Nat (cons (succ zero) (cons (succ zero) nil))
+val viaComm_eq : Eq Nat viaComm (succ (succ zero)) = refl viaComm
+''');
+        final result = _runFile(file);
+        expect(result.code, 0, reason: result.stderr);
+        expect(result.stdout, contains('OK:'));
+      },
+    );
+
     test('the CLI resolves the package URI end to end', () async {
       final file = File('${project.path}/cli.doxa')..writeAsStringSync('''
 import "package:doxa_stdlib/stdlib/nat.doxa"

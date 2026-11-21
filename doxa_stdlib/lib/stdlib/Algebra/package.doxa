@@ -1,0 +1,2 @@
+// Domain package for Algebra: re-exports algebra.doxa.
+import "../algebra.doxa"
