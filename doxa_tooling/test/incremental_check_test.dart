@@ -160,4 +160,60 @@ val third : Bool = second
       }
     });
   });
+
+  group('IncrementalCheckSession partial semantics', () {
+    const prefix = '''
+data Bool : Type { true_ : Bool; false_ : Bool; }
+val first : Bool = true_
+''';
+    const broken = '$prefix\nval second : Bool = Type\n';
+
+    test('a failure carries the checked prefix before the first error', () {
+      final session = IncrementalCheckSession(filename: 'partial.doxa');
+      final output = session.update(broken);
+      expect(output, isA<CheckFailure>());
+      final failure = output as CheckFailure;
+
+      expect(failure.errors, hasLength(1));
+      expect(failure.errors.single.message, contains('type mismatch'));
+      expect(
+        failure.declarations.map((d) => d.name),
+        containsAll(<String>['Bool', 'true_', 'false_', 'first']),
+      );
+      expect(failure.semInfo, isNotEmpty);
+      final prefixOutput = checkSourceOutput(prefix);
+      expect(prefixOutput, isA<CheckSuccess>());
+      expect(failure.checkedCount, (prefixOutput as CheckSuccess).count);
+      expect(failure.toJson().containsKey('declarations'), isFalse);
+      expect(failure.toJson().containsKey('semInfo'), isFalse);
+      expect(failure.toJson().containsKey('checkedCount'), isFalse);
+    });
+
+    test('a failure in the first declaration carries no partial info', () {
+      final session = IncrementalCheckSession(filename: 'partial.doxa');
+      final output = session.update(
+        'val broken : Bool = Type\nval later : Bool = true_\n',
+      );
+      expect(output, isA<CheckFailure>());
+      final failure = output as CheckFailure;
+
+      expect(failure.declarations, isEmpty);
+      expect(failure.semInfo, isEmpty);
+      expect(failure.checkedCount, 0);
+    });
+
+    test('repairing the failing declaration restores full semantic info', () {
+      final session = IncrementalCheckSession(filename: 'partial.doxa');
+      expect(session.update(broken), isA<CheckFailure>());
+
+      final output = session.update('$prefix\nval second : Bool = first\n');
+      expect(output, isA<CheckSuccess>());
+      expect(session.lastReusedDeclarationCount, 2);
+      expect(session.lastRecheckedDeclarationCount, 1);
+      expect(
+        (output as CheckSuccess).semInfo.any((info) => info.name == 'first'),
+        isTrue,
+      );
+    });
+  });
 }

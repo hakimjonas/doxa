@@ -371,8 +371,41 @@ String _parseFailureMessage(Failure<ParseError, Object?> failure) {
   final proofState = [for (final record in records) ...record.proofState]
     ..sort((a, b) => a.span.start.compareTo(b.span.start));
   if (errors.isNotEmpty) {
+    // Keep the declarations that completed before the first failing
+    // declaration. Positions after the failure depend on bindings the
+    // failed declaration did not register, so the partial metadata stops
+    // at that boundary. Applying the records to a fresh state gives the
+    // same checked count a success over the prefix would report without
+    // re-elaborating any declaration.
+    var firstError = records.length;
+    for (var i = 0; i < records.length; i++) {
+      if (records[i].errors.isNotEmpty) {
+        firstError = i;
+        break;
+      }
+    }
+    final prefix = records.take(firstError);
+    final partialState = _State(imports);
+    for (final record in prefix) {
+      partialState.apply(record);
+    }
+    final partialDeclarations = [
+      for (final record in prefix) ...record.declarations,
+    ];
+    final partialSemInfo = [for (final record in prefix) ...record.semInfo]
+      ..sort((a, b) => a.span.start.compareTo(b.span.start));
+    final checkedCount =
+        partialState.bindings.length +
+        partialState.dataDecls.length -
+        imports.preludeDeclCount;
     return (
-      output: CheckFailure(errors: errors, proofState: proofState),
+      output: CheckFailure(
+        errors: errors,
+        proofState: proofState,
+        declarations: partialDeclarations,
+        semInfo: partialSemInfo,
+        checkedCount: checkedCount,
+      ),
       records: records,
     );
   }

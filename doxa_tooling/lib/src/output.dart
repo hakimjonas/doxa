@@ -184,8 +184,35 @@ final class CheckFailure extends CheckOutput {
   /// contribute the goals recorded before the failure.
   final List<ProofStateBlock> proofState;
 
+  /// Per-declaration info for the declarations that completed before the
+  /// first failing declaration.
+  ///
+  /// The prefix is conservative: declarations after the first error are
+  /// not included even when their own elaboration succeeded, because their
+  /// positions depend on the failed declaration's bindings. Not serialised
+  /// by [toJson], so the CLI's structured contract is unchanged.
+  final List<DeclInfo> declarations;
+
+  /// Per-position semantic metadata for the same checked prefix.
+  ///
+  /// Sorted by [SemInfo.span.start]. Positions inside the failing
+  /// declaration have no entry. Not serialised by [toJson].
+  final List<SemInfo> semInfo;
+
+  /// Number of declarations checked in the partial prefix.
+  ///
+  /// Uses the same counting rule as [CheckSuccess.count]. Not serialised
+  /// by [toJson].
+  final int checkedCount;
+
   /// Creates a failure result.
-  const CheckFailure({required this.errors, this.proofState = const []});
+  const CheckFailure({
+    required this.errors,
+    this.proofState = const [],
+    this.declarations = const [],
+    this.semInfo = const [],
+    this.checkedCount = 0,
+  });
 
   /// Joined message text (backward compat).
   String get message => errors.map((e) => e.message).join('\n\n');
