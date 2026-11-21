@@ -10,7 +10,7 @@ it from the command line, as a Dart library, or in the browser via WasmGC.
 This tutorial walks through the language feature by feature. Every `doxa`
 block is a self-contained program that type-checks. The ambient prelude
 declares `Eq` (propositional equality) and `Acc` (accessibility); an example
-that needs anything else declares it.
+that needs anything else declares or imports it.
 
 ---
 
@@ -69,6 +69,60 @@ Function call uses juxtaposition: `f x`. Application associates left:
 `f x y` means `(f x) y`. A type annotation on a `val` is optional when the
 type can be inferred, but annotating top-level declarations is good
 practice.
+
+---
+
+## 2b. Infix operators
+
+Four infix operators spell the standard-library operations: `*` for `mult`,
+`+` for `plus`, `<=` for `leq`, and `==` for `eqb`. Each one is shorthand for
+an ordinary application, so `a + b` and `plus a b` are the same term. `*`
+binds tighter than `+`, both bind tighter than the comparisons, and the
+comparisons do not associate.
+
+```doxa
+import "package:doxa_stdlib/stdlib/proofs.doxa"
+import "package:doxa_stdlib/stdlib/eqb_instances.doxa"
+
+val two: Nat = succ (succ zero)
+
+val productFirst: Nat = two + two * two
+
+val sumFirst: Nat = (two + two) * two
+
+val atMost: Bool = two <= two + two
+
+val sameNat: Bool = two == two
+
+val sameBool: Bool = true_ == false_
+
+val sameList: Bool = cons two nil == cons two nil
+
+val swap: (a: Nat) -> (b: Nat) -> Eq Nat (a + b + zero) (b + a) =
+  (a: Nat) => (b: Nat) => calc(
+    a + b + zero = a + (b + zero) := plus_assoc a b zero;
+    a + (b + zero) = a + b := cong ((x: Nat) => a + x) (plus_zero b);
+    a + b = b + a := plus_comm a b
+  )
+```
+
+`two + two * two` reads as `two + (two * two)`, and `(two + two) * two` needs
+the parentheses to change the grouping. `two <= two + two` puts the addition
+inside the comparison. The `==` operator takes its type from the arguments:
+it uses the `Eqb` instance for `Nat`, for `Bool`, or for `List Nat` by
+instance search.
+
+The operators are monomorphic. `+` is `plus` and nothing else, and the
+algebra monoids' `add` and `mul` are not operators. A local binding named
+`plus` shadows the standard-library `plus` for `a + b` just as it does for
+`plus a b`.
+
+Comparison does not chain. `a <= b <= c` is a parse error that names the
+second `<=`; parenthesize the inner comparison, as in `(a <= b) == c`.
+
+The `calc` chain above uses the same grammar for its endpoints and its step
+proofs, so `a + b + zero = a + (b + zero)` is one step of the chain. Named
+steps and chains are described in §9.
 
 ---
 

@@ -92,11 +92,14 @@ beyond the current first-order refinement.
 Fourteen tactic steps are available: `intro`, `exact`, `apply`, `refl`,
 `rewrite`, `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`,
 `constructor`, and `have`. `calc` chains compose equalities as named steps.
+Four infix operators, `*`, `+`, `<=`, and `==`, spell `mult`, `plus`, `leq`,
+and `eqb`; the operators are monomorphic to those functions, so the algebra
+monoids' `add` and `mul` are not reachable through them.
 Typeclasses cover single-parameter classes, instance search, explicit type
 arguments, parameterised instances, superclasses with the derived parent
 dictionary, local dictionaries, and multi-parameter classes. Default method
-bodies are the remaining typeclass gap. There is no notation surface.
-Quotients and `termination_by` are gated.
+bodies are the remaining typeclass gap. Quotients and `termination_by` are
+gated.
 
 ### Useful
 
