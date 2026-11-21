@@ -15,7 +15,8 @@ Doxa is experimental and has no release. `doxa` 0.8.4 was published to pub.dev
 on 2026-11-12 and retracted the same day. `doxa_tooling` and `doxa_stdlib` have
 never been published. Publishing is on hold until the project is ready.
 [`README.md`](../README.md) is the release-status reference and
-[`SPEC.md`](../SPEC.md) is the normative language description.
+[`SPEC.md`](../SPEC.md) is the normative language description. The bar a
+release must meet is [`RELEASEWORTHY.md`](RELEASEWORTHY.md).
 
 ## Feature list
 
