@@ -887,9 +887,14 @@ final class ClassInfo {
   /// The method names and their surface types, in declaration order.
   final List<(String, SExpr)> methods;
 
-  /// Optional superclass name. Always null in this slice: a class with a
-  /// superclass is rejected before registration.
+  /// Optional superclass name. The dictionary embeds the parent
+  /// dictionary as its first field when this is non-null.
   final String? superclassName;
+
+  /// The class's type parameter names in the order the superclass
+  /// reference applies them. A permutation of [typeParams] when
+  /// [superclassName] is non-null; empty otherwise.
+  final List<String> superclassParameters;
 
   /// Registered instances for this class.
   final List<InstanceInfo> instances;
@@ -900,6 +905,7 @@ final class ClassInfo {
     required this.typeParams,
     required this.methods,
     this.superclassName,
+    this.superclassParameters = const [],
     this.instances = const [],
   });
 
@@ -909,6 +915,7 @@ final class ClassInfo {
     typeParams: typeParams,
     methods: methods,
     superclassName: superclassName,
+    superclassParameters: superclassParameters,
     instances: [...instances, info],
   );
 }
@@ -933,30 +940,43 @@ final class InstanceConstraint {
 
 /// A registered instance of a typeclass.
 ///
-/// [targetHead] is the head type constructor of the instance target
-/// (`Nat` for `impl Eqb[Nat]`, `List` for `impl[A: Eqb] Eqb[List A]`).
-/// Registration rejects a second instance with the same class and head, and
-/// search matches goals by that head.
+/// [targetHeads] holds the head type constructor at each class-argument
+/// position (`["Nat"]` for `impl Eqb[Nat]`, `["List"]` for
+/// `impl[A: Eqb] Eqb[List A]`, `["List", "Nat"]` for
+/// `impl[A: Eqb] C[List A, Nat]`). Registration rejects a second instance
+/// with the same tuple of heads, and search matches goals by that tuple.
 ///
 /// [targetParameters] holds the parameter name at each target argument
-/// position (`[A]` for `Eqb[List A]`); [parameters] holds the impl's type
-/// parameter names in binding-binder order. They differ only when a target
-/// permutes its arguments, e.g. `impl[A, B: Eqb] Eqb[Pair B A]`. Search
-/// matches goal arguments against [targetParameters] positionally and
-/// applies the binding to [parameters] positionally.
+/// position, flattened across class arguments in order (`[A]` for
+/// `Eqb[List A]`); [targetArities] says how many positions belong to each
+/// class argument (`[1]` for `Eqb[List A]`, `[1, 0]` for `C[List A, Nat]`).
+/// [parameters] holds the impl's type parameter names in binding-binder
+/// order. They differ only when a target permutes its arguments, e.g.
+/// `impl[A, B: Eqb] Eqb[Pair B A]`. Search matches goal arguments against
+/// [targetParameters] positionally and applies the binding to [parameters]
+/// positionally.
 ///
 /// Internal: not exported from `package:doxa/doxa.dart`.
 final class InstanceInfo {
-  /// The target type rendered for diagnostics (e.g. "Nat").
+  /// The target rendered for diagnostics (e.g. "Nat" or "C[List A, B]").
   final String targetType;
 
-  /// The head type constructor of the target (e.g. "Nat").
-  final String targetHead;
+  /// The head type constructor per class argument (e.g. `["Nat"]`).
+  final List<String> targetHeads;
 
   /// The binding name of the instance value.
   final String bindingName;
 
-  /// Parameter name per target argument position; empty for a bare target.
+  /// Number of type arguments at each class-argument position.
+  final List<int> targetArities;
+
+  /// For each class-argument position, the instance parameter bound to
+  /// the whole goal argument when the target is a bare parameter, or
+  /// null when the position matches a concrete head and arity.
+  final List<String?> targetWildcards;
+
+  /// Parameter name per target argument position, flattened in class
+  /// argument order; empty for a bare target.
   final List<String> targetParameters;
 
   /// Impl type-parameter names in binding-binder order.
@@ -965,11 +985,18 @@ final class InstanceInfo {
   /// Constraints the instance must discharge before selection.
   final List<InstanceConstraint> constraints;
 
+  /// The first head, or the joined tuple for a multi-parameter class.
+  /// Retained for single-parameter callers and diagnostics.
+  String get targetHead =>
+      targetHeads.length == 1 ? targetHeads.single : targetHeads.join('_');
+
   /// Creates instance info.
   const InstanceInfo(
     this.targetType,
-    this.targetHead,
+    this.targetHeads,
     this.bindingName, {
+    required this.targetArities,
+    this.targetWildcards = const [],
     this.targetParameters = const [],
     this.parameters = const [],
     this.constraints = const [],
@@ -3466,22 +3493,13 @@ Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
       if (localIndex != null) {
         dictionary = TBound(localIndex);
       } else {
-        final target =
-            classInfo.typeParams.length == 1 && domain.args.length == 1
-                ? domain.args.first
-                : domain;
-        // Argument checking may have solved the class argument through
-        // conversion; the codomain closure still holds the metavariable
-        // neutral, so force it before reading the target's head.
-        final resolvedTarget = forceMetaHead(
-          target,
-          metas,
-          state.ctx.env.topBindings,
-        );
+        final target = VData(domain.name, [
+          for (final arg in domain.args) _forceInstanceArg(state, arg),
+        ]);
         final found = _searchInstance(
           state,
           classInfo,
-          resolvedTarget,
+          target,
           _instanceSearchDepth,
         );
         // A failed search is reported, never deferred through a fresh
@@ -3490,7 +3508,7 @@ Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
         if (found == null) {
           throw NoInstanceFound(
             className,
-            _renderInstanceTarget(state, resolvedTarget),
+            _renderInstanceGoal(state, target),
             state.topEnv.spanOf(className) ?? DoxaSpan.synthetic,
           );
         }
@@ -3590,52 +3608,94 @@ int? _localDictionaryIndex(_ElabState state, String className, VData domain) {
 /// is rejected rather than explored.
 const _instanceSearchDepth = 8;
 
-/// Find a dictionary for [target] in [info]'s instance table.
+/// Whether two target-head tuples are equal.
+bool _sameHeads(List<String> left, List<String> right) {
+  if (left.length != right.length) return false;
+  for (var i = 0; i < left.length; i++) {
+    if (left[i] != right[i]) return false;
+  }
+  return true;
+}
+
+/// A matched instance and the value bound to each of its parameters.
+final class _InstanceMatch {
+  /// The registered instance.
+  final InstanceInfo instance;
+
+  /// The value bound to each of the instance's target parameters.
+  final Map<String, Value> substitution;
+
+  const _InstanceMatch(this.instance, this.substitution);
+}
+
+/// All registered instances of [info] whose head tuple and argument
+/// arities match [goal].
 ///
-/// Matching is by head type constructor. When the instance is
-/// parameterised, the goal's arguments are matched positionally against
-/// [InstanceInfo.targetParameters]; a head match with a different argument
-/// count is not an instance, so an unrelated goal at the same head cannot
-/// produce a false match or a kernel type mismatch.
-///
-/// Each constraint is discharged recursively at the type bound to its
-/// parameter, with the depth bound decremented. A failed inner discharge
-/// raises [NoInstanceFound] for the inner class and type, not the outer
-/// goal.
-///
-/// Returns null when no instance matches; the caller turns the top-level
-/// absence into [NoInstanceFound].
-Term? _searchInstance(
+/// Each class argument of the goal is matched positionally against the
+/// instance's target head and arity at that position. The instance's flat
+/// target parameters are sliced by [InstanceInfo.targetArities] and bound
+/// to the goal's elaborated arguments.
+List<_InstanceMatch> _matchingInstances(
   _ElabState state,
   ClassInfo info,
-  Value target,
+  VData goal,
+) {
+  final matches = <_InstanceMatch>[];
+  final goalArgs = goal.args;
+  for (final instance in info.instances) {
+    if (instance.targetHeads.length != goalArgs.length) continue;
+    if (instance.targetArities.length != goalArgs.length) continue;
+    var ok = true;
+    var offset = 0;
+    final substitution = <String, Value>{};
+    for (var i = 0; i < goalArgs.length && ok; i++) {
+      final arg = _forceInstanceArg(state, goalArgs[i]);
+      final wildcard =
+          instance.targetWildcards.length > i
+              ? instance.targetWildcards[i]
+              : null;
+      if (wildcard != null) {
+        substitution[wildcard] = arg;
+        continue;
+      }
+      final head = _valueTypeName(arg);
+      if (head != instance.targetHeads[i]) {
+        ok = false;
+        break;
+      }
+      final argArgs = arg is VData ? arg.args : const <Value>[];
+      if (argArgs.length != instance.targetArities[i]) {
+        ok = false;
+        break;
+      }
+      for (var j = 0; j < argArgs.length; j++) {
+        final parameter = instance.targetParameters[offset + j];
+        substitution[parameter] = _forceInstanceArg(state, argArgs[j]);
+      }
+      offset += argArgs.length;
+    }
+    if (ok) matches.add(_InstanceMatch(instance, substitution));
+  }
+  return matches;
+}
+
+/// Build the dictionary term for a matched [instance], discharging its
+/// constraints at the types bound in [match].
+Term? _selectInstance(
+  _ElabState state,
+  ClassInfo info,
+  _InstanceMatch match,
+  VData goal,
   int depth,
 ) {
-  final head = _valueTypeName(target);
-  if (head == null) return null;
-  final matches = <InstanceInfo>[
-    for (final instance in info.instances)
-      if (instance.targetHead == head) instance,
-  ];
-  if (matches.length > 1) {
-    throw OverlappingInstances(info.className, head, [
-      for (final m in matches) m.bindingName,
-    ], state.topEnv.spanOf(info.className) ?? DoxaSpan.synthetic);
-  }
-  if (matches.isEmpty) return null;
-  final instance = matches.single;
-  final targetArgs = target is VData ? target.args : const <Value>[];
-  if (targetArgs.length != instance.targetParameters.length) return null;
-  final substitution = <String, Value>{
-    for (var i = 0; i < targetArgs.length; i++)
-      instance.targetParameters[i]: _forceInstanceArg(state, targetArgs[i]),
-  };
+  final instance = match.instance;
+  final substitution = match.substitution;
   final dictionaries = <Term>[];
   if (instance.constraints.isNotEmpty) {
     if (depth <= 0) {
       throw InstanceSearchDepthExceeded(
         info.className,
-        _renderInstanceTarget(state, target),
+        _renderInstanceGoal(state, goal),
         _instanceSearchDepth,
         state.topEnv.spanOf(info.className) ?? DoxaSpan.synthetic,
       );
@@ -3647,7 +3707,7 @@ Term? _searchInstance(
         _findInstanceDictionary(
           state,
           constraint.className,
-          parameterType,
+          VData(constraint.className, [parameterType]),
           depth - 1,
         ),
       );
@@ -3663,6 +3723,104 @@ Term? _searchInstance(
     result = TApp(result, dictionary);
   }
   return result;
+}
+
+/// Find a dictionary for [target] in [info]'s instance table.
+///
+/// A direct instance wins. When none matches, the search considers
+/// direct subclasses whose superclass is [info] and projects the embedded
+/// parent dictionary from the subclass dictionary. The subclass goal is
+/// built from the parent goal through the subclass's
+/// [ClassInfo.superclassParameters]; the recursion covers longer chains.
+///
+/// Each constraint is discharged recursively at the type bound to its
+/// parameter, with the depth bound decremented. A failed inner discharge
+/// raises [NoInstanceFound] for the inner class and type, not the outer
+/// goal.
+///
+/// Returns null when no instance matches; the caller turns the top-level
+/// absence into [NoInstanceFound].
+Term? _searchInstance(
+  _ElabState state,
+  ClassInfo info,
+  Value target,
+  int depth,
+) {
+  if (target is! VData || target.name != info.className) return null;
+  final direct = _matchingInstances(state, info, target);
+  if (direct.length > 1) {
+    throw OverlappingInstances(
+      info.className,
+      _renderInstanceGoal(state, target),
+      [for (final match in direct) match.instance.bindingName],
+      state.topEnv.spanOf(info.className) ?? DoxaSpan.synthetic,
+    );
+  }
+  if (direct.length == 1) {
+    return _selectInstance(state, info, direct.single, target, depth);
+  }
+  return _derivedSearch(state, info, target, depth);
+}
+
+/// Search direct subclasses of [info] for a dictionary that embeds the
+/// requested parent dictionary.
+Term? _derivedSearch(_ElabState state, ClassInfo info, VData goal, int depth) {
+  if (depth <= 0) {
+    throw InstanceSearchDepthExceeded(
+      info.className,
+      _renderInstanceGoal(state, goal),
+      _instanceSearchDepth,
+      state.topEnv.spanOf(info.className) ?? DoxaSpan.synthetic,
+    );
+  }
+  final providers = <({String name, Term term})>[];
+  Object? firstError;
+  for (final subclass in state.topEnv.classRegistry.values) {
+    if (subclass.className == info.className) continue;
+    if (subclass.superclassName != info.className) continue;
+    final subArgs = <Value>[];
+    var derivable = true;
+    for (final parameter in subclass.typeParams) {
+      final index = subclass.superclassParameters.indexOf(parameter);
+      if (index < 0 || index >= goal.args.length) {
+        derivable = false;
+        break;
+      }
+      subArgs.add(goal.args[index]);
+    }
+    if (!derivable) continue;
+    final subGoal = VData(subclass.className, subArgs);
+    final local = _localDictionaryIndex(state, subclass.className, subGoal);
+    if (local != null) {
+      providers.add((
+        name: subclass.className,
+        term: TProj(TBound(local), _superclassField),
+      ));
+      continue;
+    }
+    try {
+      final found = _searchInstance(state, subclass, subGoal, depth - 1);
+      if (found != null) {
+        providers.add((
+          name: subclass.className,
+          term: TProj(found, _superclassField),
+        ));
+      }
+    } on NoInstanceFound catch (error) {
+      firstError ??= error;
+    }
+  }
+  if (providers.length > 1) {
+    throw OverlappingInstances(
+      info.className,
+      _renderInstanceGoal(state, goal),
+      [for (final provider in providers) provider.name],
+      state.topEnv.spanOf(info.className) ?? DoxaSpan.synthetic,
+    );
+  }
+  if (providers.length == 1) return providers.single.term;
+  if (firstError != null) throw firstError;
+  return null;
 }
 
 /// Resolve a solved meta at the head of an instance argument.
@@ -3682,30 +3840,38 @@ Value _forceInstanceArg(_ElabState state, Value value) {
 /// inside `impl[A: Eqb] Eqb[List A]`, the constraint `Eqb A` is the
 /// instance's own parameter. Otherwise the registered instances are
 /// searched recursively. A failure names [className] and the inner
-/// [target], not the outer goal.
+/// [goal], not the outer goal.
 Term _findInstanceDictionary(
   _ElabState state,
   String className,
-  Value target,
+  Value goal,
   int depth,
 ) {
-  final local = _localDictionaryIndex(
-    state,
-    className,
-    VData(className, [target]),
-  );
+  final local =
+      goal is VData ? _localDictionaryIndex(state, className, goal) : null;
   if (local != null) return TBound(local);
   final info = state.topEnv.classRegistry[className];
-  final found =
-      info == null ? null : _searchInstance(state, info, target, depth);
+  final found = info == null ? null : _searchInstance(state, info, goal, depth);
   if (found == null) {
     throw NoInstanceFound(
       className,
-      _renderInstanceTarget(state, target),
+      _renderInstanceGoal(state, goal),
       state.topEnv.spanOf(className) ?? DoxaSpan.synthetic,
     );
   }
   return found;
+}
+
+/// Render an instance goal for diagnostics.
+///
+/// A single-parameter class renders its argument, preserving the
+/// "Nat" and "List A" diagnostics. A multi-parameter class renders the
+/// class application.
+String _renderInstanceGoal(_ElabState state, Value goal) {
+  if (goal is VData && goal.args.length == 1) {
+    return _renderInstanceTarget(state, goal.args.single);
+  }
+  return _renderInstanceTarget(state, goal);
 }
 
 /// Render an instance target for [NoInstanceFound].
@@ -4615,6 +4781,10 @@ DeclResult _elabDecl(
   }
 }
 
+/// The field name of the embedded superclass dictionary in a class's
+/// constructor. Internal; no public projection is generated for it.
+const _superclassField = '_super';
+
 /// Build the applied class type `C[P1, ..., Pn]` from identifier
 /// references to the class's parameters.
 SExpr _classApplication(String className, List<String> paramNames) {
@@ -4684,16 +4854,60 @@ DeclResult _elabTypeclass(
   SExpr? superclass, {
   MetaContext? metas,
 }) {
+  final paramNames = [for (final tp in typeParams) tp.$1];
+  final parameterSet = paramNames.toSet();
+  String? superclassName;
+  var superclassParameters = const <String>[];
   if (superclass != null) {
-    throw SuperclassUnsupported(name, _classRefName(superclass), span);
-  }
-  if (typeParams.length != 1) {
-    throw TypeclassUnsupported(
-      span,
-      reason:
-          'typeclass "$name" has ${typeParams.length} parameters; '
-          'only single-parameter classes are implemented',
-    );
+    final (parentName, parentArgs) = _typeclassRefSpine(superclass);
+    final parentInfo = topEnv.classRegistry[parentName];
+    if (parentInfo == null) {
+      throw UnknownTypeclass(parentName, superclass.span);
+    }
+    if (parentArgs.length != parentInfo.typeParams.length) {
+      throw TypeclassArityMismatch(
+        parentName,
+        parentInfo.typeParams.length,
+        parentArgs.length,
+        superclass.span,
+      );
+    }
+    final parentParameters = <String>[];
+    final seen = <String>{};
+    for (final arg in parentArgs) {
+      final argName =
+          arg.kind is SIdentKind ? (arg.kind as SIdentKind).name : null;
+      if (argName == null || !parameterSet.contains(argName)) {
+        throw TypeclassUnsupported(
+          span,
+          reason:
+              'the superclass "$parentName" must be applied to the class '
+              'type parameters; the argument is not one of '
+              '${paramNames.join(", ")}',
+        );
+      }
+      if (!seen.add(argName)) {
+        throw TypeclassUnsupported(
+          span,
+          reason:
+              'the superclass "$parentName" repeats the class parameter '
+              '"$argName"',
+        );
+      }
+      parentParameters.add(argName);
+    }
+    for (final param in paramNames) {
+      if (!seen.contains(param)) {
+        throw TypeclassUnsupported(
+          span,
+          reason:
+              'the class parameter "$param" does not appear in the '
+              'superclass "$parentName"; search could not derive it',
+        );
+      }
+    }
+    superclassName = parentName;
+    superclassParameters = parentParameters;
   }
   final seenMethods = <String, DoxaSpan>{};
   for (final method in methods) {
@@ -4710,7 +4924,8 @@ DeclResult _elabTypeclass(
         span,
         reason:
             'default bodies on class methods are not implemented '
-            '("$name.${method.name}")',
+            '("$name.${method.name}"); an omitted method still needs an '
+            'instance body',
       );
     }
     if (method.type == null) {
@@ -4721,12 +4936,17 @@ DeclResult _elabTypeclass(
     }
   }
 
-  final paramNames = [for (final tp in typeParams) tp.$1];
   final resultType = _classApplication(name, paramNames);
   var ctorType = resultType;
   for (var i = methods.length - 1; i >= 0; i--) {
     ctorType = SExpr(
       SPiKind(methods[i].name, methods[i].type!, ctorType),
+      DoxaSpan.synthetic,
+    );
+  }
+  if (superclass != null) {
+    ctorType = SExpr(
+      SPiKind(_superclassField, superclass, ctorType),
       DoxaSpan.synthetic,
     );
   }
@@ -4806,6 +5026,8 @@ DeclResult _elabTypeclass(
         className: name,
         typeParams: paramNames,
         methods: methodInfos,
+        superclassName: superclassName,
+        superclassParameters: superclassParameters,
       ),
     },
     namespaceBindings: {
@@ -4949,103 +5171,139 @@ DeclResult _elabImpl(
     }
   }
 
-  // The instance's own binders and the class argument, elaborated with
-  // the parameters and their dictionaries in scope. Classes have one type
-  // parameter in this slice, so the target is the class's only argument.
+  // The instance's own binders and the class arguments, elaborated with
+  // the parameters and their dictionaries in scope.
   final implBinders = _implBinders(typeParams);
   final (implState, implDomains) = _pushBinders(
     _shimState(topEnv, const _LocalNil(), metas: metas),
     implBinders,
   );
-  final targetExpr = argExprs.first;
-  final (targetTerm, targetSort) = _inferExpr(implState, targetExpr);
-  if (targetSort is! VType && targetSort is! VProp && targetSort is! VSProp) {
-    throw NotAType(targetSort);
-  }
-  final targetValue = eval(targetTerm, implState.ctx.env);
-  final targetType = _renderInstanceTarget(implState, targetValue);
-  final (targetHeadExpr, targetArgExprs) = _surfaceAppSpine(targetExpr);
-  final targetHeadName = _surfaceHeadName(targetHeadExpr);
   final parameterSet = paramNames.toSet();
+
+  // Every class argument is a data parameter of the dictionary and one
+  // position in the coherence tuple.
+  final argTerms = <Term>[];
+  final argValues = <Value>[];
+  for (final arg in argExprs) {
+    final (term, sort) = _inferExpr(implState, arg);
+    if (sort is! VType && sort is! VProp && sort is! VSProp) {
+      throw NotAType(sort);
+    }
+    argTerms.add(term);
+    argValues.add(eval(term, implState.ctx.env));
+  }
+  final targetType =
+      argValues.length == 1
+          ? _renderInstanceTarget(implState, argValues.single)
+          : _renderInstanceTarget(implState, VData(className, argValues));
 
   UnsupportedInstanceTarget reject(String reason) =>
       UnsupportedInstanceTarget(className, targetType, span, reason: reason);
 
+  final targetHeads = <String>[];
+  final targetArities = <int>[];
+  final targetWildcards = <String?>[];
   final targetParameters = <String>[];
-  if (targetArgExprs.isEmpty) {
-    // A bare target is valid for a nullary type. A bare variable would
-    // give search nothing to key on, and an unused parameter would leave
-    // the binding unappliable.
-    if (targetHeadName != null && parameterSet.contains(targetHeadName)) {
+  final seenTargetParameters = <String>{};
+  for (var i = 0; i < argExprs.length; i++) {
+    final argExpr = argExprs[i];
+    final value = argValues[i];
+    final renderedArg = _renderInstanceTarget(implState, value);
+    final (headExpr, surfaceArgs) = _surfaceAppSpine(argExpr);
+    final surfaceHead = _surfaceHeadName(headExpr);
+    if (surfaceHead == null) {
       throw reject(
-        'the instance target "$targetType" is the instance parameter '
-        '"$targetHeadName"; instance search would not make progress',
+        'the class argument "$renderedArg" has no type-constructor head; '
+        'each class argument must be a concrete type',
       );
     }
-    if (paramNames.isNotEmpty) {
-      throw reject(
-        'the instance target "$targetType" has no arguments, so the '
-        'instance parameter "${paramNames.first}" is unused',
-      );
+    if (parameterSet.contains(surfaceHead)) {
+      if (surfaceArgs.isNotEmpty) {
+        throw reject(
+          'the instance target head "$surfaceHead" is an instance '
+          'parameter; the head must be a concrete type constructor',
+        );
+      }
+      // A bare instance parameter is the generic target form for a
+      // multi-parameter class: `impl[G, X] C[G, X]`. It matches any goal
+      // argument at that position. A single-parameter class keeps the
+      // stricter rule so a universal instance cannot silently win every
+      // search.
+      if (classInfo.typeParams.length == 1) {
+        throw reject(
+          'the instance target "$renderedArg" is the instance parameter '
+          '"$surfaceHead"; instance search would not make progress',
+        );
+      }
+      if (!seenTargetParameters.add(surfaceHead)) {
+        throw reject(
+          'the instance target repeats the instance parameter '
+          '"$surfaceHead"; matching requires distinct parameters',
+        );
+      }
+      targetHeads.add('*');
+      targetArities.add(0);
+      targetWildcards.add(surfaceHead);
+      continue;
     }
-  } else {
-    if (paramNames.isEmpty) {
+    if (paramNames.isEmpty && surfaceArgs.isNotEmpty) {
       throw reject(
-        'the instance target "$targetType" has a closed argument; every '
+        'the class argument "$renderedArg" has a closed argument; every '
         'target argument must be a distinct instance parameter',
       );
     }
-    if (targetHeadName != null && parameterSet.contains(targetHeadName)) {
+    final valueHead = _valueTypeName(value);
+    if (valueHead == null) {
       throw reject(
-        'the instance target head "$targetHeadName" is an instance '
-        'parameter; the head must be a concrete type constructor',
+        'the class argument "$renderedArg" is not a type constructor',
       );
     }
-    for (final arg in targetArgExprs) {
+    final valueArgs = value is VData ? value.args : const <Value>[];
+    if (surfaceArgs.length != valueArgs.length) {
+      throw reject(
+        'the class argument "$renderedArg" has ${valueArgs.length} '
+        'elaborated argument${valueArgs.length == 1 ? '' : 's'} but '
+        '${surfaceArgs.length} written; instance search needs them to agree',
+      );
+    }
+    for (final arg in surfaceArgs) {
       final name =
           arg.kind is SIdentKind ? (arg.kind as SIdentKind).name : null;
       if (name == null || !parameterSet.contains(name)) {
         throw reject(
-          'the instance target "$targetType" has an argument that is not '
+          'the class argument "$renderedArg" has an argument that is not '
           'an instance parameter; each argument must be one of '
           '${paramNames.join(", ")}',
         );
       }
-      if (targetParameters.contains(name)) {
+      if (!seenTargetParameters.add(name)) {
         throw reject(
-          'the instance target "$targetType" repeats the instance '
-          'parameter "$name"; matching requires distinct parameters',
+          'the instance target repeats the instance parameter "$name"; '
+          'matching requires distinct parameters',
         );
       }
       targetParameters.add(name);
     }
-    for (final name in paramNames) {
-      if (!targetParameters.contains(name)) {
-        throw reject(
-          'the instance parameter "$name" does not appear in the target '
-          '"$targetType"',
-        );
-      }
+    targetHeads.add(valueHead);
+    targetArities.add(valueArgs.length);
+    targetWildcards.add(null);
+  }
+  for (final name in paramNames) {
+    if (!seenTargetParameters.contains(name)) {
+      throw reject(
+        'the instance parameter "$name" does not appear in the target; '
+        'every instance parameter must appear exactly once',
+      );
     }
   }
 
-  final targetHead = _valueTypeName(targetValue);
-  if (targetHead == null) {
-    throw UnsupportedInstanceTarget(className, targetType, span);
-  }
-  final targetValueArgs =
-      targetValue is VData ? targetValue.args : const <Value>[];
-  if (targetArgExprs.isEmpty && targetValueArgs.isNotEmpty) {
-    throw reject(
-      'an instance target must be a bare type constructor; '
-      '"$targetType" is applied',
-    );
-  }
-
-  final instanceName = '_impl_${className}_$targetHead';
+  final instanceName =
+      targetHeads.isEmpty
+          ? '_impl_$className'
+          : '_impl_${className}_${[for (final head in targetHeads) head == '*' ? 'any' : head].join('_')}';
   final overlap =
       classInfo.instances
-          .where((instance) => instance.targetHead == targetHead)
+          .where((instance) => _sameHeads(instance.targetHeads, targetHeads))
           .firstOrNull;
   if (overlap != null) {
     throw OverlappingInstances(className, targetType, [
@@ -5060,8 +5318,10 @@ DeclResult _elabImpl(
 
   final instanceInfo = InstanceInfo(
     targetType,
-    targetHead,
+    targetHeads,
     instanceName,
+    targetArities: targetArities,
+    targetWildcards: targetWildcards,
     targetParameters: targetParameters,
     parameters: paramNames,
     constraints: [
@@ -5070,6 +5330,24 @@ DeclResult _elabImpl(
           InstanceConstraint(_classRefName(c), tp.name),
     ],
   );
+
+  // A subclass instance embeds the parent dictionary. It is resolved at
+  // registration, so a missing parent fails where the instance is
+  // declared and names the parent class and its target.
+  Term? superclassDictionary;
+  final superclassName = classInfo.superclassName;
+  if (superclassName != null) {
+    final parentArgs = <Value>[
+      for (final param in classInfo.superclassParameters)
+        argValues[classInfo.typeParams.indexOf(param)],
+    ];
+    superclassDictionary = _findInstanceDictionary(
+      implState,
+      superclassName,
+      VData(superclassName, parentArgs),
+      _instanceSearchDepth,
+    );
+  }
 
   // The binding's type is the class application under the instance's
   // binders: `(A: Type) -> (inst: Eqb A) -> Eqb (List A)`.
@@ -5098,12 +5376,17 @@ DeclResult _elabImpl(
   ];
 
   // `TConstr` carries the full spine: the data parameters, then the
-  // constructor arguments (one per method, in class order). The whole
-  // term is at the binder depth, so the lambdas close over it.
+  // constructor arguments (the superclass dictionary when present, then
+  // one per method, in class order). The whole term is at the binder
+  // depth, so the lambdas close over it.
   final implTerm = _wrapLambdas(
     implDomains,
     implBinders,
-    TConstr(className, 'mk_$className', [targetTerm, ...methodTerms]),
+    TConstr(className, 'mk_$className', [
+      ...argTerms,
+      if (superclassDictionary != null) superclassDictionary,
+      ...methodTerms,
+    ]),
   );
 
   return (

@@ -233,7 +233,10 @@ planned completion and do not check.
 
 A `typeclass` declaration produces a dictionary type and one projection per
 method. The dictionary type is an ordinary inductive with a single
-constructor and one field per method.
+constructor and one field for the superclass dictionary when a superclass is
+declared, followed by one field per method. A class may declare more than one
+type parameter; the dictionary carries all of them and each projection binds
+them implicitly.
 
 ```doxa
 import "package:doxa_stdlib/stdlib/bool.doxa"
@@ -258,6 +261,119 @@ together with the projection
 binds the class parameters implicitly, then the method's explicit arguments,
 then the dictionary as an implicit binder after them; its body applies the
 dictionary field to the explicit arguments.
+
+### Superclasses
+
+A class may name one superclass after its parameters. The superclass
+reference is a class application over the class's own type parameters.
+
+<!-- doxa: fragment -->
+```doxa
+typeclass Ord[A: Type]: Eqb[A] {
+  fun cmp(x: A, y: A): Bool;
+}
+```
+
+elaborates the dictionary with the parent dictionary as its first field:
+
+<!-- doxa: fragment -->
+```doxa
+data Ord[A: Type] : Type {
+  mk_Ord: (_super: Eqb A) -> (cmp: (x: A) -> (y: A) -> Bool) -> Ord A;
+}
+```
+
+The parent's methods remain the parent's projections; `Ord` adds only `cmp`.
+The superclass reference must apply the parent class to distinct class type
+parameters, with every class parameter appearing once. A parent class with
+more than one parameter follows the same rule.
+
+An `impl` of a subclass resolves the parent dictionary by instance search at
+registration, with the instance's own parameters and their dictionaries in
+scope. A missing parent is `NoInstanceFound` naming the parent class and its
+target type. The parent instance must be in scope when the subclass instance
+is elaborated. A parent instance declared later is not visible at
+registration.
+
+Search for a class prefers a direct instance. When none matches, it considers
+direct subclasses whose superclass is the requested class, builds the
+subclass goal from the parent goal, searches for the subclass dictionary, and
+projects the embedded parent dictionary. The recursion covers longer chains.
+Two subclass dictionaries providing the same parent report
+`OverlappingInstances`.
+
+### Multiple type parameters
+
+A class with two parameters carries both in its dictionary. Its projections
+bind both implicitly.
+
+<!-- doxa: fragment -->
+```doxa
+typeclass Pair[A: Type, B: Type] {
+  fun fst(x: A, y: B): A;
+}
+```
+
+elaborates to `mk_Pair: (fst: (x: A) -> (y: B) -> A) -> Pair A B` and the
+projection `fst : {A: Type} -> {B: Type} -> (x: A) -> (y: B) -> {inst: Pair A B} -> A`.
+
+An instance applies the class to one target per parameter. Each target
+position is either a bare type constructor, as in
+`impl Convert[Nat, Bool]`, or a type constructor applied to distinct
+instance parameters, as in `impl[G: Type, X: Type] Pair[G, X]`. A target may
+mix the two forms, as in `impl[A: Type] Pair[A, Nat]`. A type constructor
+applied to a closed argument, such as `List Nat`, is rejected with
+`UnsupportedInstanceTarget`. A bare instance parameter is the wildcard form
+and matches any goal argument at that position; for a single-parameter class
+a bare variable target remains rejected.
+
+<!-- doxa: fragment -->
+```doxa
+impl[G: Type, X: Type] Pair[G, X] {
+  fun fst(x: G, y: X): G = x;
+}
+```
+
+<!-- doxa: fragment -->
+```doxa
+impl Convert[Nat, Bool] {
+  fun conv(x: Nat, y: Bool): Bool = y;
+}
+```
+
+Search matches the goal's class arguments positionally against the instance's
+targets. A head or argument-count mismatch at any position is not an instance.
+A repeated parameter and a parameter that does not appear in the target are
+rejected with `UnsupportedInstanceTarget` and a reason.
+
+At most one instance exists per class and tuple of target heads, so a second
+instance with the same tuple is rejected with `OverlappingInstances`. A goal
+that matches more than one registered instance (for example, a wildcard
+instance and a concrete instance at the same argument types) is reported as
+`OverlappingInstances`, naming both bindings; the diagnostic points at the
+class declaration. Search does not prefer the more specific instance.
+
+### Local dictionaries
+
+A local dictionary is an ordinary `val` binding of the dictionary type. The
+class constructor `mk_<Class>` builds the value, and instance search consults
+in-scope local binders before the registered instances. The binding supplies
+the dictionary to a call in its scope when that call is checked against a
+known result type; the example annotates the intermediate result.
+
+<!-- doxa: fragment -->
+```doxa
+fun useEqb[A: Eqb](x: A, y: A): Bool = eqb x y
+
+fun localEq(x: Nat, y: Nat): Bool = {
+  val d : Eqb Nat = mk_Eqb eqbNat;
+  val r : Bool = useEqb Nat x y;
+  r
+}
+```
+
+A local dictionary of a subclass also supplies its parent through the derived
+search.
 
 An `impl` supplies the dictionary value for one type and registers it in the
 class's instance table.
@@ -287,16 +403,16 @@ A call supplies the type argument explicitly, as with any `[...]` parameter,
 and the dictionary is filled by instance search: `same Nat zero zero` supplies
 `Nat` and resolves `Eqb[Nat]`.
 
-A call-site dictionary is filled by matching the head type constructor of the
-required class argument against the registered instances, then matching the
-argument types against the selected instance's parameters positionally. Each
-constraint the instance declares is discharged recursively at the matched
-type, with the depth bound decremented. Search is depth-bounded at 8. A
-parameter that is itself class-constrained in the local context supplies its
-dictionary without a search. A failed search is an error that names the class
-and the target type; a failed inner constraint names the inner class and
-inner type. The elaborator does not defer the dictionary through an unsolved
-metavariable.
+A call-site dictionary is filled by matching the goal's class arguments
+against the registered instances positionally, then matching each argument's
+type parameters. Each constraint the instance declares is discharged
+recursively at the matched type, with the depth bound decremented. A direct
+instance is preferred; when none matches, the derived superclass search runs.
+Search is depth-bounded at 8. A parameter that is itself class-constrained in
+the local context supplies its dictionary without a search. A failed search
+is an error that names the class and the target type; a failed inner
+constraint names the inner class and inner type. The elaborator does not
+defer the dictionary through an unsolved metavariable.
 
 An `impl` may declare its own type parameters between `impl` and the class
 reference, using the same group syntax as `fun`. A parameter group is
@@ -312,37 +428,36 @@ impl [A: Eqb] Eqb[List A] {
 
 The body and `List` are elided, so this is a fragment.
 
-The target after the class name is either a bare type constructor or a
-concrete head applied to distinct parameters from the group. A bare variable
-target, a closed argument, a repeated parameter, and a parameter that does
-not appear in the target are rejected with `UnsupportedInstanceTarget` and a
-reason. The instance elaborates to a binding with explicit binders,
+For a single-parameter class, the target after the class name is either a
+bare type constructor or a concrete head applied to distinct parameters from
+the group. A bare variable target, a closed applied argument, a repeated
+parameter, and a parameter that does not appear in the target are rejected
+with `UnsupportedInstanceTarget` and a reason. The instance elaborates to a
+binding with explicit binders,
 `(A: Type) -> (inst: Eqb A) -> Eqb (List A)`, whose body builds the
 dictionary. Method bodies elaborate with the parameters and their
 dictionaries in scope. An instance method body does not see the instance
 being defined; recursion is expressed through a top-level `fun`, which is
 subject to the structural-recursion rule.
 
-Search selects the single instance registered at the goal's head, matches the
-goal's arguments against the instance's target parameters positionally, and
-discharges each constraint at the matched type. The result applies the
-instance binding to the matched arguments and the resolved dictionaries in
-binder order. A failed inner discharge reports `NoInstanceFound` for the
-inner class and type. A chain longer than the depth bound reports
-`InstanceSearchDepthExceeded`.
-
-At most one instance exists per class and head, so a second parameterised
-instance for the same head is rejected with `OverlappingInstances`.
+Search matches the registered instances at the goal's tuple of target heads,
+matches the goal's arguments against the instance's target parameters
+positionally, and discharges each constraint at the matched type. If more
+than one direct instance matches, the search reports `OverlappingInstances`.
+When no direct instance matches, the derived search described under
+Superclasses runs. The result applies the instance binding to the matched
+arguments and the resolved dictionaries in binder order. A failed inner
+discharge reports `NoInstanceFound` for the inner class and type. A chain
+longer than the depth bound reports `InstanceSearchDepthExceeded`.
 
 Class method names are top-level projection names and share the global
 namespace; two classes cannot declare the same method name.
 
-This version does not implement superclasses, local instances, default method
-bodies, or classes with more than one parameter. A superclass is rejected with
-`SuperclassUnsupported`, a default method body with `TypeclassUnsupported`, a
-missing or unknown method with `MissingInstanceMethod` or
-`UnknownInstanceMethod`, an unknown class with `UnknownTypeclass`, and a
-wrong class-argument count with `TypeclassArityMismatch`.
+This version does not implement default method bodies. A class method with a
+body is rejected with `TypeclassUnsupported`. A missing or unknown method is
+`MissingInstanceMethod` or `UnknownInstanceMethod`, an unknown class is
+`UnknownTypeclass`, and a wrong class-argument count is
+`TypeclassArityMismatch`.
 
 ## Documentation blocks
 

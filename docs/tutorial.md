@@ -909,29 +909,126 @@ A failed inner discharge names the inner class and type. With no `Eqb Bool`,
 `eqb` at `List Bool` reports `NoInstanceFound` for `Eqb` at `Bool`, not for
 `List Bool`.
 
+### Superclasses
+
+A class can embed a parent dictionary. `typeclass Ord[A]: Eqb[A]` adds the
+`Eqb[A]` dictionary as the first field of every `Ord` dictionary. An instance
+of `Ord` resolves the parent at registration. A constraint `[A: Ord]` supplies
+an `Ord` dictionary, and a call that needs `Eqb A` projects the parent from
+it.
+
+```doxa
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+data Bool : Type {
+  true_ : Bool;
+  false_ : Bool;
+}
+
+typeclass Eqb[A: Type] {
+  fun eqb(x: A, y: A): Bool;
+}
+
+typeclass Ord[A: Type]: Eqb[A] {
+  fun cmp(x: A, y: A): Bool;
+}
+
+fun eqbNat(x: Nat, y: Nat): Bool = match x {
+  case zero => match y {
+    case zero => true_
+    case succ _ => false_
+  }
+  case succ n => match y {
+    case zero => false_
+    case succ m => eqbNat n m
+  }
+}
+
+impl Eqb[Nat] {
+  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
+}
+
+impl Ord[Nat] {
+  fun cmp(x: Nat, y: Nat): Bool = eqbNat x y;
+}
+
+fun eqViaOrd[A: Ord](x: A, y: A): Bool = eqb x y
+
+val throughParent : Bool = eqViaOrd Nat zero zero
+```
+
+The parent's methods stay the parent's projections. `Ord` adds only `cmp`.
+Search prefers a direct instance; when none matches, it searches a direct
+subclass and projects the embedded parent dictionary. Two subclasses
+providing the same parent report `OverlappingInstances`.
+
+### Two type parameters
+
+A class may take more than one type parameter. The dictionary carries both,
+and the projection binds both implicitly.
+
+```doxa
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+
+data Bool : Type {
+  true_ : Bool;
+  false_ : Bool;
+}
+
+typeclass Pair[A: Type, B: Type] {
+  fun fst(x: A, y: B): A;
+  fun snd(x: A, y: B): B;
+}
+
+impl Pair[Nat, Bool] {
+  fun fst(x: Nat, y: Bool): Nat = x;
+  fun snd(x: Nat, y: Bool): Bool = y;
+}
+
+val first : Nat = fst zero true_
+val second : Bool = snd zero true_
+```
+
+Search matches both class arguments positionally. A mismatch at either
+position is not an instance, so a `Pair[Nat, Nat]` goal does not select the
+`Pair[Nat, Bool]` instance. A generic instance can leave each class argument
+as a bare parameter, as in `impl[G: Type, X: Type] Pair[G, X]`.
+
 This slice has these limits:
 
-- Superclasses are not implemented. `typeclass Ord[A]: Eqb[A]` is rejected
-  with `SuperclassUnsupported`.
-- Instances are top-level only; there are no local instances.
-- Coherence is global: one instance per class and head type.
+- A superclass reference must apply the parent class to distinct class type
+  parameters, with each class parameter appearing once. A repeated or missing
+  parameter is rejected with `TypeclassUnsupported`.
+- Local dictionaries are ordinary `val` bindings of the dictionary type, not
+  a separate instance declaration. The binding supplies the dictionary to a
+  call in its scope when the call is checked against a known result type.
+- Coherence is global: one instance per class and tuple of target heads.
 - Method names share the global namespace, because each method becomes a
   top-level projection. Two classes cannot declare the same method name; the
   second declaration is rejected with `DuplicateDeclaration`.
 - Method default bodies are not implemented. Every instance supplies every
   method, and a missing method is rejected with `MissingInstanceMethod`.
-- A target is either a bare type constructor or a concrete head applied to
-  distinct instance parameters. A bare variable target such as
-  `impl[A: Eqb] Eqb[A]` is rejected with `UnsupportedInstanceTarget` because
-  search cannot make progress.
-- Closed target arguments are rejected. `impl Eqb[List Nat]` reports
+- For a single-parameter class, a target is a bare type constructor or a type
+  constructor applied to distinct instance parameters. For a multi-parameter
+  class, each target position is one of those two forms and the positions may
+  mix; a bare instance parameter is the wildcard form. A bare variable target
+  for a single-parameter class, such as `impl[A: Eqb] Eqb[A]`, is rejected
+  with `UnsupportedInstanceTarget` because search cannot make progress.
+- Closed applied target arguments are rejected. `impl Eqb[List Nat]` reports
   `UnsupportedInstanceTarget`; a parameterised instance covers the same
   ground.
 - Target arguments must be distinct. `impl[A: Eqb] Eqb[Pair A A]` is rejected
   because matching would need consistency checking.
-- Search matches the target's head constructor, uses at most one instance per
-  class and head, and is depth-bounded at 8. A miss is reported with
-  `NoInstanceFound`, naming the class and type. A chain past the bound is
+- Search prefers a direct instance, then derives a parent from a direct
+  subclass. A goal with more than one matching instance is reported as
+  `OverlappingInstances`; search is depth-bounded at 8. A miss is reported
+  with `NoInstanceFound`, naming the class and type. A chain past the bound is
   reported with `InstanceSearchDepthExceeded`.
 
 A class that is not passed as a constraint can still be used as an ordinary

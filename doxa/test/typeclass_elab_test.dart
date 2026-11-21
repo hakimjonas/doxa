@@ -338,23 +338,24 @@ typeclass ShowB[A: Type] {
   });
 
   group('rejected forms', () {
-    test('superclasses are rejected with the class and parent names', () {
-      expect(
-        () => checkProgram(
-          pp('''
+    test('a superclass is recorded and embedded as the first field', () {
+      final env = checkProgram(
+        pp('''
 $_prelude
 $_eqbClass
 typeclass Ord[A: Type]: Eqb[A] {
   fun cmp(x: A, y: A): Bool;
 }
 '''),
-        ),
-        throwsA(
-          isA<SuperclassUnsupported>()
-              .having((e) => e.className, 'className', 'Ord')
-              .having((e) => e.superclassName, 'superclassName', 'Eqb'),
-        ),
       );
+      final ord = env.classRegistry['Ord']!;
+      expect(ord.superclassName, 'Eqb');
+      expect(ord.superclassParameters, ['A']);
+      final data = env.lookupData('Ord')!;
+      expect(data.params.length, 1);
+      expect(data.ctors.single.args.length, 2);
+      expect(data.ctors.single.args.first.name, '_super');
+      expect(data.ctors.single.args.last.name, 'cmp');
     });
 
     test('a partial instance is rejected naming the missing method', () {

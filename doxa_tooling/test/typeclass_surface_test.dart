@@ -90,7 +90,7 @@ impl Default[Nat] {
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
-    test('a superclass reports the named diagnostic', () {
+    test('a superclass is accepted', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
 typeclass Default[A: Type] {
@@ -101,9 +101,7 @@ typeclass WithDefault[A: Type]: Default[A] {
 }
 ''';
       final r = runSource(src);
-      expect(r.code, 1);
-      expect(r.stderr, contains('typeclass superclasses are not implemented'));
-      expect(r.stderr, contains('"WithDefault: Default"'));
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
     test('an unknown class reports the named diagnostic', () {
