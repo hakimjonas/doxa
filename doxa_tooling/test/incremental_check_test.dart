@@ -215,5 +215,67 @@ val first : Bool = true_
         isTrue,
       );
     });
+
+    test('a declaration failure carries the resolved imports cache', () {
+      final directory = Directory.systemTemp.createTempSync(
+        'doxa_incremental_',
+      );
+      try {
+        final dependency = File('${directory.path}/dependency.doxa')
+          ..writeAsStringSync('data One : Type { one : One; }');
+        final session = IncrementalCheckSession(
+          filename: '${directory.path}/root.doxa',
+        );
+        const source =
+            'import "dependency.doxa"\n'
+            'val good : One = one\n'
+            'val broken : One = Type\n';
+
+        final output = session.update(source);
+        expect(output, isA<CheckFailure>());
+        final failure = output as CheckFailure;
+
+        expect(failure.imports, isNotNull);
+        expect(
+          failure.imports!.importState.sourceFiles.keys,
+          contains(dependency.resolveSymbolicLinksSync()),
+        );
+        expect(failure.toJson().containsKey('imports'), isFalse);
+      } finally {
+        directory.deleteSync(recursive: true);
+      }
+    });
+
+    test('parse and import-resolution failures carry no imports cache', () {
+      final directory = Directory.systemTemp.createTempSync(
+        'doxa_incremental_',
+      );
+      try {
+        File(
+          '${directory.path}/dependency.doxa',
+        ).writeAsStringSync('data One : Type { one : One; }');
+        final session = IncrementalCheckSession(
+          filename: '${directory.path}/root.doxa',
+        );
+        expect(
+          session.update('import "dependency.doxa"\nval good : One = one\n'),
+          isA<CheckSuccess>(),
+        );
+
+        final parseFailure = session.update(
+          'import "dependency.doxa"\nval good : One =\n',
+        );
+        expect(parseFailure, isA<CheckFailure>());
+        expect((parseFailure as CheckFailure).imports, isNull);
+
+        final resolutionFailure = session.update(
+          'import "missing.doxa"\nval good : One = one\n',
+        );
+        expect(resolutionFailure, isA<CheckFailure>());
+        expect((resolutionFailure as CheckFailure).imports, isNull);
+      } finally {
+        directory.deleteSync(recursive: true);
+      }
+    });
   });
 }

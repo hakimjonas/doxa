@@ -1587,7 +1587,18 @@ final class LspHandler {
         _publishDiagnostics(<LspDiagnostic>[]);
       case final CheckFailure failure:
         _lastSuccess = null;
-        _cachedImports = null;
+        // Keep the resolved imports: the checked prefix and the failing
+        // declaration still refer to imported names. Parse and
+        // import-resolution failures carry no cache.
+        _cachedImports = failure.imports;
+        if (failure.imports != null) {
+          final document = _activeDocument;
+          if (document != null) {
+            document.importedPaths
+              ..clear()
+              ..addAll(failure.imports!.importState.sourceFiles.keys);
+          }
+        }
         _semantics =
             failure.declarations.isEmpty && failure.semInfo.isEmpty
                 ? null
@@ -1599,6 +1610,7 @@ final class LspHandler {
         for (final info in failure.semInfo) {
           _freq[info.name] = (_freq[info.name] ?? 0) + 1;
         }
+        _refreshImportSnapshots();
         final source = SourceFile(filename: _documentUri, text: _documentText);
         final diagnostics = <LspDiagnostic>[];
         for (final error in failure.errors) {
@@ -1659,7 +1671,11 @@ final class LspHandler {
   void _refreshImportSnapshots() {
     final sources = <String, SourceFile>{};
     for (final document in _documents.values) {
-      final imports = document.lastSuccess?.imports as CachedImports?;
+      // A failing document has no last success but may still hold the
+      // resolved imports from the partial check.
+      final imports =
+          document.cachedImports ??
+          (document.lastSuccess?.imports as CachedImports?);
       if (imports != null) {
         sources.addAll(imports.importState.sourceFiles);
       }

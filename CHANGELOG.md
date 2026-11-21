@@ -48,6 +48,9 @@ project is ready.
   types.
 - Kept LSP hover, definition, references, rename, and completion available on
   the checked prefix of a document with a type error.
+- Kept imported files navigable when a document's declaration fails: the
+  failure carries the resolved imports cache, so hover and definition reach
+  the imported source instead of dropping it.
 
 ## 0.8.4 (2026-11-12)
 

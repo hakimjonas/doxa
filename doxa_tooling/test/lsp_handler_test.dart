@@ -1739,6 +1739,160 @@ val bad : Status = missing
       );
       expect(definition!['result'], isNotNull);
     });
+
+    test('imported names stay navigable when a declaration fails', () {
+      final directory = Directory.systemTemp.createTempSync('doxa-lsp-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final dependency = File('${directory.path}/dependency.doxa')
+        ..writeAsStringSync('data One : Type { one : One; }\n');
+      final root = File('${directory.path}/root.doxa');
+      const document =
+          'import "dependency.doxa"\n'
+          'val good : One = one\n'
+          'val broken : One = missing\n';
+      final uri = root.uri.toString();
+      final handler = LspHandler();
+      final notifications = <Map<String, dynamic>>[];
+      handler.onNotification = notifications.add;
+      handler.handle(_didOpen(uri, document));
+
+      final diagnostics = _lastDiagnostics(notifications);
+      expect(diagnostics, isNotEmpty);
+
+      final use = _sourcePosition(document, 'val good : One = ');
+      final useCharacter = use.character + 'val good : One = '.length;
+      final hover = handler.handle(
+        _linePositionRequest(
+          1,
+          'textDocument/hover',
+          uri,
+          use.line,
+          useCharacter,
+        ),
+      );
+      expect(hover!['result'], isNotNull);
+
+      final definition = handler.handle(
+        _linePositionRequest(
+          2,
+          'textDocument/definition',
+          uri,
+          use.line,
+          useCharacter,
+        ),
+      );
+      expect(definition!['result'], isNotNull, reason: definition.toString());
+      expect(
+        (definition['result'] as Map<String, dynamic>)['uri'],
+        dependency.uri.toString(),
+      );
+
+      final missing = _sourcePosition(document, 'missing');
+      final failingHover = handler.handle(
+        _linePositionRequest(
+          3,
+          'textDocument/hover',
+          uri,
+          missing.line,
+          missing.character,
+        ),
+      );
+      expect(failingHover!['result'], isNull);
+
+      final failingDefinition = handler.handle(
+        _linePositionRequest(
+          4,
+          'textDocument/definition',
+          uri,
+          missing.line,
+          missing.character,
+        ),
+      );
+      expect(failingDefinition!['result'], isNull);
+    });
+
+    test('an import-resolution failure has no imported navigation', () {
+      final directory = Directory.systemTemp.createTempSync('doxa-lsp-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      File(
+        '${directory.path}/dependency.doxa',
+      ).writeAsStringSync('data One : Type { one : One; }\n');
+      final root = File('${directory.path}/root.doxa');
+      const document =
+          'import "dependency.doxa"\n'
+          'import "missing.doxa"\n'
+          'val good : One = one\n';
+      final uri = root.uri.toString();
+      final handler = LspHandler();
+      final notifications = <Map<String, dynamic>>[];
+      handler.onNotification = notifications.add;
+      handler.handle(_didOpen(uri, document));
+
+      final diagnostics = _lastDiagnostics(notifications);
+      expect(diagnostics, isNotEmpty);
+
+      final use = _sourcePosition(document, 'val good : One = ');
+      final character = use.character + 'val good : One = '.length;
+      final hover = handler.handle(
+        _linePositionRequest(1, 'textDocument/hover', uri, use.line, character),
+      );
+      expect(hover!['result'], isNull);
+
+      final definition = handler.handle(
+        _linePositionRequest(
+          2,
+          'textDocument/definition',
+          uri,
+          use.line,
+          character,
+        ),
+      );
+      expect(definition!['result'], isNull);
+    });
+
+    test('repairing the error restores imported navigation', () {
+      final directory = Directory.systemTemp.createTempSync('doxa-lsp-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final dependency = File('${directory.path}/dependency.doxa')
+        ..writeAsStringSync('data One : Type { one : One; }\n');
+      final root = File('${directory.path}/root.doxa');
+      const document =
+          'import "dependency.doxa"\n'
+          'val good : One = one\n'
+          'val broken : One = missing\n';
+      final uri = root.uri.toString();
+      final handler = LspHandler();
+      final notifications = <Map<String, dynamic>>[];
+      handler.onNotification = notifications.add;
+      handler.handle(_didOpen(uri, document));
+
+      final repaired = document.replaceFirst('missing', 'one');
+      handler.handle(_didChange(uri, repaired, version: 2));
+
+      expect(_lastDiagnostics(notifications), isEmpty);
+
+      final use = _sourcePosition(repaired, 'val broken : One = ');
+      final character = use.character + 'val broken : One = '.length;
+      final hover = handler.handle(
+        _linePositionRequest(3, 'textDocument/hover', uri, use.line, character),
+      );
+      expect(hover!['result'], isNotNull);
+
+      final definition = handler.handle(
+        _linePositionRequest(
+          4,
+          'textDocument/definition',
+          uri,
+          use.line,
+          character,
+        ),
+      );
+      expect(definition!['result'], isNotNull, reason: definition.toString());
+      expect(
+        (definition['result'] as Map<String, dynamic>)['uri'],
+        dependency.uri.toString(),
+      );
+    });
   });
 }
 

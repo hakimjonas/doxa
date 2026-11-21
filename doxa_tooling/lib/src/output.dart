@@ -10,6 +10,8 @@ import 'dart:convert';
 
 import 'package:doxa/doxa.dart';
 
+import 'web_check.dart' show CachedImports;
+
 /// The result of checking a Doxa source file.
 sealed class CheckOutput {
   /// Base constructor.
@@ -205,6 +207,16 @@ final class CheckFailure extends CheckOutput {
   /// by [toJson].
   final int checkedCount;
 
+  /// Resolved imports for the checked document, or null when no current
+  /// cache exists.
+  ///
+  /// A declaration failure carries the session's resolved imports: the
+  /// checked prefix and the failing declaration still refer to imported
+  /// names. Parse and import-resolution failures carry null because the
+  /// text or import graph did not produce a usable baseline. Not
+  /// serialised by [toJson].
+  final CachedImports? imports;
+
   /// Creates a failure result.
   const CheckFailure({
     required this.errors,
@@ -212,6 +224,7 @@ final class CheckFailure extends CheckOutput {
     this.declarations = const [],
     this.semInfo = const [],
     this.checkedCount = 0,
+    this.imports,
   });
 
   /// Joined message text (backward compat).

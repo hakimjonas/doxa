@@ -405,6 +405,7 @@ String _parseFailureMessage(Failure<ParseError, Object?> failure) {
         declarations: partialDeclarations,
         semInfo: partialSemInfo,
         checkedCount: checkedCount,
+        imports: imports,
       ),
       records: records,
     );
