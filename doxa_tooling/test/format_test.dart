@@ -269,6 +269,89 @@ fun f(x: Nat): Nat {
     });
   });
 
+  group('infix operators', () {
+    /// Format [input] and require the result to equal [expected] and to be a
+    /// fixed point of the formatter.
+    void formatsTo(String input, String expected) {
+      final formatted = formatSource(input);
+      expect(formatted, equals(expected));
+      expect(formatSource(formatted), equals(formatted));
+      _expectParses(formatted);
+    }
+
+    test('infix source formats to itself', () {
+      formatsTo('val p: Nat = a + b * c', 'val p: Nat = a + b * c\n');
+    });
+
+    test('a source needing parentheses keeps them', () {
+      formatsTo('val p: Nat = (a + b) * c', 'val p: Nat = (a + b) * c\n');
+    });
+
+    test('a left-associated chain needs no parentheses', () {
+      formatsTo('val p: Nat = a + b + c', 'val p: Nat = a + b + c\n');
+    });
+
+    test('a right operand at the same precedence is parenthesized', () {
+      formatsTo('val p: Nat = plus a (plus b c)', 'val p: Nat = a + (b + c)\n');
+    });
+
+    test('prefix plus formats to infix', () {
+      formatsTo('val p = plus a b', 'val p = a + b\n');
+    });
+
+    test('prefix mult inside plus keeps the tighter operand bare', () {
+      formatsTo('val p = mult (plus a b) c', 'val p = (a + b) * c\n');
+    });
+
+    test('an operator applied to three arguments keeps the extra ones', () {
+      formatsTo('val p = plus a b c', 'val p = (a + b) c\n');
+    });
+
+    test('an infix application used as an argument is parenthesized', () {
+      formatsTo('val p = f (plus a b)', 'val p = f (a + b)\n');
+    });
+
+    test('comparisons print infix', () {
+      formatsTo('val p = leq a b', 'val p = a <= b\n');
+      formatsTo('val p = eqb a b', 'val p = a == b\n');
+    });
+
+    test('a nested comparison keeps the parentheses', () {
+      formatsTo('val p = leq (leq a b) c', 'val p = (a <= b) <= c\n');
+      formatsTo('val p = leq a (leq b c)', 'val p = a <= (b <= c)\n');
+    });
+
+    test('arithmetic binds tighter than a comparison', () {
+      formatsTo('val p = leq (plus a b) c', 'val p = a + b <= c\n');
+      formatsTo('val p = leq a (mult b c)', 'val p = a <= b * c\n');
+    });
+
+    test('a calc chain formats its endpoints and steps infix', () {
+      formatsTo(
+        'val c = calc(a + b = plus a b := p; plus a b = b + a := q)',
+        'val c =\n'
+            '  calc(\n'
+            '    a + b = a + b := p;\n'
+            '    a + b = b + a := q\n'
+            '  )\n',
+      );
+    });
+
+    test('a match scrutinee may be an infix expression', () {
+      formatsTo(
+        'val p = match a + b { case zero => zero }',
+        'val p = match a + b {\n  case zero => zero\n}\n',
+      );
+    });
+
+    test('a long chain stays on one line and rounds trip', () {
+      const input =
+          'val p = aaaaaaaaaa + bbbbbbbbbb + cccccccccc + dddddddddd'
+          ' + eeeeeeeeee + ffffffffff';
+      formatsTo(input, '$input\n');
+    });
+  });
+
   group('round-trip', () {
     test('formatted output parses successfully', () {
       final inputs = [

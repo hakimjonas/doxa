@@ -123,6 +123,8 @@ void main() {
       'uip_not_statable.doxa': 'error: type mismatch',
       'vec_index_motive_false.doxa': 'error: type mismatch',
       'computed_index_mismatch.doxa': 'error: type mismatch',
+      'chained_comparison.doxa': 'expected: the comparison to end here; "<="',
+      'chained_equality.doxa': 'expected: the comparison to end here; "=="',
     };
 
     for (final entry in expectations.entries) {

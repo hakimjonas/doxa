@@ -1,0 +1,4 @@
+// Expects: the "<=" chained-comparison diagnostic. Comparison does not
+// associate, so a second `<=` is a parse error naming the operator.
+
+val bad : Bool = zero <= zero <= zero
