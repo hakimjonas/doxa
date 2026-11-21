@@ -357,6 +357,51 @@ void main() {
     });
   });
 
+  group('have', () {
+    test('adds the fact to the goal context', () {
+      var session = _seededSession();
+      (_, session) = session.processInput(
+        ':goal theorem id_have : (A: Type) -> A -> A',
+      );
+      (_, session) = session.processInput(':step intro A');
+      (_, session) = session.processInput(':step intro x');
+
+      final (have, afterHave) = session.processInput(':step have h : A = x');
+      session = afterHave;
+      final text = (have as ReplMeta).text;
+      expect(text, contains('Added h.'));
+      expect(text, contains('h : A'));
+      expect(text.contains('Goal solved'), isFalse, reason: text);
+
+      (_, session) = session.processInput(':step exact h');
+      final (qed, _) = session.processInput(':qed');
+      expect((qed as ReplMeta).text, contains('id_have'));
+    });
+
+    test('a fact without a proof becomes the first goal', () {
+      var session = _seededSession();
+      (_, session) = session.processInput(
+        ':goal theorem id_have_sub : (A: Type) -> A -> A',
+      );
+      (_, session) = session.processInput(':step intro A');
+      (_, session) = session.processInput(':step intro x');
+
+      final (have, afterHave) = session.processInput(':step have z : A');
+      session = afterHave;
+      final text = (have as ReplMeta).text;
+      expect(text, contains('Added z.'));
+      // The fact's own goal has no `z` in scope.
+      expect(text.contains('z : A'), isFalse, reason: text);
+
+      (_, session) = session.processInput(':step exact x');
+      final (main, _) = session.processInput(':step exact z');
+      expect((main as ReplMeta).text, contains('Goal solved'));
+
+      final (qed, _) = session.processInput(':qed');
+      expect((qed as ReplMeta).text, contains('id_have_sub'));
+    });
+  });
+
   group('revert', () {
     test('moves the innermost binder into the goal', () {
       var session = _seededSession();
