@@ -444,6 +444,73 @@ impl Tag[Nat, Bool] {
         ),
       );
     });
+
+    test('a wildcard and a concrete instance are ambiguous at search', () {
+      final registered = checkProgram(
+        pp(
+          _program('''
+typeclass C[A: Type, B: Type] {
+  fun f(x: A, y: B): B;
+}
+
+impl[A: Type, B: Type] C[A, B] {
+  fun f(x: A, y: B): B = y;
+}
+
+impl C[Nat, Bool] {
+  fun f(x: Nat, y: Bool): Bool = y;
+}
+'''),
+        ),
+      );
+      final instances = registered.classRegistry['C']!.instances;
+      expect(instances.length, 2);
+      expect(
+        instances.where((i) => i.targetHeads.join(',') == '*,*').length,
+        1,
+      );
+      expect(
+        instances.where((i) => i.targetHeads.join(',') == 'Nat,Bool').length,
+        1,
+      );
+
+      expect(
+        () => checkProgram(
+          pp(
+            _program('''
+typeclass C[A: Type, B: Type] {
+  fun f(x: A, y: B): B;
+}
+
+impl[A: Type, B: Type] C[A, B] {
+  fun f(x: A, y: B): B = y;
+}
+
+impl C[Nat, Bool] {
+  fun f(x: Nat, y: Bool): Bool = y;
+}
+
+val r : Bool = f zero true_
+'''),
+          ),
+        ),
+        throwsA(
+          isA<OverlappingInstances>()
+              .having((e) => e.className, 'className', 'C')
+              .having((e) => e.targetType, 'targetType', 'C Nat Bool')
+              .having(
+                (e) => e.instanceNames,
+                'instanceNames',
+                contains('_impl_C_any_any'),
+              )
+              .having(
+                (e) => e.instanceNames,
+                'instanceNames',
+                contains('_impl_C_Nat_Bool'),
+              ),
+        ),
+      );
+    });
   });
 
   group('restrictions', () {
