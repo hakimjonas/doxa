@@ -186,5 +186,5 @@ npx @vscode/vsce package  # produce .vsix
 
 ```sh
 cd editors/jetbrains
-./gradlew buildPlugin  # produce .zip artifact (needs JDK 21+)
+./gradlew buildPlugin  # produce .zip artifact (works with JDK 21 and 25)
 ```
