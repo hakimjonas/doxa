@@ -12,7 +12,9 @@
 ///              | 'fun' ident typeparams? '(' params ')' ':' type '=' expr
 /// expr       ::= binder | appOrArrow
 /// binder     ::= '(' ident ':' expr ')' ('=>' | '->') expr
-/// appOrArrow ::= app ( '->' expr )?
+/// appOrArrow ::= cmp ( '->' expr )?
+/// cmp        ::= arith ( ('==' | '<=') arith )?
+/// arith      ::= app ( ('+' | '*') app )*      (with '*' tighter than '+')
 /// app        ::= atom atom*                (left-associative, via pratt())
 /// atom       ::= ident | 'Type' nat? | '(' expr ')'
 /// ```
@@ -260,9 +262,17 @@ Parser<ParseError, SExpr> _spanned(Parser<ParseError, SExprKind> p) =>
 //
 //   expr       := binder | appOrArrow
 //   binder     := '(' ident ':' expr ')' ('=>' | '->') expr
-//   appOrArrow := app ('->' expr)?
+//   appOrArrow := cmp ('->' expr)?
+//   cmp        := arith (('==' | '<=') arith)?     -- non-associative
+//   arith      := add                             -- '+' is left-associative
+//   add        := mul ('+' mul)*
+//   mul        := app ('*' app)*
 //   app        := rule { app atom | atom }   -- direct left recursion
 //   atom       := ident | Type [n] | '(' expr ')'
+//
+// The four infix operators expand to top-level functions at parse time, so
+// they produce ordinary applications: `a + b` is `App(App(plus, a), b)`. See
+// [_expandInfix] and [doxaInfixOperators].
 //
 // `binder` and a parenthesized expression share the prefix `(`. The
 // parser tries `binder` first; Rumil's `Or` unconditionally restores
@@ -285,10 +295,15 @@ Parser<ParseError, SExpr> _spanned(Parser<ParseError, SExprKind> p) =>
 /// whenever the left branch fails, regardless of what it consumed). That
 /// means `_binder | _appOrArrow` backtracks cleanly when the `(ident : ty)`
 /// header fails to match, no `attempt` wrapper needed.
+///
+/// The `.expect` is applied to the alternatives only. [_noChainedComparison]
+/// runs after it, so a chained-comparison diagnostic is not rewritten to the
+/// generic "expected an expression" message; the location still comes from the
+/// deepest failure in either case.
 final Parser<ParseError, SExpr> _expr = defer(
-  () => (_matchExpr | _binder | _implicitBinder | _appOrArrow).expect(
-    'expected an expression',
-  ),
+  () => (_matchExpr | _binder | _implicitBinder | _appOrArrow)
+      .expect('expected an expression')
+      .thenSkip(_noChainedComparison),
 );
 
 /// A single `val` binding inside a block: `'val' ident (':' type)? '=' expr`.
@@ -643,10 +658,140 @@ final Parser<ParseError, SExpr> _implicitBinder = position<ParseError>()
           ),
     );
 
-/// `app ('->' expr)?`, application, optionally followed by a
+// ---------------------------------------------------------------------------
+// Infix operators
+// ---------------------------------------------------------------------------
+
+/// The four infix operators of the surface language.
+///
+/// Recorded once so the parser and the formatter share one description of the
+/// surface. `bindingPower` orders them; `associates` is false for the two
+/// comparisons, which do not chain, and true for `*` and `+`, which chain to
+/// the left. (No right-associative operator exists.)
+///
+/// The operators are monomorphic: each expands to the named top-level
+/// function, resolved like any other identifier at the use site. `+` is
+/// always `plus`, never an overloaded arithmetic operation.
+const List<({String symbol, String name, int bindingPower, bool associates})>
+doxaInfixOperators = [
+  (symbol: '*', name: 'mult', bindingPower: 30, associates: true),
+  (symbol: '+', name: 'plus', bindingPower: 20, associates: true),
+  (symbol: '<=', name: 'leq', bindingPower: 10, associates: false),
+  (symbol: '==', name: 'eqb', bindingPower: 10, associates: false),
+];
+
+/// Symbol to expanded name, the lookup the parser's expansion step uses.
+final Map<String, String> _infixName = {
+  for (final op in doxaInfixOperators) op.symbol: op.name,
+};
+
+/// An infix operator as it appeared in the source: its text and its own span.
+///
+/// The span covers the symbol characters only. Trailing whitespace is consumed
+/// (the parser is whitespace-insensitive) but excluded from the span, so an
+/// expansion can point a diagnostic at the symbol the user wrote.
+typedef _OpToken = ({String symbol, DoxaSpan span});
+
+/// Match [symbol] as an infix operator, consuming trailing whitespace.
+Parser<ParseError, _OpToken> _opToken(String symbol) => position<ParseError>()
+    .zip(string(symbol))
+    .zip(position<ParseError>())
+    .thenSkip(_ws)
+    .map((pair) => (symbol: symbol, span: DoxaSpan(pair.$1.$1, pair.$2)));
+
+/// Expand `lhs op rhs` into the ordinary application `name lhs rhs`.
+///
+/// The synthesized function identifier carries the operator's own span, so an
+/// [UnresolvedName] for an operator with no matching binding points at the
+/// symbol rather than at the whole expression.
+SExpr _expandInfix(_OpToken op, SExpr lhs, SExpr rhs) {
+  final name = _infixName[op.symbol]!;
+  final span = DoxaSpan(lhs.span.start, rhs.span.end);
+  return SExpr(
+    SAppKind(
+      SExpr(SAppKind(SExpr(SIdentKind(name), op.span), lhs), op.span),
+      rhs,
+    ),
+    span,
+  );
+}
+
+/// A left-associative chain of [op] over [operand], folded left.
+///
+/// `a op b op c` becomes `(a op b) op c`. The trailing pair list is parsed
+/// with `many`, so the loop is iterative and a failed operand after a matched
+/// operator backtracks the whole pair (leaving the operator unconsumed) rather
+/// than swallowing it.
+Parser<ParseError, SExpr> _leftChain(
+  Parser<ParseError, SExpr> operand,
+  Parser<ParseError, _OpToken> op,
+) => operand.flatMap(
+  (first) => op
+      .zip(operand)
+      .many
+      .map(
+        (rest) => rest.fold<SExpr>(
+          first,
+          (lhs, step) => _expandInfix(step.$1, lhs, step.$2),
+        ),
+      ),
+);
+
+/// Arithmetic level: `*` over `+`, both left-associative.
+///
+/// The two chains are nested rather than given to [pratt] because the
+/// expansion needs each operator's own span, which the Pratt `combine`
+/// callback does not receive. The nesting order is the precedence recorded in
+/// [doxaInfixOperators]: `*` (30) tighter than `+` (20), both tighter than the
+/// comparisons (10), which [_cmp] handles at its own level.
+final Parser<ParseError, SExpr> _arith = defer(
+  () => _leftChain(_leftChain(_app, _opToken('*')), _opToken('+')),
+);
+
+/// A comparison operator: `<=` or `==`.
+final Parser<ParseError, _OpToken> _cmpOp = _opToken('<=') | _opToken('==');
+
+/// Comparison level: at most one `<=` or `==`.
+///
+/// The tail accepts a single operator, so a second comparison operator is left
+/// unconsumed for [_noChainedComparison] to report. That keeps the level
+/// non-associative without giving the second operator a silent association.
+final Parser<ParseError, SExpr> _cmp = defer(
+  () => _arith.flatMap(
+    (lhs) => _cmpOp
+        .flatMap((op) => _arith.map((rhs) => _expandInfix(op, lhs, rhs)))
+        .or(succeed<ParseError, SExpr>(lhs)),
+  ),
+);
+
+/// Reject a comparison operator immediately after a complete expression.
+///
+/// Comparison is non-associative: `a <= b <= c` and `a == b == c` are errors,
+/// not a left or right association. The failure is raised on the second
+/// operator's own first character (so the reported position is the operator,
+/// not the start of the expression) and its expected-set names the operator.
+/// A parenthesized left operand is a complete expression of its own, so
+/// `(a <= b) == c` parses.
+///
+/// The lookahead is `optional` so that "no comparison operator follows" is a
+/// success here. `Or` cannot be used, because it would also swallow the
+/// diagnostic this parser raises when one does follow.
+final Parser<ParseError, void> _noChainedComparison = _cmpOp.lookAhead.optional
+    .flatMap(
+      (op) =>
+          op == null
+              ? succeed<ParseError, void>(null)
+              : satisfy(
+                (_) => false,
+                'the comparison to end here; "${op.symbol}" does not '
+                'associate, so parenthesize the left comparison',
+              ).as<void>(null),
+    );
+
+/// `cmp ('->' expr)?`, an expression, optionally followed by a
 /// non-dependent arrow.
 final Parser<ParseError, SExpr> _appOrArrow = position<ParseError>().flatMap(
-  (start) => _app.flatMap(
+  (start) => _cmp.flatMap(
     (head) => _sym('->')
         .skipThen(_expr.zip(position<ParseError>()))
         .map(
