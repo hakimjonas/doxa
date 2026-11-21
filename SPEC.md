@@ -345,9 +345,11 @@ known result type; the example annotates the intermediate result.
 
 <!-- doxa: fragment -->
 ```doxa
+fun useEqb[A: Eqb](x: A, y: A): Bool = eqb x y
+
 fun localEq(x: Nat, y: Nat): Bool = {
   val d : Eqb Nat = mk_Eqb eqbNat;
-  val r : Bool = same Nat x y;
+  val r : Bool = useEqb Nat x y;
   r
 }
 ```
