@@ -148,17 +148,17 @@ impl Eqb[Nat] { fun eqb(x: Nat, y: Nat): Bool = true_ }
       expect(env.classRegistry['Eqb']!.instances.length, 1);
     });
 
-    test('superclass is rejected', () {
-      expect(
-        () => elabProgram(
-          pp('''
+    test('superclass is accepted and recorded', () {
+      final env = elabProgram(
+        pp('''
 data Bool : Type { true_ : Bool; false_ : Bool; }
 typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool }
 typeclass Ord[A: Type]: Eqb[A] { fun cmp(x: A, y: A): Bool }
 '''),
-        ),
-        throwsA(isA<SuperclassUnsupported>()),
       );
+      final ord = env.classRegistry['Ord']!;
+      expect(ord.superclassName, 'Eqb');
+      expect(ord.superclassParameters, ['A']);
     });
 
     test('a second instance for the same head is rejected', () {
