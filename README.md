@@ -27,12 +27,14 @@ Doxa requires Dart 3.7 or later.
   `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`, and
   `constructor`.
 - Typeclasses with single-parameter classes, instance search, explicit type
-  arguments, and parameterised instances. Superclasses, default method
-  bodies, local instances, and multi-parameter classes are not supported;
-  see [`SPEC.md`](SPEC.md#typeclasses).
+  arguments, parameterised instances, superclasses with the derived parent
+  dictionary, local dictionaries, and multi-parameter classes. Default
+  method bodies are not supported; see [`SPEC.md`](SPEC.md#typeclasses).
 - The standard-library package, with `Nat`, `Bool`, `List`, `Option`, `Vec`,
   `Sigma`, `Int`, `Rational`, equality, the `Eqb` class and its instances,
-  and arithmetic lemmas. Programs reach it through `package:` imports.
+  the algebra monoids (`AddMonoid`, `AddCommMonoid`, `Monoid`,
+  `CommMonoid`) with `Nat` and `List` instances, and arithmetic lemmas.
+  Programs reach it through `package:` imports.
 
 ## Quick start
 

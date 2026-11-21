@@ -1,70 +1,7 @@
-import "../../../doxa_stdlib/lib/stdlib/proofs.doxa"
-
-typeclass AddMonoid[A: Type] {
-  fun add(x: A, y: A): A;
-  fun azero: A;
-  fun add_assoc(x: A, y: A, z: A): Eq A (add (add x y) z) (add x (add y z));
-  fun add_zero_left(x: A): Eq A (add azero x) x;
-  fun add_zero_right(x: A): Eq A (add x azero) x;
-}
-
-typeclass AddCommMonoid[A: Type]: AddMonoid[A] {
-  fun add_comm(x: A, y: A): Eq A (add x y) (add y x);
-}
-
-typeclass Monoid[A: Type] {
-  fun mul(x: A, y: A): A;
-  fun mone: A;
-  fun mul_assoc(x: A, y: A, z: A): Eq A (mul (mul x y) z) (mul x (mul y z));
-  fun mul_one_left(x: A): Eq A (mul mone x) x;
-  fun mul_one_right(x: A): Eq A (mul x mone) x;
-}
-
-typeclass CommMonoid[A: Type]: Monoid[A] {
-  fun mul_comm(x: A, y: A): Eq A (mul x y) (mul y x);
-}
-
-impl AddMonoid[Nat] {
-  fun add(x: Nat, y: Nat): Nat = plus x y;
-  fun azero: Nat = zero;
-  fun add_assoc(x: Nat, y: Nat, z: Nat): Eq Nat (plus (plus x y) z) (plus x (plus y z)) =
-    plus_assoc x y z;
-  fun add_zero_left(x: Nat): Eq Nat (plus zero x) x = refl x;
-  fun add_zero_right(x: Nat): Eq Nat (plus x zero) x = plus_zero x;
-}
-
-impl AddCommMonoid[Nat] {
-  fun add_comm(x: Nat, y: Nat): Eq Nat (plus x y) (plus y x) = plus_comm x y;
-}
-
-impl Monoid[Nat] {
-  fun mul(x: Nat, y: Nat): Nat = mult x y;
-  fun mone: Nat = succ zero;
-  fun mul_assoc(x: Nat, y: Nat, z: Nat): Eq Nat (mult (mult x y) z) (mult x (mult y z)) =
-    mult_assoc x y z;
-  fun mul_one_left(x: Nat): Eq Nat (mult (succ zero) x) x = plus_zero x;
-  fun mul_one_right(x: Nat): Eq Nat (mult x (succ zero)) x = mult_one x;
-}
-
-impl CommMonoid[Nat] {
-  fun mul_comm(x: Nat, y: Nat): Eq Nat (mult x y) (mult y x) = mult_comm x y;
-}
-
-impl[A: Type] AddMonoid[List A] {
-  fun add(xs: List A, ys: List A): List A = append xs ys;
-  fun azero: List A = nil;
-  fun add_assoc(xs: List A, ys: List A, zs: List A): Eq (List A) (append (append xs ys) zs) (append xs (append ys zs)) =
-    append_assoc A xs ys zs;
-  fun add_zero_left(xs: List A): Eq (List A) (append nil xs) xs = refl xs;
-  fun add_zero_right(xs: List A): Eq (List A) (append xs nil) xs = append_nil A xs;
-}
-
-fun sum[A: AddMonoid](xs: List A): A = match xs {
-  case nil => azero
-  case cons x rest => add x (sum A rest)
-}
-
-fun sumViaComm[A: AddCommMonoid](xs: List A): A = sum A xs
+// Consumer of the stdlib algebra module, checked through the CLI. The
+// module itself holds the classes, the instances, and their law fields;
+// this file exercises the imported instances and the generic folds.
+import "../../../doxa_stdlib/lib/stdlib/algebra.doxa"
 
 val two : Nat = sum Nat (cons (succ zero) (cons (succ zero) nil))
 val two_eq : Eq Nat two (succ (succ zero)) = refl two

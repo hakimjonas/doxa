@@ -105,6 +105,8 @@ typeclass WithDefault[A: Type]: Default[A] {
     });
 
     test('a class law that uses an operation projection checks', () {
+      // The fixture consumes the stdlib algebra module, so checking it
+      // elaborates the module's law fields through the import.
       final fixture = File('test/fixtures/class_laws_algebra.doxa');
       final r = runSource(fixture.readAsStringSync(), filename: fixture.path);
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');

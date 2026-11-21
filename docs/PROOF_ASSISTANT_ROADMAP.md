@@ -76,10 +76,10 @@ The arithmetic semantics are specified in `docs/arithmetic.md` and tested, and
 | Declarations, instances, and instance search | **Done** |
 | Parameterised instances and recursive dictionary discharge | **Done** |
 | Multi-method classes | **Done** |
-| Superclasses | Open |
-| Local instances | Open |
+| Superclasses | **Done** |
+| Local instances | **Done** |
 | Default method bodies | Open |
-| Multi-parameter classes | Open |
+| Multi-parameter classes | **Done** |
 
 ---
 

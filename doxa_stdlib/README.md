@@ -14,6 +14,7 @@ https://github.com/hakimjonas/doxa#status.
 | `Bool` | `bool.doxa` |
 | `Eq` | `eq.doxa` (`sym`, `trans`, `cong`, `subst`) |
 | `Eqb` | `eqb.doxa` (class), `eqb_instances.doxa` (instances for `Nat`, `Bool`, `List`) |
+| `Algebra` | `algebra.doxa` (`AddMonoid`, `AddCommMonoid`, `Monoid`, `CommMonoid`; `Nat` and `List` instances; `sum`, `sumViaComm`) |
 | `List` | `list.doxa` |
 | `Option` | `option.doxa` |
 | `Vec` | `vec.doxa` (length-indexed vectors) |
@@ -101,3 +102,12 @@ declarations.
 `import "package:doxa_stdlib/stdlib/Eqb/package.doxa"` brings the `Eqb`
 class and its `Nat`, `Bool`, and `List` instances, so `eqb` resolves at
 those types without a local class.
+
+`import "package:doxa_stdlib/stdlib/Algebra/package.doxa"` brings the monoid
+classes, their `Nat` and `List` instances, and the folds:
+
+```doxa
+import "package:doxa_stdlib/stdlib/Algebra/package.doxa"
+
+val two: Nat = sum Nat (cons (succ zero) (cons (succ zero) nil))
+```
