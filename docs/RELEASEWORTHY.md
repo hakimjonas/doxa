@@ -92,26 +92,28 @@ beyond the current first-order refinement.
 Thirteen tactic steps are available: `intro`, `exact`, `apply`, `refl`,
 `rewrite`, `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`,
 and `constructor`. Typeclasses cover single-parameter classes, instance
-search, explicit type arguments, and parameterised instances. Superclasses,
-local instances, default method bodies, and multi-parameter classes are
-documented as unsupported. There is no `calc`, `have`, or notation surface.
-Quotients and `termination_by` are gated.
+search, explicit type arguments, parameterised instances, superclasses with
+the derived parent dictionary, local dictionaries, and multi-parameter
+classes. Default method bodies are the remaining typeclass gap. There is no
+`calc`, `have`, or notation surface. Quotients and `termination_by` are
+gated.
 
 ### Useful
 
 The standard library covers arithmetic, `Nat`, `Bool`, `List`, `Vec`,
-`Option`, `Sigma`, `Int`, equality, and the `sqrt2` case study. It is
-monomorphic: there is no algebra library, and `rational.doxa` is a first cut
-with a constructor and no operations or lemmas. Others can extend the
-library, but they cannot instantiate a shared algebra from it.
+`Option`, `Sigma`, `Int`, equality, the `sqrt2` case study, and the algebra
+monoids with their `Nat` and `List` instances. It is not an algebraic
+hierarchy: there are no groups, rings, or further algebra instances.
+`rational.doxa` is a first cut with a constructor and no operations or
+lemmas. Others can instantiate the monoids and extend the library.
 
 ### Next
 
-Typeclass completion (superclasses, local instances, default method bodies,
-and multi-parameter classes) and an algebra library. Then proof ergonomics
-(the calculus and naming surfaces such as `calc`, `have`, and notation). Then
-the gated surfaces: quotient construction and elimination, and a checked
-termination measure.
+Proof ergonomics (the calculus and naming surfaces such as `calc`, `have`,
+and notation). Then the gated surfaces: quotient construction and
+elimination, and a checked termination measure. Then the algebraic hierarchy
+(groups and rings), once the `Int` associativity and identity laws are in the
+library.
 
 ### Distribution
 
