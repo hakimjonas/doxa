@@ -382,6 +382,42 @@ val bad : Nat = tag zero zero
       );
     });
 
+    test(
+      'a target argument that is applied instead of bare is not an instance',
+      () {
+        expect(
+          () => checkProgram(
+            pp(
+              _program('''
+data Box[A: Type] : Type {
+  box : A -> Box A;
+}
+
+typeclass Tag[A: Type, B: Type] {
+  fun tag(x: A, y: B): B;
+}
+
+impl Tag[Nat, Bool] {
+  fun tag(x: Nat, y: Bool): Bool = y;
+}
+
+val bad : Bool = tag zero (box zero)
+'''),
+            ),
+          ),
+          throwsA(
+            isA<NoInstanceFound>()
+                .having((e) => e.className, 'className', 'Tag')
+                .having(
+                  (e) => e.targetType,
+                  'targetType',
+                  allOf(contains('Nat'), contains('Box')),
+                ),
+          ),
+        );
+      },
+    );
+
     test('a duplicate target tuple is rejected', () {
       expect(
         () => checkProgram(
@@ -456,6 +492,34 @@ typeclass Ord[A: Type]: Rel[A, A] {
         ),
       );
     });
+
+    test(
+      'an instance parameter that is absent from the target is rejected',
+      () {
+        expect(
+          () => checkProgram(
+            pp(
+              _program('''
+typeclass Pair[A: Type, B: Type] {
+  fun fst(x: A, y: B): A;
+}
+
+impl[A: Type, B: Type] Pair[A, Nat] {
+  fun fst(x: A, y: Nat): A = x;
+}
+'''),
+            ),
+          ),
+          throwsA(
+            isA<UnsupportedInstanceTarget>().having(
+              (e) => e.reason,
+              'reason',
+              contains('does not appear in the target'),
+            ),
+          ),
+        );
+      },
+    );
 
     test('a superclass applied to a non-parameter is rejected', () {
       expect(
