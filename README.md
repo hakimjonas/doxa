@@ -11,6 +11,8 @@ Zed, and JetBrains.
 Doxa is experimental and has no release. `doxa` 0.8.4 was published to pub.dev
 on 2026-11-12 and retracted the same day. `doxa_tooling` and `doxa_stdlib`
 have never been published. Publishing is on hold until the project is ready.
+The bar a release must meet is
+[`docs/RELEASEWORTHY.md`](docs/RELEASEWORTHY.md).
 
 ## Requirements
 

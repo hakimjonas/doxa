@@ -90,6 +90,15 @@ checked examples.
 - Do not introduce new lints or warnings. Every `dart analyze` issue is a
   blocker.
 
+## Release principle
+
+The bar a release must meet is [`docs/RELEASEWORTHY.md`](docs/RELEASEWORTHY.md).
+It is a property of the artifact (correct, capable, useful, and usable by
+someone else), not of its packaging. Distribution work (pana, metadata,
+versioning, trusted publishers, and packaging) may proceed, but it is not
+evidence for the bar and must not be used to argue for a release. The
+publishing hold in the next section stands.
+
 ## Publishing
 
 Publication is on hold. pub.dev and the two editor marketplaces are external,
@@ -114,9 +123,11 @@ Version bumps additionally update every mirror listed above.
   the same day. `doxa_tooling` and `doxa_stdlib` have never been published.
   The 0.8.4 JetBrains plugin was published from the pre-fix commit and
   remains on the marketplace.
-- The bar when the hold is lifted is the one used for the other Dart
-  projects: `pana` 150/160 or better before the publish, 160/160 after, and
-  every gate in the pre-commit checklist green.
+- The distribution gate when the hold is lifted is the one used for the other
+  Dart projects: `pana` 150/160 or better before the publish, 160/160 after,
+  and every gate in the pre-commit checklist green. This gate covers
+  packaging; the release bar is in
+  [`docs/RELEASEWORTHY.md`](docs/RELEASEWORTHY.md).
 
 ## Pre-commit checklist
 
