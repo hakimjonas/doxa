@@ -79,8 +79,8 @@ and `package:` usage.
   bodies are not supported; see [`SPEC.md`](../SPEC.md#typeclasses).
 - Block expressions with `val` bindings
 - Tactics: `by { ... }` with `intro`, `exact`, `apply`, `refl`, `rewrite`,
-  `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`, and
-  `constructor`
+  `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`,
+  `constructor`, and `have`, plus `calc(...)` equality chains
 - Records with field projection
 - Quotient type formation: `Quot(A, R)`
 - SProp for strict proof irrelevance
@@ -102,7 +102,7 @@ and `package:` usage.
 - Stack-safety regression tests at depths up to 10,000 binder/β-redex layers
 - stdlib files type-checked on every commit
 - Documentation `doxa` blocks are checked by
-  `doxa_tooling/test/doc_blocks_test.dart`; the current run checks 42 blocks
+  `doxa_tooling/test/doc_blocks_test.dart`; the current run checks 45 blocks
   and skips 20 marked fragments
 
 ## Gated until implemented

@@ -382,6 +382,47 @@ TacticFn Function(int, String) _revertAt =
       );
     };
 
+/// `have name : T = proof` and `have name : T`: adds a local fact.
+///
+/// [type] is the fact's declared type, already elaborated in the current
+/// context; [proof] is its proof, or null to leave the fact as a subgoal.
+///
+/// The solution is the same shape `intro` builds: a λ that binds the fact,
+/// applied to the proof, so the current goal is solved by the fact's term
+/// and the main goal continues in the extended context. Without a proof the
+/// application argument is a fresh meta, and the fact's goal comes before
+/// the main goal.
+TacticResult haveFact(TacticState s, String name, Term type, {Term? proof}) {
+  final typeValue = eval(type, s.ctx.env);
+  final level = s.ctx.level;
+  final typeTerm = quote(level, typeValue);
+  final newCtx = s.ctx.extend(typeValue);
+  final newNames = [name, ...s.binderNames];
+
+  // The main goal's type does not mention the fact: the outer binder
+  // levels are unchanged by the extension and the fresh binder sits at
+  // the new level, outside the goal's indices.
+  final mainMetaId = s.metas.freshTermMeta(s.goalType, newCtx);
+  final mainGoal = TacticGoal(mainMetaId, newCtx, newNames);
+
+  final Term factTerm;
+  final factGoal = <TacticGoal>[];
+  if (proof != null) {
+    factTerm = proof;
+  } else {
+    final factMetaId = s.metas.freshTermMeta(typeValue, s.ctx);
+    factTerm = TMeta(factMetaId);
+    factGoal.add(TacticGoal(factMetaId, s.ctx, s.binderNames));
+  }
+
+  final solution = TApp(
+    TLam(typeTerm, TMeta(mainMetaId), name: name),
+    factTerm,
+  );
+  solveCurrentGoal(s, solution);
+  return TacticOk(solution, s.metas, subGoals: [...factGoal, mainGoal]);
+}
+
 /// `exact t`: provides an explicit proof term that must have the goal type.
 TacticFn Function(Term) exact =
     (term) => (s) {

@@ -1278,6 +1278,30 @@ final class STacticOmega extends STacticStep {
   String toString() => 'STacticOmega';
 }
 
+/// `have name : T = proof` or `have name : T`: adds a local fact.
+///
+/// The declared type and the optional proof are elaborated in the tactic's
+/// current context. Without a proof the fact becomes a subgoal, worked on
+/// before the main goal; with a proof the fact is bound directly and the
+/// main goal is the only subgoal.
+final class STacticHave extends STacticStep {
+  /// The fact's name.
+  final String name;
+
+  /// The fact's declared type.
+  final SExpr type;
+
+  /// The proof, or null when the fact is left as a subgoal.
+  final SExpr? proof;
+
+  /// Creates a `have` step.
+  const STacticHave(this.name, this.type, [this.proof]);
+
+  @override
+  String toString() =>
+      'STacticHave($name, $type${proof == null ? '' : ', $proof'})';
+}
+
 /// An intersection of typeclass constraints: `Eq & Ord`.
 ///
 /// Used in constrained type parameters like `[A: Eq & Ord]`.
@@ -1329,6 +1353,60 @@ final class SByKind extends SExprKind {
 
   @override
   String toString() => 'SByKind($steps)';
+}
+
+/// One step of a `calc` chain: `lhs = rhs := proof`.
+final class SCalcStep {
+  /// The step's left endpoint, the previous step's right endpoint.
+  final SExpr lhs;
+
+  /// The step's right endpoint.
+  final SExpr rhs;
+
+  /// The proof of `Eq A lhs rhs`.
+  final SExpr proof;
+
+  /// The step's source span, from the left endpoint to the proof.
+  final DoxaSpan span;
+
+  /// Creates a chain step.
+  const SCalcStep(this.lhs, this.rhs, this.proof, this.span);
+
+  @override
+  bool operator ==(Object other) =>
+      other is SCalcStep &&
+      other.lhs == lhs &&
+      other.rhs == rhs &&
+      other.proof == proof;
+
+  @override
+  int get hashCode => Object.hash(lhs, rhs, proof);
+
+  @override
+  String toString() => 'SCalcStep($lhs = $rhs := $proof)';
+}
+
+/// A `calc` chain: `calc(lhs = rhs := proof; ...)`.
+///
+/// An atom-level expression. Every endpoint has the type of the first
+/// endpoint; each step proves the equality between its own endpoints; the
+/// chain elaborates to the transitivity proof `Eq A first last`.
+final class SCalcKind extends SExprKind {
+  /// The chain's steps, in source order.
+  final List<SCalcStep> steps;
+
+  /// Creates a `calc` chain.
+  const SCalcKind(this.steps);
+
+  @override
+  bool operator ==(Object other) =>
+      other is SCalcKind && _listEq(other.steps, steps);
+
+  @override
+  int get hashCode => Object.hash('SCalcKind', Object.hashAll(steps));
+
+  @override
+  String toString() => 'SCalcKind($steps)';
 }
 
 /// A Doxa program: a sequence of declarations.

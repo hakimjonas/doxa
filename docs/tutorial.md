@@ -285,7 +285,10 @@ theorem sample : (A: Type) -> A -> A = by { refl | intro A; intro x; exact x }
 
 Available commands: `intro name`, `exact expr`, `apply expr`, `refl`,
 `rewrite proof`, `induction name`, `cases name`, `revert name`, `trivial`,
-`simp [lemmas]`, `auto [depth]`, `omega`, `constructor`.
+`simp [lemmas]`, `auto [depth]`, `omega`, `constructor`, and
+`have name: T = proof`. The no-proof form `have name: T` leaves the fact as a
+subgoal. `calc(...)` is a term rather than a step: it stands where an
+expression can, including inside `exact`.
 Alternatives are separated by `|`; the first alternative that closes
 every goal wins.
 
@@ -497,6 +500,45 @@ argument order, before any older pending goal. Implicit arguments are
 filled by conversion and never become goals. When the goal's type
 constrains an explicit argument, that argument is solved during
 `apply`; only the remaining ones appear.
+
+### Named steps and chains
+
+`have name: T = proof` adds a local fact. The type and the proof elaborate
+in the current context, the fact joins the goal's context under `name`, and
+the main goal continues. Omitting the proof leaves the fact as a subgoal;
+that subgoal comes first, and the fact is in scope only after it is closed.
+
+```doxa
+import "package:doxa_stdlib/stdlib/proofs.doxa"
+
+theorem add_zero_step : (a: Nat) -> Eq Nat (plus a zero) a = by {
+  intro a;
+  have z : Eq Nat (plus a zero) a;
+  exact plus_zero a;
+  exact z
+}
+```
+
+`calc` chains equalities into one proof. Each step names two endpoints and a
+proof; the first endpoint's type fixes the carrier, every other endpoint is
+checked against it, and consecutive steps must meet. A two-step chain over
+the arithmetic lemmas reads as the two rewrites it performs:
+
+```doxa
+import "package:doxa_stdlib/stdlib/proofs.doxa"
+
+val assoc_chain : (a: Nat) -> (b: Nat) ->
+    Eq Nat (plus (plus a b) zero) (plus a b) =
+  (a: Nat) => (b: Nat) => calc(
+    plus (plus a b) zero = plus a (plus b zero) := plus_assoc a b zero;
+    plus a (plus b zero) = plus a b := cong ((x: Nat) => plus a x) (plus_zero b)
+  )
+```
+
+The chain elaborates to the transitivity proof `Eq Nat (plus (plus a b) zero)
+(plus a b)`, so the example closes the goal without an intermediate `have`. A
+single-step chain is its own proof. `calc` is a term, so it also stands inside
+`exact` and as an application argument.
 
 ---
 
@@ -712,6 +754,7 @@ idProof : (A: Type) -> A -> A
 | `:step trivial`       | Try refl, then context lookup |
 | `:step auto [depth]`  | Depth-bounded proof search (default 5, range 0 to 20) |
 | `:step omega`         | Bounded arithmetic convenience for `Nat` goals |
+| `:step have name: T [= p]` | Add a local fact; without the proof, the fact becomes a subgoal |
 | `:undo`               | Revert the last step |
 | `:print`              | Show the proof term so far |
 | `:abort`              | Abandon the proof |

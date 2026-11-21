@@ -769,6 +769,8 @@ final class ReplSession {
         return _stepConstructor(ps);
       case 'cases':
         return _stepCases(ps, tacticArg);
+      case 'have':
+        return _stepHave(ps, tacticArg);
       default:
         return (ReplError('unknown tactic: $tacticName'), this);
     }
@@ -862,6 +864,92 @@ final class ReplSession {
         ps.undoStack.add(snap);
         _advanceToNextGoal(ps, result);
         return (ReplMeta(_goalStatus(ps)), this);
+      }(),
+      TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
+    };
+  }
+
+  /// Handle `:step have name : T = proof` and `:step have name : T`.
+  ///
+  /// The declared type and the proof elaborate in the proof context. The
+  /// fact joins the context; without a proof it becomes the current goal,
+  /// with the main goal queued behind it.
+  ReplStep _stepHave(_ProofSession ps, String arg) {
+    if (arg.isEmpty) {
+      return (
+        const ReplError(
+          ':step have requires "name : type" or "name : type = proof".',
+        ),
+        this,
+      );
+    }
+    final parsed = parseTacticStep('have $arg');
+    final STacticStep step;
+    if (parsed is Success<ParseError, STacticStep>) {
+      step = parsed.value;
+    } else if (parsed is Partial<ParseError, STacticStep>) {
+      step = parsed.value;
+    } else {
+      return (
+        ReplError(_formatParseFailure(parsed as Failure<ParseError, dynamic>)),
+        this,
+      );
+    }
+    if (step is! STacticHave) {
+      return (
+        const ReplError(':step have requires "name : type = proof".'),
+        this,
+      );
+    }
+    final have = step;
+
+    final Term typeTerm;
+    final Value typeValue;
+    try {
+      final (term, sort) = elabInferInCtx(
+        ps.topEnv,
+        ps.ctx,
+        ps.binderNames,
+        have.type,
+      );
+      if (sort is! VType && sort is! VProp && sort is! VSProp) {
+        return (ReplMeta('have: the declared type is not a type: $sort'), this);
+      }
+      typeTerm = term;
+      typeValue = eval(term, ps.ctx.env);
+    } catch (e) {
+      return (ReplMeta('have: could not elaborate the type ($e)'), this);
+    }
+
+    Term? proof;
+    if (have.proof != null) {
+      try {
+        proof = elabCheckInCtx(
+          ps.topEnv,
+          ps.ctx,
+          ps.binderNames,
+          have.proof!,
+          typeValue,
+        );
+      } catch (e) {
+        return (
+          ReplMeta('have: the proof does not have the declared type ($e)'),
+          this,
+        );
+      }
+    }
+
+    final snap = _snapshot(ps);
+    final result = haveFact(_queueState(ps), have.name, typeTerm, proof: proof);
+    return switch (result) {
+      TacticOk() => () {
+        _solveIfUnsolved(ps, result);
+        ps.undoStack.add(snap);
+        _advanceToNextGoal(ps, result);
+        final output = StringBuffer();
+        output.writeln('Added ${have.name}.');
+        output.write(_goalStatus(ps));
+        return (ReplMeta(output.toString().trimRight()), this);
       }(),
       TacticFail(:final message) => (ReplMeta('step failed: $message'), this),
     };

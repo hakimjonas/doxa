@@ -1,0 +1,18 @@
+// A three-step `calc` chain over the standard library's arithmetic lemmas,
+// and a `have` fact used by a rewrite. Checked through the CLI.
+import "../../../doxa_stdlib/lib/stdlib/proofs.doxa"
+
+val rotate : (a: Nat) -> (b: Nat) -> Eq Nat (plus (plus a b) zero) (plus b a) =
+  (a: Nat) => (b: Nat) => calc(
+    plus (plus a b) zero = plus a (plus b zero) := plus_assoc a b zero;
+    plus a (plus b zero) = plus a b := cong ((x: Nat) => plus a x) (plus_zero b);
+    plus a b = plus b a := plus_comm a b
+  )
+
+theorem have_chain : (a: Nat) -> (b: Nat) -> Eq Nat (plus b a) (plus (plus a b) zero) = by {
+  intro a;
+  intro b;
+  have fwd : Eq Nat (plus (plus a b) zero) (plus b a) = rotate a b;
+  rewrite fwd;
+  refl
+}

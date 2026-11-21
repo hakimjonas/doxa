@@ -310,6 +310,35 @@ fun f(x: Nat): Nat {
       _expectParses(formatted);
     });
 
+    test('prints a have step', () {
+      const input = 'theorem t: Prop := by { have h: Prop = p; exact h }';
+      final formatted = formatSource(input);
+      expect(formatted, contains('have h: Prop = p'));
+      _expectParses(formatted);
+    });
+
+    test('prints a calc chain one step per line', () {
+      const input = 'val c = calc(a = b := p; b = c := q)';
+      final formatted = formatSource(input);
+      expect(
+        formatted,
+        equals(
+          'val c =\n'
+          '  calc(\n'
+          '    a = b := p;\n'
+          '    b = c := q\n'
+          '  )\n',
+        ),
+      );
+      _expectParses(formatted);
+    });
+
+    test('formats a calc chain idempotently', () {
+      const input = 'val c = calc(a = b := p; b = c := q)';
+      final once = formatSource(input);
+      expect(formatSource(once), equals(once));
+    });
+
     test('retains theorem types for by blocks', () {
       const input = 'theorem p: Prop := by { trivial }';
       final formatted = formatSource(input);

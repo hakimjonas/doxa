@@ -83,6 +83,15 @@ SExprKind shape(SExpr e) {
       SExpr(shape(proof), DoxaSpan.synthetic),
     ),
     SByKind() => k,
+    SCalcKind(:final steps) => SCalcKind([
+      for (final step in steps)
+        SCalcStep(
+          SExpr(shape(step.lhs), DoxaSpan.synthetic),
+          SExpr(shape(step.rhs), DoxaSpan.synthetic),
+          SExpr(shape(step.proof), DoxaSpan.synthetic),
+          DoxaSpan.synthetic,
+        ),
+    ]),
     SIntersectionKind() => k,
   };
 }

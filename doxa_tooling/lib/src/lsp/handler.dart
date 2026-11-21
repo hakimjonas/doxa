@@ -2327,6 +2327,12 @@ final class LspHandler {
         for (final constraint in constraints) {
           _walkExpr(constraint, positions, binderTypes, idents, occurrences);
         }
+      case SCalcKind(:final steps):
+        for (final step in steps) {
+          _walkExpr(step.lhs, positions, binderTypes, idents, occurrences);
+          _walkExpr(step.rhs, positions, binderTypes, idents, occurrences);
+          _walkExpr(step.proof, positions, binderTypes, idents, occurrences);
+        }
       case STypeKind() || SPropKind() || SSPropKind() || SByKind():
         break;
     }

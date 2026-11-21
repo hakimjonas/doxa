@@ -89,14 +89,14 @@ beyond the current first-order refinement.
 
 ### Capable
 
-Thirteen tactic steps are available: `intro`, `exact`, `apply`, `refl`,
+Fourteen tactic steps are available: `intro`, `exact`, `apply`, `refl`,
 `rewrite`, `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`,
-and `constructor`. Typeclasses cover single-parameter classes, instance
-search, explicit type arguments, parameterised instances, superclasses with
-the derived parent dictionary, local dictionaries, and multi-parameter
-classes. Default method bodies are the remaining typeclass gap. There is no
-`calc`, `have`, or notation surface. Quotients and `termination_by` are
-gated.
+`constructor`, and `have`. `calc` chains compose equalities as named steps.
+Typeclasses cover single-parameter classes, instance search, explicit type
+arguments, parameterised instances, superclasses with the derived parent
+dictionary, local dictionaries, and multi-parameter classes. Default method
+bodies are the remaining typeclass gap. There is no notation surface.
+Quotients and `termination_by` are gated.
 
 ### Useful
 
@@ -109,11 +109,10 @@ lemmas. Others can instantiate the monoids and extend the library.
 
 ### Next
 
-Proof ergonomics (the calculus and naming surfaces such as `calc`, `have`,
-and notation). Then the gated surfaces: quotient construction and
-elimination, and a checked termination measure. Then the algebraic hierarchy
-(groups and rings), once the `Int` associativity and identity laws are in the
-library.
+Proof ergonomics: notation for the naming surface. Then the gated surfaces:
+quotient construction and elimination, and a checked termination measure.
+Then the algebraic hierarchy (groups and rings), once the `Int`
+associativity and identity laws are in the library.
 
 ### Distribution
 

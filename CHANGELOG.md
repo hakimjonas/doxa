@@ -18,6 +18,7 @@ project is ready.
 **Proof authoring and tactics**
 
 - Added `simp`, `cases`, `constructor`, `auto`, and `omega` (#12).
+- Added `have` steps and `calc` equality chains to the proof surface.
 
 **Standard library and package imports**
 
