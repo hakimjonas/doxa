@@ -157,6 +157,59 @@ fun my_plus(a : Nat, b : Nat) : Nat = match a {
       expect(r.stderr, contains('`f` has no value parameters'));
     });
 
+    test('decreases with a duplicate parameter is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(x : Nat) : Nat decreases (x, x) = f x
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('decreases names an invalid measure'));
+      expect(r.stderr, contains('`x` appears more than once'));
+    });
+
+    test('decreases with an empty measure is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n : Nat) : Nat decreases () = f n
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('decreases names an invalid measure'));
+      expect(r.stderr, contains('the measure is empty'));
+    });
+
+    test('the bare spelling is a parse error', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(a: Nat, b: Nat): Nat decreases a b = f a b
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('error: parse error'));
+      expect(r.stderr, contains('Unexpected "a"'));
+      expect(r.stderr, contains('expected: "("'));
+    });
+
+    test('a malformed measure is a parse error', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(m: Nat, n: Nat): Nat decreases (sub m n) n = f m n
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('error: parse error'));
+      expect(r.stderr, contains('Unexpected "m"'));
+      expect(r.stderr, contains('expected: ")"'));
+    });
+
+    test('decreases is a reserved word', () {
+      const src = 'val decreases = 0';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('unexpected reserved word "decreases"'));
+    });
+
     test('decreases soundness reproducer is rejected', () {
       // A call that grows the measured argument must not be accepted.
       const src = '''
@@ -186,6 +239,59 @@ fun f(a: Nat, b: Nat): Nat decreases (a, b) = f a b
       expect(r.stderr, contains('no position decreases'));
     });
 
+    test('a call that swaps the measured parameters is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(a: Nat, b: Nat): Nat decreases (a) = f b a
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('strict sub-term of `a`'));
+      expect(r.stderr, contains('passes `b`'));
+    });
+
+    test('a call in the return type is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Eq Nat (f n) (f n) decreases (n) = refl (f n)
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('no position decreases'));
+    });
+
+    test('an unapplied self-reference is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat decreases (n) = plus f n
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('referenced without its arguments'));
+    });
+
+    test('a self-call through a lambda is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat decreases (n) = ((x: Nat) => f (succ x)) n
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('strict sub-term of `n`'));
+      expect(r.stderr, contains('compound term'));
+    });
+
+    test('a call on an arithmetic term is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(m: Nat, n: Nat): Nat decreases (m, n) = f (sub m n) n
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('strict sub-term of `m`'));
+      expect(r.stderr, contains('compound term'));
+    });
+
     test('mutual-block member with decreases is rejected', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
@@ -198,6 +304,69 @@ and g(n: Nat): Nat = f n
         r.stderr,
         contains('decreases is not available in a mutual block'),
       );
+    });
+
+    test('Ackermann checks and computes under a lexicographic measure', () {
+      // `ack m_ (ack m n_)` keeps the first position and decreases the
+      // second in the inner call; `ack m_ (succ zero)` decreases the
+      // first. `refl` forces the guard to unfold both descents.
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun ack(m: Nat, n: Nat): Nat decreases (m, n) = match m {
+  case zero => succ n
+  case succ m_ => match n {
+    case zero => ack m_ (succ zero)
+    case succ n_ => ack m_ (ack m n_)
+  }
+}
+val two: Nat = succ (succ zero)
+val seven: Nat = succ (succ (succ (succ (succ (succ (succ zero))))))
+val ack22: Eq Nat (ack two two) seven = refl seven
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('a measure may start at a parameter after the first', () {
+      // Measure (b, a): the succ branch holds b and decreases a, the
+      // zero branch holds a and decreases b.
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun holdB(a: Nat, b: Nat): Nat decreases (b, a) = match a {
+  case zero => match b {
+    case zero => zero
+    case succ b_ => holdB a b_
+  }
+  case succ a_ => holdB a_ b
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('a Nat.ind step binder is a strict sub-term', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun stepLoop(n: Nat): Eq Nat zero zero decreases (n) = Nat.ind
+  ((k: Nat) => Eq Nat zero zero)
+  (refl zero)
+  ((k: Nat) => (ih: Eq Nat zero zero) => stepLoop k)
+  n
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('a single-parameter measure checks', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun down(n: Nat): Nat decreases (n) = match n {
+  case zero => zero
+  case succ n_ => down n_
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
     test('strong_ind computes through nat_wf and Acc.rec', () {
