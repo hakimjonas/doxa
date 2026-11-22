@@ -1130,11 +1130,11 @@ This slice has these limits:
 
 ### The algebra library
 
-The standard library ships monoids and commutative monoids.
-`AddCommMonoid` and `CommMonoid` embed their monoid as a superclass
-dictionary, so an `AddCommMonoid` dictionary also supplies `AddMonoid`.
-`sum` folds a list with `add` and `azero`, and `sumViaComm` takes the
-commutative constraint:
+The standard library ships monoids, commutative monoids, and the additive
+group. `AddCommMonoid`, `CommMonoid`, and `AddGroup` embed their parent as a
+superclass dictionary, so an `AddCommMonoid` dictionary also supplies
+`AddMonoid`. `sum` folds a list with `add` and `azero`, and `sumViaComm`
+takes the commutative constraint:
 
 ```doxa
 import "package:doxa_stdlib/stdlib/algebra.doxa"
@@ -1150,6 +1150,24 @@ proves both equations. The explicit `Nat` supplies the class parameter, and
 the dictionary comes from the `AddMonoid Nat` and `AddCommMonoid Nat`
 instances by search. `sumViaComm` reaches `AddMonoid` through the
 `AddCommMonoid` dictionary's parent field.
+
+`AddGroup` extends `AddMonoid` with `negate` and the two inverse laws
+`add_neg_left` and `add_neg_right`. `AddMonoid[Int]` and `AddGroup[Int]`
+register the `Int` operations and the proofs of those laws, and `double` and
+`negTwice` take the group constraint:
+
+```doxa
+import "package:doxa_stdlib/stdlib/algebra.doxa"
+
+val minusOne : Int = negate (pos (succ zero))
+val minusOne_eq : Eq Int minusOne (neg zero) = refl minusOne
+val two : Int = double Int (pos (succ zero))
+val two_eq : Eq Int two (pos (succ (succ zero))) = refl two
+```
+
+A projection binds the class parameter implicitly, so `negate` takes the
+value alone; `sum` and `double` declare their parameter explicitly in `[...]`,
+so they take `Nat` or `Int` before the value.
 
 A class that is not passed as a constraint can still be used as an ordinary
 record type. A user-defined record is an explicit dictionary:
