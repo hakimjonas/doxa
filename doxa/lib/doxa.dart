@@ -63,7 +63,7 @@ export 'src/elab.dart'
         ImportPackageNotFound,
         StructAnnotationNotFound,
         TerminationByUnsupported,
-        QuotientUnsupported,
+        QuotientNeedsExpectedType,
         TypeclassUnsupported,
         SuperclassUnsupported,
         UnknownTypeclass,

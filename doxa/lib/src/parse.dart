@@ -1001,6 +1001,19 @@ final Parser<ParseError, SExpr> _atomImpl = () {
   final propAtom = _spanned(_propKind);
   final spropAtom = _spanned(_spropKind);
   final parenAtom = _sym('(').skipThen(_expr).thenSkip(_sym(')'));
+  // Quotient type `Quot(A, R)`, or the soundness primitive
+  // `Quot.sound h`. `Quot` is reserved, so the dotted form needs its own
+  // branch: `.sound` cannot come through the generic dotted-name path. Like
+  // `mk value`, the primitive takes its witness by juxtaposition.
+  final quotSoundAtom = position<ParseError>().flatMap(
+    (start) => _keyword('Quot')
+        .skipThen(_sym('.'))
+        .skipThen(_keyword('sound'))
+        .skipThen(defer(() => _expr).zip(position<ParseError>()))
+        .map(
+          (pair) => SExpr(SQuotSoundKind(pair.$1), DoxaSpan(start, pair.$2)),
+        ),
+  );
   // Quotient type: Quot(A, R)
   final quotAtom = position<ParseError>().flatMap(
     (start) => _keyword('Quot')
@@ -1062,6 +1075,7 @@ final Parser<ParseError, SExpr> _atomImpl = () {
       spropAtom |
       parenAtom |
       _blockExpr |
+      quotSoundAtom |
       quotAtom |
       mkAtom |
       liftAtom |

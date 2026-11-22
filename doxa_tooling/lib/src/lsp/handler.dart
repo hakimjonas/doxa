@@ -2323,6 +2323,8 @@ final class LspHandler {
       case SQuotLiftKind(:final fn, :final proof):
         _walkExpr(fn, positions, binderTypes, idents, occurrences);
         _walkExpr(proof, positions, binderTypes, idents, occurrences);
+      case SQuotSoundKind(:final proof):
+        _walkExpr(proof, positions, binderTypes, idents, occurrences);
       case SIntersectionKind(:final constraints):
         for (final constraint in constraints) {
           _walkExpr(constraint, positions, binderTypes, idents, occurrences);

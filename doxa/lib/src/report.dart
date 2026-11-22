@@ -541,18 +541,22 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
       sb.writeln(
         '  recursions. Use structural recursion, or `Acc.rec` with `nat_wf`.',
       );
-    case QuotientUnsupported(:final span):
-      sb.writeln(
-        "${c.error('error')}: quotient construction and elimination are not supported",
-      );
+    case QuotientNeedsExpectedType(:final form, :final span):
+      sb.writeln("${c.error('error')}: `$form` needs an expected type here");
       sb.write(source.formatContext(span, color: c));
-      sb.writeln(
-        '  `mk` and `lift` are rejected until the kernel checks the lift',
-      );
-      sb.writeln(
-        '  compatibility proof. `Quot(A, R)` still forms a type; use a data type',
-      );
-      sb.writeln('  or a setoid-style encoding.');
+      switch (form) {
+        case 'mk':
+          sb.writeln('  `mk a` injects into the quotient its expected type');
+          sb.writeln('  names. Annotate the binding:');
+          sb.writeln('    val q: Quot(A, R) = mk a');
+        case 'lift':
+          sb.writeln('  `lift f h` has type `Quot(A, R) -> B`, which its');
+          sb.writeln('  expected type names. Annotate the binding:');
+          sb.writeln('    val g: Quot(A, R) -> B = lift f h');
+        case _:
+          sb.writeln('  `Quot.sound h` proves an equation between two');
+          sb.writeln('  injections, and the expected equality names them.');
+      }
     case TypeclassUnsupported(:final span, :final reason):
       sb.writeln("${c.error('error')}: typeclass form not supported");
       sb.write(source.formatContext(span, color: c));

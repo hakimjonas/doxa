@@ -759,6 +759,10 @@ class _Formatter {
       _visit(proof),
       _Doc.txt(')'),
     ]),
+    SQuotSoundKind(:final proof) => _Doc.catAll([
+      _Doc.txt('Quot.sound '),
+      _visit(proof),
+    ]),
     SIntersectionKind(:final constraints) => _Doc.catAll([
       for (var i = 0; i < constraints.length; i++) ...[
         if (i > 0) _Doc.txt(' & '),
@@ -890,6 +894,7 @@ class _Formatter {
     SQuotKind() ||
     SQuotMkKind() ||
     SQuotLiftKind() ||
+    SQuotSoundKind() ||
     SIntersectionKind() => 0,
     _ => _appPrecedence,
   };
@@ -906,6 +911,7 @@ class _Formatter {
     SQuotKind() ||
     SQuotMkKind() ||
     SQuotLiftKind() ||
+    SQuotSoundKind() ||
     SCalcKind() => true,
     _ => false,
   };
@@ -920,6 +926,7 @@ class _Formatter {
     SQuotKind() ||
     SQuotMkKind() ||
     SQuotLiftKind() ||
+    SQuotSoundKind() ||
     SCalcKind() => true,
     _ => false,
   };
@@ -1007,7 +1014,8 @@ class _Formatter {
     SByKind() ||
     SQuotKind() ||
     SQuotMkKind() ||
-    SQuotLiftKind() => true,
+    SQuotLiftKind() ||
+    SQuotSoundKind() => true,
     _ => false,
   };
 
