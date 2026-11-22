@@ -6292,6 +6292,14 @@ TopBinding _elabFun(
   final memberValueParamCounts = <String, int>{
     for (final m in members) m.fun.name: m.fun.params.length,
   };
+  // Whether the block pre-binds its members during check time. A
+  // recursive block makes every top-level name reachable from `auto`
+  // and `omega`, so the walkers need this before they miss the call.
+  final blockIsRecursive = members.any(
+    (m) =>
+        _hasRecursiveReference(m.fun.body, memberNames) ||
+        _hasRecursiveReference(m.fun.returnType, memberNames),
+  );
   final unguardedCrossCalls = <_CrossCall>[];
   for (final m in members) {
     final tby = m.fun.decreases;
@@ -6302,6 +6310,7 @@ TopBinding _elabFun(
         m.fun,
         memberNames,
         memberDeclIdxs,
+        blockIsRecursive: blockIsRecursive,
         memberTypeParamCounts: memberTypeParamCounts,
         memberValueParamCounts: memberValueParamCounts,
         callerName: m.fun.name,
@@ -6374,11 +6383,7 @@ TopBinding _elabFun(
   // A measured member is recursive in the same sense as a structural
   // one: its own body calls it, so it needs the same VFun guard and
   // CorecursiveGroup stub during check time.
-  final isRecursive = members.any(
-    (m) =>
-        _hasRecursiveReference(m.fun.body, memberNames) ||
-        _hasRecursiveReference(m.fun.returnType, memberNames),
-  );
+  final isRecursive = blockIsRecursive;
 
   if (!isRecursive) {
     return (
@@ -6645,11 +6650,17 @@ void checkStructuralRecursion(
   final valueParamCounts = <String, int>{
     for (final k in allKinds) k.name: k.params.length,
   };
+  final blockIsRecursive = allKinds.any(
+    (k) =>
+        _hasRecursiveReference(k.body, blockMembers) ||
+        _hasRecursiveReference(k.returnType, blockMembers),
+  );
   for (final k in allKinds) {
     _checkStructuralRecursion(
       k,
       blockMembers,
       memberDeclIdxs,
+      blockIsRecursive: blockIsRecursive,
       memberTypeParamCounts: typeParamCounts,
       memberValueParamCounts: valueParamCounts,
       callerName: k.name,
@@ -6699,6 +6710,7 @@ void _checkStructuralRecursion(
   SFunKind kind,
   Set<String> blockMembers,
   Map<String, int> memberDeclIdxs, {
+  required bool blockIsRecursive,
   required Map<String, int> memberTypeParamCounts,
   required Map<String, int> memberValueParamCounts,
   required String callerName,
@@ -6723,6 +6735,7 @@ void _checkStructuralRecursion(
   // execute before any pattern match could introduce sub-terms).
   _walkForRecursion(
     expr: kind.body,
+    blockIsRecursive: blockIsRecursive,
     blockMembers: blockMembers,
     designated: designated,
     designatedIdx: designatedIdx,
@@ -6736,6 +6749,7 @@ void _checkStructuralRecursion(
   );
   _walkForRecursion(
     expr: kind.returnType,
+    blockIsRecursive: blockIsRecursive,
     blockMembers: blockMembers,
     designated: designated,
     designatedIdx: designatedIdx,
@@ -6750,6 +6764,7 @@ void _checkStructuralRecursion(
   for (final p in kind.params) {
     _walkForRecursion(
       expr: p.$2,
+      blockIsRecursive: blockIsRecursive,
       blockMembers: blockMembers,
       designated: null,
       designatedIdx: null,
@@ -6766,6 +6781,7 @@ void _checkStructuralRecursion(
     if (tp.kind != null) {
       _walkForRecursion(
         expr: tp.kind!,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: null,
         designatedIdx: null,
@@ -7125,6 +7141,11 @@ void _checkMeasuredRecursion(SFunKind kind, List<String> measure) {
               found = true;
             }
           },
+          // A measured member is recursive by construction, so an opaque
+          // tactic could apply it without an expression to scan.
+          onOpaque: () {
+            found = true;
+          },
         );
         if (found) {
           throw RecursionInTacticBlock(kind.name, expr.span);
@@ -7153,6 +7174,7 @@ void _checkMeasuredRecursion(SFunKind kind, List<String> measure) {
 void _walkStepForInd(
   SExpr step, {
   required Set<String> blockMembers,
+  required bool blockIsRecursive,
   required String? designated,
   required int? designatedIdx,
   required Set<String> subTerms,
@@ -7169,6 +7191,7 @@ void _walkStepForInd(
   if (lam.domain != null) {
     _walkForRecursion(
       expr: lam.domain!,
+      blockIsRecursive: blockIsRecursive,
       blockMembers: blockMembers,
       designated: designated,
       designatedIdx: designatedIdx,
@@ -7184,6 +7207,7 @@ void _walkStepForInd(
   // Walk the body with the predecessor parameter (k) in subTerms.
   _walkForRecursion(
     expr: lam.body,
+    blockIsRecursive: blockIsRecursive,
     blockMembers: blockMembers,
     designated: designated,
     designatedIdx: designatedIdx,
@@ -7203,6 +7227,7 @@ void _walkStepForInd(
 void _walkForRecursion({
   required SExpr expr,
   required Set<String> blockMembers,
+  required bool blockIsRecursive,
   required String? designated,
   int? designatedIdx,
   required Set<String> subTerms,
@@ -7233,6 +7258,7 @@ void _walkForRecursion({
       // `fun`, which is unsupported).
       _walkForRecursion(
         expr: qualifier,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7323,6 +7349,7 @@ void _walkForRecursion({
         for (var i = 1; i < args.length; i++) {
           _walkForRecursion(
             expr: args[i],
+            blockIsRecursive: blockIsRecursive,
             blockMembers: blockMembers,
             designated: designated,
             designatedIdx: designatedIdx,
@@ -7363,6 +7390,7 @@ void _walkForRecursion({
               _walkStepForInd(
                 step,
                 blockMembers: blockMembers,
+                blockIsRecursive: blockIsRecursive,
                 designated: designated,
                 designatedIdx: designatedIdx,
                 subTerms: subTerms,
@@ -7376,6 +7404,7 @@ void _walkForRecursion({
             } else {
               _walkForRecursion(
                 expr: flatArgs[i],
+                blockIsRecursive: blockIsRecursive,
                 blockMembers: blockMembers,
                 designated: designated,
                 designatedIdx: designatedIdx,
@@ -7394,6 +7423,7 @@ void _walkForRecursion({
           final app = expr.kind as SAppKind;
           _walkForRecursion(
             expr: app.fn,
+            blockIsRecursive: blockIsRecursive,
             blockMembers: blockMembers,
             designated: designated,
             designatedIdx: designatedIdx,
@@ -7407,6 +7437,7 @@ void _walkForRecursion({
           );
           _walkForRecursion(
             expr: app.arg,
+            blockIsRecursive: blockIsRecursive,
             blockMembers: blockMembers,
             designated: designated,
             designatedIdx: designatedIdx,
@@ -7424,6 +7455,7 @@ void _walkForRecursion({
       if (domain != null) {
         _walkForRecursion(
           expr: domain,
+          blockIsRecursive: blockIsRecursive,
           blockMembers: blockMembers,
           designated: designated,
           designatedIdx: designatedIdx,
@@ -7438,6 +7470,7 @@ void _walkForRecursion({
       }
       _walkForRecursion(
         expr: body,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7452,6 +7485,7 @@ void _walkForRecursion({
     case SPiKind(:final param, :final domain, :final codomain):
       _walkForRecursion(
         expr: domain,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7465,6 +7499,7 @@ void _walkForRecursion({
       );
       _walkForRecursion(
         expr: codomain,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7480,6 +7515,7 @@ void _walkForRecursion({
       if (domain != null) {
         _walkForRecursion(
           expr: domain,
+          blockIsRecursive: blockIsRecursive,
           blockMembers: blockMembers,
           designated: designated,
           designatedIdx: designatedIdx,
@@ -7494,6 +7530,7 @@ void _walkForRecursion({
       }
       _walkForRecursion(
         expr: bound,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7507,6 +7544,7 @@ void _walkForRecursion({
       );
       _walkForRecursion(
         expr: body,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7521,6 +7559,7 @@ void _walkForRecursion({
     case SMatchKind(:final scrutinee, :final motive, :final cases):
       _walkForRecursion(
         expr: scrutinee,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7535,6 +7574,7 @@ void _walkForRecursion({
       if (motive != null) {
         _walkForRecursion(
           expr: motive,
+          blockIsRecursive: blockIsRecursive,
           blockMembers: blockMembers,
           designated: designated,
           designatedIdx: designatedIdx,
@@ -7566,6 +7606,7 @@ void _walkForRecursion({
             }
             _walkForRecursion(
               expr: body,
+              blockIsRecursive: blockIsRecursive,
               blockMembers: blockMembers,
               designated: designated,
               designatedIdx: designatedIdx,
@@ -7580,6 +7621,7 @@ void _walkForRecursion({
           case SWildcardCase(:final body):
             _walkForRecursion(
               expr: body,
+              blockIsRecursive: blockIsRecursive,
               blockMembers: blockMembers,
               designated: designated,
               designatedIdx: designatedIdx,
@@ -7596,6 +7638,7 @@ void _walkForRecursion({
     case SQuotKind(:final carrier, :final relation):
       _walkForRecursion(
         expr: carrier,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7609,6 +7652,7 @@ void _walkForRecursion({
       );
       _walkForRecursion(
         expr: relation,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7623,6 +7667,7 @@ void _walkForRecursion({
     case SQuotMkKind(:final arg):
       _walkForRecursion(
         expr: arg,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7637,6 +7682,7 @@ void _walkForRecursion({
     case SQuotLiftKind(:final fn, :final proof):
       _walkForRecursion(
         expr: fn,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7650,6 +7696,7 @@ void _walkForRecursion({
       );
       _walkForRecursion(
         expr: proof,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7664,6 +7711,7 @@ void _walkForRecursion({
     case SQuotSoundKind(:final proof):
       _walkForRecursion(
         expr: proof,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7680,6 +7728,7 @@ void _walkForRecursion({
         for (final part in [step.lhs, step.rhs, step.proof]) {
           _walkForRecursion(
             expr: part,
+            blockIsRecursive: blockIsRecursive,
             blockMembers: blockMembers,
             designated: designated,
             designatedIdx: designatedIdx,
@@ -7697,6 +7746,7 @@ void _walkForRecursion({
       for (final constraint in constraints) {
         _walkForRecursion(
           expr: constraint,
+          blockIsRecursive: blockIsRecursive,
           blockMembers: blockMembers,
           designated: designated,
           designatedIdx: designatedIdx,
@@ -7719,6 +7769,14 @@ void _walkForRecursion({
             found = true;
           }
         },
+        // In a recursive block the members are pre-bound, so `auto` and
+        // `omega` can apply one without an expression to scan.
+        onOpaque:
+            blockIsRecursive
+                ? () {
+                  found = true;
+                }
+                : null,
       );
       if (found) {
         throw RecursionInTacticBlock(callerName, expr.span);
@@ -7744,6 +7802,7 @@ void _visitTacticExpressions(
   List<List<STacticStep>> alternatives, {
   required Set<String> shadowed,
   required void Function(SExpr expr, Set<String> shadowed) onExpr,
+  void Function()? onOpaque,
 }) {
   for (final steps in alternatives) {
     var scope = shadowed;
@@ -7770,12 +7829,16 @@ void _visitTacticExpressions(
           scope = {...scope, name};
         case STacticInduction(:final name):
           scope = {...scope, name};
+        case STacticAuto():
+        case STacticOmega():
+          // No embedded expression, but both apply top-level names from
+          // the environment: `auto` tries every binding, `omega` tries a
+          // fixed lemma list. The caller decides whether that is opaque.
+          onOpaque?.call();
         case STacticRefl():
         case STacticRevert():
         case STacticTrivial():
         case STacticConstructor():
-        case STacticAuto():
-        case STacticOmega():
           // No embedded expression and no introduced name.
           break;
       }

@@ -357,13 +357,12 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
       sb.writeln(
         '  The `by` block in "$funName" calls the function or a member of',
       );
+      sb.writeln('  its block, or it contains `auto` or `omega`, which apply');
+      sb.writeln('  top-level names. The checker does not model the tactic\'s');
       sb.writeln(
-        '  its block. The checker does not model the tactic\'s binders, so',
+        '  binders, so a call made by the block cannot be checked. Write',
       );
-      sb.writeln(
-        '  the call inside the block cannot be checked. Write the term',
-      );
-      sb.writeln('  directly instead of wrapping it in a `by` block.');
+      sb.writeln('  the term directly instead of wrapping it in a `by` block.');
     case NonStructuralRecursion(:final calleeName, :final span):
       sb.writeln("${c.error('error')}: non-structural recursion");
       sb.write(source.formatContext(span, color: c));

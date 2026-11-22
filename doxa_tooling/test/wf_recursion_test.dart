@@ -722,5 +722,63 @@ $body
         expect(r.stderr, contains(msg), reason: body);
       }
     });
+    test('auto in a recursive block is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat = match n {
+  case zero => by { auto }
+  case succ n_ => f n_
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+      expect(r.stderr, contains('contains `auto` or `omega`'));
+    });
+
+    test('omega in a recursive block is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Eq Nat zero zero = match n {
+  case zero => by { omega }
+  case succ n_ => f n_
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+    });
+
+    test('auto in a mutually recursive block is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat = by { auto }
+and g(n: Nat): Nat = f n
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+    });
+
+    test('a non-recursive by { auto } proof still checks', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun idp(n: Nat): Eq Nat n n = by { auto }
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('a non-recursive by { omega } proof still checks', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
+fun pz(n: Nat): Eq Nat (plus n zero) n = by { omega }
+
+val plus_zero_again : (n: Nat) -> Eq Nat (plus n zero) n =
+  by { intro n; omega }
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
   });
 }
