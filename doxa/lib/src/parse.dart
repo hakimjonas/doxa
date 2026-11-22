@@ -141,6 +141,7 @@ const Set<String> _reserved = {
   'typeclass',
   'impl',
   'calc',
+  'decreases',
 };
 
 /// A raw identifier, one letter or underscore, then alphanumeric/underscore.
@@ -1249,20 +1250,26 @@ final Parser<ParseError, String?> _structAnn =
         .thenSkip(_sym('}'))
         .optional;
 
-/// Optional `termination_by (name, name, ...)` annotation on a `fun`
+/// Optional `decreases (name, name, ...)` annotation on a `fun`
 /// declaration. Returns the list of parameter names, or null when the
-/// annotation is absent.
-final Parser<ParseError, List<String>?> _terminationBy =
-    _keyword('termination_by')
-        .skipThen(_sym('('))
-        .skipThen(_ident.sepBy(_sym(',')))
-        .thenSkip(_sym(')'))
-        .optional;
+/// annotation is absent. `decreases` is reserved, so the return-type
+/// expression stops before it and this combinator runs in the ordinary
+/// case. Once the keyword is present the parser commits: a missing
+/// `(` is a parse error at the keyword's successor, not a silent
+/// fallback to the structural-recursion check.
+final Parser<ParseError, List<String>?> _decreases = _keyword(
+  'decreases',
+).optional.flatMap(
+  (kw) =>
+      kw == null
+          ? succeed<ParseError, List<String>?>(null)
+          : _sym('(').skipThen(_ident.sepBy(_sym(','))).thenSkip(_sym(')')),
+);
 
 /// Build a `fun` body parser with the given [isOpaque] flag.
 ///
 /// The parser chain is: name typeParams? valueParams ':' expr structAnn?
-/// terminationBy? '=' (expr | blockExpr).
+/// decreases? '=' (expr | blockExpr).
 Parser<ParseError, SFunKind> _mkFunBody(bool isOpaque) => _ident.flatMap(
   (name) => _funTypeParams.flatMap(
     (tps) => _valueParams.optional.flatMap(
@@ -1270,7 +1277,7 @@ Parser<ParseError, SFunKind> _mkFunBody(bool isOpaque) => _ident.flatMap(
           .skipThen(_expr)
           .flatMap(
             (ret) => _structAnn.flatMap(
-              (structAnn) => _terminationBy.flatMap(
+              (structAnn) => _decreases.flatMap(
                 (tby) => (_sym('=').skipThen(_expr) | _blockExpr).map((body) {
                   final params = ps ?? const <(String, SExpr, DoxaSpan)>[];
                   return SFunKind(
@@ -1281,7 +1288,7 @@ Parser<ParseError, SFunKind> _mkFunBody(bool isOpaque) => _ident.flatMap(
                     body,
                     isOpaque: isOpaque,
                     structAnn: structAnn,
-                    terminationBy: tby,
+                    decreases: tby,
                     paramSpans: [for (final param in params) param.$3],
                   );
                 }),

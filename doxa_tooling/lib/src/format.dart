@@ -504,26 +504,17 @@ class _Formatter {
     _write(')');
     _write(': ');
 
-    var returnType = k.returnType;
-    List<String>? extractedTby;
-    if (k.terminationBy == null) {
-      final ext = _extractTerminationBy(returnType);
-      if (ext.tby != null) {
-        extractedTby = ext.tby;
-        returnType = ext.realRet;
-      }
-    }
-    _writeDoc(_visit(returnType));
+    _writeDoc(_visit(k.returnType));
 
     if (k.structAnn != null) {
       _space();
       _write('{struct ${k.structAnn}}');
     }
 
-    final tby = k.terminationBy ?? extractedTby;
+    final tby = k.decreases;
     if (tby != null) {
       _space();
-      _write('termination_by ${tby.join(' ')}');
+      _write('decreases (${tby.join(', ')})');
     }
 
     if (k.body.kind is SLetKind) {
@@ -1310,35 +1301,6 @@ class _Formatter {
         _write(']');
       }
     }
-  }
-
-  ({List<String>? tby, SExpr realRet}) _extractTerminationBy(SExpr returnType) {
-    final chain = <SAppKind>[];
-    SExpr? cur = returnType;
-    while (cur != null && cur.kind is SAppKind) {
-      chain.add(cur.kind as SAppKind);
-      cur = (cur.kind as SAppKind).fn;
-    }
-    var termByIdx = -1;
-    for (var i = chain.length - 1; i >= 0; i--) {
-      final arg = chain[i].arg.kind;
-      if (arg is SIdentKind && arg.name == 'termination_by') {
-        termByIdx = i;
-        break;
-      }
-    }
-    if (termByIdx < 0) return (tby: null, realRet: returnType);
-    final names = <String>[];
-    for (var i = termByIdx - 1; i >= 0; i--) {
-      final arg = chain[i].arg.kind;
-      if (arg is SIdentKind) {
-        names.add(arg.name);
-      } else {
-        return (tby: null, realRet: returnType);
-      }
-    }
-    final realRet = chain[termByIdx].fn;
-    return (tby: names, realRet: realRet);
   }
 }
 

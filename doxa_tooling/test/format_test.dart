@@ -72,11 +72,9 @@ void main() {
       expect(formatSource(input), equals(expected));
     });
 
-    test('fun declaration with termination_by annotation', () {
-      // termination_by is parsed as part of the return-type expression.
-      // The formatter extracts it and emits it in canonical form.
-      const input = 'fun gcd(a: Nat, b: Nat) : Nat termination_by a b = a';
-      const expected = 'fun gcd(a: Nat, b: Nat): Nat termination_by a b = a\n';
+    test('fun declaration with decreases annotation', () {
+      const input = 'fun gcd(a: Nat, b: Nat) : Nat decreases (a, b) = a';
+      const expected = 'fun gcd(a: Nat, b: Nat): Nat decreases (a, b) = a\n';
       expect(formatSource(input), equals(expected));
     });
 
@@ -431,12 +429,12 @@ fun f(x: Nat): Nat {
       _expectParses(formatted);
     });
 
-    test('prints termination_by in its accepted application form', () {
-      const input = 'fun gcd(a: Nat, b: Nat): Nat termination_by a b = a';
+    test('prints decreases in its accepted application form', () {
+      const input = 'fun gcd(a: Nat, b: Nat): Nat decreases (a, b) = a';
       final formatted = formatSource(input);
       expect(
         formatted,
-        equals('fun gcd(a: Nat, b: Nat): Nat termination_by a b = a\n'),
+        equals('fun gcd(a: Nat, b: Nat): Nat decreases (a, b) = a\n'),
       );
       _expectParses(formatted);
     });

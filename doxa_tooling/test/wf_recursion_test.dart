@@ -1,5 +1,5 @@
 /// Tests for Phase 24: Well-founded recursion with `Acc` and
-/// `termination_by` annotation.
+/// `decreases` annotation.
 library;
 
 import 'dart:async';
@@ -96,34 +96,45 @@ val rec = Acc[Nat].rec
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
-    test('termination_by on simple fun is rejected', () {
+    test('decreases on a non-recursive fun is rejected', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
-fun identity(x : Nat) : Nat termination_by (x) = x
+fun identity(x : Nat) : Nat decreases (x) = x
 ''';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
+      expect(r.stderr, contains('decreases on a non-recursive function'));
     });
 
-    test('termination_by with an unknown parameter is rejected', () {
+    test('decreases with an unknown parameter is rejected', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
-fun f(x : Nat) : Nat termination_by (y) = x
+fun f(x : Nat) : Nat decreases (y) = f x
 ''';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
+      expect(r.stderr, contains('decreases names an invalid measure'));
+      expect(r.stderr, contains('`y` is not a value parameter of `f`'));
     });
 
-    test('termination_by with {struct} is rejected', () {
+    test('decreases on a non-recursive helper is rejected', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
-fun f(x : Nat) : Nat {struct x} termination_by (x) = x
+fun helper(m : Nat, n : Nat) : Nat decreases (m) = plus m (plus m n)
 ''';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
+      expect(r.stderr, contains('decreases on a non-recursive function'));
+    });
+
+    test('decreases with {struct} is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(x : Nat) : Nat {struct x} decreases (x) = x
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('decreases cannot be combined with {struct}'));
     });
 
     test('structural recursion still works', () {
@@ -138,54 +149,55 @@ fun my_plus(a : Nat, b : Nat) : Nat = match a {
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
-    test('termination_by on a non-recursive fun is rejected', () {
+    test('decreases on a fun with no value parameters is rejected', () {
+      const src = 'fun f{A : Type} : Type decreases (x) = A';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('decreases names an invalid measure'));
+      expect(r.stderr, contains('`f` has no value parameters'));
+    });
+
+    test('decreases soundness reproducer is rejected', () {
+      // A call that grows the measured argument must not be accepted.
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
-fun helper(m : Nat, n : Nat) : Nat termination_by (m) = plus m (plus m n)
+fun bad(n: Nat): Eq Nat zero (succ zero) decreases (n) = bad (succ n)
 ''';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
+      expect(
+        r.stderr,
+        contains('recursive call does not decrease the termination measure'),
+      );
+      expect(r.stderr, contains('strict sub-term of `n`'));
     });
 
-    test('termination_by on a fun with no value params is rejected', () {
-      const src = 'fun f(A : Type) : Type termination_by (x) = A';
-      final r = runSource(src);
-      expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
-    });
-
-    test('termination_by soundness reproducer is rejected', () {
-      // This was accepted by the old single-parameter fuel path and
-      // makes the checker diverge in conversion.
+    test('multi-parameter decreases with no descent is rejected', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
-fun bad(n: Nat): Eq Nat zero (succ zero) termination_by n = bad (succ n)
+fun f(a: Nat, b: Nat): Nat decreases (a, b) = f a b
 ''';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
+      expect(
+        r.stderr,
+        contains('recursive call does not decrease the termination measure'),
+      );
+      expect(r.stderr, contains('no position decreases'));
     });
 
-    test('multi-parameter termination_by is rejected', () {
+    test('mutual-block member with decreases is rejected', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
-fun f(a: Nat, b: Nat): Nat termination_by a b = f a b
-''';
-      final r = runSource(src);
-      expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
-    });
-
-    test('mutual-block member with termination_by is rejected', () {
-      const src = '''
-import "../doxa_stdlib/lib/stdlib/nat.doxa"
-fun f(n: Nat): Nat termination_by n = g n
+fun f(n: Nat): Nat decreases (n) = g n
 and g(n: Nat): Nat = f n
 ''';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
+      expect(
+        r.stderr,
+        contains('decreases is not available in a mutual block'),
+      );
     });
 
     test('strong_ind computes through nat_wf and Acc.rec', () {
