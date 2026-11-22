@@ -16,6 +16,8 @@
 // `sum` folds a list with `add` and `azero`. `sumViaComm` takes the
 // commutative constraint and uses the same fold through the derived parent
 // dictionary.
+import "int.doxa"
+
 import "proofs.doxa"
 
 typeclass AddMonoid[A: Type] {
@@ -28,6 +30,12 @@ typeclass AddMonoid[A: Type] {
 
 typeclass AddCommMonoid[A: Type]: AddMonoid A {
   fun add_comm(x: A, y: A): Eq A (add x y) (add y x);
+}
+
+typeclass AddGroup[A: Type]: AddMonoid A {
+  fun negate(x: A): A;
+  fun add_neg_left(x: A): Eq A (add (negate x) x) azero;
+  fun add_neg_right(x: A): Eq A (add x (negate x)) azero;
 }
 
 typeclass Monoid[A: Type] {
@@ -75,6 +83,21 @@ impl [A: Type] AddMonoid[List A] {
     (append xs (append ys zs)) = append_assoc A xs ys zs;
   fun add_zero_left(xs: List A): Eq (List A) (append nil xs) xs = refl xs;
   fun add_zero_right(xs: List A): Eq (List A) (append xs nil) xs = append_nil A xs;
+}
+
+impl AddMonoid[Int] {
+  fun add(x: Int, y: Int): Int = intPlus x y;
+  fun azero(): Int = pos zero;
+  fun add_assoc(x: Int, y: Int, z: Int): Eq Int (intPlus (intPlus x y) z) (intPlus x (intPlus y z)) =
+    intPlus_assoc x y z;
+  fun add_zero_left(x: Int): Eq Int (intPlus (pos zero) x) x = intPlus_zero_left x;
+  fun add_zero_right(x: Int): Eq Int (intPlus x (pos zero)) x = intPlus_zero_right x;
+}
+
+impl AddGroup[Int] {
+  fun negate(x: Int): Int = intNeg x;
+  fun add_neg_left(x: Int): Eq Int (intPlus (intNeg x) x) (pos zero) = intAdd_neg_left x;
+  fun add_neg_right(x: Int): Eq Int (intPlus x (intNeg x)) (pos zero) = intAdd_neg_right x;
 }
 
 fun sum[A: AddMonoid](xs: List A): A = match xs {
