@@ -730,6 +730,7 @@ String _elabErrorKind(ElabError error) => switch (error) {
   CtorResultShapeMismatch _ => 'ctor_result_shape_mismatch',
   PositivityViolation _ => 'positivity_violation',
   MatchIndeterminateType _ => 'match_indeterminate_type',
+  UnannotatedDeclIndeterminate _ => 'unannotated_decl_indeterminate',
   UnknownCtorInMatch _ => 'unknown_ctor_in_match',
   CtorMismatchInMatch _ => 'ctor_mismatch_in_match',
   MatchArmArityMismatch _ => 'match_arm_arity_mismatch',

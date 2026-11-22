@@ -549,6 +549,71 @@ Term inlineSolvedMetas(Term term, MetaContext metas, {int outerDepth = 0}) {
   return walk(term, outerDepth);
 }
 
+/// Whether [term] mentions any `TMeta(_)`, solved or not.
+///
+/// Used after [inlineSolvedMetas] to decide whether a term is meta-free:
+/// once the solved entries are inlined, any remaining `TMeta` is unsolved.
+/// The elaborator uses it to reject an inferred type that still depends on an
+/// undetermined metavariable instead of storing the raw id, which later
+/// evaluation would read as a stuck neutral under a fresh meta context.
+///
+/// Iterative walk via an explicit stack, so depth does not consume Dart
+/// call frames (SPEC §4.5).
+bool termContainsMeta(Term term) {
+  final stack = <Term>[term];
+  while (stack.isNotEmpty) {
+    final cur = stack.removeLast();
+    switch (cur) {
+      case TMeta():
+        return true;
+      case TType():
+      case TUnknown():
+      case TProp():
+      case TSProp():
+      case TBound():
+      case TFree():
+      case TTop():
+      case TRec():
+        break;
+      case TApp(:final fn, :final arg):
+        stack.add(fn);
+        stack.add(arg);
+      case TLam(:final domain, :final body):
+        stack.add(domain);
+        stack.add(body);
+      case TPi(:final domain, :final codomain):
+        stack.add(domain);
+        stack.add(codomain);
+      case TLet(:final domain, :final bound, :final body):
+        stack.add(domain);
+        stack.add(bound);
+        stack.add(body);
+      case TData(:final args):
+        stack.addAll(args);
+      case TConstr(:final args):
+        stack.addAll(args);
+      case TMatch(:final scrutinee, :final motive, :final cases):
+        stack.add(scrutinee);
+        if (motive != null) stack.add(motive);
+        for (final c in cases) {
+          stack.add(c.body);
+        }
+      case TQuot(:final carrier, :final relation):
+        stack.add(carrier);
+        stack.add(relation);
+      case TQuotMk(:final arg):
+        stack.add(arg);
+      case TQuotLift(:final quot, :final fn, :final proof):
+        stack.add(quot);
+        stack.add(fn);
+        stack.add(proof);
+      case TProj(:final expr):
+        stack.add(expr);
+    }
+  }
+  return false;
+}
+
 /// Whether [solution] has a free de Bruijn index, i.e. one not bound by a
 /// binder inside the solution itself.
 ///

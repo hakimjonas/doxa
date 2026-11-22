@@ -1218,63 +1218,10 @@ Value _forceDelayed(VDelayed v) =>
 /// or `cong`'s `f`) β-reduces normally, the discriminator doesn't
 /// affect ordinary evaluation.
 ///
-/// Iterative walk via an explicit stack to stay within SPEC §4.5's
-/// no-Dart-recursion-per-syntax-layer invariant (a 10k-deep TPi
-/// stack-safety test exercises this walker with depth 10000).
-bool _termContainsMeta(Term t) {
-  final stack = <Term>[t];
-  while (stack.isNotEmpty) {
-    final cur = stack.removeLast();
-    switch (cur) {
-      case TMeta():
-        return true;
-      case TType():
-      case TUnknown():
-      case TProp():
-      case TSProp():
-      case TBound():
-      case TFree():
-      case TTop():
-      case TRec():
-        break;
-      case TApp(:final fn, :final arg):
-        stack.add(fn);
-        stack.add(arg);
-      case TLam(:final domain, :final body):
-        stack.add(domain);
-        stack.add(body);
-      case TPi(:final domain, :final codomain):
-        stack.add(domain);
-        stack.add(codomain);
-      case TLet(:final domain, :final bound, :final body):
-        stack.add(domain);
-        stack.add(bound);
-        stack.add(body);
-      case TData(:final args):
-        stack.addAll(args);
-      case TConstr(:final args):
-        stack.addAll(args);
-      case TMatch(:final scrutinee, :final motive, :final cases):
-        stack.add(scrutinee);
-        if (motive != null) stack.add(motive);
-        for (final c in cases) {
-          stack.add(c.body);
-        }
-      case TQuot(:final carrier, :final relation):
-        stack.add(carrier);
-        stack.add(relation);
-      case TQuotMk(:final arg):
-        stack.add(arg);
-      case TQuotLift(:final quot, :final fn, :final proof):
-        stack.add(quot);
-        stack.add(fn);
-        stack.add(proof);
-      case TProj(:final expr):
-        stack.add(expr);
-    }
-  }
-  return false;
-}
+/// The walk itself lives in `meta.dart`; the elaborator uses the same
+/// predicate to detect an inferred type that still holds an unsolved
+/// metavariable.
+bool _termContainsMeta(Term t) => termContainsMeta(t);
 
 /// If [t] is `TApp*(TMeta(id), a1, …, an)`,
 /// return `(id, [a1, …, an])` with args in leftmost-first order.
