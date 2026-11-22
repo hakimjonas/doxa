@@ -132,6 +132,24 @@ final class NonStructuralRecursion extends ElabError {
   String toString() => 'NonStructuralRecursion($calleeName @ $span)';
 }
 
+/// A recursive call appears inside a `by` block. The recursion checkers
+/// do not model the tactic's proof state, so a call in a block is not
+/// checked and is rejected instead.
+final class RecursionInTacticBlock extends ElabError {
+  /// The name of the function whose block contains the reference.
+  final String funName;
+
+  /// The source span of the offending block.
+  @override
+  final DoxaSpan span;
+
+  /// Creates a recursion-in-tactic-block error.
+  const RecursionInTacticBlock(this.funName, this.span);
+
+  @override
+  String toString() => 'RecursionInTacticBlock($funName @ $span)';
+}
+
 /// A cross-call from one mutual-block member to another, collected
 /// during the structural-recursion walk. Used by cycle-aware analysis
 /// to distinguish "unguarded edge that is part of a true cycle" from
@@ -7093,8 +7111,24 @@ void _checkMeasuredRecursion(SFunKind kind, List<String> measure) {
           walk(step.rhs, subTerms, shadowed, masked);
           walk(step.proof, subTerms, shadowed, masked);
         }
-      case SIntersectionKind():
-      case SByKind():
+      case SIntersectionKind(:final constraints):
+        for (final constraint in constraints) {
+          walk(constraint, subTerms, shadowed, masked);
+        }
+      case SByKind(:final steps):
+        var found = false;
+        _visitTacticExpressions(
+          steps,
+          shadowed: shadowed,
+          onExpr: (expr, scope) {
+            if (!found && _hasRecursiveReferenceAt(expr, {kind.name}, scope)) {
+              found = true;
+            }
+          },
+        );
+        if (found) {
+          throw RecursionInTacticBlock(kind.name, expr.span);
+        }
         return;
     }
   };
@@ -7659,9 +7693,93 @@ void _walkForRecursion({
           );
         }
       }
-    case SIntersectionKind():
-    case SByKind():
+    case SIntersectionKind(:final constraints):
+      for (final constraint in constraints) {
+        _walkForRecursion(
+          expr: constraint,
+          blockMembers: blockMembers,
+          designated: designated,
+          designatedIdx: designatedIdx,
+          subTerms: subTerms,
+          shadowed: shadowed,
+          memberDeclIdxs: memberDeclIdxs,
+          memberTypeParamCounts: memberTypeParamCounts,
+          memberValueParamCounts: memberValueParamCounts,
+          callerName: callerName,
+          unguardedCrossCalls: unguardedCrossCalls,
+        );
+      }
+    case SByKind(:final steps):
+      var found = false;
+      _visitTacticExpressions(
+        steps,
+        shadowed: shadowed,
+        onExpr: (expr, scope) {
+          if (!found && _hasRecursiveReferenceAt(expr, blockMembers, scope)) {
+            found = true;
+          }
+        },
+      );
+      if (found) {
+        throw RecursionInTacticBlock(callerName, expr.span);
+      }
       return;
+  }
+}
+
+/// Visit the expressions embedded in a `by` block's tactic steps,
+/// threading the names the steps introduce.
+///
+/// [SByKind.steps] holds alternatives; each is a sequence of steps.
+/// Every alternative starts from [shadowed] and runs its steps in
+/// order. [onExpr] sees every embedded expression together with the
+/// shadow set in effect at that step: a name introduced by an earlier
+/// step (`intro`, `cases`, `induction`, `have`) masks a same-named
+/// local or top-level binding from that point on.
+///
+/// The tactic's proof state is not modelled; this traversal answers
+/// only which expressions the block mentions and which names are in
+/// scope for each.
+void _visitTacticExpressions(
+  List<List<STacticStep>> alternatives, {
+  required Set<String> shadowed,
+  required void Function(SExpr expr, Set<String> shadowed) onExpr,
+}) {
+  for (final steps in alternatives) {
+    var scope = shadowed;
+    for (final step in steps) {
+      switch (step) {
+        case STacticExact(:final expr):
+          onExpr(expr, scope);
+        case STacticApply(:final expr):
+          onExpr(expr, scope);
+        case STacticRewrite(:final expr):
+          onExpr(expr, scope);
+        case STacticSimp(:final lemmas):
+          for (final lemma in lemmas) {
+            onExpr(lemma, scope);
+          }
+        case STacticHave(:final name, :final type, :final proof):
+          // The fact is not in scope in its own type or proof.
+          if (proof != null) onExpr(proof, scope);
+          onExpr(type, scope);
+          scope = {...scope, name};
+        case STacticIntro(:final name):
+          if (name != null) scope = {...scope, name};
+        case STacticCases(:final name):
+          scope = {...scope, name};
+        case STacticInduction(:final name):
+          scope = {...scope, name};
+        case STacticRefl():
+        case STacticRevert():
+        case STacticTrivial():
+        case STacticConstructor():
+        case STacticAuto():
+        case STacticOmega():
+          // No embedded expression and no introduced name.
+          break;
+      }
+    }
   }
 }
 
@@ -7759,9 +7877,22 @@ bool _hasRecursiveReferenceAt(
         }
       }
       return false;
-    case SIntersectionKind():
-    case SByKind():
-      return false;
+    case SIntersectionKind(:final constraints):
+      return constraints.any(
+        (c) => _hasRecursiveReferenceAt(c, blockMembers, shadowed),
+      );
+    case SByKind(:final steps):
+      var found = false;
+      _visitTacticExpressions(
+        steps,
+        shadowed: shadowed,
+        onExpr: (expr, scope) {
+          if (!found && _hasRecursiveReferenceAt(expr, blockMembers, scope)) {
+            found = true;
+          }
+        },
+      );
+      return found;
   }
 }
 

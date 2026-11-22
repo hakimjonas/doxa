@@ -348,6 +348,22 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
       sb.write(source.formatContext(span, color: c));
       sb.writeln('  write `($name: T) => ...`, or place the lambda where its');
       sb.writeln('  type is expected (e.g. a `val` with a function type).');
+    case RecursionInTacticBlock(:final funName, :final span):
+      sb.writeln(
+        "${c.error('error')}: a recursive call inside a `by` block is not "
+        'checked',
+      );
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  The `by` block in "$funName" calls the function or a member of',
+      );
+      sb.writeln(
+        '  its block. The checker does not model the tactic\'s binders, so',
+      );
+      sb.writeln(
+        '  the call inside the block cannot be checked. Write the term',
+      );
+      sb.writeln('  directly instead of wrapping it in a `by` block.');
     case NonStructuralRecursion(:final calleeName, :final span):
       sb.writeln("${c.error('error')}: non-structural recursion");
       sb.write(source.formatContext(span, color: c));

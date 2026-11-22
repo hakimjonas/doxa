@@ -46,6 +46,7 @@ export 'src/elab.dart'
         UnresolvedName,
         DuplicateDeclaration,
         NonStructuralRecursion,
+        RecursionInTacticBlock,
         LambdaRequiresAnnotation,
         DataSortNotASort,
         MutualHeaderCycle,

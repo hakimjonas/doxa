@@ -617,4 +617,110 @@ val tree_iota: (x: Nat) -> (f: (y: Nat) -> Tree Nat) ->
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
   });
+  group('tactic-block recursion', () {
+    const msg = 'a recursive call inside a `by` block is not checked';
+
+    test('a measured bypass inside a by block is rejected', () {
+      // The ordinary call `f n_` decreases the measure; the growing call
+      // inside the block was previously invisible to the checker.
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat decreases (n) = match n {
+  case zero => zero
+  case succ n_ => plus (f n_) (by { exact f (succ n) })
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+      expect(r.stderr, contains('The `by` block in "f"'));
+    });
+
+    test('a structural mixed call inside a by block is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun g(n: Nat): Nat = match n {
+  case zero => zero
+  case succ n_ => plus (g n_) (by { exact g (succ n) })
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+    });
+
+    test('a body that only recurses inside a by block is rejected', () {
+      // Previously this crashed with an unbound TTop during the kernel
+      // check because the function was not recognised as recursive.
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun bad3(n: Nat): Nat = by { exact bad3 (succ n) }
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+      expect(r.stderr, isNot(contains('Bad state')));
+    });
+
+    test('a non-recursive by block still checks', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun idp(n: Nat): Eq Nat n n = by { exact refl n }
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('a harmless by block in a recursive function still checks', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun h(n: Nat): Nat = match n {
+  case zero => zero
+  case succ n_ => plus (h n_) (by { exact zero })
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('a call inside a have proof is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat decreases (n) = match n {
+  case zero => zero
+  case succ n_ => plus (f n_) (by { have q : Nat = f (succ n); exact zero })
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+    });
+
+    test('a call inside a nested by block is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat decreases (n) = by { exact (by { exact f (succ n) }) }
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+    });
+
+    test('calls inside apply, rewrite, simp, and cases are rejected', () {
+      const sources = [
+        'fun f(n: Nat): Nat decreases (n) = by { apply f }',
+        'fun f(n: Nat): Nat decreases (n) = by { rewrite f (succ n); exact zero }',
+        'fun f(n: Nat): Nat decreases (n) = by { simp [f (succ n)] }',
+        'fun f(n: Nat): Nat decreases (n) = by { cases n; exact f (succ n) }',
+      ];
+      for (final body in sources) {
+        final r = runSource('''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+$body
+''');
+        expect(r.code, 1, reason: body);
+        expect(r.stderr, contains(msg), reason: body);
+      }
+    });
+  });
 }

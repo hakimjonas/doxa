@@ -727,6 +727,7 @@ String _elabErrorKind(ElabError error) => switch (error) {
   DuplicateDeclaration _ => 'duplicate_declaration',
   LambdaRequiresAnnotation _ => 'lambda_requires_annotation',
   NonStructuralRecursion _ => 'non_structural_recursion',
+  RecursionInTacticBlock _ => 'recursion_in_tactic_block',
   DataSortNotASort _ => 'data_sort_not_a_sort',
   SPropFieldNotProofIrrelevant _ => 'sprop_field_not_proof_irrelevant',
   MutualHeaderCycle _ => 'mutual_header_cycle',
