@@ -722,3 +722,247 @@ val intMod_lt: (a: Int)
       a)
     b
     h
+// --- intPlusHelp arithmetic helpers ---------------------------------------
+
+val intPlusHelp_shift_left: (n: Nat)
+-> (x: Nat) -> (y: Nat) -> Eq Int (intPlus (pos n) (intPlusHelp x y)) (intPlusHelp (n + x) y) =
+  (n: Nat) => (x: Nat) => Nat.ind
+    ((k: Nat) => (y: Nat) -> Eq Int (intPlus (pos n) (intPlusHelp k y)) (intPlusHelp (n + k) y))
+    ((y: Nat) => sym_e
+      Int
+      (intPlusHelp (n + zero) y)
+      (intPlusHelp n y)
+      (cong_e Nat Int ((t: Nat) => intPlusHelp t y) (n + zero) n (plus_zero n)))
+    ((k: Nat) => (ih: (y: Nat) -> Eq Int (intPlus (pos n) (intPlusHelp k y)) (intPlusHelp (n + k) y)) => (y: Nat) => Nat.ind
+      ((j: Nat) => Eq Int (intPlus (pos n) (intPlusHelp (succ k) j)) (intPlusHelp (n + succ k) j))
+      (sym_e
+        Int
+        (intPlusHelp (n + succ k) zero)
+        (pos (n + k))
+        (cong_e Nat Int ((t: Nat) => intPlusHelp t zero) (n + succ k) (succ (n + k)) (plus_succ n k)))
+      ((j: Nat) => (_: Eq
+        Int
+        (intPlus (pos n) (intPlusHelp (succ k) j))
+        (intPlusHelp (n + succ k) j)) => trans_e
+        Int
+        (intPlus (pos n) (intPlusHelp k j))
+        (intPlusHelp (n + k) j)
+        (intPlusHelp (n + succ k) (succ j))
+        (ih j)
+        (sym_e
+          Int
+          (intPlusHelp (n + succ k) (succ j))
+          (intPlusHelp (n + k) j)
+          (cong_e
+            Nat
+            Int
+            ((t: Nat) => intPlusHelp t (succ j))
+            (n + succ k)
+            (succ (n + k))
+            (plus_succ n k))))
+      y)
+    x
+
+val intPlusHelp_add_right: (x: Nat)
+-> (y: Nat) -> (p: Nat) -> Eq Int (intPlus (intPlusHelp x y) (pos p)) (intPlusHelp (x + p) y) =
+  (x: Nat) => Nat.ind
+    ((k: Nat) => (y: Nat)
+    -> (p: Nat) -> Eq Int (intPlus (intPlusHelp k y) (pos p)) (intPlusHelp (k + p) y))
+    ((y: Nat) => (p: Nat) => refl (intPlusHelp p y))
+    ((k: Nat) => (ih: (y: Nat)
+    -> (p: Nat) -> Eq Int (intPlus (intPlusHelp k y) (pos p)) (intPlusHelp (k + p) y)) => (y: Nat) => (p: Nat) => Nat.ind
+      ((j: Nat) => Eq Int (intPlus (intPlusHelp (succ k) j) (pos p)) (intPlusHelp (succ k + p) j))
+      (refl (pos (k + p)))
+      ((j: Nat) => (_: Eq
+        Int
+        (intPlus (intPlusHelp (succ k) j) (pos p))
+        (intPlusHelp (succ k + p) j)) => ih j p)
+      y)
+    x
+
+val intPlusHelp_neg_right: (x: Nat)
+-> (y: Nat) -> (p: Nat) -> Eq Int (intPlus (intPlusHelp x y) (neg p)) (intPlusHelp x (succ (y + p))) =
+  (x: Nat) => Nat.ind
+    ((k: Nat) => (y: Nat)
+    -> (p: Nat) -> Eq Int (intPlus (intPlusHelp k y) (neg p)) (intPlusHelp k (succ (y + p))))
+    ((y: Nat) => (p: Nat) => refl (neg (succ (y + p))))
+    ((k: Nat) => (ih: (y: Nat)
+    -> (p: Nat) -> Eq Int (intPlus (intPlusHelp k y) (neg p)) (intPlusHelp k (succ (y + p)))) => (y: Nat) => (p: Nat) => Nat.ind
+      ((j: Nat) => Eq
+        Int
+        (intPlus (intPlusHelp (succ k) j) (neg p))
+        (intPlusHelp (succ k) (succ (j + p))))
+      (refl (intPlusHelp k p))
+      ((j: Nat) => (_: Eq
+        Int
+        (intPlus (intPlusHelp (succ k) j) (neg p))
+        (intPlusHelp (succ k) (succ (j + p)))) => ih j p)
+      y)
+    x
+
+val intPlusHelp_neg_shift: (n: Nat)
+-> (x: Nat) -> (y: Nat) -> Eq Int (intPlus (neg n) (intPlusHelp x y)) (intPlusHelp x (succ (n + y))) =
+  (n: Nat) => (x: Nat) => Nat.ind
+    ((k: Nat) => (y: Nat)
+    -> Eq Int (intPlus (neg n) (intPlusHelp k y)) (intPlusHelp k (succ (n + y))))
+    ((y: Nat) => refl (neg (succ (n + y))))
+    ((k: Nat) => (ih: (y: Nat)
+    -> Eq Int (intPlus (neg n) (intPlusHelp k y)) (intPlusHelp k (succ (n + y)))) => (y: Nat) => Nat.ind
+      ((j: Nat) => Eq
+        Int
+        (intPlus (neg n) (intPlusHelp (succ k) j))
+        (intPlusHelp (succ k) (succ (n + j))))
+      (sym_e
+        Int
+        (intPlusHelp k (n + zero))
+        (intPlusHelp k n)
+        (cong_e Nat Int ((t: Nat) => intPlusHelp k t) (n + zero) n (plus_zero n)))
+      ((j: Nat) => (_: Eq
+        Int
+        (intPlus (neg n) (intPlusHelp (succ k) j))
+        (intPlusHelp (succ k) (succ (n + j)))) => trans_e
+        Int
+        (intPlus (neg n) (intPlusHelp k j))
+        (intPlusHelp k (succ (n + j)))
+        (intPlusHelp (succ k) (succ (n + succ j)))
+        (ih j)
+        (sym_e
+          Int
+          (intPlusHelp k (n + succ j))
+          (intPlusHelp k (succ (n + j)))
+          (cong_e Nat Int ((t: Nat) => intPlusHelp k t) (n + succ j) (succ (n + j)) (plus_succ n j))))
+      y)
+    x
+// --- Additive monoid laws --------------------------------------------------
+
+val intPlus_zero_left: (a: Int) -> Eq Int (intPlus (pos zero) a) a =
+  Int.ind
+    ((x: Int) => Eq Int (intPlus (pos zero) x) x)
+    ((n: Nat) => refl (pos n))
+    ((n: Nat) => refl (neg n))
+
+val intPlus_zero_right: (a: Int) -> Eq Int (intPlus a (pos zero)) a =
+  Int.ind
+    ((x: Int) => Eq Int (intPlus x (pos zero)) x)
+    ((n: Nat) => cong_e Nat Int ((t: Nat) => pos t) (n + zero) n (plus_zero n))
+    ((n: Nat) => refl (neg n))
+
+val intPlus_assoc: (a: Int)
+-> (b: Int) -> (c: Int) -> Eq Int (intPlus (intPlus a b) c) (intPlus a (intPlus b c)) =
+  (a: Int) => Int.ind
+    ((x: Int) => (y: Int) -> (z: Int) -> Eq Int (intPlus (intPlus x y) z) (intPlus x (intPlus y z)))
+    ((n: Nat) => (y: Int) => Int.ind
+      ((w: Int) => (z: Int)
+      -> Eq Int (intPlus (intPlus (pos n) w) z) (intPlus (pos n) (intPlus w z)))
+      ((m: Nat) => (z: Int) => Int.ind
+        ((v: Int) => Eq
+          Int
+          (intPlus (intPlus (pos n) (pos m)) v)
+          (intPlus (pos n) (intPlus (pos m) v)))
+        ((p: Nat) => cong_e Nat Int ((t: Nat) => pos t) (n + m + p) (n + (m + p)) (plus_assoc n m p))
+        ((p: Nat) => sym_e
+          Int
+          (intPlus (pos n) (intPlusHelp m p))
+          (intPlusHelp (n + m) p)
+          (intPlusHelp_shift_left n m p))
+        z)
+      ((m: Nat) => (z: Int) => Int.ind
+        ((v: Int) => Eq
+          Int
+          (intPlus (intPlus (pos n) (neg m)) v)
+          (intPlus (pos n) (intPlus (neg m) v)))
+        ((p: Nat) => trans_e
+          Int
+          (intPlus (intPlusHelp n m) (pos p))
+          (intPlusHelp (n + p) m)
+          (intPlus (pos n) (intPlusHelp p m))
+          (intPlusHelp_add_right n m p)
+          (sym_e
+            Int
+            (intPlus (pos n) (intPlusHelp p m))
+            (intPlusHelp (n + p) m)
+            (intPlusHelp_shift_left n p m)))
+        ((p: Nat) => intPlusHelp_neg_right n m p)
+        z)
+      y)
+    ((n: Nat) => (y: Int) => Int.ind
+      ((w: Int) => (z: Int)
+      -> Eq Int (intPlus (intPlus (neg n) w) z) (intPlus (neg n) (intPlus w z)))
+      ((m: Nat) => (z: Int) => Int.ind
+        ((v: Int) => Eq
+          Int
+          (intPlus (intPlus (neg n) (pos m)) v)
+          (intPlus (neg n) (intPlus (pos m) v)))
+        ((p: Nat) => intPlusHelp_add_right m n p)
+        ((p: Nat) => trans_e
+          Int
+          (intPlus (intPlusHelp m n) (neg p))
+          (intPlusHelp m (succ (n + p)))
+          (intPlus (neg n) (intPlusHelp m p))
+          (intPlusHelp_neg_right m n p)
+          (sym_e
+            Int
+            (intPlus (neg n) (intPlusHelp m p))
+            (intPlusHelp m (succ (n + p)))
+            (intPlusHelp_neg_shift n m p)))
+        z)
+      ((m: Nat) => (z: Int) => Int.ind
+        ((v: Int) => Eq
+          Int
+          (intPlus (intPlus (neg n) (neg m)) v)
+          (intPlus (neg n) (intPlus (neg m) v)))
+        ((p: Nat) => sym_e
+          Int
+          (intPlus (neg n) (intPlusHelp p m))
+          (intPlusHelp p (succ (n + m)))
+          (intPlusHelp_neg_shift n p m))
+        ((p: Nat) => cong_e
+          Nat
+          Int
+          ((t: Nat) => neg (succ t))
+          (succ (n + m) + p)
+          (n + succ (m + p))
+          (trans_e
+            Nat
+            (succ (n + m) + p)
+            (succ (n + m + p))
+            (n + succ (m + p))
+            (refl (succ (n + m + p)))
+            (trans_e
+              Nat
+              (succ (n + m + p))
+              (succ (n + (m + p)))
+              (n + succ (m + p))
+              (cong_e Nat Nat ((t: Nat) => succ t) (n + m + p) (n + (m + p)) (plus_assoc n m p))
+              (sym_e Nat (n + succ (m + p)) (succ (n + (m + p))) (plus_succ n (m + p))))))
+        z)
+      y)
+    a
+// --- Additive inverse laws -------------------------------------------------
+
+val intPlusHelp_succ_self: (n: Nat) -> Eq Int (intPlusHelp (succ n) n) (pos zero) =
+  (n: Nat) => Nat.ind
+    ((k: Nat) => Eq Int (intPlusHelp (succ k) k) (pos zero))
+    (refl (pos zero))
+    ((k: Nat) => (ih: Eq Int (intPlusHelp (succ k) k) (pos zero)) => ih)
+    n
+
+val intAdd_neg_left: (a: Int) -> Eq Int (intPlus (intNeg a) a) (pos zero) =
+  Int.ind
+    ((x: Int) => Eq Int (intPlus (intNeg x) x) (pos zero))
+    ((n: Nat) => Nat.ind
+      ((k: Nat) => Eq Int (intPlus (intNeg (pos k)) (pos k)) (pos zero))
+      (refl (pos zero))
+      ((k: Nat) => (_: Eq Int (intPlus (intNeg (pos k)) (pos k)) (pos zero)) => intPlusHelp_succ_self
+        k)
+      n)
+    ((n: Nat) => intPlusHelp_succ_self n)
+
+val intAdd_neg_right: (a: Int) -> Eq Int (intPlus a (intNeg a)) (pos zero) =
+  (a: Int) => trans_e
+    Int
+    (intPlus a (intNeg a))
+    (intPlus (intNeg a) a)
+    (pos zero)
+    (intPlus_comm a (intNeg a))
+    (intAdd_neg_left a)
