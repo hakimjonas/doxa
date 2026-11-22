@@ -83,9 +83,10 @@ The publishing hold in [`AGENTS.md`](../AGENTS.md) stands.
 The declaration-boundary audit is closed. The remaining limits concern
 completeness. Solved metavariables are validated at the solve site, and the
 implemented rules are specified in [`SPEC.md`](../SPEC.md).
-Quotient construction and `termination_by` are gated with named diagnostics.
-The completeness limits are general pattern unification and indexed recursors
-beyond the current first-order refinement.
+Quotient construction, elimination, and soundness are checked; `termination_by`
+remains gated with a named diagnostic. The completeness limits are general
+pattern unification and indexed recursors beyond the current first-order
+refinement.
 
 ### Capable
 
@@ -98,8 +99,9 @@ monoids' `add` and `mul` are not reachable through them.
 Typeclasses cover single-parameter classes, instance search, explicit type
 arguments, parameterised instances, superclasses with the derived parent
 dictionary, local dictionaries, and multi-parameter classes. Default method
-bodies are the remaining typeclass gap. Quotients and `termination_by` are
-gated.
+bodies are the remaining typeclass gap. Quotients have `mk`, `lift`, and
+`Quot.sound` over a checked relation, without a propositional eliminator;
+`termination_by` is gated.
 
 ### Useful
 
@@ -112,9 +114,9 @@ lemmas. Others can instantiate the monoids and extend the library.
 
 ### Next
 
-Proof ergonomics: notation for the naming surface. Then the gated surfaces:
-quotient construction and elimination, and a checked termination measure.
-Then the algebraic hierarchy (groups and rings), once the `Int`
+Proof ergonomics: notation for the naming surface. Then the remaining gated
+surface, a checked termination measure, and `Quot.ind` for a propositional
+eliminator. Then the algebraic hierarchy (groups and rings), once the `Int`
 associativity and identity laws are in the library.
 
 ### Distribution

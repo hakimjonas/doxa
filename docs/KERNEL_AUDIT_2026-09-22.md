@@ -156,10 +156,17 @@ advantages.
 
 The three soundness gaps in section 3 are closed:
 
-1. **Quotients.** The surface rejects `mk` and `lift`
-   (`QuotientUnsupported`), and the kernel rejects `TQuotMk` and
-   `TQuotLift` in both infer and check mode (`QuotientTermUnsupported`,
-   `QuotMkInInferMode`). Covered by `doxa/test/quotient_test.dart`.
+1. **Quotients.** Closed in two steps. The surface first rejected `mk` and
+   `lift` (`QuotientUnsupported`) and the kernel rejected `TQuotMk` and
+   `TQuotLift` in both modes. The quotient completion (2026-11-22) then
+   implemented the finding's first recommendation: `mk` and `lift` are
+   check-mode rules, the compatibility proof is checked
+   (`QuotFnNotRespectingRelation` is now reachable), and the equality rule is
+   the primitive `Quot.sound`, propositional rather than definitional.
+   `VQuotMk` conversion compares its arguments structurally. The carrier and a
+   lift's result type are `Type 0`, and there is no `Quot.ind`. Covered by
+   `doxa/test/quotient_test.dart`, `doxa_tooling/test/quotient_surface_test.dart`,
+   and the `doxa_tooling/test/fixtures/quotient_pair.doxa` acceptance module.
 2. **Multi-parameter `termination_by`.** Every `termination_by` is
    rejected before the recursion check can be skipped
    (`TerminationByUnsupported`). Covered by

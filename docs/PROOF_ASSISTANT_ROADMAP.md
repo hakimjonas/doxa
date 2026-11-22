@@ -35,10 +35,11 @@ The command surface is in `doxa_tooling/lib/src/repl.dart` and is covered by `re
 ## Kernel soundness status
 
 The external audit (`docs/KERNEL_AUDIT_2026-09-22.md`) prioritized three
-surface soundness gaps. Quotient `mk`/`lift` and every `termination_by` remain
-gated with `QuotientUnsupported` and `TerminationByUnsupported`. Typeclasses
-were implemented after the audit (#14, #15, #19); the remaining limits are in
-Phase 29.5.
+surface soundness gaps. Quotients are complete for the first slice: `mk`,
+`lift`, and `Quot.sound` are checked, with the relation checked at formation
+and no propositional eliminator. Every `termination_by` remains gated with
+`TerminationByUnsupported`. Typeclasses were implemented after the audit
+(#14, #15, #19); the remaining limits are in Phase 29.5.
 
 Remaining audit items:
 
@@ -117,7 +118,7 @@ pass. Phase 30 is the public launch. The known gaps below remain.
   declaration desugars to `mk`.
 - Constructor names share a global namespace, so records cannot each declare
   `mk`.
-- Quotient construction and elimination (`mk`, `lift`) are rejected until the
-  kernel checks the lift compatibility proof.
+- Quotients have no propositional eliminator (`Quot.ind`), and their carrier
+  and lift result types are at `Type 0` because `Eq`'s carrier is.
 - `termination_by` is rejected; recursive functions use structural recursion
   or `Acc.rec` with `nat_wf`.
