@@ -52,6 +52,7 @@ export 'src/elab.dart'
         CtorResultShapeMismatch,
         PositivityViolation,
         MatchIndeterminateType,
+        UnannotatedDeclIndeterminate,
         UnknownCtorInMatch,
         CtorMismatchInMatch,
         MatchArmArityMismatch,

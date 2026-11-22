@@ -14,6 +14,11 @@ project is ready.
 - Recorded the meta-solution audit and inlining discipline (#13).
 - Counted explicit type arguments when locating the structural-recursion
   position (#16).
+- Unannotated declarations whose bodies insert implicit arguments, such as a
+  typeclass dictionary or an implicit type argument, now infer their type and
+  are checked instead of aborting with an internal error. An inferred type
+  that still depends on an undetermined metavariable is reported as
+  `cannot infer the type of declaration` with the annotation that fixes it.
 
 **Proof authoring and tactics**
 

@@ -367,6 +367,28 @@ final class MatchIndeterminateType extends ElabError {
   String toString() => 'MatchIndeterminateType(@ $span)';
 }
 
+/// An unannotated declaration whose inferred type still mentions an unsolved
+/// metavariable.
+///
+/// Elaborating the body allocates a metavariable for each implicit argument
+/// it inserts. When no argument determines one of them, the type the body
+/// would receive is still undetermined, and storing the raw metavariable
+/// would put a per-declaration id into the environment. The user resolves it
+/// by annotating the declaration.
+final class UnannotatedDeclIndeterminate extends ElabError {
+  /// The declaration's name.
+  final String name;
+
+  @override
+  final DoxaSpan span;
+
+  /// Creates the error.
+  const UnannotatedDeclIndeterminate(this.name, this.span);
+
+  @override
+  String toString() => 'UnannotatedDeclIndeterminate($name @ $span)';
+}
+
 /// A `match` case named a constructor that is not registered in any
 /// inductive type.
 final class UnknownCtorInMatch extends ElabError {
@@ -4748,6 +4770,32 @@ String? _flattenDottedIdent(SExpr expr) {
 // Declaration elaboration
 // ---------------------------------------------------------------------------
 
+/// Inline solved metavariables into an inferred declaration type, and reject
+/// a type that still mentions one.
+///
+/// An unannotated `val` or `type` has no declared type, so the type is
+/// whatever [infer] returned. That term can mention metavariables the
+/// elaborator allocated for inserted implicit arguments. The solved ones are
+/// inlined here; the declaration's `MetaContext` is private to the
+/// declaration, and a raw `TMeta(id)` stored in the environment would resolve
+/// to a stuck neutral under the next declaration's fresh context.
+///
+/// A remaining metavariable is unsolved: no argument determined it, so the
+/// declaration has no type the elaborator can determine. Report
+/// [UnannotatedDeclIndeterminate] rather than store the id.
+Term _inferredTypeTerm(
+  Term type,
+  MetaContext metas, {
+  required String name,
+  required DoxaSpan span,
+}) {
+  final inlined = inlineSolvedMetas(type, metas);
+  if (termContainsMeta(inlined)) {
+    throw UnannotatedDeclIndeterminate(name, span);
+  }
+  return inlined;
+}
+
 /// Elaborate a single declaration, producing a [TopBinding] to be added
 /// to the running environment.
 ///
@@ -4795,9 +4843,32 @@ DeclResult _elabDecl(
         final expectedV = eval(typeTerm, valState.ctx.env);
         bodyTerm = _checkExpr(valState, body, expectedV);
       } else {
-        bodyTerm = _elabExpr(topEnv, const _LocalNil(), body, metas: metas);
-        final inferred = infer(topEnv.toCtx(), bodyTerm);
-        typeTerm = quote(topEnv.bindings.length, inferred);
+        // Infer-mode entry. The shim state carries the declaration's
+        // MetaContext, so the metavariables the body allocates for its
+        // inserted implicit arguments resolve at infer time.
+        final valState = _shimState(topEnv, const _LocalNil(), metas: metas);
+        var (inferredTerm, inferredType) = _inferExpr(valState, body);
+        // An application can end on a trailing implicit binder, such as the
+        // dictionary of `eqb zero zero`. Infer mode does not consume it in
+        // the application loop, so finish it here, exactly as
+        // [elabExprWithType] does for an inferred expression. A bare
+        // identifier keeps its full signature and a partial application keeps
+        // the explicit Pi that remains.
+        if (body.kind is SAppKind) {
+          (inferredTerm, inferredType) = _insertImplicits(
+            valState,
+            inferredTerm,
+            inferredType,
+          );
+        }
+        bodyTerm = inferredTerm;
+        final inferred = infer(valState.ctx, bodyTerm);
+        typeTerm = _inferredTypeTerm(
+          quote(topEnv.bindings.length, inferred),
+          metas,
+          name: name,
+          span: decl.span,
+        );
       }
       return (
         bindings: [
@@ -4819,8 +4890,13 @@ DeclResult _elabDecl(
 
     case STypeAliasKind(:final name, :final body):
       final bodyTerm = _elabExpr(topEnv, const _LocalNil(), body, metas: metas);
-      final inferred = infer(topEnv.toCtx(), bodyTerm);
-      final typeTerm = quote(topEnv.bindings.length, inferred);
+      final inferred = infer(_ctxWithMetas(topEnv.toCtx(), metas), bodyTerm);
+      final typeTerm = _inferredTypeTerm(
+        quote(topEnv.bindings.length, inferred),
+        metas,
+        name: name,
+        span: decl.span,
+      );
       return (
         bindings: [
           TopBinding(

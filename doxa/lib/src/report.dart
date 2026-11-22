@@ -413,6 +413,14 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
       sb.write(source.formatContext(span, color: c));
       sb.writeln('  Add at least one `case <ctor>` arm or an explicit');
       sb.writeln('  `returning <type>` clause.');
+    case UnannotatedDeclIndeterminate(:final name, :final span):
+      sb.writeln(
+        "${c.error('error')}: cannot infer the type of declaration \"$name\"",
+      );
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln('  The body leaves an implicit argument undetermined, so the');
+      sb.writeln('  declaration has no type. Annotate it:');
+      sb.writeln('    val $name: T = ...');
     case UnknownCtorInMatch(:final ctorName, :final span):
       sb.writeln("${c.error('error')}: unknown constructor in match arm");
       sb.write(source.formatContext(span, color: c));
