@@ -20,6 +20,15 @@ project is ready.
   that still depends on an undetermined metavariable is reported as
   `cannot infer the type of declaration` with the annotation that fixes it.
 
+**Quotients**
+
+- Completed the first quotient slice: `Quot(A, R)` checks that the relation
+  inhabits `(x: A) -> (y: A) -> Prop`, `mk` and `lift` are check-mode rules,
+  `lift`'s compatibility proof is checked, and the primitive `Quot.sound`
+  provides the propositional equality of two injections. `lift` computes by
+  ι-reduction, and `VQuotMk` conversion compares its arguments. Carriers and
+  lift results are at `Type 0`, and there is no `Quot.ind`.
+
 **Proof authoring and tactics**
 
 - Added `simp`, `cases`, `constructor`, `auto`, and `omega` (#12).

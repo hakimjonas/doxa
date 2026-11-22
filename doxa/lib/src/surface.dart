@@ -427,15 +427,18 @@ final class SQuotMkKind extends SExprKind {
   String toString() => 'SQuotMkKind($arg)';
 }
 
-/// Quotient elimination: `Quot.lift(fn, proof)` (or with explicit quot).
+/// Quotient elimination: `Quot.lift(fn, proof)`.
+///
+/// The term denotes the induced map `Quot A R -> B`; an expected function
+/// type supplies the quotient, the result type, and the relation.
 final class SQuotLiftKind extends SExprKind {
-  /// The field.
+  /// The function on the carrier.
   final SExpr fn;
 
-  /// The field.
+  /// The compatibility proof.
   final SExpr proof;
 
-  /// The field.
+  /// Creates a quotient elimination.
   const SQuotLiftKind(this.fn, this.proof);
   @override
   bool operator ==(Object other) =>
@@ -446,7 +449,27 @@ final class SQuotLiftKind extends SExprKind {
   String toString() => 'SQuotLiftKind($fn, $proof)';
 }
 
+/// Quotient soundness: `Quot.sound(proof)`.
+///
+/// Checked against an expected `Eq (Quot A R) (mk a) (mk b)`, so the two
+/// injected elements come from that type rather than from the argument.
+final class SQuotSoundKind extends SExprKind {
+  /// The witness that the relation holds.
+  final SExpr proof;
+
+  /// The field.
+  const SQuotSoundKind(this.proof);
+  @override
+  bool operator ==(Object other) =>
+      other is SQuotSoundKind && other.proof == proof;
+  @override
+  int get hashCode => Object.hash('SQuotSoundKind', proof);
+  @override
+  String toString() => 'SQuotSoundKind($proof)';
+}
+
 /// A single case arm in a match expression. Sealed: exactly
+/// [SMatchCase] (ctor pattern) or [SWildcardCase]./// A single case arm in a match expression. Sealed: exactly
 /// [SMatchCase] (ctor pattern) or [SWildcardCase].
 sealed class SMatchCaseArm {
   /// Base constructor.

@@ -1,0 +1,28 @@
+// The first quotient development: pairs of `Nat` under equality of sum.
+//
+// `Quot.sound` relates the injections propositionally, `lift` builds the sum
+// on the quotient, and the computation rule closes by `refl`.
+import "../../../doxa_stdlib/lib/stdlib/proofs.doxa"
+
+data Pair: Type {
+  pair: (a: Nat) -> (b: Nat) -> Pair;
+}
+
+fun sum(p: Pair): Nat = p.a + p.b
+
+fun sameSum(x: Pair, y: Pair): Prop = Eq Nat (sum x) (sum y)
+
+val inject: (p: Pair) -> Quot(Pair, sameSum) = (p: Pair) => mk p
+
+val soundAt: (x: Pair) -> (y: Pair) -> sameSum x y -> Eq (Quot(Pair, sameSum)) (mk x) (mk y) =
+  (x: Pair) => (y: Pair) => (h: sameSum x y) => Quot.sound h
+
+val sumQ: (Quot(Pair, sameSum)) -> Nat = lift(sum, (x: Pair) => (y: Pair) => (h: sameSum x y) => h)
+
+val compute: (p: Pair) -> Eq Nat (sumQ (mk p)) (sum p) = (p: Pair) => refl (sum p)
+// The lift commutes with the relation propositionally: `sumQ (mk x)` reduces
+// to `sum x` by the ι rule, so `cong` transports the equality along the
+// quotient equation.
+
+val respected: (x: Pair) -> (y: Pair) -> sameSum x y -> Eq Nat (sumQ (mk x)) (sumQ (mk y)) =
+  (x: Pair) => (y: Pair) => (h: sameSum x y) => cong sumQ (soundAt x y h)

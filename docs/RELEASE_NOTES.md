@@ -82,7 +82,7 @@ and `package:` usage.
   `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`,
   `constructor`, and `have`, plus `calc(...)` equality chains
 - Records with field projection
-- Quotient type formation: `Quot(A, R)`
+- Quotients: `Quot(A, R)` formation, `mk`, `lift`, and `Quot.sound`
 - SProp for strict proof irrelevance
 
 **Platform**
@@ -112,15 +112,15 @@ them with a dedicated error. They are not shipped features:
 
 | Surface | Current status | Error |
 |---|---|---|
-| Quotient construction `mk` and elimination `lift(f, proof)` | `Quot(A, R)` formation is available. The surface is gated, and the kernel API rejects the `TQuotMk` / `TQuotLift` terms directly, because the lift compatibility proof is not checked | `QuotientUnsupported` (surface), `QuotientTermUnsupported` (kernel API) |
 | `termination_by` | Every annotation is rejected; the measure was never checked | `TerminationByUnsupported` |
 
 ## 1.0.0 scope
 
-Two surfaces in this plan are gated rather than implemented: kernel checking
-for the quotient lift proof and a checked termination measure. The 1.0.0
-scope must either complete them or ship them gated with the diagnostics
-above. Typeclass declarations, instances, and instance search are partially
+One surface in this plan is gated rather than implemented: a checked
+termination measure. The 1.0.0 scope must either complete it or ship it gated
+with the diagnostic above. Quotients were completed: `mk`, `lift`, and
+`Quot.sound` are checked, over a checked relation, without a propositional
+eliminator. Typeclass declarations, instances, and instance search are partially
 implemented; the supported subset is described in the feature list and the
 known limitations below. That decision is open.
 
@@ -154,13 +154,12 @@ These are design non-goals, not omissions:
 - **Non-indexed dependent-motive inference**: `match` infers the motive for
   indexed families but not for simple types like `Nat` in dependent
   positions. The eliminators `T.ind` and `T.rec` work unconditionally.
-- **Quotient construction and elimination**: `mk` and `lift(f, proof)` are
-  rejected with `QuotientUnsupported`. `Quot(A, R)` formation is available.
-  The kernel does not check the lift compatibility proof, so the elimination
-  rule is not offered. The kernel API rejects the `TQuotMk` and `TQuotLift`
-  terms directly (`QuotientTermUnsupported`), so a consumer that builds
-  kernel terms cannot bypass the surface gate; quotation and evaluation still
-  handle the terms for the 1.0 completion.
+- **Quotients**: `Quot(A, R)` formation checks that the relation inhabits
+  `(x: A) -> (y: A) -> Prop`; `mk`, `lift`, and `Quot.sound` are checked and
+  compute. Two limits remain. There is no propositional eliminator, so a
+  property of an arbitrary quotient element cannot be proved; and the carrier
+  and a lift's result type are at `Type 0`, because `Eq`'s carrier parameter
+  is at `Type 0`.
 - **Typeclass instance targets**: an instance may target a type constructor
   applied to distinct instance parameters (`impl[A: Eqb] Eqb[List A]`).
   Closed target arguments such as `impl Eqb[List Nat]` are rejected with

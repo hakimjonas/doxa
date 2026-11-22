@@ -82,6 +82,9 @@ SExprKind shape(SExpr e) {
       SExpr(shape(fn), DoxaSpan.synthetic),
       SExpr(shape(proof), DoxaSpan.synthetic),
     ),
+    SQuotSoundKind(:final proof) => SQuotSoundKind(
+      SExpr(shape(proof), DoxaSpan.synthetic),
+    ),
     SByKind() => k,
     SCalcKind(:final steps) => SCalcKind([
       for (final step in steps)

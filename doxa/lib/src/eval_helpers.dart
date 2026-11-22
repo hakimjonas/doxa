@@ -140,6 +140,7 @@ int _maxTBoundIndex(Term t, [int depth = 0]) {
           TQuot() ||
           TQuotMk() ||
           TQuotLift() ||
+          TQuotSound() ||
           TProj() ||
           TRec():
         break;

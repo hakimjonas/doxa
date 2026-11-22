@@ -267,44 +267,53 @@ String reportCheckError(
         '  a Type-sorted result (inferred sort: '
         '${_prettyValueAt(resultSort, 0)}).',
       );
-    case QuotientTermUnsupported(:final term):
-      sb.writeln(
-        "${c.error('error')}: quotient construction and elimination are "
-        'not supported',
-      );
-      sb.write(source.formatContext(span, color: c));
-      sb.writeln(
-        '  `$term` reached the kernel, which has no checked typing rule for '
-        'it:',
-      );
-      sb.writeln(
-        '  the compatibility proof required by the quotient elimination is',
-      );
-      sb.writeln(
-        '  not checked. The surface syntax is gated, so only a program that',
-      );
-      sb.writeln('  builds kernel terms directly can see this.');
-      sb.writeln(
-        '  `Quot(A, R)` formation is available; completing the elimination '
-        'is 1.0 work.',
-      );
-    case NotAQuotient(:final actual):
-      sb.writeln("${c.error('error')}: not a quotient type");
-      sb.write(source.formatContext(span, color: c));
-      sb.writeln(
-        '  expected a quotient type (Quot(A, R)), '
-        'got: ${_prettyValueAt(actual, 0)}',
-      );
     case QuotMkInInferMode():
       sb.writeln("${c.error('error')}: quotient injection in infer mode");
       sb.write(source.formatContext(span, color: c));
       sb.writeln(
-        '  `mk a` cannot be used in a position where its type cannot '
-        'be inferred.',
+        '  `mk a` needs the quotient type it injects into, which only an',
       );
+      sb.writeln('  expected type supplies. Annotate the binding:');
+      sb.writeln('    val q: Quot(A, R) = mk a');
+    case QuotLiftInInferMode():
+      sb.writeln("${c.error('error')}: quotient elimination in infer mode");
+      sb.write(source.formatContext(span, color: c));
       sb.writeln(
-        '  Provide an expected type via an annotation, or use the value '
-        'where its quotient type is known (e.g. as an argument).',
+        '  `lift f h` has type `Quot(A, R) -> B`, which only an expected',
+      );
+      sb.writeln('  type supplies. Annotate the binding:');
+      sb.writeln('    val g: Quot(A, R) -> B = lift f h');
+    case QuotSoundInInferMode():
+      sb.writeln("${c.error('error')}: quotient soundness proof in infer mode");
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  `Quot.sound h` proves `Eq (Quot(A, R)) (mk a) (mk b)`, which only',
+      );
+      sb.writeln('  an expected equality supplies.');
+    case NotAQuotient(:final actual):
+      sb.writeln("${c.error('error')}: not a quotient type");
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  expected a quotient type (Quot(A, R)), or a function from one, '
+        'got: ${_prettyValueAt(actual, 0)}',
+      );
+    case QuotLiftNeedsConstantResult(:final expected):
+      sb.writeln(
+        "${c.error('error')}: quotient elimination needs a constant result type",
+      );
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  the result type may not read the quotient element; '
+        'got: ${_prettyValueAt(expected, 0)}',
+      );
+    case QuotSoundNeedsInjection(:final expected):
+      sb.writeln(
+        "${c.error('error')}: quotient soundness needs an equality of injections",
+      );
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  expected `Eq (Quot(A, R)) (mk a) (mk b)`, '
+        'got: ${_prettyValueAt(expected, 0)}',
       );
     case QuotFnNotRespectingRelation(:final got, :final expected):
       sb.writeln(
@@ -532,18 +541,22 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
       sb.writeln(
         '  recursions. Use structural recursion, or `Acc.rec` with `nat_wf`.',
       );
-    case QuotientUnsupported(:final span):
-      sb.writeln(
-        "${c.error('error')}: quotient construction and elimination are not supported",
-      );
+    case QuotientNeedsExpectedType(:final form, :final span):
+      sb.writeln("${c.error('error')}: `$form` needs an expected type here");
       sb.write(source.formatContext(span, color: c));
-      sb.writeln(
-        '  `mk` and `lift` are rejected until the kernel checks the lift',
-      );
-      sb.writeln(
-        '  compatibility proof. `Quot(A, R)` still forms a type; use a data type',
-      );
-      sb.writeln('  or a setoid-style encoding.');
+      switch (form) {
+        case 'mk':
+          sb.writeln('  `mk a` injects into the quotient its expected type');
+          sb.writeln('  names. Annotate the binding:');
+          sb.writeln('    val q: Quot(A, R) = mk a');
+        case 'lift':
+          sb.writeln('  `lift f h` has type `Quot(A, R) -> B`, which its');
+          sb.writeln('  expected type names. Annotate the binding:');
+          sb.writeln('    val g: Quot(A, R) -> B = lift f h');
+        case _:
+          sb.writeln('  `Quot.sound h` proves an equation between two');
+          sb.writeln('  injections, and the expected equality names them.');
+      }
     case TypeclassUnsupported(:final span, :final reason):
       sb.writeln("${c.error('error')}: typeclass form not supported");
       sb.write(source.formatContext(span, color: c));

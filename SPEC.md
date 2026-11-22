@@ -263,21 +263,74 @@ argument must be parenthesized, as in `f ({ val x = y; x })`.
 val block: Type 2 = { val x: Type 1 = Type; x }
 ```
 
-Quotient expressions have these surface forms:
+Quotient expressions have four surface forms: `Quot(A, R)` for the type
+former, `mk value` for the injection, `lift(function, compatibilityProof)`
+for the elimination, and `Quot.sound proof` for the soundness proof.
 
-<!-- doxa: fragment -->
+`Quot(A, R)` forms a type when `A` is a type and `R` inhabits
+`(x: A) -> (y: A) -> Prop`; the relation is checked, so a non-relation is
+rejected at its own span. The quotient's sort is the carrier's sort: `A` at
+`Type n` gives `Quot(A, R)` at `Type n`, and a carrier at `Prop` gives
+`Type 1`. Quotients are never `Prop`-sorted, which is what keeps
+proof-irrelevant elimination out of the construction.
+
+`mk` injects an element. It is a check-mode form: the expected type must be
+`Quot(A, R)`, and the argument is checked against `A`. Infer mode has no rule,
+because the carrier and the relation come from the expected type; the
+`QuotMkInInferMode` diagnostic asks for the annotation.
+
+`lift f h` is the induced map, of type `Quot(A, R) -> B`. It is also a
+check-mode form, against a function type whose domain is a quotient. With
+`f : A -> B` and `R` the relation, the compatibility proof `h` must inhabit
+`(x: A) -> (y: A) -> R x y -> Eq B (f x) (f y)`; a proof of any other type is
+reported as `QuotFnNotRespectingRelation`. The result type `B` may not
+depend on the quotient element: the elimination returns a type fixed in
+advance, and a dependent codomain is rejected with
+`QuotLiftNeedsConstantResult`. Infer mode has no rule
+(`QuotLiftInInferMode`).
+
+`Quot.sound h` proves `Eq (Quot A R) (mk a) (mk b)` from `h : R a b`. The
+equation is propositional: `mk a` and `mk b` are definitionally equal only
+when `a` and `b` are. Two injections of related but distinct elements are
+equal only through `Quot.sound` and its transports, so a function that does
+not respect the relation cannot be used to distinguish them. `Quot.sound`
+takes its two elements from the expected equality and is a check-mode form
+(`QuotSoundInInferMode`).
+
+The elimination computes: `lift f h (mk a)` reduces to `f a`, without
+consulting `h`. Applied to an element that is not a canonical injection the
+term stays stuck, with the `lift` itself as the neutral head. Two `lift`s are
+definitionally equal when their functions and proofs are, and two `Quot.sound`
+proofs are equal by proof irrelevance because the equation is a proposition.
+
+The carrier of a quotient and the result type of a `lift` are at `Type 0` in
+this slice, because `Eq`'s carrier parameter is at `Type 0`. There is no
+propositional eliminator: `Quot.ind` is not available, so a property of an
+arbitrary quotient element cannot yet be proved. `lift` covers the
+value-level use, and the slice is complete for building maps out of a
+quotient.
+
 ```doxa
-Quot(A, R)
-mk value
-lift(function, compatibilityProof)
-```
+import "package:doxa_stdlib/stdlib/proofs.doxa"
 
-These quotient forms are expression fragments. `Quot(A, R)` forms a type.
-`mk` and `lift` are rejected at the surface with `QuotientUnsupported`, and the
-kernel API rejects the `TQuotMk` and `TQuotLift` terms with
-`QuotientTermUnsupported`, because the lift compatibility proof is not checked.
-No quotient elimination is available. The forms above are listed for the
-planned completion and do not check.
+data Pair: Type {
+  pair: (a: Nat) -> (b: Nat) -> Pair;
+}
+
+fun sum(p: Pair): Nat = plus p.a p.b
+
+fun sameSum(x: Pair, y: Pair): Prop = Eq Nat (sum x) (sum y)
+
+val soundAt : (x: Pair) -> (y: Pair) -> sameSum x y ->
+    Eq (Quot(Pair, sameSum)) (mk x) (mk y) =
+  (x: Pair) => (y: Pair) => (h: sameSum x y) => Quot.sound h
+
+val sumQ : Quot(Pair, sameSum) -> Nat =
+  lift(sum, (x: Pair) => (y: Pair) => (h: sameSum x y) => h)
+
+val computes : (p: Pair) -> Eq Nat (sumQ (mk p)) (sum p) =
+  (p: Pair) => refl (sum p)
+```
 
 ## Typeclasses
 

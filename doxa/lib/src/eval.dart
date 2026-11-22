@@ -434,20 +434,30 @@ final class _EvalQuotMk extends _Frame {
   const _EvalQuotMk();
 }
 
-/// After a [TQuotLift]'s arguments are evaluated, produce [VQuotLift],
-/// or ι-reduce when the quot is [VQuotMk].
+/// After a [TQuotLift]'s function is evaluated, evaluate the compatibility
+/// proof and produce [VQuotLift]. The term is the induced map, so there is
+/// no ι-reduction here: applying it to an injection reduces in [_Apply].
 final class _EvalQuotLift extends _Frame {
-  final Term fnTerm;
   final Term proofTerm;
   final Env env;
-  final Value? quot;
   final Value? fn;
-  const _EvalQuotLift(
-    this.fnTerm,
+  const _EvalQuotLift(this.proofTerm, this.env, [this.fn]);
+}
+
+/// After a [TQuotSound]'s left injection is evaluated, evaluate the right
+/// injection and then the proof, producing [VQuotSound].
+final class _EvalQuotSound extends _Frame {
+  final Term rhsTerm;
+  final Term proofTerm;
+  final Env env;
+  final Value? lhs;
+  final Value? rhs;
+  const _EvalQuotSound(
+    this.rhsTerm,
     this.proofTerm,
     this.env, [
-    this.quot,
-    this.fn,
+    this.lhs,
+    this.rhs,
   ]);
 }
 
@@ -955,7 +965,13 @@ final class _InferQuotAfterCarrierQuote extends _Frame {
   final Ctx ctx;
   final Term relation;
   final _Sort carrierSort;
-  const _InferQuotAfterCarrierQuote(this.ctx, this.relation, this.carrierSort);
+  final Value carrier;
+  const _InferQuotAfterCarrierQuote(
+    this.ctx,
+    this.relation,
+    this.carrierSort,
+    this.carrier,
+  );
 }
 
 /// After checking relation, yield the result sort.
@@ -1035,27 +1051,40 @@ final class _QQuotMk extends _Frame {
   const _QQuotMk();
 }
 
-/// After a [VQuotLift]'s quot is quoted, quote the fn.
-final class _QQuotLiftFn extends _Frame {
-  final Value fn;
-  final Value proof;
-  final int level;
-  const _QQuotLiftFn(this.fn, this.proof, this.level);
-}
-
-/// After a [VQuotLift]'s fn is quoted, quote the proof.
+/// After a [VQuotLift]'s function is quoted, quote the compatibility proof.
 final class _QQuotLiftProof extends _Frame {
-  final Term quot;
   final Value proof;
   final int level;
-  const _QQuotLiftProof(this.quot, this.proof, this.level);
+  const _QQuotLiftProof(this.proof, this.level);
 }
 
 /// After a [VQuotLift]'s proof is quoted, produce [TQuotLift].
 final class _QQuotLiftBuild extends _Frame {
-  final Term quot;
   final Term fn;
-  const _QQuotLiftBuild(this.quot, this.fn);
+  const _QQuotLiftBuild(this.fn);
+}
+
+/// After a [VQuotSound]'s left injection is quoted, quote the right one.
+final class _QQuotSoundRhs extends _Frame {
+  final Value rhs;
+  final Value proof;
+  final int level;
+  const _QQuotSoundRhs(this.rhs, this.proof, this.level);
+}
+
+/// After a [VQuotSound]'s right injection is quoted, quote the proof.
+final class _QQuotSoundProof extends _Frame {
+  final Term lhs;
+  final Value proof;
+  final int level;
+  const _QQuotSoundProof(this.lhs, this.proof, this.level);
+}
+
+/// After a [VQuotSound]'s proof is quoted, produce [TQuotSound].
+final class _QQuotSoundBuild extends _Frame {
+  final Term lhs;
+  final Term rhs;
+  const _QQuotSoundBuild(this.lhs, this.rhs);
 }
 
 /// Stack-safe recursor ι-reduction. A naive ι-reduction for `VRec ...
@@ -1566,9 +1595,13 @@ Object _drive(
             stack.add(const _EvalQuotMk());
             step = _Eval(arg, env);
 
-          case TQuotLift(:final quot, :final fn, :final proof):
-            stack.add(_EvalQuotLift(fn, proof, env));
-            step = _Eval(quot, env);
+          case TQuotLift(:final fn, :final proof):
+            stack.add(_EvalQuotLift(proof, env));
+            step = _Eval(fn, env);
+
+          case TQuotSound(:final lhs, :final rhs, :final proof):
+            stack.add(_EvalQuotSound(rhs, proof, env));
+            step = _Eval(lhs, env);
 
           case TProj(:final expr, :final fieldName):
             stack.add(_EvalProj(fieldName));
@@ -2323,18 +2356,21 @@ Object _drive(
             stack.add(_ConvThen(_Conv(r1, r2, level)));
             step = _Conv(c1, c2, level);
 
-          // VQuotMk × VQuotMk: identity only (no pointwise equality).
+          // VQuotMk × VQuotMk: compare the injected elements. Distinct
+          // elements stay distinct; related elements are equal only through
+          // the propositional `Quot.sound`, which conversion does not see.
           case (VQuotMk(arg: final a1), VQuotMk(arg: final a2)):
-            step = _YieldC(identical(a1, a2) ? _ok : ConvMismatch(a, b));
+            step = _Conv(a1, a2, level);
 
-          // VQuotLift × VQuotLift: compare pointwise.
+          // VQuotLift × VQuotLift: compare the function and the proof
+          // pointwise. The proofs are propositional, so proof irrelevance
+          // settles them; the functions decide the comparison.
           case (
-            VQuotLift(quot: final q1, fn: final f1, proof: final p1),
-            VQuotLift(quot: final q2, fn: final f2, proof: final p2),
+            VQuotLift(fn: final f1, proof: final p1),
+            VQuotLift(fn: final f2, proof: final p2),
           ):
-            stack.add(_ConvThen(_Conv(f1, f2, level)));
             stack.add(_ConvThen(_Conv(p1, p2, level)));
-            step = _Conv(q1, q2, level);
+            step = _Conv(f1, f2, level);
 
           // Any other shape combination: try flex-rigid
           // pattern unification first (if one side is a meta-headed
@@ -2611,19 +2647,19 @@ Object _drive(
             step = _Infer(ctx, carrier);
             break;
 
-          // Quotient injection and elimination are rejected at the
-          // kernel boundary. `mk` needs a sound typing rule relative to
-          // the quotient type, and `lift`'s compatibility proof is not
-          // checked, so neither term has a rule the kernel can justify.
-          // The surface elaborator gates the syntax
-          // (`QuotientUnsupported`); this is the same rejection for
-          // consumers that build kernel terms directly. Rejection
-          // happens before any subterm is inferred or evaluated.
+          // The three quotient forms are check-mode rules. `mk` needs the
+          // quotient type the element is injected into, `lift` needs the
+          // function type `Quot A R -> B`, and `Quot.sound` needs the two
+          // injections the equation relates; none of that is recoverable
+          // from the operands alone.
           case TQuotMk():
-            throw const QuotientTermUnsupported('Quot.mk');
+            throw const QuotMkInInferMode();
 
           case TQuotLift():
-            throw const QuotientTermUnsupported('Quot.lift');
+            throw const QuotLiftInInferMode();
+
+          case TQuotSound():
+            throw const QuotSoundInInferMode();
 
           case TProj(:final expr, :final fieldName):
             // Infer the type of expr, then extract the field's type
@@ -2690,6 +2726,99 @@ Object _drive(
             convResult as ConvMismatch,
             level: ctx.level,
           );
+        }
+        // Quotient forms have check-mode rules only; their infer-mode
+        // entries throw. Each rule validates operands against types the
+        // expected type supplies, so the dispatch lives here rather than
+        // in the infer-then-conv fallback.
+        if (term is TQuotMk) {
+          final expectedV = forceHeadMeta(ctx, expected);
+          if (expectedV is! VQuot) throw NotAQuotient(expectedV);
+          // The injected element inhabits the carrier.
+          check(ctx, term.arg, expectedV.carrier);
+          step = _YieldV(expected);
+          break;
+        }
+        if (term is TQuotLift) {
+          final expectedV = forceHeadMeta(ctx, expected);
+          if (expectedV is! VPi) throw NotAFunction(expectedV);
+          final quotV = expectedV.domain;
+          if (quotV is! VQuot) throw NotAQuotient(quotV);
+          // The result type is fixed by `lift`'s type, so a codomain that
+          // reads the quotient element would be a dependent elimination.
+          // The slice has no dependent elimination.
+          if (mentionsEnclosingBinder(expectedV.codomain.body)) {
+            throw QuotLiftNeedsConstantResult(expectedV);
+          }
+          final bodyV = eval(
+            expectedV.codomain.body,
+            expectedV.codomain.env.extend(VNeutral(NVar(ctx.level))),
+          );
+          check(ctx, term.fn, arrowType(ctx, quotV.carrier, bodyV));
+          final compat = quotLiftCompatibilityType(
+            ctx,
+            carrier: quotV.carrier,
+            relation: quotV.relation,
+            fn: eval(term.fn, ctx.env),
+            body: bodyV,
+          );
+          try {
+            check(ctx, term.proof, compat);
+          } on TypeMismatch catch (e) {
+            // The failure is the compatibility condition, not a stray
+            // type error: report it as such.
+            throw QuotFnNotRespectingRelation(e.got, compat);
+          }
+          step = _YieldV(expected);
+          break;
+        }
+        if (term is TQuotSound) {
+          final shape = quotSoundShape(forceHeadMeta(ctx, expected));
+          if (shape == null) {
+            throw QuotSoundNeedsInjection(forceHeadMeta(ctx, expected));
+          }
+          // The term caches the two carrier elements its injections
+          // wrap. They are the term's subject, so they must convert with
+          // the elements the expected equation names. A mismatch would
+          // let a checked term carry operands that do not belong to its
+          // type, and quoting it later would reproduce the wrong
+          // equation.
+          final lhsV = eval(term.lhs, ctx.env);
+          final rhsV = eval(term.rhs, ctx.env);
+          final lhsConv = conv(
+            ctx.level,
+            lhsV,
+            shape.lhs,
+            dataDecls: ctx.dataDecls,
+            metas: ctx.metas,
+            topBindings: ctx.env.topBindings,
+          );
+          if (lhsConv is ConvMismatch) {
+            throw TypeMismatch(lhsV, shape.lhs, lhsConv, level: ctx.level);
+          }
+          final rhsConv = conv(
+            ctx.level,
+            rhsV,
+            shape.rhs,
+            dataDecls: ctx.dataDecls,
+            metas: ctx.metas,
+            topBindings: ctx.env.topBindings,
+          );
+          if (rhsConv is ConvMismatch) {
+            throw TypeMismatch(rhsV, shape.rhs, rhsConv, level: ctx.level);
+          }
+          // The witness must inhabit the relation on the two elements.
+          check(
+            ctx,
+            term.proof,
+            apply(
+              apply(shape.quot.relation, shape.lhs),
+              shape.rhs,
+              ctx.dataDecls,
+            ),
+          );
+          step = _YieldV(expected);
+          break;
         }
         if (term is TMatch) {
           // Check a match by inferring the scrutinee's type, then
@@ -2945,16 +3074,16 @@ Object _drive(
             // spine will be rebuilt by conv/quote walkers.
             step = _YieldV(VNeutral(NApp(NStuck(fn), arg)));
 
-          case VQuotLift(quot: VQuotMk(:final arg), :final fn):
-            // ι-reduction: lift(mk(a), f, proof) → f(a), then apply
-            // the current arg to the result.
-            stack.add(_ApplyArg(arg));
-            step = _Apply(fn, arg);
-
-          case VQuotLift():
-            // Stuck VQuotLift applied to an arg becomes a neutral.
-            // The quot is not VQuotMk, so the lift stays stuck.
-            step = _YieldV(VNeutral(NApp(NStuck(fn), arg)));
+          case VQuotLift(fn: final liftFn):
+            // ι-reduction: lift f h (mk a) → f a. The compatibility
+            // proof is not consulted; the term's type checked it.
+            if (arg is VQuotMk) {
+              step = _Apply(liftFn, arg.arg);
+            } else {
+              // Stuck: the head stays the lift value itself, so quoting
+              // reproduces `lift f h q` rather than `f q`.
+              step = _YieldV(VNeutral(NApp(NStuck(fn), arg)));
+            }
 
           case VDelayed(:final closure, arg: final dArg):
             // Lazy-motive: force the delayed β-redex (the
@@ -2978,6 +3107,7 @@ Object _drive(
           case VConstr():
           case VQuot():
           case VQuotMk():
+          case VQuotSound():
           case VUnknown():
             throw StateError(
               'apply: attempted to apply a non-function value '
@@ -3190,9 +3320,13 @@ Object _drive(
             stack.add(const _QQuotMk());
             step = _Quote(arg, level);
 
-          case VQuotLift(:final quot, :final fn, :final proof):
-            stack.add(_QQuotLiftFn(fn, proof, level));
-            step = _Quote(quot, level);
+          case VQuotLift(:final fn, :final proof):
+            stack.add(_QQuotLiftProof(proof, level));
+            step = _Quote(fn, level);
+
+          case VQuotSound(:final lhs, :final rhs, :final proof):
+            stack.add(_QQuotSoundRhs(rhs, proof, level));
+            step = _Quote(lhs, level);
         }
 
       // -----------------------------------------------------------------
@@ -3393,39 +3527,34 @@ Object _drive(
               step = _YieldV(VNeutral(NProj(value, fieldName)));
             }
 
-          case _EvalQuotLift(
-            :final fnTerm,
+          case _EvalQuotLift(:final proofTerm, :final env, :final fn):
+            if (fn == null) {
+              // First yield: value is the evaluated function.
+              stack.add(_EvalQuotLift(proofTerm, env, value));
+              step = _Eval(proofTerm, env);
+            } else {
+              // Second yield: value is the evaluated proof.
+              step = _YieldV(VQuotLift(fn, value));
+            }
+
+          case _EvalQuotSound(
+            :final rhsTerm,
             :final proofTerm,
             :final env,
-            :final quot,
-            :final fn,
+            :final lhs,
+            :final rhs,
           ):
-            if (quot == null) {
-              // First yield: value is the evaluated quot.
-              if (value is VQuotMk) {
-                // ι-reduce: lift(mk(a), f, proof) → f(a)
-                // Eval fn then apply to value.arg
-                stack.add(_EvalQuotLift(fnTerm, proofTerm, env, value, null));
-                step = _Eval(fnTerm, env);
-              } else {
-                // Stuck: continue accumulating
-                stack.add(_EvalQuotLift(fnTerm, proofTerm, env, value, null));
-                step = _Eval(fnTerm, env);
-              }
-            } else if (fn == null) {
-              // Second yield: value is the evaluated fn.
-              final q = quot;
-              if (q is VQuotMk) {
-                // ι-reduce: apply fn to quot.arg
-                step = _Apply(value, q.arg);
-              } else {
-                // Store fn, eval proof
-                stack.add(_EvalQuotLift(fnTerm, proofTerm, env, quot, value));
-                step = _Eval(proofTerm, env);
-              }
+            if (lhs == null) {
+              // First yield: value is the evaluated left injection.
+              stack.add(_EvalQuotSound(rhsTerm, proofTerm, env, value, null));
+              step = _Eval(rhsTerm, env);
+            } else if (rhs == null) {
+              // Second yield: value is the evaluated right injection.
+              stack.add(_EvalQuotSound(rhsTerm, proofTerm, env, lhs, value));
+              step = _Eval(proofTerm, env);
             } else {
-              // Third yield: value is the evaluated proof. Produce VQuotLift.
-              step = _YieldV(VQuotLift(quot, fn, value));
+              // Third yield: value is the evaluated relation proof.
+              step = _YieldV(VQuotSound(lhs, rhs, value));
             }
 
           case _QuoteAt(:final level):
@@ -3515,7 +3644,26 @@ Object _drive(
           case _InferAppHaveArgV(:final cod):
             // `value` is the evaluated argument. Evaluate the codomain
             // body in the closure's env extended with the arg.
-            step = _Eval(cod.body, cod.env.extend(value));
+            //
+            // The argument was checked against the domain just before
+            // this point, and that check may have solved metavariables
+            // the closure's env captured (the implicit arguments of the
+            // head, for example). Evaluation does not consult the
+            // meta-context, so an entry still holding a solved meta's
+            // neutral would reduce to a stuck form: for `cong f p`, the
+            // codomain `Eq B (f x) (f y)` would evaluate `f ?x` before
+            // `?x` is visible, and a lift's ι rule cannot fire on the
+            // neutral. Force the solved heads in the env and on the
+            // argument first, so the codomain sees the solutions.
+            if (metas == null) {
+              step = _Eval(cod.body, cod.env.extend(value));
+            } else {
+              final argV = _forceMetaHead(value, metas, cod.env.topBindings);
+              step = _Eval(
+                cod.body,
+                _forceEnvMetas(cod.env, metas).extend(argV),
+              );
+            }
 
           case _InferProjFieldType(
             :final fieldName,
@@ -4202,7 +4350,9 @@ Object _drive(
             :final relation,
             :final carrierSort,
           ):
-            stack.add(_InferQuotAfterCarrierQuote(ctx, relation, carrierSort));
+            stack.add(
+              _InferQuotAfterCarrierQuote(ctx, relation, carrierSort, value),
+            );
             step = _Quote(value, ctx.level);
 
           case _InferQuotAfterRelationCheck(:final carrierSort):
@@ -4222,9 +4372,11 @@ Object _drive(
           case _QQuotRelation():
           case _QQuotBuild():
           case _QQuotMk():
-          case _QQuotLiftFn():
           case _QQuotLiftProof():
           case _QQuotLiftBuild():
+          case _QQuotSoundRhs():
+          case _QQuotSoundProof():
+          case _QQuotSoundBuild():
           case _QMatchArmAfterQuote():
           case _ConvThen():
           case _ConvThenOpen():
@@ -4448,26 +4600,35 @@ Object _drive(
           case _QQuotMk():
             step = _YieldT(TQuotMk(term));
 
-          case _QQuotLiftFn(:final fn, :final proof, :final level):
-            stack.add(_QQuotLiftProof(term, proof, level));
-            step = _Quote(fn, level);
-
-          case _QQuotLiftProof(:final quot, :final proof, :final level):
-            stack.add(_QQuotLiftBuild(quot, term));
+          case _QQuotLiftProof(:final proof, :final level):
+            stack.add(_QQuotLiftBuild(term));
             step = _Quote(proof, level);
 
-          case _QQuotLiftBuild(:final quot, :final fn):
-            step = _YieldT(TQuotLift(quot, fn, term));
+          case _QQuotLiftBuild(:final fn):
+            step = _YieldT(TQuotLift(fn, term));
+
+          case _QQuotSoundRhs(:final rhs, :final proof, :final level):
+            // `term` = lhsT.
+            stack.add(_QQuotSoundProof(term, proof, level));
+            step = _Quote(rhs, level);
+
+          case _QQuotSoundProof(:final lhs, :final proof, :final level):
+            // `term` = rhsT.
+            stack.add(_QQuotSoundBuild(lhs, term));
+            step = _Quote(proof, level);
+
+          case _QQuotSoundBuild(:final lhs, :final rhs):
+            step = _YieldT(TQuotSound(lhs, rhs, term));
 
           case _InferQuotAfterCarrierQuote(
             :final ctx,
             :final relation,
             :final carrierSort,
+            :final carrier,
           ):
-            // Infer the relation to verify it's well-typed (its type
-            // must be a sort, since it's a type-level expression).
+            // The relation must be a relation: `A -> A -> Prop`.
             stack.add(_InferQuotAfterRelationCheck(carrierSort));
-            step = _Infer(ctx, relation);
+            step = _Check(ctx, relation, quotRelationType(ctx, carrier));
 
           // --- check/infer T-consuming frames ---
 
@@ -4535,6 +4696,7 @@ Object _drive(
           case _EvalQuot():
           case _EvalQuotMk():
           case _EvalQuotLift():
+          case _EvalQuotSound():
           case _InferQuotHaveCarrierType():
           case _InferQuotHaveCarrierV():
           case _InferQuotAfterRelationCheck():
@@ -4646,7 +4808,6 @@ Object _drive(
           case _QQuotRelation():
           case _QQuotBuild():
           case _QQuotMk():
-          case _QQuotLiftFn():
           case _QQuotLiftProof():
           case _QQuotLiftBuild():
           case _QMatchArmAfterEval():
@@ -4657,6 +4818,10 @@ Object _drive(
           case _EvalQuot():
           case _EvalQuotMk():
           case _EvalQuotLift():
+          case _EvalQuotSound():
+          case _QQuotSoundRhs():
+          case _QQuotSoundProof():
+          case _QQuotSoundBuild():
           case _InferPiHaveDomType():
           case _InferPiHaveDomV():
           case _InferPiHaveCodType():
@@ -4980,6 +5145,13 @@ Value? _inferValueType(Value v, List<DataDecl> dataDecls) {
     case VQuotMk():
     case VQuotLift():
       return null;
+    case VQuotSound():
+      // `Quot.sound p` inhabits `Eq (Quot A R) (mk a) (mk b)`, which is
+      // Prop-sorted. Only the sort matters to the irrelevance check that
+      // calls this, and `_isPropSorted` classifies by the name alone, so an
+      // argument-less `Eq` sentinel is enough (and no fields are needed on
+      // the value).
+      return const VData('Eq', <Value>[]);
   }
 }
 
@@ -5022,6 +5194,7 @@ bool _isPropSorted(Value type, List<DataDecl> dataDecls) {
     case VQuot():
     case VQuotMk():
     case VQuotLift():
+    case VQuotSound():
     case VUnknown():
       // Not a type-value; conservative decline.
       return false;
@@ -5057,6 +5230,7 @@ bool _isSPropSorted(Value type, List<DataDecl> dataDecls) {
     case VQuot():
     case VQuotMk():
     case VQuotLift():
+    case VQuotSound():
     case VUnknown():
       return false;
   }
@@ -5849,9 +6023,13 @@ Term _renameForSolution(
       walk(relation, depth),
     ),
     TQuotMk(:final arg) => TQuotMk(walk(arg, depth)),
-    TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
-      walk(quot, depth),
+    TQuotLift(:final fn, :final proof) => TQuotLift(
       walk(fn, depth),
+      walk(proof, depth),
+    ),
+    TQuotSound(:final lhs, :final rhs, :final proof) => TQuotSound(
+      walk(lhs, depth),
+      walk(rhs, depth),
       walk(proof, depth),
     ),
     TProj(:final expr, :final fieldName) => TProj(walk(expr, depth), fieldName),
@@ -6150,9 +6328,13 @@ Term _substArmBody(
         walkSpineArg(relation, argDepth),
       ),
       TQuotMk(:final arg) => TQuotMk(walkSpineArg(arg, argDepth)),
-      TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
-        walkSpineArg(quot, argDepth),
+      TQuotLift(:final fn, :final proof) => TQuotLift(
         walkSpineArg(fn, argDepth),
+        walkSpineArg(proof, argDepth),
+      ),
+      TQuotSound(:final lhs, :final rhs, :final proof) => TQuotSound(
+        walkSpineArg(lhs, argDepth),
+        walkSpineArg(rhs, argDepth),
         walkSpineArg(proof, argDepth),
       ),
       TProj(:final expr, :final fieldName) => TProj(
@@ -6242,9 +6424,13 @@ Term _substArmBody(
         walk(relation, depth),
       ),
       TQuotMk(:final arg) => TQuotMk(walk(arg, depth)),
-      TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
-        walk(quot, depth),
+      TQuotLift(:final fn, :final proof) => TQuotLift(
         walk(fn, depth),
+        walk(proof, depth),
+      ),
+      TQuotSound(:final lhs, :final rhs, :final proof) => TQuotSound(
+        walk(lhs, depth),
+        walk(rhs, depth),
         walk(proof, depth),
       ),
       TProj(:final expr, :final fieldName) => TProj(
@@ -6309,6 +6495,31 @@ Value _forceMetaHead(
   }
   return result;
 }
+
+/// Force a solved metavariable at [value]'s head.
+///
+/// The quotient check rules dispatch on the *shape* of the expected type (a
+/// `VQuot`, a function from one, an equality of injections). An expected type
+/// recorded before its head meta was solved is syntactically a neutral, so it
+/// is forced here first. Unsolved heads are returned unchanged: no rule can
+/// guess the quotient from them.
+Value forceHeadMeta(Ctx ctx, Value value) {
+  final metas = ctx.metas;
+  if (metas == null) return value;
+  return _forceMetaHead(value, metas, ctx.env.topBindings);
+}
+
+/// Force solved metavariable heads on every entry of [env].
+///
+/// A closure captures the environment its body was elaborated under. When
+/// that environment holds an inserted implicit argument as a metavariable,
+/// a later argument's type check can solve the meta while the captured entry
+/// still points at the neutral. Evaluation does not consult the meta-context,
+/// so a body evaluated under the stale entry gets stuck where the solution
+/// would have reduced. The elaborator's application path forces the codomain
+/// environment before evaluating the result type for the same reason the
+/// kernel's `_Infer(TApp)` does.
+Env forceEnvMetaHeads(Env env, MetaContext metas) => _forceEnvMetas(env, metas);
 
 /// If [v] is `VNeutral` whose spine ends in an `NMeta` head, return
 /// `(id, spine)` where spine is in leftmost-first order (first-applied
@@ -6398,9 +6609,12 @@ bool _solutionWellScoped(
           _solutionWellScoped(relation, forbiddenId, allowedAtDepth0, depth);
     case TQuotMk(:final arg):
       return _solutionWellScoped(arg, forbiddenId, allowedAtDepth0, depth);
-    case TQuotLift(:final quot, :final fn, :final proof):
-      return _solutionWellScoped(quot, forbiddenId, allowedAtDepth0, depth) &&
-          _solutionWellScoped(fn, forbiddenId, allowedAtDepth0, depth) &&
+    case TQuotLift(:final fn, :final proof):
+      return _solutionWellScoped(fn, forbiddenId, allowedAtDepth0, depth) &&
+          _solutionWellScoped(proof, forbiddenId, allowedAtDepth0, depth);
+    case TQuotSound(:final lhs, :final rhs, :final proof):
+      return _solutionWellScoped(lhs, forbiddenId, allowedAtDepth0, depth) &&
+          _solutionWellScoped(rhs, forbiddenId, allowedAtDepth0, depth) &&
           _solutionWellScoped(proof, forbiddenId, allowedAtDepth0, depth);
     case TProj(:final expr):
       return _solutionWellScoped(expr, forbiddenId, allowedAtDepth0, depth);
@@ -6492,6 +6706,85 @@ Value closeValueOverCtx(Value type, Ctx ctx) {
     topBindings: ctx.env.topBindings,
   );
   return eval(curBody, closingEnv);
+}
+
+/// The registries an evaluated closed type needs: `TTop` references inside
+/// its closures must resolve, so a bare [ENil] is not enough.
+Env _registryEnvOf(Ctx ctx) => ENil.withRegistries(
+  dataDecls: ctx.env.dataDecls,
+  topBindings: ctx.env.topBindings,
+);
+
+/// The value of `(x : domain) -> body`, for a [body] that does not mention
+/// the binder.
+///
+/// Both parts are quoted at their binding depths and the closed Pi chain is
+/// evaluated once, the shape [closeValueOverCtx] uses.
+Value arrowType(Ctx ctx, Value domain, Value body) {
+  final level = ctx.level;
+  return eval(
+    TPi(quote(level, domain), quote(level + 1, body)),
+    _registryEnvOf(ctx),
+  );
+}
+
+/// The value of `(x : A) -> (y : A) -> Prop`: the type a quotient relation
+/// must inhabit.
+Value quotRelationType(Ctx ctx, Value carrier) {
+  final level = ctx.level;
+  return eval(
+    TPi(quote(level, carrier), TPi(quote(level + 1, carrier), const TProp())),
+    _registryEnvOf(ctx),
+  );
+}
+
+/// The value of `(x : A) -> (y : A) -> R x y -> Eq B (f x) (f y)`: the type a
+/// `lift` compatibility proof must inhabit.
+///
+/// [fn] is the function being lifted and [body] the result type; both are
+/// values that may mention the context's binders, so each part is quoted at
+/// the depth of the Pi chain segment it sits under.
+Value quotLiftCompatibilityType(
+  Ctx ctx, {
+  required Value carrier,
+  required Value relation,
+  required Value fn,
+  required Value body,
+}) {
+  final level = ctx.level;
+  final x = VNeutral(NVar(level));
+  final y = VNeutral(NVar(level + 1));
+  final relationXY = apply(apply(relation, x, ctx.dataDecls), y, ctx.dataDecls);
+  final equation = VData('Eq', [
+    body,
+    apply(fn, x, ctx.dataDecls),
+    apply(fn, y, ctx.dataDecls),
+  ]);
+  return eval(
+    TPi(
+      quote(level, carrier),
+      TPi(
+        quote(level + 1, carrier),
+        TPi(quote(level + 2, relationXY), quote(level + 3, equation)),
+      ),
+    ),
+    _registryEnvOf(ctx),
+  );
+}
+
+/// Decompose an expected `Eq (Quot A R) (Quot.mk a) (Quot.mk b)`, the shape
+/// `Quot.sound` needs. Returns null when [expected] is not that shape.
+({VQuot quot, Value lhs, Value rhs})? quotSoundShape(Value expected) {
+  if (expected is! VData ||
+      expected.name != 'Eq' ||
+      expected.args.length != 3) {
+    return null;
+  }
+  final quot = expected.args[0];
+  final lhs = expected.args[1];
+  final rhs = expected.args[2];
+  if (quot is! VQuot || lhs is! VQuotMk || rhs is! VQuotMk) return null;
+  return (quot: quot, lhs: lhs.arg, rhs: rhs.arg);
 }
 
 /// Wrap [body], open at [ctx]'s level, in a λ-chain over the context.
@@ -6652,9 +6945,12 @@ bool _solutionWellScopedUnderCtx(Term t, Ctx localCtx) {
         stack.add((relation, depth));
       case TQuotMk(:final arg):
         stack.add((arg, depth));
-      case TQuotLift(:final quot, :final fn, :final proof):
-        stack.add((quot, depth));
+      case TQuotLift(:final fn, :final proof):
         stack.add((fn, depth));
+        stack.add((proof, depth));
+      case TQuotSound(:final lhs, :final rhs, :final proof):
+        stack.add((lhs, depth));
+        stack.add((rhs, depth));
         stack.add((proof, depth));
       case TProj(:final expr):
         stack.add((expr, depth));
@@ -6857,9 +7153,13 @@ Term _shiftTBoundPastThreshold(
       uniShift(relation, depth),
     ),
     TQuotMk(:final arg) => TQuotMk(uniShift(arg, depth)),
-    TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
-      uniShift(quot, depth),
+    TQuotLift(:final fn, :final proof) => TQuotLift(
       uniShift(fn, depth),
+      uniShift(proof, depth),
+    ),
+    TQuotSound(:final lhs, :final rhs, :final proof) => TQuotSound(
+      uniShift(lhs, depth),
+      uniShift(rhs, depth),
       uniShift(proof, depth),
     ),
     TProj(:final expr, :final fieldName) => TProj(
@@ -6938,9 +7238,13 @@ Term _shiftTBoundPastThreshold(
       walk(relation, depth),
     ),
     TQuotMk(:final arg) => TQuotMk(walk(arg, depth)),
-    TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
-      walk(quot, depth),
+    TQuotLift(:final fn, :final proof) => TQuotLift(
       walk(fn, depth),
+      walk(proof, depth),
+    ),
+    TQuotSound(:final lhs, :final rhs, :final proof) => TQuotSound(
+      walk(lhs, depth),
+      walk(rhs, depth),
       walk(proof, depth),
     ),
     TProj(:final expr, :final fieldName) => TProj(walk(expr, depth), fieldName),
@@ -7383,9 +7687,13 @@ Term _substByLevel(Term term, Map<int, Value> substMap, Ctx ctx) {
       walk(relation, depth),
     ),
     TQuotMk(:final arg) => TQuotMk(walk(arg, depth)),
-    TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
-      walk(quot, depth),
+    TQuotLift(:final fn, :final proof) => TQuotLift(
       walk(fn, depth),
+      walk(proof, depth),
+    ),
+    TQuotSound(:final lhs, :final rhs, :final proof) => TQuotSound(
+      walk(lhs, depth),
+      walk(rhs, depth),
       walk(proof, depth),
     ),
     TProj(:final expr, :final fieldName) => TProj(walk(expr, depth), fieldName),
@@ -7821,6 +8129,7 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
     TQuot() => t,
     TQuotMk() => t,
     TQuotLift() => t,
+    TQuotSound() => t,
     // TMatch in a ctor arg/result-index type is not meaningful for
     // recursor synthesis, ctor signatures are types, not terms.
     // A well-typed ctor can't contain a TMatch inside its signature
@@ -7949,6 +8258,7 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
       TQuot() => t,
       TQuotMk() => t,
       TQuotLift() => t,
+      TQuotSound() => t,
       // Ctor signatures are types; TMatch is term-level and does
       // not appear inside them under any well-typed shape.
       TMatch() => t,
@@ -8032,9 +8342,13 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
         rebasePiTerm(relation, depth),
       ),
       TQuotMk(:final arg) => TQuotMk(rebasePiTerm(arg, depth)),
-      TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
-        rebasePiTerm(quot, depth),
+      TQuotLift(:final fn, :final proof) => TQuotLift(
         rebasePiTerm(fn, depth),
+        rebasePiTerm(proof, depth),
+      ),
+      TQuotSound(:final lhs, :final rhs, :final proof) => TQuotSound(
+        rebasePiTerm(lhs, depth),
+        rebasePiTerm(rhs, depth),
         rebasePiTerm(proof, depth),
       ),
       TProj(:final expr, :final fieldName) => TProj(
@@ -8271,6 +8585,7 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
     TQuot() => t,
     TQuotMk() => t,
     TQuotLift() => t,
+    TQuotSound() => t,
     // Ctor signatures are types; TMatch is term-level.
     TMatch() => t,
     TProj() => t,

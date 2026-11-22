@@ -30,6 +30,9 @@ Doxa requires Dart 3.7 or later.
   `*` tighter than `+`, both tighter than the comparisons, left-associative
   arithmetic, and non-associative comparisons. The operators are monomorphic
   to those four functions and resolve like any other name.
+- Quotients: `Quot(A, R)` with a checked relation, `mk` in check mode, `lift`
+  with a checked compatibility proof, and the propositional `Quot.sound`.
+  Carriers and lift results are at `Type 0` and there is no `Quot.ind` yet.
 - Typeclasses with single-parameter classes, instance search, explicit type
   arguments, parameterised instances, superclasses with the derived parent
   dictionary, local dictionaries, and multi-parameter classes. Default

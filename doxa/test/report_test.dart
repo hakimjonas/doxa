@@ -138,20 +138,37 @@ void main() {
       expect(out, contains('expected a universe'));
     });
 
-    test('QuotientTermUnsupported says the elimination is unchecked', () {
-      final src = _src('lift(q, f, proof)');
-      const err = QuotientTermUnsupported('Quot.lift');
-      final out = reportCheckError(src, err, const DoxaSpan(0, 4));
+    test('the infer-mode quotient diagnostics name the form', () {
+      final src = _src('val q = mk zero');
+      final out = reportCheckError(
+        src,
+        const QuotMkInInferMode(),
+        const DoxaSpan(0, 9),
+      );
+      expect(out, contains('error: quotient injection in infer mode'));
+      expect(out, contains('val q: Quot(A, R) = mk a'));
+
+      final liftOut = reportCheckError(
+        src,
+        const QuotLiftInInferMode(),
+        const DoxaSpan(0, 9),
+      );
+      expect(liftOut, contains('error: quotient elimination in infer mode'));
+      expect(liftOut, contains('val g: Quot(A, R) -> B = lift f h'));
+    });
+
+    test('a compatibility failure reports the expected proof type', () {
+      final src = _src('val g = lift f h');
+      final out = reportCheckError(
+        src,
+        const QuotFnNotRespectingRelation(VProp(), VProp()),
+        const DoxaSpan(0, 9),
+      );
       expect(
         out,
-        contains(
-          'error: quotient construction and elimination are not '
-          'supported',
-        ),
+        contains('error: quotient lift function does not respect the relation'),
       );
-      expect(out, contains('`Quot.lift` reached the kernel'));
-      expect(out, contains('compatibility proof'));
-      expect(out, contains('Quot(A, R)` formation is available'));
+      expect(out, contains('expected compatibility proof type'));
     });
   });
 

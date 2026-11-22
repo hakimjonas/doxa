@@ -32,7 +32,12 @@ import 'check.dart'
         DoxaCheckError,
         InductiveArityMismatch,
         InvalidMetaSolution,
+        NotAFunction,
         NotAType,
+        NotAQuotient,
+        QuotFnNotRespectingRelation,
+        QuotLiftNeedsConstantResult,
+        QuotSoundNeedsInjection,
         TypeMismatch,
         UnknownTypeReached;
 import 'ctx.dart';
@@ -181,16 +186,19 @@ final class TerminationByUnsupported extends ElabError {
 /// The quotient construction (`mk`) or elimination (`lift`) surface was
 /// used. `Quot(A, R)` still forms a type; the operations are rejected
 /// until the kernel checks the lift compatibility proof.
-final class QuotientUnsupported extends ElabError {
+final class QuotientNeedsExpectedType extends ElabError {
+  /// The surface form, for example `mk`, `lift`, or `Quot.sound`.
+  final String form;
+
   /// The source span of the offending expression.
   @override
   final DoxaSpan span;
 
-  /// Creates a quotient-unsupported error.
-  const QuotientUnsupported(this.span);
+  /// Creates the error.
+  const QuotientNeedsExpectedType(this.form, this.span);
 
   @override
-  String toString() => 'QuotientUnsupported';
+  String toString() => 'QuotientNeedsExpectedType($form)';
 }
 
 /// A `typeclass` form outside the implemented first slice was supplied.
@@ -2929,12 +2937,18 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
         // type is unknown, not `Type 0`.
         Value builtV = const VUnknown();
         if (headVAsPi != null) {
-          final argV = eval(argT, state.ctx.env);
+          final metas = state.ctx.metas;
+          final argKey = eval(argT, state.ctx.env);
+          final argV =
+              metas == null
+                  ? argKey
+                  : forceMetaHead(argKey, metas, state.ctx.env.topBindings);
+          final codEnv =
+              metas == null
+                  ? headVAsPi.codomain.env
+                  : forceEnvMetaHeads(headVAsPi.codomain.env, metas);
           try {
-            builtV = eval(
-              headVAsPi.codomain.body,
-              headVAsPi.codomain.env.extend(argV),
-            );
+            builtV = eval(headVAsPi.codomain.body, codEnv.extend(argV));
           } on StateError catch (_) {
             // The codomain eval failed — the VPi was built at a
             // different env depth.  Use the current elaboration env
@@ -2978,8 +2992,15 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
 
     case SQuotKind(:final carrier, :final relation):
       final (carrierT, carrierV) = _inferExpr(state, carrier);
-      // Relation should be A → A → Prop. Infer it.
-      final (relationT, _) = _inferExpr(state, relation);
+      // The relation must be `A -> A -> Prop`. Checking it here (rather
+      // than inferring and discarding its type) keeps the diagnostic on
+      // the relation's own span; the kernel rule repeats the check as the
+      // authority.
+      final relationT = _checkExpr(
+        state,
+        relation,
+        quotRelationType(state.ctx, eval(carrierT, state.ctx.env)),
+      );
       final quotTerm = TQuot(carrierT, relationT);
       // `Quot(A, R)` sits at the carrier's universe when the carrier
       // is a Type; otherwise its sort is unknown.
@@ -2987,11 +3008,16 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
           carrierV is VType ? VType(carrierV.level) : const VUnknown();
       return (quotTerm, resultV);
 
+    // The three quotient forms are check-mode rules: the expected type
+    // supplies the quotient, the relation, and the result type.
     case SQuotMkKind():
-      throw QuotientUnsupported(expr.span);
+      throw QuotientNeedsExpectedType('mk', expr.span);
 
     case SQuotLiftKind():
-      throw QuotientUnsupported(expr.span);
+      throw QuotientNeedsExpectedType('lift', expr.span);
+
+    case SQuotSoundKind():
+      throw QuotientNeedsExpectedType('Quot.sound', expr.span);
 
     case SIntersectionKind(:final constraints):
       throw UnresolvedName(
@@ -3113,6 +3139,72 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
     final aTerm = quote(state.ctx.level, expected.args[0]);
     final xTerm = quote(state.ctx.level, expected.args[1]);
     return TConstr('Eq', 'refl', [aTerm, xTerm]);
+  }
+
+  // 0b. Quotient forms. Each reads its type from [expected]: the quotient
+  // for `mk`, the function type for `lift`, and the equation for
+  // `Quot.sound`.
+  switch (ek) {
+    case SQuotMkKind(:final arg):
+      final expectedV = forceHeadMeta(state.ctx, expected);
+      if (expectedV is! VQuot) throw NotAQuotient(expectedV);
+      final argT = _checkExpr(state, arg, expectedV.carrier);
+      return TQuotMk(argT);
+    case SQuotLiftKind(:final fn, :final proof):
+      final expectedV = forceHeadMeta(state.ctx, expected);
+      if (expectedV is! VPi) throw NotAFunction(expectedV);
+      final quotV = expectedV.domain;
+      if (quotV is! VQuot) throw NotAQuotient(quotV);
+      // The result type is fixed by `lift`'s type, so a codomain that
+      // reads the quotient element would be a dependent elimination.
+      // The slice has no dependent elimination. Mirrors the kernel rule
+      // in `_Check(TQuotLift)`.
+      if (mentionsEnclosingBinder(expectedV.codomain.body)) {
+        throw QuotLiftNeedsConstantResult(expectedV);
+      }
+      final level = state.ctx.level;
+      final bodyV = eval(
+        expectedV.codomain.body,
+        expectedV.codomain.env.extend(VNeutral(NVar(level))),
+      );
+      final fnT = _checkExpr(
+        state,
+        fn,
+        arrowType(state.ctx, quotV.carrier, bodyV),
+      );
+      final compatV = quotLiftCompatibilityType(
+        state.ctx,
+        carrier: quotV.carrier,
+        relation: quotV.relation,
+        fn: eval(fnT, state.ctx.env),
+        body: bodyV,
+      );
+      final Term proofT;
+      try {
+        proofT = _checkExpr(state, proof, compatV);
+      } on TypeMismatch catch (e) {
+        // The failure is the compatibility condition.
+        throw QuotFnNotRespectingRelation(e.got, compatV);
+      }
+      return TQuotLift(fnT, proofT);
+    case SQuotSoundKind(:final proof):
+      final shape = quotSoundShape(forceHeadMeta(state.ctx, expected));
+      if (shape == null) {
+        throw QuotSoundNeedsInjection(forceHeadMeta(state.ctx, expected));
+      }
+      final relationV = apply(
+        apply(shape.quot.relation, shape.lhs, state.ctx.dataDecls),
+        shape.rhs,
+        state.ctx.dataDecls,
+      );
+      final proofT = _checkExpr(state, proof, relationV);
+      return TQuotSound(
+        quote(state.ctx.level, shape.lhs),
+        quote(state.ctx.level, shape.rhs),
+        proofT,
+      );
+    case _:
+      break;
   }
 
   // 1. Implicit-Pi auto-λ.
@@ -4268,6 +4360,7 @@ Term _elabExpr(
     case SQuotKind():
     case SQuotMkKind():
     case SQuotLiftKind():
+    case SQuotSoundKind():
     case SCalcKind():
     case SIntersectionKind():
     case SByKind():
@@ -7163,6 +7256,20 @@ void _walkForRecursion({
         callerName: callerName,
         unguardedCrossCalls: unguardedCrossCalls,
       );
+    case SQuotSoundKind(:final proof):
+      _walkForRecursion(
+        expr: proof,
+        blockMembers: blockMembers,
+        designated: designated,
+        designatedIdx: designatedIdx,
+        subTerms: subTerms,
+        shadowed: shadowed,
+        memberDeclIdxs: memberDeclIdxs,
+        memberTypeParamCounts: memberTypeParamCounts,
+        memberValueParamCounts: memberValueParamCounts,
+        callerName: callerName,
+        unguardedCrossCalls: unguardedCrossCalls,
+      );
     case SCalcKind(:final steps):
       for (final step in steps) {
         for (final part in [step.lhs, step.rhs, step.proof]) {
@@ -7270,6 +7377,8 @@ bool _hasRecursiveReferenceAt(
     case SQuotLiftKind(:final fn, :final proof):
       return _hasRecursiveReferenceAt(fn, blockMembers, shadowed) ||
           _hasRecursiveReferenceAt(proof, blockMembers, shadowed);
+    case SQuotSoundKind(:final proof):
+      return _hasRecursiveReferenceAt(proof, blockMembers, shadowed);
     case SCalcKind(:final steps):
       for (final step in steps) {
         if (_hasRecursiveReferenceAt(step.lhs, blockMembers, shadowed) ||
@@ -7920,6 +8029,8 @@ void _collectRefs(
     case SQuotLiftKind(:final fn, :final proof):
       _collectRefs(fn, blockMembers, shadowed, acc);
       _collectRefs(proof, blockMembers, shadowed, acc);
+    case SQuotSoundKind(:final proof):
+      _collectRefs(proof, blockMembers, shadowed, acc);
     case SCalcKind(:final steps):
       for (final step in steps) {
         _collectRefs(step.lhs, blockMembers, shadowed, acc);
@@ -8031,9 +8142,11 @@ bool _occursInAny(Set<String> dataNames, Term term) => switch (term) {
   TQuot(:final carrier, :final relation) =>
     _occursInAny(dataNames, carrier) || _occursInAny(dataNames, relation),
   TQuotMk(:final arg) => _occursInAny(dataNames, arg),
-  TQuotLift(:final quot, :final fn, :final proof) =>
-    _occursInAny(dataNames, quot) ||
-        _occursInAny(dataNames, fn) ||
+  TQuotLift(:final fn, :final proof) =>
+    _occursInAny(dataNames, fn) || _occursInAny(dataNames, proof),
+  TQuotSound(:final lhs, :final rhs, :final proof) =>
+    _occursInAny(dataNames, lhs) ||
+        _occursInAny(dataNames, rhs) ||
         _occursInAny(dataNames, proof),
   TProj(:final expr, fieldName: final _) => _occursInAny(dataNames, expr),
 };
@@ -8179,9 +8292,12 @@ switch (term) {
     _isParamStrictlyPositive(carrier, boundVar) &&
         _isParamStrictlyPositive(relation, boundVar),
   TQuotMk(:final arg) => _isParamStrictlyPositive(arg, boundVar),
-  TQuotLift(:final quot, :final fn, :final proof) =>
-    _isParamStrictlyPositive(quot, boundVar) &&
-        _isParamStrictlyPositive(fn, boundVar) &&
+  TQuotLift(:final fn, :final proof) =>
+    _isParamStrictlyPositive(fn, boundVar) &&
+        _isParamStrictlyPositive(proof, boundVar),
+  TQuotSound(:final lhs, :final rhs, :final proof) =>
+    _isParamStrictlyPositive(lhs, boundVar) &&
+        _isParamStrictlyPositive(rhs, boundVar) &&
         _isParamStrictlyPositive(proof, boundVar),
   TProj(:final expr, fieldName: final _) => _isParamStrictlyPositive(
     expr,
@@ -8218,9 +8334,11 @@ bool _boundOccursIn(Term term, int target) => switch (term) {
   TQuot(:final carrier, :final relation) =>
     _boundOccursIn(carrier, target) || _boundOccursIn(relation, target),
   TQuotMk(:final arg) => _boundOccursIn(arg, target),
-  TQuotLift(:final quot, :final fn, :final proof) =>
-    _boundOccursIn(quot, target) ||
-        _boundOccursIn(fn, target) ||
+  TQuotLift(:final fn, :final proof) =>
+    _boundOccursIn(fn, target) || _boundOccursIn(proof, target),
+  TQuotSound(:final lhs, :final rhs, :final proof) =>
+    _boundOccursIn(lhs, target) ||
+        _boundOccursIn(rhs, target) ||
         _boundOccursIn(proof, target),
   TProj(:final expr, fieldName: final _) => _boundOccursIn(expr, target),
 };

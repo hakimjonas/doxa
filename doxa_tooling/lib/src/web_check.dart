@@ -713,10 +713,13 @@ String _checkErrorKind(DoxaCheckError error) => switch (error) {
   MatchScrutineeNotInductive _ => 'match_scrutinee_not_inductive',
   IndexedMatchNotExhaustive _ => 'match_not_exhaustive',
   PropEliminationIntoType _ => 'prop_elimination_into_type',
-  QuotientTermUnsupported _ => 'quotient_unsupported',
   NotAQuotient _ => 'not_a_quotient',
   QuotMkInInferMode _ => 'quot_mk_in_infer_mode',
+  QuotLiftInInferMode _ => 'quot_lift_in_infer_mode',
+  QuotSoundInInferMode _ => 'quot_sound_in_infer_mode',
   QuotFnNotRespectingRelation _ => 'quot_fn_not_respecting_relation',
+  QuotLiftNeedsConstantResult _ => 'quot_lift_needs_constant_result',
+  QuotSoundNeedsInjection _ => 'quot_sound_needs_injection',
 };
 
 String _elabErrorKind(ElabError error) => switch (error) {
@@ -741,7 +744,7 @@ String _elabErrorKind(ElabError error) => switch (error) {
   ImportPackageNotFound _ => 'import_package_not_found',
   StructAnnotationNotFound _ => 'struct_annotation_not_found',
   TerminationByUnsupported _ => 'termination_by_unsupported',
-  QuotientUnsupported _ => 'quotient_unsupported',
+  QuotientNeedsExpectedType _ => 'quotient_needs_expected_type',
   TypeclassUnsupported _ => 'typeclass_unsupported',
   SuperclassUnsupported _ => 'superclass_unsupported',
   UnknownTypeclass _ => 'unknown_typeclass',

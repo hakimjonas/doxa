@@ -886,20 +886,14 @@ final class TQuot extends Term {
 
 /// Inject an element into a quotient: `Quot.mk(a)`.
 ///
-/// Rejected by the checker: [infer] and [check] raise
-/// `QuotientTermUnsupported` before inspecting any subterm. The kernel
-/// has no sound rule for the injection until the quotient elimination
-/// is completed, and the surface elaborator gates `mk` with
-/// `QuotientUnsupported`. Evaluation and quotation still handle the
-/// term so the future completion can reuse them; evaluation assumes
-/// well-typed input and is not the type-checking boundary.
-///
-/// Internal until the elimination rule is checked (1.0 work).
+/// Checked against an expected `Quot A R`, with `a : A`. Infer mode has no
+/// rule because the carrier and the relation cannot be recovered from the
+/// argument, so [infer] raises `QuotMkInInferMode`.
 final class TQuotMk extends Term {
-  /// The field.
+  /// The injected element.
   final Term arg;
 
-  /// The field.
+  /// Creates a quotient injection.
   const TQuotMk(this.arg);
 
   @override
@@ -912,44 +906,69 @@ final class TQuotMk extends Term {
   String toString() => 'TQuotMk($arg)';
 }
 
-/// Eliminate from a quotient: `Quot.lift(quot, f, proof)`.
-/// f: A → B, proof: (x y: A) → R x y → Eq B (f x) (f y)
+/// Eliminate from a quotient: `Quot.lift(f, proof)`.
 ///
-/// Rejected by the checker: [infer] and [check] raise
-/// `QuotientTermUnsupported` before inferring the quotient operand or
-/// opening the function's codomain. The compatibility proof is not
-/// checked, so the elimination has no typing rule the kernel can
-/// justify; the surface elaborator gates `lift` with
-/// `QuotientUnsupported`. Evaluation and quotation still handle the
-/// term so the future completion can reuse them; evaluation assumes
-/// well-typed input and is not the type-checking boundary.
+/// `f : A -> B` and `proof : (x y : A) -> R x y -> Eq B (f x) (f y)`. The
+/// term denotes the induced map `Quot A R -> B`; ordinary application
+/// supplies the quotient element. Its type is recovered in check mode from
+/// an expected `Quot A R -> B`, so [infer] raises `QuotLiftInInferMode`.
 ///
-/// Internal until the elimination rule is checked (1.0 work).
+/// Reduction: applied to `Quot.mk(a)` the term computes to `f a`. The
+/// compatibility proof is checked at the term's type and never consulted by
+/// evaluation.
 final class TQuotLift extends Term {
-  /// The field.
-  final Term quot;
-
-  /// The field.
+  /// The function on the carrier.
   final Term fn;
 
-  /// The field.
+  /// The compatibility proof.
   final Term proof;
 
-  /// The field.
-  const TQuotLift(this.quot, this.fn, this.proof);
+  /// Creates a quotient elimination.
+  const TQuotLift(this.fn, this.proof);
 
   @override
   bool operator ==(Object other) =>
-      other is TQuotLift &&
-      other.quot == quot &&
-      other.fn == fn &&
+      other is TQuotLift && other.fn == fn && other.proof == proof;
+
+  @override
+  int get hashCode => Object.hash('TQuotLift', fn, proof);
+
+  @override
+  String toString() => 'TQuotLift($fn, $proof)';
+}
+
+/// The quotient soundness proof: `Quot.sound(h)`.
+///
+/// Checked against an expected `Eq (Quot A R) (Quot.mk a) (Quot.mk b)` with
+/// `h : R a b`. The equation is propositional; it is not a definitional
+/// equality between `Quot.mk a` and `Quot.mk b`. Infer mode has no rule
+/// because the two elements come from the expected equality, so [infer]
+/// raises `QuotSoundInInferMode`.
+final class TQuotSound extends Term {
+  /// The left injection.
+  final Term lhs;
+
+  /// The right injection.
+  final Term rhs;
+
+  /// The proof that the relation holds.
+  final Term proof;
+
+  /// Creates a quotient soundness proof.
+  const TQuotSound(this.lhs, this.rhs, this.proof);
+
+  @override
+  bool operator ==(Object other) =>
+      other is TQuotSound &&
+      other.lhs == lhs &&
+      other.rhs == rhs &&
       other.proof == proof;
 
   @override
-  int get hashCode => Object.hash('TQuotLift', quot, fn, proof);
+  int get hashCode => Object.hash('TQuotSound', lhs, rhs, proof);
 
   @override
-  String toString() => 'TQuotLift($quot, $fn, $proof)';
+  String toString() => 'TQuotSound($lhs, $rhs, $proof)';
 }
 
 // ---------------------------------------------------------------------------
@@ -1037,12 +1056,88 @@ Term _openAt(Term term, int depth, String name) => switch (term) {
     _openAt(relation, depth, name),
   ),
   TQuotMk(:final arg) => TQuotMk(_openAt(arg, depth, name)),
-  TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
-    _openAt(quot, depth, name),
+  TQuotLift(:final fn, :final proof) => TQuotLift(
     _openAt(fn, depth, name),
     _openAt(proof, depth, name),
   ),
+  TQuotSound(:final lhs, :final rhs, :final proof) => TQuotSound(
+    _openAt(lhs, depth, name),
+    _openAt(rhs, depth, name),
+    _openAt(proof, depth, name),
+  ),
 };
+
+/// Whether [term] mentions its innermost enclosing binder, after
+/// accounting for the binders [term] itself introduces.
+///
+/// `(x: A) -> x` mentions it; `(x: A) -> A` does not. The quotient
+/// elimination uses this to require a non-dependent result type: `lift`
+/// returns a `B` fixed in advance, so a codomain that reads the quotient
+/// element would be a dependent elimination the slice does not provide.
+///
+/// Iterative walk via an explicit stack, so depth does not consume Dart
+/// call frames (SPEC §4.5).
+bool mentionsEnclosingBinder(Term term) {
+  final stack = <(Term, int)>[(term, 0)];
+  while (stack.isNotEmpty) {
+    final (current, depth) = stack.removeLast();
+    switch (current) {
+      case TBound(:final index):
+        if (index == depth) return true;
+      case TType():
+      case TUnknown():
+      case TProp():
+      case TSProp():
+      case TFree():
+      case TTop():
+      case TRec():
+      case TMeta():
+        break;
+      case TApp(:final fn, :final arg):
+        stack.add((fn, depth));
+        stack.add((arg, depth));
+      case TPi(:final domain, :final codomain):
+        stack.add((domain, depth));
+        stack.add((codomain, depth + 1));
+      case TLam(:final domain, :final body):
+        stack.add((domain, depth));
+        stack.add((body, depth + 1));
+      case TLet(:final domain, :final bound, :final body):
+        stack.add((domain, depth));
+        stack.add((bound, depth));
+        stack.add((body, depth + 1));
+      case TData(:final args):
+        for (final a in args) {
+          stack.add((a, depth));
+        }
+      case TConstr(:final args):
+        for (final a in args) {
+          stack.add((a, depth));
+        }
+      case TMatch(:final scrutinee, :final motive, :final cases):
+        stack.add((scrutinee, depth));
+        if (motive != null) stack.add((motive, depth));
+        for (final c in cases) {
+          stack.add((c.body, depth + c.nBinders));
+        }
+      case TQuot(:final carrier, :final relation):
+        stack.add((carrier, depth));
+        stack.add((relation, depth));
+      case TQuotMk(:final arg):
+        stack.add((arg, depth));
+      case TQuotLift(:final fn, :final proof):
+        stack.add((fn, depth));
+        stack.add((proof, depth));
+      case TQuotSound(:final lhs, :final rhs, :final proof):
+        stack.add((lhs, depth));
+        stack.add((rhs, depth));
+        stack.add((proof, depth));
+      case TProj(:final expr):
+        stack.add((expr, depth));
+    }
+  }
+  return false;
+}
 
 Term _closeAt(Term term, int depth, String name) => switch (term) {
   TType() => term,
@@ -1109,9 +1204,13 @@ Term _closeAt(Term term, int depth, String name) => switch (term) {
     _closeAt(relation, depth, name),
   ),
   TQuotMk(:final arg) => TQuotMk(_closeAt(arg, depth, name)),
-  TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
-    _closeAt(quot, depth, name),
+  TQuotLift(:final fn, :final proof) => TQuotLift(
     _closeAt(fn, depth, name),
+    _closeAt(proof, depth, name),
+  ),
+  TQuotSound(:final lhs, :final rhs, :final proof) => TQuotSound(
+    _closeAt(lhs, depth, name),
+    _closeAt(rhs, depth, name),
     _closeAt(proof, depth, name),
   ),
 };

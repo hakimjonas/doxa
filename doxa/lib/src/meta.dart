@@ -374,9 +374,10 @@ Term inlineSolvedBareMetas(Term term, MetaContext metas) {
         walk(relation),
       ),
       TQuotMk(:final arg) => TQuotMk(walk(arg)),
-      TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
-        walk(quot),
-        walk(fn),
+      TQuotLift(:final fn, :final proof) => TQuotLift(walk(fn), walk(proof)),
+      TQuotSound(:final lhs, :final rhs, :final proof) => TQuotSound(
+        walk(lhs),
+        walk(rhs),
         walk(proof),
       ),
       TProj(:final expr, :final fieldName) => TProj(walk(expr), fieldName),
@@ -539,9 +540,13 @@ Term inlineSolvedMetas(Term term, MetaContext metas, {int outerDepth = 0}) {
       walk(relation, depth),
     ),
     TQuotMk(:final arg) => TQuotMk(walk(arg, depth)),
-    TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
-      walk(quot, depth),
+    TQuotLift(:final fn, :final proof) => TQuotLift(
       walk(fn, depth),
+      walk(proof, depth),
+    ),
+    TQuotSound(:final lhs, :final rhs, :final proof) => TQuotSound(
+      walk(lhs, depth),
+      walk(rhs, depth),
       walk(proof, depth),
     ),
     TProj(:final expr, :final fieldName) => TProj(walk(expr, depth), fieldName),
@@ -603,9 +608,12 @@ bool termContainsMeta(Term term) {
         stack.add(relation);
       case TQuotMk(:final arg):
         stack.add(arg);
-      case TQuotLift(:final quot, :final fn, :final proof):
-        stack.add(quot);
+      case TQuotLift(:final fn, :final proof):
         stack.add(fn);
+        stack.add(proof);
+      case TQuotSound(:final lhs, :final rhs, :final proof):
+        stack.add(lhs);
+        stack.add(rhs);
         stack.add(proof);
       case TProj(:final expr):
         stack.add(expr);
@@ -671,9 +679,12 @@ bool solutionHasFreeIndices(Term solution) {
         stack.add((relation, depth));
       case TQuotMk(:final arg):
         stack.add((arg, depth));
-      case TQuotLift(:final quot, :final fn, :final proof):
-        stack.add((quot, depth));
+      case TQuotLift(:final fn, :final proof):
         stack.add((fn, depth));
+        stack.add((proof, depth));
+      case TQuotSound(:final lhs, :final rhs, :final proof):
+        stack.add((lhs, depth));
+        stack.add((rhs, depth));
         stack.add((proof, depth));
       case TProj(:final expr):
         stack.add((expr, depth));
@@ -748,9 +759,13 @@ Term _shiftFreeIndices(Term term, int shiftBy) {
       walk(relation, depth),
     ),
     TQuotMk(:final arg) => TQuotMk(walk(arg, depth)),
-    TQuotLift(:final quot, :final fn, :final proof) => TQuotLift(
-      walk(quot, depth),
+    TQuotLift(:final fn, :final proof) => TQuotLift(
       walk(fn, depth),
+      walk(proof, depth),
+    ),
+    TQuotSound(:final lhs, :final rhs, :final proof) => TQuotSound(
+      walk(lhs, depth),
+      walk(rhs, depth),
       walk(proof, depth),
     ),
     TProj(:final expr, :final fieldName) => TProj(walk(expr, depth), fieldName),

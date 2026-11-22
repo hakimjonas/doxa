@@ -1171,24 +1171,48 @@ val natDefault : Default[Nat] = Default.mk zero
 
 ## 12. Quotient types
 
-The type former `Quot(A, R)` remains available:
+`Quot(A, R)` forms the quotient of the carrier `A` by the relation
+`R : A -> A -> Prop`. `mk` injects an element and `lift` eliminates: it maps
+a function on the carrier to a function on the quotient, provided the
+function respects the relation. `Quot.sound` turns a proof of `R x y` into a
+proof that the two injections are equal. That equality is propositional;
+`mk x` and `mk y` are never definitionally equal.
 
 ```doxa
-data Nat : Type {
-  zero : Nat;
-  succ : Nat -> Nat;
+import "package:doxa_stdlib/stdlib/proofs.doxa"
+
+data Pair: Type {
+  pair: (a: Nat) -> (b: Nat) -> Pair;
 }
 
-val R : Nat -> Nat -> Prop = (x: Nat) => (y: Nat) => Eq[Nat] x y
-val Q : Type = Quot(Nat, R)
+fun sum(p: Pair): Nat = plus p.a p.b
+
+fun sameSum(x: Pair, y: Pair): Prop = Eq Nat (sum x) (sum y)
+
+val inject : (p: Pair) -> Quot(Pair, sameSum) = (p: Pair) => mk p
+
+val soundAt : (x: Pair) -> (y: Pair) -> sameSum x y ->
+    Eq (Quot(Pair, sameSum)) (mk x) (mk y) =
+  (x: Pair) => (y: Pair) => (h: sameSum x y) => Quot.sound h
+
+val sumQ : Quot(Pair, sameSum) -> Nat =
+  lift(sum, (x: Pair) => (y: Pair) => (h: sameSum x y) => h)
+
+val computes : (p: Pair) -> Eq Nat (sumQ (mk p)) (sum p) =
+  (p: Pair) => refl (sum p)
 ```
 
-The surface operations `mk` and `lift` are rejected with
-`QuotientUnsupported`. The elaborator does not check the proof that a
-lifted function respects `R`, so the surface does not offer the
-elimination rule. Use a data type, or encode the quotient with a
-setoid-style relation and transport lemmas, until the lift proof is
-checked.
+`mk` and `lift` are check-mode forms: the expected type names the quotient
+and the result type, so a bare `val q = mk p` is rejected. `lift`'s
+compatibility proof has type
+`(x: A) -> (y: A) -> R x y -> Eq B (f x) (f y)`; a function that does not
+respect the relation is rejected there. `computes` closes by `refl` because
+the elimination computes: `lift f h (mk p)` is `f p` definitionally.
+
+The carrier and the result of a lift both live in `Type 0` in this slice,
+because `Eq`'s carrier parameter is at `Type 0`. There is no propositional
+eliminator (`Quot.ind`), so a property cannot yet be proved of an arbitrary
+quotient element; `lift` covers the value-level use.
 
 ---
 
