@@ -167,15 +167,33 @@ The three soundness gaps in section 3 are closed:
    lift's result type are `Type 0`, and there is no `Quot.ind`. Covered by
    `doxa/test/quotient_test.dart`, `doxa_tooling/test/quotient_surface_test.dart`,
    and the `doxa_tooling/test/fixtures/quotient_pair.doxa` acceptance module.
-2. **Multi-parameter `termination_by`.** Every `termination_by` is
-   rejected before the recursion check can be skipped
-   (`TerminationByUnsupported`). Covered by
-   `doxa_tooling/test/wf_recursion_test.dart`, including the
-   multi-parameter and mutual-block cases.
+2. **Multi-parameter `termination_by`.** Replaced by a checked measure. The
+   annotation is now spelled `decreases (p1, ..., pn)` and names a
+   lexicographic tuple of value parameters under the strict sub-term order.
+   Every recursive call must decrease the tuple; the annotation is rejected
+   when it is empty, names a non-parameter or a duplicate, appears on a
+   non-recursive or mutual member, or is combined with `{struct name}`.
+   Arithmetic decreasing arguments such as `sub m n` are rejected. Covered by
+   `doxa_tooling/test/wf_recursion_test.dart`.
 3. **Typeclasses.** `typeclass` and `impl` declarations are rejected
    before registration (`TypeclassUnsupported`), so no class-constrained
    implicit can resolve silently. Covered by
    `doxa/test/typeclass_test.dart`.
+
+4. **Tactic-block recursion blind spot.** The structural and measured checks
+   skipped `by` blocks, so a recursive call inside a block was invisible to
+   both. A call that was otherwise decreasing could grow inside a block, as
+   in `plus (f n_) (by { exact f (succ n) })`, and a function whose only call
+   was in a block crashed during the kernel check with an unbound `TTop`.
+   Both checkers now visit the block's embedded expressions, threading the
+   names the tactics introduce, and reject any reference to the function or a
+   block member with `RecursionInTacticBlock`. A block with no recursive
+   reference is accepted. `auto` and `omega` apply top-level names without an
+   embedded expression, so in a recursive block they are rejected as well: a
+   recursive member is pre-bound and either tactic can apply it, as in
+   `match n { case zero => by { auto } case succ n_ => f n_ }`. A
+   non-recursive block may use them. Covered by
+   `doxa_tooling/test/wf_recursion_test.dart`.
 
 Meta-solution handling is summarised in
 [`KERNEL_INVARIANTS.md`](KERNEL_INVARIANTS.md): solve-site validation and

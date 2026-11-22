@@ -102,27 +102,27 @@ and `package:` usage.
 - Stack-safety regression tests at depths up to 10,000 binder/β-redex layers
 - stdlib files type-checked on every commit
 - Documentation `doxa` blocks are checked by
-  `doxa_tooling/test/doc_blocks_test.dart`; the current run checks 45 blocks
-  and skips 20 marked fragments
+  `doxa_tooling/test/doc_blocks_test.dart`; the current run checks 48 blocks
+  and skips 19 marked fragments
 
-## Gated until implemented
+## Recursion measures
 
-The parser and formatter accept these surfaces, but the elaborator rejects
-them with a dedicated error. They are not shipped features:
-
-| Surface | Current status | Error |
-|---|---|---|
-| `termination_by` | Every annotation is rejected; the measure was never checked | `TerminationByUnsupported` |
+`decreases (p1, ..., pn)` is checked. The annotation supplies a lexicographic
+measure over the named value parameters under the strict sub-term order, and
+every recursive call must decrease the tuple. The supported subset names value
+parameters only: a decreasing argument that is an arithmetic term such as
+`sub m n` is rejected, a mutual block cannot carry a measure, and `{struct
+name}` cannot be combined with it. The guard sits on the first named parameter,
+so a function whose first parameter stays neutral stays stuck.
 
 ## 1.0.0 scope
 
-One surface in this plan is gated rather than implemented: a checked
-termination measure. The 1.0.0 scope must either complete it or ship it gated
-with the diagnostic above. Quotients were completed: `mk`, `lift`, and
-`Quot.sound` are checked, over a checked relation, without a propositional
-eliminator. Typeclass declarations, instances, and instance search are partially
-implemented; the supported subset is described in the feature list and the
-known limitations below. That decision is open.
+The checked termination measure is implemented for the value-parameter subset
+described above; general measure expressions are out of scope. Quotients were
+completed: `mk`, `lift`, and `Quot.sound` are checked, over a checked relation,
+without a propositional eliminator. Typeclass declarations, instances, and
+instance search are partially implemented; the supported subset is described in
+the feature list and the known limitations below.
 
 ## What Doxa does not include
 

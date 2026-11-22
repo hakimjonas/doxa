@@ -822,12 +822,13 @@ final class SFunKind extends SDeclKind {
   /// explicit value parameter is used (SPEC, Structural recursion).
   final String? structAnn;
 
-  /// Well-founded termination measure: the value-parameter names
-  /// whose lexicographic tuple decreases at every recursive call.
-  /// When non-null, structural-recursion checking is skipped and
-  /// the binding is emitted non-recursive (the user writes recursion
-  /// via `Acc.rec`). All names must be value parameters of the fun.
-  final List<String>? terminationBy;
+  /// Lexicographic termination measure: the value-parameter names
+  /// supplied by a `decreases (p1, ..., pn)` annotation. The tuple
+  /// must decrease at every recursive call under the strict sub-term
+  /// order. When non-null, the measured checker replaces the
+  /// structural-recursion check for this member. All names must be
+  /// value parameters of the fun.
+  final List<String>? decreases;
 
   /// Creates a fun declaration.
   const SFunKind(
@@ -838,7 +839,7 @@ final class SFunKind extends SDeclKind {
     this.body, {
     this.isOpaque = false,
     this.structAnn,
-    this.terminationBy,
+    this.decreases,
     this.paramSpans = const [],
   });
 
@@ -853,7 +854,7 @@ final class SFunKind extends SDeclKind {
       other.body == body &&
       other.isOpaque == isOpaque &&
       other.structAnn == structAnn &&
-      _listEq(other.terminationBy ?? const [], terminationBy ?? const []);
+      _listEq(other.decreases ?? const [], decreases ?? const []);
 
   @override
   int get hashCode => Object.hash(
@@ -866,7 +867,7 @@ final class SFunKind extends SDeclKind {
     body,
     isOpaque,
     structAnn,
-    Object.hashAll(terminationBy ?? const []),
+    Object.hashAll(decreases ?? const []),
   );
 
   @override
@@ -874,7 +875,7 @@ final class SFunKind extends SDeclKind {
       'SFunKind($name, typeParams: $typeParams, params: $params, '
       'returnType: $returnType, body: $body, isOpaque: $isOpaque'
       '${structAnn != null ? ", structAnn: $structAnn" : ""}'
-      '${terminationBy != null ? ", terminationBy: $terminationBy" : ""})';
+      '${decreases != null ? ", decreases: $decreases" : ""})';
 }
 
 /// A single type-parameter entry on a `fun` declaration.

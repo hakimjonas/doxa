@@ -8,6 +8,23 @@ project is ready.
 
 **Kernel soundness**
 
+- Rejected `auto` and `omega` in the `by` block of a recursive function.
+  Both tactics apply top-level names from the environment, and a recursive
+  member is pre-bound during its own check, so either could call the
+  function without an expression the recursion check can scan.
+- Rejected recursive calls hidden inside `by` blocks. The structural and
+  measured recursion checks previously skipped tactic blocks, so a call that
+  grew inside a block could pass the check, and a function whose only call
+  was in a block crashed during the kernel check. Both checkers now scan the
+  block's embedded expressions with the names the tactics introduce and
+  report `RecursionInTacticBlock`. A block with no recursive reference is
+  still accepted.
+- Replaced the gated `termination_by` annotation with a checked
+  `decreases (p1, ..., pn)` lexicographic measure. Every recursive call must
+  decrease the named tuple under the strict sub-term order. Empty, duplicate,
+  unknown, non-recursive, mutual-block, and `{struct}` combinations are
+  rejected, and an arithmetic decreasing argument such as `sub m n` is
+  rejected because the checker tracks syntactic sub-terms only.
 - Replaced the `TType(0)` sentinel with an explicit unknown marker (#7).
 - Resolved top-level bindings during inductive index evaluation (#8).
 - Completed the match, induction, and tactic soundness pass (#10).

@@ -24,7 +24,7 @@
   "and"
   "opaque"
   "struct"
-  "termination_by"
+  "decreases"
   "returning"
 ] @keyword
 

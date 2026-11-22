@@ -42,7 +42,7 @@
     },
     "keywords": {
       "patterns": [
-        { "match": "\\b(val|fun|data|type|match|case|returning|import|and|by|opaque|rec|struct|termination_by|where|as|typeclass|impl|theorem|with)\\b", "name": "keyword.control.doxa" },
+        { "match": "\\b(val|fun|data|type|match|case|returning|import|and|by|opaque|rec|struct|decreases|where|as|typeclass|impl|theorem|with)\\b", "name": "keyword.control.doxa" },
         { "match": "\\b(if_|then_|else_)\\b", "name": "keyword.control.doxa" }
       ]
     },

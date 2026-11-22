@@ -132,6 +132,24 @@ final class NonStructuralRecursion extends ElabError {
   String toString() => 'NonStructuralRecursion($calleeName @ $span)';
 }
 
+/// A recursive call appears inside a `by` block. The recursion checkers
+/// do not model the tactic's proof state, so a call in a block is not
+/// checked and is rejected instead.
+final class RecursionInTacticBlock extends ElabError {
+  /// The name of the function whose block contains the reference.
+  final String funName;
+
+  /// The source span of the offending block.
+  @override
+  final DoxaSpan span;
+
+  /// Creates a recursion-in-tactic-block error.
+  const RecursionInTacticBlock(this.funName, this.span);
+
+  @override
+  String toString() => 'RecursionInTacticBlock($funName @ $span)';
+}
+
 /// A cross-call from one mutual-block member to another, collected
 /// during the structural-recursion walk. Used by cycle-aware analysis
 /// to distinguish "unguarded edge that is part of a true cycle" from
@@ -165,10 +183,28 @@ final class StructAnnotationNotFound extends ElabError {
       'named $paramName';
 }
 
-/// A `termination_by` annotation was supplied, but there is no checked
-/// measure. The elaborator rejects the annotation; the parser and
-/// formatter still accept the syntax.
-final class TerminationByUnsupported extends ElabError {
+/// A `decreases` annotation supplied a measure that is not a
+/// lexicographic tuple of distinct value parameters.
+final class DecreasesBadParams extends ElabError {
+  /// The function name.
+  final String funName;
+
+  /// The specific defect, as a sentence fragment.
+  final String reason;
+
+  /// The source span of the annotated declaration.
+  @override
+  final DoxaSpan span;
+
+  /// Creates a bad-parameter-list error.
+  const DecreasesBadParams(this.funName, this.reason, this.span);
+
+  @override
+  String toString() => 'DecreasesBadParams: fun $funName ($reason)';
+}
+
+/// A `decreases` annotation was combined with `{struct name}`.
+final class DecreasesWithStruct extends ElabError {
   /// The function name.
   final String funName;
 
@@ -176,11 +212,75 @@ final class TerminationByUnsupported extends ElabError {
   @override
   final DoxaSpan span;
 
-  /// Creates a termination-by-unsupported error.
-  const TerminationByUnsupported(this.funName, this.span);
+  /// Creates a struct-and-measure error.
+  const DecreasesWithStruct(this.funName, this.span);
 
   @override
-  String toString() => 'TerminationByUnsupported: fun $funName';
+  String toString() => 'DecreasesWithStruct: fun $funName';
+}
+
+/// A `decreases` annotation appeared on a member of a mutual
+/// block. Mutual measures are not implemented.
+final class DecreasesInMutualBlock extends ElabError {
+  /// The function name.
+  final String funName;
+
+  /// The source span of the annotated declaration.
+  @override
+  final DoxaSpan span;
+
+  /// Creates a mutual-block-measure error.
+  const DecreasesInMutualBlock(this.funName, this.span);
+
+  @override
+  String toString() => 'DecreasesInMutualBlock: fun $funName';
+}
+
+/// A `decreases` annotation appeared on a function that never
+/// references itself, so the measure has nothing to check.
+final class DecreasesNonRecursive extends ElabError {
+  /// The function name.
+  final String funName;
+
+  /// The source span of the annotated declaration.
+  @override
+  final DoxaSpan span;
+
+  /// Creates a non-recursive-measure error.
+  const DecreasesNonRecursive(this.funName, this.span);
+
+  @override
+  String toString() => 'DecreasesNonRecursive: fun $funName';
+}
+
+/// A recursive call does not decrease the function's lexicographic
+/// termination measure.
+final class DecreasesNotDecreasing extends ElabError {
+  /// The function name.
+  final String funName;
+
+  /// The annotated measure, in declaration order.
+  final List<String> measure;
+
+  /// The specific defect, as a sentence fragment.
+  final String detail;
+
+  /// The source span of the offending call.
+  @override
+  final DoxaSpan span;
+
+  /// Creates a non-decreasing-call error.
+  const DecreasesNotDecreasing(
+    this.funName,
+    this.measure,
+    this.detail,
+    this.span,
+  );
+
+  @override
+  String toString() =>
+      'DecreasesNotDecreasing: fun $funName '
+      '(${measure.join(', ')}): $detail';
 }
 
 /// The quotient construction (`mk`) or elimination (`lift`) surface was
@@ -1713,7 +1813,7 @@ List<TopBinding> checkDeclResult(TopEnv topEnv, DeclResult result) {
       }
       return _finishDeclBindings(result.bindings, metas);
     }
-    // Pre-seed self-referencing bindings (termination_by funs that
+    // Pre-seed self-referencing bindings (decreases funs that
     // reference themselves via TTop).  Without this, checking the
     // body fails because TTop(name) can't resolve to the binding
     // being checked.
@@ -6127,33 +6227,61 @@ TopBinding _elabFun(
     seen[f.name] = m.span;
   }
 
-  // Extract termination_by from return-type expressions.
-  // The parser cannot distinguish `fun f(...): T termination_by (x) = body`
-  // from `fun f(...): T termination_by (x) = body` because `_expr`
-  // greedily consumes `termination_by (args)` as application arguments.
-  // We walk the return-type AST and extract the suffix before elaboration.
-  final extractedTby = <SFunBlockMember, ({List<String> tby, SExpr realRet})>{};
+  // A measure is a lexicographic tuple of named value parameters. Its
+  // recursion check replaces the structural walker for the annotated
+  // member; non-annotated members keep the structural rule unchanged.
+  // Validation runs before any body is elaborated, so a malformed
+  // annotation fails with a surface-level error and no partial state.
+  if (members.length > 1) {
+    for (final m in members) {
+      if (m.fun.decreases != null) {
+        throw DecreasesInMutualBlock(m.fun.name, m.span);
+      }
+    }
+  }
   for (final m in members) {
-    final extracted = _extractTerminationBy(m.fun.returnType);
-    if (extracted.tby != null) {
-      extractedTby[m] = (tby: extracted.tby!, realRet: extracted.realRet);
+    final tby = m.fun.decreases;
+    if (tby == null) continue;
+    final fun = m.fun;
+    if (fun.structAnn != null) {
+      throw DecreasesWithStruct(fun.name, m.span);
+    }
+    if (tby.isEmpty) {
+      throw DecreasesBadParams(fun.name, 'the measure is empty', m.span);
+    }
+    if (fun.params.isEmpty) {
+      throw DecreasesBadParams(
+        fun.name,
+        '`${fun.name}` has no value parameters',
+        m.span,
+      );
+    }
+    final seen = <String>{};
+    for (final name in tby) {
+      if (!seen.add(name)) {
+        throw DecreasesBadParams(
+          fun.name,
+          '`$name` appears more than once in the measure',
+          m.span,
+        );
+      }
+      if (_findParamIndex(fun, name) < 0) {
+        throw DecreasesBadParams(
+          fun.name,
+          '`$name` is not a value parameter of `${fun.name}`',
+          m.span,
+        );
+      }
+    }
+    if (!_hasRecursiveReference(fun.body, {fun.name}) &&
+        !_hasRecursiveReference(fun.returnType, {fun.name})) {
+      throw DecreasesNonRecursive(fun.name, m.span);
     }
   }
 
-  // Reject every `termination_by` before any body is elaborated. The
-  // annotation has no checked measure, and the former single-parameter
-  // fuel path could accept non-terminating recursion, so all forms are
-  // unsupported until a measure check exists.
-  for (final m in members) {
-    final tby = extractedTby[m]?.tby ?? m.fun.terminationBy;
-    if (tby != null) {
-      throw TerminationByUnsupported(m.fun.name, m.span);
-    }
-  }
-
-  // Structural-recursion check. Runs on every member BEFORE we
-  // elaborate any body, so a non-structural program fails early
-  // with a clean surface-level error and no half-elaborated state.
+  // Recursion check. Runs on every member BEFORE we elaborate any
+  // body, so an unsound program fails early with a clean surface-level
+  // error and no half-elaborated state.
   final memberNames = {for (final m in members) m.fun.name};
   final memberDeclIdxs = <String, int>{
     for (final m in members) m.fun.name: _designatedArgIndex(m.fun) ?? 0,
@@ -6164,17 +6292,31 @@ TopBinding _elabFun(
   final memberValueParamCounts = <String, int>{
     for (final m in members) m.fun.name: m.fun.params.length,
   };
+  // Whether the block pre-binds its members during check time. A
+  // recursive block makes every top-level name reachable from `auto`
+  // and `omega`, so the walkers need this before they miss the call.
+  final blockIsRecursive = members.any(
+    (m) =>
+        _hasRecursiveReference(m.fun.body, memberNames) ||
+        _hasRecursiveReference(m.fun.returnType, memberNames),
+  );
   final unguardedCrossCalls = <_CrossCall>[];
   for (final m in members) {
-    _checkStructuralRecursion(
-      m.fun,
-      memberNames,
-      memberDeclIdxs,
-      memberTypeParamCounts: memberTypeParamCounts,
-      memberValueParamCounts: memberValueParamCounts,
-      callerName: m.fun.name,
-      unguardedCrossCalls: unguardedCrossCalls,
-    );
+    final tby = m.fun.decreases;
+    if (tby != null) {
+      _checkMeasuredRecursion(m.fun, tby);
+    } else {
+      _checkStructuralRecursion(
+        m.fun,
+        memberNames,
+        memberDeclIdxs,
+        blockIsRecursive: blockIsRecursive,
+        memberTypeParamCounts: memberTypeParamCounts,
+        memberValueParamCounts: memberValueParamCounts,
+        callerName: m.fun.name,
+        unguardedCrossCalls: unguardedCrossCalls,
+      );
+    }
     // Validate {struct name} annotation even for non-recursive members.
     if (m.fun.structAnn != null &&
         _findParamIndex(m.fun, m.fun.structAnn!) < 0) {
@@ -6238,16 +6380,10 @@ TopBinding _elabFun(
   // (i.e. for bodies that would otherwise evaluate a yet-unknown
   // value during type-checking).
   //
-  // Members with `termination_by` are excluded from this check:
-  // they use well-founded recursion via `Acc.rec` and must
-  // NOT receive a VFun guard or CorecursiveGroup stub.
-  final isRecursive = members.any(
-    (m) =>
-        m.fun.terminationBy == null &&
-        extractedTby[m] == null &&
-        (_hasRecursiveReference(m.fun.body, memberNames) ||
-            _hasRecursiveReference(m.fun.returnType, memberNames)),
-  );
+  // A measured member is recursive in the same sense as a structural
+  // one: its own body calls it, so it needs the same VFun guard and
+  // CorecursiveGroup stub during check time.
+  final isRecursive = blockIsRecursive;
 
   if (!isRecursive) {
     return (
@@ -6289,6 +6425,12 @@ TopBinding _elabFun(
           members.firstWhere((m) => m.fun.name == b.name).span,
         );
       }
+    } else if (fun.decreases != null) {
+      // The guard sits on the first parameter of the measure. A
+      // lexicographic call always descends that position or keeps it
+      // equal, so a canonical first parameter is the point at which
+      // unfolding can proceed.
+      decreasing = _findParamIndex(fun, fun.decreases!.first);
     } else {
       decreasing = fun.typeParams.length;
     }
@@ -6508,11 +6650,17 @@ void checkStructuralRecursion(
   final valueParamCounts = <String, int>{
     for (final k in allKinds) k.name: k.params.length,
   };
+  final blockIsRecursive = allKinds.any(
+    (k) =>
+        _hasRecursiveReference(k.body, blockMembers) ||
+        _hasRecursiveReference(k.returnType, blockMembers),
+  );
   for (final k in allKinds) {
     _checkStructuralRecursion(
       k,
       blockMembers,
       memberDeclIdxs,
+      blockIsRecursive: blockIsRecursive,
       memberTypeParamCounts: typeParamCounts,
       memberValueParamCounts: valueParamCounts,
       callerName: k.name,
@@ -6534,50 +6682,6 @@ int _explicitTypeParamCount(SFunKind kind) =>
 /// Find the de-Bruijn position of a value parameter [name] in [fun].
 /// Returns the position counting type params first, so the first value
 /// param has position [fun.typeParams.length]. Returns -1 if not found.
-/// Extract `termination_by` parameter names from the return-type
-/// expression of [fun]. The parser cannot distinguish
-/// `fun f(...): T termination_by (x) = body` from a regular application
-/// `T termination_by (x)`, so we walk the return-type AST to detect
-/// a `termination_by(args...)` suffix.
-///
-/// Returns a record `(tbyNames, realReturnType)` where [tbyNames] are
-/// the extracted parameter names (null if not found) and [realReturnType]
-/// is the corrected return type (original if not found).
-({List<String>? tby, SExpr realRet}) _extractTerminationBy(SExpr returnType) {
-  // Walk SAppKind chain: App(App(...App(realRet, term_by), arg0), arg1)
-  // Collect args from outermost to term_by.
-  final chain = <SAppKind>[];
-  SExpr? cur = returnType;
-  while (cur != null && cur.kind is SAppKind) {
-    chain.add(cur.kind as SAppKind);
-    cur = (cur.kind as SAppKind).fn;
-  }
-  // Find the innermost app whose arg is `termination_by`.
-  var termByIdx = -1;
-  for (var i = chain.length - 1; i >= 0; i--) {
-    final arg = chain[i].arg.kind;
-    if (arg is SIdentKind && arg.name == 'termination_by') {
-      termByIdx = i;
-      break;
-    }
-  }
-  if (termByIdx < 0) return (tby: null, realRet: returnType);
-  // Collect args ABOVE termByIdx (outer apps: termByIdx-1 down to 0).
-  final names = <String>[];
-  for (var i = termByIdx - 1; i >= 0; i--) {
-    final arg = chain[i].arg.kind;
-    if (arg is SIdentKind) {
-      names.add(arg.name);
-    } else {
-      // Non-ident arg — this is a real application, not termination_by.
-      return (tby: null, realRet: returnType);
-    }
-  }
-  // The real return type is the fn of the app at termByIdx.
-  final realRet = chain[termByIdx].fn;
-  return (tby: names, realRet: realRet);
-}
-
 int _findParamIndex(SFunKind fun, String name) {
   for (var i = 0; i < fun.params.length; i++) {
     if (fun.params[i].$1 == name) return fun.typeParams.length + i;
@@ -6606,6 +6710,7 @@ void _checkStructuralRecursion(
   SFunKind kind,
   Set<String> blockMembers,
   Map<String, int> memberDeclIdxs, {
+  required bool blockIsRecursive,
   required Map<String, int> memberTypeParamCounts,
   required Map<String, int> memberValueParamCounts,
   required String callerName,
@@ -6630,6 +6735,7 @@ void _checkStructuralRecursion(
   // execute before any pattern match could introduce sub-terms).
   _walkForRecursion(
     expr: kind.body,
+    blockIsRecursive: blockIsRecursive,
     blockMembers: blockMembers,
     designated: designated,
     designatedIdx: designatedIdx,
@@ -6643,6 +6749,7 @@ void _checkStructuralRecursion(
   );
   _walkForRecursion(
     expr: kind.returnType,
+    blockIsRecursive: blockIsRecursive,
     blockMembers: blockMembers,
     designated: designated,
     designatedIdx: designatedIdx,
@@ -6657,6 +6764,7 @@ void _checkStructuralRecursion(
   for (final p in kind.params) {
     _walkForRecursion(
       expr: p.$2,
+      blockIsRecursive: blockIsRecursive,
       blockMembers: blockMembers,
       designated: null,
       designatedIdx: null,
@@ -6673,6 +6781,7 @@ void _checkStructuralRecursion(
     if (tp.kind != null) {
       _walkForRecursion(
         expr: tp.kind!,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: null,
         designatedIdx: null,
@@ -6741,6 +6850,323 @@ bool _isInductiveRecursor(String name) {
   return suffix == 'ind' || suffix == 'rec' || suffix == 'rect';
 }
 
+/// Check an annotated member's recursion against its lexicographic
+/// termination measure.
+///
+/// The measure names value parameters `(p1, ..., pn)`. At every
+/// recursive call, the first position `i` whose argument is not
+/// syntactically the caller's unshadowed parameter `pi` must pass a
+/// strict sub-term of `pi`. Every earlier position must pass that same
+/// parameter. A strict sub-term is a pattern binder from a match on
+/// `pi`, a pattern binder of a match on such a binder (transitively),
+/// or a step binder of a data recursor whose scrutinee is such a
+/// sub-term. An unapplied self-reference is rejected.
+///
+/// The body and the return type are walked with no sub-terms in scope,
+/// so a call there cannot decrease the measure. Parameter types and
+/// type-parameter bounds are walked with no parameter in scope either.
+void _checkMeasuredRecursion(SFunKind kind, List<String> measure) {
+  final paramIndex = <String, int>{
+    for (var i = 0; i < kind.params.length; i++) kind.params[i].$1: i,
+  };
+  final explicitTypeParamCount = _explicitTypeParamCount(kind);
+  final valueParamCount = kind.params.length;
+  final emptySubTerms = <String, Set<String>>{
+    for (final p in measure) p: <String>{},
+  };
+  final initialShadowed = <String>{
+    for (final tp in kind.typeParams) tp.name,
+    for (final p in kind.params) p.$1,
+  };
+  const initialMasked = <String>{};
+
+  /// Enter a binder named [name]: it masks any same-named parameter and
+  /// rebinds any same-named sub-term entry.
+  ({
+    Map<String, Set<String>> subTerms,
+    Set<String> shadowed,
+    Set<String> masked,
+  })
+  bind(
+    String name,
+    Map<String, Set<String>> subTerms,
+    Set<String> shadowed,
+    Set<String> masked,
+  ) {
+    if (name == '_') {
+      return (subTerms: subTerms, shadowed: shadowed, masked: masked);
+    }
+    return (
+      subTerms: {
+        for (final e in subTerms.entries) e.key: {...e.value}..remove(name),
+      },
+      shadowed: {...shadowed, name},
+      masked: subTerms.containsKey(name) ? {...masked, name} : masked,
+    );
+  }
+
+  /// Record that [binders] are pattern binders of a match on a term that
+  /// descends from each parameter in [sources].
+  Map<String, Set<String>> addSubTerms(
+    Map<String, Set<String>> subTerms,
+    Iterable<String> binders,
+    Set<String> sources,
+  ) => {
+    for (final e in subTerms.entries)
+      e.key:
+          sources.contains(e.key)
+              ? {...e.value, ...binders.where((b) => b != '_')}
+              : e.value,
+  };
+
+  /// The parameters a scrutinee descends from: the parameter itself, or
+  /// the parameter whose sub-term set contains the scrutinee's name.
+  Set<String> sourcesOf(
+    SExpr scrutinee,
+    Map<String, Set<String>> subTerms,
+    Set<String> masked,
+  ) {
+    final k = scrutinee.kind;
+    if (k is! SIdentKind) return const <String>{};
+    final n = k.name;
+    final sources = <String>{};
+    if (!masked.contains(n) && subTerms.containsKey(n)) sources.add(n);
+    for (final e in subTerms.entries) {
+      if (e.value.contains(n)) sources.add(e.key);
+    }
+    return sources;
+  }
+
+  String describeArg(SExpr arg) {
+    final k = arg.kind;
+    return k is SIdentKind ? '`${k.name}`' : 'a compound term';
+  }
+
+  void checkCall(
+    String callee,
+    List<SExpr> args,
+    DoxaSpan span,
+    Map<String, Set<String>> subTerms,
+    Set<String> masked,
+  ) {
+    var offset = 0;
+    if (explicitTypeParamCount > 0 &&
+        args.length == explicitTypeParamCount + valueParamCount) {
+      offset = explicitTypeParamCount;
+    } else if (args.length != valueParamCount) {
+      throw DecreasesNotDecreasing(
+        callee,
+        measure,
+        'the call passes ${args.length} argument(s); `${kind.name}` takes '
+        '$valueParamCount value parameter(s)'
+        '${explicitTypeParamCount > 0 ? ' plus $explicitTypeParamCount explicit type argument(s)' : ''}',
+        span,
+      );
+    }
+    var firstDifference = -1;
+    for (var k = 0; k < measure.length; k++) {
+      if (firstDifference >= 0) break;
+      final p = measure[k];
+      final arg = args[offset + paramIndex[p]!];
+      final argKind = arg.kind;
+      final argName = argKind is SIdentKind ? argKind.name : null;
+      if (argName == p && !masked.contains(p)) continue;
+      if (argName != null && subTerms[p]!.contains(argName)) {
+        firstDifference = k;
+        continue;
+      }
+      throw DecreasesNotDecreasing(
+        callee,
+        measure,
+        'position $k must pass a strict sub-term of `$p`, '
+        'but the call passes ${describeArg(arg)}',
+        span,
+      );
+    }
+    if (firstDifference < 0) {
+      final passed = [
+        for (final p in measure) describeArg(args[offset + paramIndex[p]!]),
+      ];
+      throw DecreasesNotDecreasing(
+        callee,
+        measure,
+        'the call passes (${passed.join(', ')}); no position decreases',
+        span,
+      );
+    }
+  }
+
+  late final void Function(
+    SExpr,
+    Map<String, Set<String>>,
+    Set<String>,
+    Set<String>,
+  )
+  walk;
+  late final void Function(
+    SExpr,
+    Set<String>,
+    Map<String, Set<String>>,
+    Set<String>,
+    Set<String>,
+  )
+  walkStep;
+  walkStep = (step, sources, subTerms, shadowed, masked) {
+    if (step.kind is! SLamKind) return;
+    final lam = step.kind as SLamKind;
+    if (lam.domain != null) {
+      walk(lam.domain!, subTerms, shadowed, masked);
+    }
+    final next = bind(lam.param, subTerms, shadowed, masked);
+    walk(
+      lam.body,
+      addSubTerms(next.subTerms, [lam.param], sources),
+      next.shadowed,
+      next.masked,
+    );
+  };
+
+  walk = (expr, subTerms, shadowed, masked) {
+    switch (expr.kind) {
+      case SIdentKind(:final name):
+        if (name == kind.name && !shadowed.contains(name)) {
+          throw DecreasesNotDecreasing(
+            kind.name,
+            measure,
+            '`$name` is referenced without its arguments; '
+            'the call cannot be checked',
+            expr.span,
+          );
+        }
+      case STypeKind():
+      case SPropKind():
+      case SSPropKind():
+        return;
+      case SDotKind(:final qualifier):
+        walk(qualifier, subTerms, shadowed, masked);
+      case SAppKind():
+        final (head, args) = _flattenApp(expr);
+        final headKind = head.kind;
+        if (headKind is SIdentKind &&
+            headKind.name == kind.name &&
+            !shadowed.contains(headKind.name)) {
+          checkCall(headKind.name, args, expr.span, subTerms, masked);
+          for (final arg in args) {
+            walk(arg, subTerms, shadowed, masked);
+          }
+          return;
+        }
+        final headName = _flattenDottedIdent(head);
+        final isInd = headName != null && _isInductiveRecursor(headName);
+        if (isInd && args.length >= 4) {
+          final sources = sourcesOf(args[3], subTerms, masked);
+          walk(args[0], subTerms, shadowed, masked);
+          walk(args[1], subTerms, shadowed, masked);
+          walkStep(args[2], sources, subTerms, shadowed, masked);
+          walk(args[3], subTerms, shadowed, masked);
+          for (var i = 4; i < args.length; i++) {
+            walk(args[i], subTerms, shadowed, masked);
+          }
+          return;
+        }
+        walk(head, subTerms, shadowed, masked);
+        for (final arg in args) {
+          walk(arg, subTerms, shadowed, masked);
+        }
+      case SLamKind(:final param, :final domain, :final body):
+        if (domain != null) walk(domain, subTerms, shadowed, masked);
+        final next = bind(param, subTerms, shadowed, masked);
+        walk(body, next.subTerms, next.shadowed, next.masked);
+      case SPiKind(:final param, :final domain, :final codomain):
+        walk(domain, subTerms, shadowed, masked);
+        if (param == null) {
+          walk(codomain, subTerms, shadowed, masked);
+        } else {
+          final next = bind(param, subTerms, shadowed, masked);
+          walk(codomain, next.subTerms, next.shadowed, next.masked);
+        }
+      case SLetKind(:final param, :final domain, :final bound, :final body):
+        if (domain != null) walk(domain, subTerms, shadowed, masked);
+        walk(bound, subTerms, shadowed, masked);
+        final next = bind(param, subTerms, shadowed, masked);
+        walk(body, next.subTerms, next.shadowed, next.masked);
+      case SMatchKind(:final scrutinee, :final motive, :final cases):
+        walk(scrutinee, subTerms, shadowed, masked);
+        if (motive != null) walk(motive, subTerms, shadowed, masked);
+        final sources = sourcesOf(scrutinee, subTerms, masked);
+        for (final arm in cases) {
+          switch (arm) {
+            case SMatchCase(:final binders, :final body):
+              var st = subTerms;
+              var sh = shadowed;
+              var mk = masked;
+              for (final b in binders) {
+                final next = bind(b, st, sh, mk);
+                st = next.subTerms;
+                sh = next.shadowed;
+                mk = next.masked;
+              }
+              walk(body, addSubTerms(st, binders, sources), sh, mk);
+            case SWildcardCase(:final body):
+              walk(body, subTerms, shadowed, masked);
+          }
+        }
+      case SQuotKind(:final carrier, :final relation):
+        walk(carrier, subTerms, shadowed, masked);
+        walk(relation, subTerms, shadowed, masked);
+      case SQuotMkKind(:final arg):
+        walk(arg, subTerms, shadowed, masked);
+      case SQuotLiftKind(:final fn, :final proof):
+        walk(fn, subTerms, shadowed, masked);
+        walk(proof, subTerms, shadowed, masked);
+      case SQuotSoundKind(:final proof):
+        walk(proof, subTerms, shadowed, masked);
+      case SCalcKind(:final steps):
+        for (final step in steps) {
+          walk(step.lhs, subTerms, shadowed, masked);
+          walk(step.rhs, subTerms, shadowed, masked);
+          walk(step.proof, subTerms, shadowed, masked);
+        }
+      case SIntersectionKind(:final constraints):
+        for (final constraint in constraints) {
+          walk(constraint, subTerms, shadowed, masked);
+        }
+      case SByKind(:final steps):
+        var found = false;
+        _visitTacticExpressions(
+          steps,
+          shadowed: shadowed,
+          onExpr: (expr, scope) {
+            if (!found && _hasRecursiveReferenceAt(expr, {kind.name}, scope)) {
+              found = true;
+            }
+          },
+          // A measured member is recursive by construction, so an opaque
+          // tactic could apply it without an expression to scan.
+          onOpaque: () {
+            found = true;
+          },
+        );
+        if (found) {
+          throw RecursionInTacticBlock(kind.name, expr.span);
+        }
+        return;
+    }
+  };
+
+  walk(kind.body, emptySubTerms, initialShadowed, initialMasked);
+  walk(kind.returnType, emptySubTerms, initialShadowed, initialMasked);
+  for (final p in kind.params) {
+    walk(p.$2, emptySubTerms, const <String>{}, const <String>{});
+  }
+  for (final tp in kind.typeParams) {
+    final bound = tp.kind;
+    if (bound != null) {
+      walk(bound, emptySubTerms, const <String>{}, const <String>{});
+    }
+  }
+}
+
 /// Walk the step lambda of an induction principle call (e.g. `Nat.ind`).
 /// The step function has shape `(k: Nat) => (ih: ...) => body`.  The
 /// predecessor parameter `k` is added to [subTerms] when walking the
@@ -6748,6 +7174,7 @@ bool _isInductiveRecursor(String name) {
 void _walkStepForInd(
   SExpr step, {
   required Set<String> blockMembers,
+  required bool blockIsRecursive,
   required String? designated,
   required int? designatedIdx,
   required Set<String> subTerms,
@@ -6764,6 +7191,7 @@ void _walkStepForInd(
   if (lam.domain != null) {
     _walkForRecursion(
       expr: lam.domain!,
+      blockIsRecursive: blockIsRecursive,
       blockMembers: blockMembers,
       designated: designated,
       designatedIdx: designatedIdx,
@@ -6779,6 +7207,7 @@ void _walkStepForInd(
   // Walk the body with the predecessor parameter (k) in subTerms.
   _walkForRecursion(
     expr: lam.body,
+    blockIsRecursive: blockIsRecursive,
     blockMembers: blockMembers,
     designated: designated,
     designatedIdx: designatedIdx,
@@ -6798,6 +7227,7 @@ void _walkStepForInd(
 void _walkForRecursion({
   required SExpr expr,
   required Set<String> blockMembers,
+  required bool blockIsRecursive,
   required String? designated,
   int? designatedIdx,
   required Set<String> subTerms,
@@ -6828,6 +7258,7 @@ void _walkForRecursion({
       // `fun`, which is unsupported).
       _walkForRecursion(
         expr: qualifier,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -6918,6 +7349,7 @@ void _walkForRecursion({
         for (var i = 1; i < args.length; i++) {
           _walkForRecursion(
             expr: args[i],
+            blockIsRecursive: blockIsRecursive,
             blockMembers: blockMembers,
             designated: designated,
             designatedIdx: designatedIdx,
@@ -6958,6 +7390,7 @@ void _walkForRecursion({
               _walkStepForInd(
                 step,
                 blockMembers: blockMembers,
+                blockIsRecursive: blockIsRecursive,
                 designated: designated,
                 designatedIdx: designatedIdx,
                 subTerms: subTerms,
@@ -6971,6 +7404,7 @@ void _walkForRecursion({
             } else {
               _walkForRecursion(
                 expr: flatArgs[i],
+                blockIsRecursive: blockIsRecursive,
                 blockMembers: blockMembers,
                 designated: designated,
                 designatedIdx: designatedIdx,
@@ -6989,6 +7423,7 @@ void _walkForRecursion({
           final app = expr.kind as SAppKind;
           _walkForRecursion(
             expr: app.fn,
+            blockIsRecursive: blockIsRecursive,
             blockMembers: blockMembers,
             designated: designated,
             designatedIdx: designatedIdx,
@@ -7002,6 +7437,7 @@ void _walkForRecursion({
           );
           _walkForRecursion(
             expr: app.arg,
+            blockIsRecursive: blockIsRecursive,
             blockMembers: blockMembers,
             designated: designated,
             designatedIdx: designatedIdx,
@@ -7019,6 +7455,7 @@ void _walkForRecursion({
       if (domain != null) {
         _walkForRecursion(
           expr: domain,
+          blockIsRecursive: blockIsRecursive,
           blockMembers: blockMembers,
           designated: designated,
           designatedIdx: designatedIdx,
@@ -7033,6 +7470,7 @@ void _walkForRecursion({
       }
       _walkForRecursion(
         expr: body,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7047,6 +7485,7 @@ void _walkForRecursion({
     case SPiKind(:final param, :final domain, :final codomain):
       _walkForRecursion(
         expr: domain,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7060,6 +7499,7 @@ void _walkForRecursion({
       );
       _walkForRecursion(
         expr: codomain,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7075,6 +7515,7 @@ void _walkForRecursion({
       if (domain != null) {
         _walkForRecursion(
           expr: domain,
+          blockIsRecursive: blockIsRecursive,
           blockMembers: blockMembers,
           designated: designated,
           designatedIdx: designatedIdx,
@@ -7089,6 +7530,7 @@ void _walkForRecursion({
       }
       _walkForRecursion(
         expr: bound,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7102,6 +7544,7 @@ void _walkForRecursion({
       );
       _walkForRecursion(
         expr: body,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7116,6 +7559,7 @@ void _walkForRecursion({
     case SMatchKind(:final scrutinee, :final motive, :final cases):
       _walkForRecursion(
         expr: scrutinee,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7130,6 +7574,7 @@ void _walkForRecursion({
       if (motive != null) {
         _walkForRecursion(
           expr: motive,
+          blockIsRecursive: blockIsRecursive,
           blockMembers: blockMembers,
           designated: designated,
           designatedIdx: designatedIdx,
@@ -7161,6 +7606,7 @@ void _walkForRecursion({
             }
             _walkForRecursion(
               expr: body,
+              blockIsRecursive: blockIsRecursive,
               blockMembers: blockMembers,
               designated: designated,
               designatedIdx: designatedIdx,
@@ -7175,6 +7621,7 @@ void _walkForRecursion({
           case SWildcardCase(:final body):
             _walkForRecursion(
               expr: body,
+              blockIsRecursive: blockIsRecursive,
               blockMembers: blockMembers,
               designated: designated,
               designatedIdx: designatedIdx,
@@ -7191,6 +7638,7 @@ void _walkForRecursion({
     case SQuotKind(:final carrier, :final relation):
       _walkForRecursion(
         expr: carrier,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7204,6 +7652,7 @@ void _walkForRecursion({
       );
       _walkForRecursion(
         expr: relation,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7218,6 +7667,7 @@ void _walkForRecursion({
     case SQuotMkKind(:final arg):
       _walkForRecursion(
         expr: arg,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7232,6 +7682,7 @@ void _walkForRecursion({
     case SQuotLiftKind(:final fn, :final proof):
       _walkForRecursion(
         expr: fn,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7245,6 +7696,7 @@ void _walkForRecursion({
       );
       _walkForRecursion(
         expr: proof,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7259,6 +7711,7 @@ void _walkForRecursion({
     case SQuotSoundKind(:final proof):
       _walkForRecursion(
         expr: proof,
+        blockIsRecursive: blockIsRecursive,
         blockMembers: blockMembers,
         designated: designated,
         designatedIdx: designatedIdx,
@@ -7275,6 +7728,7 @@ void _walkForRecursion({
         for (final part in [step.lhs, step.rhs, step.proof]) {
           _walkForRecursion(
             expr: part,
+            blockIsRecursive: blockIsRecursive,
             blockMembers: blockMembers,
             designated: designated,
             designatedIdx: designatedIdx,
@@ -7288,9 +7742,107 @@ void _walkForRecursion({
           );
         }
       }
-    case SIntersectionKind():
-    case SByKind():
+    case SIntersectionKind(:final constraints):
+      for (final constraint in constraints) {
+        _walkForRecursion(
+          expr: constraint,
+          blockIsRecursive: blockIsRecursive,
+          blockMembers: blockMembers,
+          designated: designated,
+          designatedIdx: designatedIdx,
+          subTerms: subTerms,
+          shadowed: shadowed,
+          memberDeclIdxs: memberDeclIdxs,
+          memberTypeParamCounts: memberTypeParamCounts,
+          memberValueParamCounts: memberValueParamCounts,
+          callerName: callerName,
+          unguardedCrossCalls: unguardedCrossCalls,
+        );
+      }
+    case SByKind(:final steps):
+      var found = false;
+      _visitTacticExpressions(
+        steps,
+        shadowed: shadowed,
+        onExpr: (expr, scope) {
+          if (!found && _hasRecursiveReferenceAt(expr, blockMembers, scope)) {
+            found = true;
+          }
+        },
+        // In a recursive block the members are pre-bound, so `auto` and
+        // `omega` can apply one without an expression to scan.
+        onOpaque:
+            blockIsRecursive
+                ? () {
+                  found = true;
+                }
+                : null,
+      );
+      if (found) {
+        throw RecursionInTacticBlock(callerName, expr.span);
+      }
       return;
+  }
+}
+
+/// Visit the expressions embedded in a `by` block's tactic steps,
+/// threading the names the steps introduce.
+///
+/// [SByKind.steps] holds alternatives; each is a sequence of steps.
+/// Every alternative starts from [shadowed] and runs its steps in
+/// order. [onExpr] sees every embedded expression together with the
+/// shadow set in effect at that step: a name introduced by an earlier
+/// step (`intro`, `cases`, `induction`, `have`) masks a same-named
+/// local or top-level binding from that point on.
+///
+/// The tactic's proof state is not modelled; this traversal answers
+/// only which expressions the block mentions and which names are in
+/// scope for each.
+void _visitTacticExpressions(
+  List<List<STacticStep>> alternatives, {
+  required Set<String> shadowed,
+  required void Function(SExpr expr, Set<String> shadowed) onExpr,
+  void Function()? onOpaque,
+}) {
+  for (final steps in alternatives) {
+    var scope = shadowed;
+    for (final step in steps) {
+      switch (step) {
+        case STacticExact(:final expr):
+          onExpr(expr, scope);
+        case STacticApply(:final expr):
+          onExpr(expr, scope);
+        case STacticRewrite(:final expr):
+          onExpr(expr, scope);
+        case STacticSimp(:final lemmas):
+          for (final lemma in lemmas) {
+            onExpr(lemma, scope);
+          }
+        case STacticHave(:final name, :final type, :final proof):
+          // The fact is not in scope in its own type or proof.
+          if (proof != null) onExpr(proof, scope);
+          onExpr(type, scope);
+          scope = {...scope, name};
+        case STacticIntro(:final name):
+          if (name != null) scope = {...scope, name};
+        case STacticCases(:final name):
+          scope = {...scope, name};
+        case STacticInduction(:final name):
+          scope = {...scope, name};
+        case STacticAuto():
+        case STacticOmega():
+          // No embedded expression, but both apply top-level names from
+          // the environment: `auto` tries every binding, `omega` tries a
+          // fixed lemma list. The caller decides whether that is opaque.
+          onOpaque?.call();
+        case STacticRefl():
+        case STacticRevert():
+        case STacticTrivial():
+        case STacticConstructor():
+          // No embedded expression and no introduced name.
+          break;
+      }
+    }
   }
 }
 
@@ -7388,9 +7940,22 @@ bool _hasRecursiveReferenceAt(
         }
       }
       return false;
-    case SIntersectionKind():
-    case SByKind():
-      return false;
+    case SIntersectionKind(:final constraints):
+      return constraints.any(
+        (c) => _hasRecursiveReferenceAt(c, blockMembers, shadowed),
+      );
+    case SByKind(:final steps):
+      var found = false;
+      _visitTacticExpressions(
+        steps,
+        shadowed: shadowed,
+        onExpr: (expr, scope) {
+          if (!found && _hasRecursiveReferenceAt(expr, blockMembers, scope)) {
+            found = true;
+          }
+        },
+      );
+      return found;
   }
 }
 

@@ -348,6 +348,21 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
       sb.write(source.formatContext(span, color: c));
       sb.writeln('  write `($name: T) => ...`, or place the lambda where its');
       sb.writeln('  type is expected (e.g. a `val` with a function type).');
+    case RecursionInTacticBlock(:final funName, :final span):
+      sb.writeln(
+        "${c.error('error')}: a recursive call inside a `by` block is not "
+        'checked',
+      );
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  The `by` block in "$funName" calls the function or a member of',
+      );
+      sb.writeln('  its block, or it contains `auto` or `omega`, which apply');
+      sb.writeln('  top-level names. The checker does not model the tactic\'s');
+      sb.writeln(
+        '  binders, so a call made by the block cannot be checked. Write',
+      );
+      sb.writeln('  the term directly instead of wrapping it in a `by` block.');
     case NonStructuralRecursion(:final calleeName, :final span):
       sb.writeln("${c.error('error')}: non-structural recursion");
       sb.write(source.formatContext(span, color: c));
@@ -529,18 +544,71 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
         '  The `{struct name}` annotation must name a value parameter',
       );
       sb.writeln('  of the annotated function.');
-    case TerminationByUnsupported(:final span):
-      sb.writeln("${c.error('error')}: termination_by is not supported");
+    case DecreasesBadParams(:final reason, :final span):
+      sb.writeln("${c.error('error')}: decreases names an invalid measure");
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln('  $reason.');
+      sb.writeln(
+        '  The measure is a non-empty list of distinct value parameters',
+      );
+      sb.writeln(
+        '  of the annotated function, for example '
+        '`decreases (m, n)`.',
+      );
+    case DecreasesWithStruct(:final funName, :final span):
+      sb.writeln(
+        "${c.error('error')}: decreases cannot be combined with {struct}",
+      );
       sb.write(source.formatContext(span, color: c));
       sb.writeln(
-        '  The `termination_by` annotation is rejected: its measure is not',
+        '  "$funName" carries both a `{struct name}` annotation and a',
+      );
+      sb.writeln('  `decreases` measure. They are separate rules for proving');
+      sb.writeln('  termination; keep exactly one.');
+    case DecreasesInMutualBlock(:final funName, :final span):
+      sb.writeln(
+        "${c.error('error')}: decreases is not available in a mutual "
+        'block',
+      );
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  "$funName" is a member of a `fun ... and ...` block and carries',
       );
       sb.writeln(
-        '  checked, and the fuel desugaring can accept non-terminating',
+        '  a `decreases` annotation. Measures across mutual members are',
       );
       sb.writeln(
-        '  recursions. Use structural recursion, or `Acc.rec` with `nat_wf`.',
+        '  not implemented; use structural recursion or split the block.',
       );
+    case DecreasesNonRecursive(:final funName, :final span):
+      sb.writeln("${c.error('error')}: decreases on a non-recursive function");
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  "$funName" never references itself in its body or its return type,',
+      );
+      sb.writeln(
+        '  so the measure has nothing to check. Remove the annotation.',
+      );
+    case DecreasesNotDecreasing(
+      :final funName,
+      :final measure,
+      :final detail,
+      :final span,
+    ):
+      sb.writeln(
+        "${c.error('error')}: recursive call does not decrease the "
+        'termination measure',
+      );
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln('  fun "$funName", measure (${measure.join(', ')})');
+      sb.writeln('  $detail.');
+      sb.writeln(
+        '  A lexicographic call must pass a strict sub-term in the first',
+      );
+      sb.writeln(
+        '  position that changes. Arithmetic terms such as `sub m n` are',
+      );
+      sb.writeln('  not strict sub-terms.');
     case QuotientNeedsExpectedType(:final form, :final span):
       sb.writeln("${c.error('error')}: `$form` needs an expected type here");
       sb.write(source.formatContext(span, color: c));

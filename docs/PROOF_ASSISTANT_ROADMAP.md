@@ -37,8 +37,8 @@ The command surface is in `doxa_tooling/lib/src/repl.dart` and is covered by `re
 The external audit (`docs/KERNEL_AUDIT_2026-09-22.md`) prioritized three
 surface soundness gaps. Quotients are complete for the first slice: `mk`,
 `lift`, and `Quot.sound` are checked, with the relation checked at formation
-and no propositional eliminator. Every `termination_by` remains gated with
-`TerminationByUnsupported`. Typeclasses were implemented after the audit
+and no propositional eliminator. `decreases` checks a lexicographic measure
+over named value parameters. Typeclasses were implemented after the audit
 (#14, #15, #19); the remaining limits are in Phase 29.5.
 
 Remaining audit items:
@@ -120,5 +120,6 @@ pass. Phase 30 is the public launch. The known gaps below remain.
   `mk`.
 - Quotients have no propositional eliminator (`Quot.ind`), and their carrier
   and lift result types are at `Type 0` because `Eq`'s carrier is.
-- `termination_by` is rejected; recursive functions use structural recursion
-  or `Acc.rec` with `nat_wf`.
+- `decreases (p1, ..., pn)` checks a lexicographic measure over named value
+  parameters. Arithmetic measures such as `sub m n`, mutual blocks, and
+  general measure expressions are not supported.

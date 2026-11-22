@@ -1,5 +1,5 @@
 /// Tests for Phase 24: Well-founded recursion with `Acc` and
-/// `termination_by` annotation.
+/// `decreases` annotation.
 library;
 
 import 'dart:async';
@@ -96,34 +96,45 @@ val rec = Acc[Nat].rec
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
-    test('termination_by on simple fun is rejected', () {
+    test('decreases on a non-recursive fun is rejected', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
-fun identity(x : Nat) : Nat termination_by (x) = x
+fun identity(x : Nat) : Nat decreases (x) = x
 ''';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
+      expect(r.stderr, contains('decreases on a non-recursive function'));
     });
 
-    test('termination_by with an unknown parameter is rejected', () {
+    test('decreases with an unknown parameter is rejected', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
-fun f(x : Nat) : Nat termination_by (y) = x
+fun f(x : Nat) : Nat decreases (y) = f x
 ''';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
+      expect(r.stderr, contains('decreases names an invalid measure'));
+      expect(r.stderr, contains('`y` is not a value parameter of `f`'));
     });
 
-    test('termination_by with {struct} is rejected', () {
+    test('decreases on a non-recursive helper is rejected', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
-fun f(x : Nat) : Nat {struct x} termination_by (x) = x
+fun helper(m : Nat, n : Nat) : Nat decreases (m) = plus m (plus m n)
 ''';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
+      expect(r.stderr, contains('decreases on a non-recursive function'));
+    });
+
+    test('decreases with {struct} is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(x : Nat) : Nat {struct x} decreases (x) = x
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('decreases cannot be combined with {struct}'));
     });
 
     test('structural recursion still works', () {
@@ -138,54 +149,224 @@ fun my_plus(a : Nat, b : Nat) : Nat = match a {
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
-    test('termination_by on a non-recursive fun is rejected', () {
+    test('decreases on a fun with no value parameters is rejected', () {
+      const src = 'fun f{A : Type} : Type decreases (x) = A';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('decreases names an invalid measure'));
+      expect(r.stderr, contains('`f` has no value parameters'));
+    });
+
+    test('decreases with a duplicate parameter is rejected', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
-fun helper(m : Nat, n : Nat) : Nat termination_by (m) = plus m (plus m n)
+fun f(x : Nat) : Nat decreases (x, x) = f x
 ''';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
+      expect(r.stderr, contains('decreases names an invalid measure'));
+      expect(r.stderr, contains('`x` appears more than once'));
     });
 
-    test('termination_by on a fun with no value params is rejected', () {
-      const src = 'fun f(A : Type) : Type termination_by (x) = A';
-      final r = runSource(src);
-      expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
-    });
-
-    test('termination_by soundness reproducer is rejected', () {
-      // This was accepted by the old single-parameter fuel path and
-      // makes the checker diverge in conversion.
+    test('decreases with an empty measure is rejected', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
-fun bad(n: Nat): Eq Nat zero (succ zero) termination_by n = bad (succ n)
+fun f(n : Nat) : Nat decreases () = f n
 ''';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
+      expect(r.stderr, contains('decreases names an invalid measure'));
+      expect(r.stderr, contains('the measure is empty'));
     });
 
-    test('multi-parameter termination_by is rejected', () {
+    test('the bare spelling is a parse error', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
-fun f(a: Nat, b: Nat): Nat termination_by a b = f a b
+fun f(a: Nat, b: Nat): Nat decreases a b = f a b
 ''';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
+      expect(r.stderr, contains('error: parse error'));
+      expect(r.stderr, contains('Unexpected "a"'));
+      expect(r.stderr, contains('expected: "("'));
     });
 
-    test('mutual-block member with termination_by is rejected', () {
+    test('a malformed measure is a parse error', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
-fun f(n: Nat): Nat termination_by n = g n
+fun f(m: Nat, n: Nat): Nat decreases (sub m n) n = f m n
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('error: parse error'));
+      expect(r.stderr, contains('Unexpected "m"'));
+      expect(r.stderr, contains('expected: ")"'));
+    });
+
+    test('decreases is a reserved word', () {
+      const src = 'val decreases = 0';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('unexpected reserved word "decreases"'));
+    });
+
+    test('decreases soundness reproducer is rejected', () {
+      // A call that grows the measured argument must not be accepted.
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun bad(n: Nat): Eq Nat zero (succ zero) decreases (n) = bad (succ n)
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(
+        r.stderr,
+        contains('recursive call does not decrease the termination measure'),
+      );
+      expect(r.stderr, contains('strict sub-term of `n`'));
+    });
+
+    test('multi-parameter decreases with no descent is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(a: Nat, b: Nat): Nat decreases (a, b) = f a b
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(
+        r.stderr,
+        contains('recursive call does not decrease the termination measure'),
+      );
+      expect(r.stderr, contains('no position decreases'));
+    });
+
+    test('a call that swaps the measured parameters is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(a: Nat, b: Nat): Nat decreases (a) = f b a
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('strict sub-term of `a`'));
+      expect(r.stderr, contains('passes `b`'));
+    });
+
+    test('a call in the return type is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Eq Nat (f n) (f n) decreases (n) = refl (f n)
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('no position decreases'));
+    });
+
+    test('an unapplied self-reference is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat decreases (n) = plus f n
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('referenced without its arguments'));
+    });
+
+    test('a self-call through a lambda is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat decreases (n) = ((x: Nat) => f (succ x)) n
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('strict sub-term of `n`'));
+      expect(r.stderr, contains('compound term'));
+    });
+
+    test('a call on an arithmetic term is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(m: Nat, n: Nat): Nat decreases (m, n) = f (sub m n) n
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('strict sub-term of `m`'));
+      expect(r.stderr, contains('compound term'));
+    });
+
+    test('mutual-block member with decreases is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat decreases (n) = g n
 and g(n: Nat): Nat = f n
 ''';
       final r = runSource(src);
       expect(r.code, 1);
-      expect(r.stderr, contains('termination_by is not supported'));
+      expect(
+        r.stderr,
+        contains('decreases is not available in a mutual block'),
+      );
+    });
+
+    test('Ackermann checks and computes under a lexicographic measure', () {
+      // `ack m_ (ack m n_)` keeps the first position and decreases the
+      // second in the inner call; `ack m_ (succ zero)` decreases the
+      // first. `refl` forces the guard to unfold both descents.
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun ack(m: Nat, n: Nat): Nat decreases (m, n) = match m {
+  case zero => succ n
+  case succ m_ => match n {
+    case zero => ack m_ (succ zero)
+    case succ n_ => ack m_ (ack m n_)
+  }
+}
+val two: Nat = succ (succ zero)
+val seven: Nat = succ (succ (succ (succ (succ (succ (succ zero))))))
+val ack22: Eq Nat (ack two two) seven = refl seven
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('a measure may start at a parameter after the first', () {
+      // Measure (b, a): the succ branch holds b and decreases a, the
+      // zero branch holds a and decreases b.
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun holdB(a: Nat, b: Nat): Nat decreases (b, a) = match a {
+  case zero => match b {
+    case zero => zero
+    case succ b_ => holdB a b_
+  }
+  case succ a_ => holdB a_ b
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('a Nat.ind step binder is a strict sub-term', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun stepLoop(n: Nat): Eq Nat zero zero decreases (n) = Nat.ind
+  ((k: Nat) => Eq Nat zero zero)
+  (refl zero)
+  ((k: Nat) => (ih: Eq Nat zero zero) => stepLoop k)
+  n
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('a single-parameter measure checks', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun down(n: Nat): Nat decreases (n) = match n {
+  case zero => zero
+  case succ n_ => down n_
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
     test('strong_ind computes through nat_wf and Acc.rec', () {
@@ -431,6 +612,170 @@ val tree_expected: (x: Nat) -> (f: (y: Nat) -> Tree Nat) -> Nat =
 val tree_iota: (x: Nat) -> (f: (y: Nat) -> Tree Nat) ->
   Eq Nat (tree_use x f) (tree_expected x f) =
   (x: Nat) => (f: (y: Nat) -> Tree Nat) => refl (tree_expected x f)
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+  });
+  group('tactic-block recursion', () {
+    const msg = 'a recursive call inside a `by` block is not checked';
+
+    test('a measured bypass inside a by block is rejected', () {
+      // The ordinary call `f n_` decreases the measure; the growing call
+      // inside the block was previously invisible to the checker.
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat decreases (n) = match n {
+  case zero => zero
+  case succ n_ => plus (f n_) (by { exact f (succ n) })
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+      expect(r.stderr, contains('The `by` block in "f"'));
+    });
+
+    test('a structural mixed call inside a by block is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun g(n: Nat): Nat = match n {
+  case zero => zero
+  case succ n_ => plus (g n_) (by { exact g (succ n) })
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+    });
+
+    test('a body that only recurses inside a by block is rejected', () {
+      // Previously this crashed with an unbound TTop during the kernel
+      // check because the function was not recognised as recursive.
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun bad3(n: Nat): Nat = by { exact bad3 (succ n) }
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+      expect(r.stderr, isNot(contains('Bad state')));
+    });
+
+    test('a non-recursive by block still checks', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun idp(n: Nat): Eq Nat n n = by { exact refl n }
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('a harmless by block in a recursive function still checks', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun h(n: Nat): Nat = match n {
+  case zero => zero
+  case succ n_ => plus (h n_) (by { exact zero })
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('a call inside a have proof is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat decreases (n) = match n {
+  case zero => zero
+  case succ n_ => plus (f n_) (by { have q : Nat = f (succ n); exact zero })
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+    });
+
+    test('a call inside a nested by block is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat decreases (n) = by { exact (by { exact f (succ n) }) }
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+    });
+
+    test('calls inside apply, rewrite, simp, and cases are rejected', () {
+      const sources = [
+        'fun f(n: Nat): Nat decreases (n) = by { apply f }',
+        'fun f(n: Nat): Nat decreases (n) = by { rewrite f (succ n); exact zero }',
+        'fun f(n: Nat): Nat decreases (n) = by { simp [f (succ n)] }',
+        'fun f(n: Nat): Nat decreases (n) = by { cases n; exact f (succ n) }',
+      ];
+      for (final body in sources) {
+        final r = runSource('''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+$body
+''');
+        expect(r.code, 1, reason: body);
+        expect(r.stderr, contains(msg), reason: body);
+      }
+    });
+    test('auto in a recursive block is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat = match n {
+  case zero => by { auto }
+  case succ n_ => f n_
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+      expect(r.stderr, contains('contains `auto` or `omega`'));
+    });
+
+    test('omega in a recursive block is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Eq Nat zero zero = match n {
+  case zero => by { omega }
+  case succ n_ => f n_
+}
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+    });
+
+    test('auto in a mutually recursive block is rejected', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun f(n: Nat): Nat = by { auto }
+and g(n: Nat): Nat = f n
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains(msg));
+    });
+
+    test('a non-recursive by { auto } proof still checks', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+fun idp(n: Nat): Eq Nat n n = by { auto }
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('a non-recursive by { omega } proof still checks', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
+fun pz(n: Nat): Eq Nat (plus n zero) n = by { omega }
+
+val plus_zero_again : (n: Nat) -> Eq Nat (plus n zero) n =
+  by { intro n; omega }
 ''';
       final r = runSource(src);
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
