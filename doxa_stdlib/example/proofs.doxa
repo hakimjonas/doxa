@@ -10,4 +10,4 @@ val two: Nat = succ (succ zero)
 // `plus_zero` states `plus n zero = n`, so its instantiation at `two` is the
 // whole proof.
 
-val two_plus_zero: Eq Nat (plus two zero) two = plus_zero two
+val two_plus_zero: Eq Nat (two + zero) two = plus_zero two

@@ -7,9 +7,9 @@ data Nat: Type {
 
 fun plus(m: Nat, n: Nat): Nat = match m {
   case zero => n
-  case succ m_ => succ (plus m_ n)
+  case succ m_ => succ (m_ + n)
 }
 
 val two: Nat = succ (succ zero)
 
-val four: Nat = plus two two
+val four: Nat = two + two

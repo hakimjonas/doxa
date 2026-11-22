@@ -11,4 +11,4 @@ val plus: Nat -> Nat -> Nat =
 
 val two: Nat = succ (succ zero)
 
-val four: Nat = plus two two
+val four: Nat = two + two

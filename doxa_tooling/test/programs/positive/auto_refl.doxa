@@ -16,7 +16,7 @@ val p2: Eq Nat (succ zero) (succ zero) = refl
 
 fun plus(m: Nat, n: Nat): Nat = match m {
   case zero => n
-  case succ m_ => succ (plus m_ n)
+  case succ m_ => succ (m_ + n)
 }
 
 val two: Nat = succ (succ zero)
@@ -25,7 +25,7 @@ val three: Nat = succ two
 
 val five: Nat = succ (succ three)
 
-val p3: Eq Nat (plus two three) five = refl
+val p3: Eq Nat (two + three) five = refl
 // Mixed: explicit `refl zero` and auto-refl work side-by-side.
 
 val p4: Eq Nat zero zero = refl zero

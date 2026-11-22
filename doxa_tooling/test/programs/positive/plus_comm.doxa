@@ -8,7 +8,7 @@ data Nat: Type {
 
 fun plus(m: Nat, n: Nat): Nat = match m {
   case zero => n
-  case succ m_ => succ (plus m_ n)
+  case succ m_ => succ (m_ + n)
 }
 
 val sym: (A: Type) -> (x: A) -> (y: A) -> Eq A x y -> Eq A y x =
@@ -40,43 +40,37 @@ val cong: (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x y 
     p
 // Base lemmas for plus_comm.
 
-val plus_zero: (n: Nat) -> Eq Nat (plus n zero) n =
+val plus_zero: (n: Nat) -> Eq Nat (n + zero) n =
   Nat.ind
-    ((k: Nat) => Eq Nat (plus k zero) k)
+    ((k: Nat) => Eq Nat (k + zero) k)
     (refl zero)
-    ((m: Nat) => (ih: Eq Nat (plus m zero) m) => cong
-      Nat
-      Nat
-      ((k: Nat) => succ k)
-      (plus m zero)
-      m
-      ih)
+    ((m: Nat) => (ih: Eq Nat (m + zero) m) => cong Nat Nat ((k: Nat) => succ k) (m + zero) m ih)
 
-val plus_succ: (m: Nat) -> (n: Nat) -> Eq Nat (plus m (succ n)) (succ (plus m n)) =
+val plus_succ: (m: Nat) -> (n: Nat) -> Eq Nat (m + succ n) (succ (m + n)) =
   (m: Nat) => Nat.ind
-    ((k: Nat) => (n: Nat) -> Eq Nat (plus k (succ n)) (succ (plus k n)))
+    ((k: Nat) => (n: Nat) -> Eq Nat (k + succ n) (succ (k + n)))
     ((n: Nat) => refl (succ n))
-    ((k: Nat) => (ih: (n: Nat) -> Eq Nat (plus k (succ n)) (succ (plus k n))) => (n: Nat) => cong
+    ((k: Nat) => (ih: (n: Nat) -> Eq Nat (k + succ n) (succ (k + n))) => (n: Nat) => cong
       Nat
       Nat
       ((x: Nat) => succ x)
-      (plus k (succ n))
-      (succ (plus k n))
+      (k + succ n)
+      (succ (k + n))
       (ih n))
     m
 // The capstone.
 
-val plus_comm: (m: Nat) -> (n: Nat) -> Eq Nat (plus m n) (plus n m) =
+val plus_comm: (m: Nat) -> (n: Nat) -> Eq Nat (m + n) (n + m) =
   (m: Nat) => Nat.ind
-    ((k: Nat) => (n: Nat) -> Eq Nat (plus k n) (plus n k))
-    ((n: Nat) => sym Nat (plus n zero) n (plus_zero n))
-    ((k: Nat) => (ih: (n: Nat) -> Eq Nat (plus k n) (plus n k)) => (n: Nat) => trans
+    ((k: Nat) => (n: Nat) -> Eq Nat (k + n) (n + k))
+    ((n: Nat) => sym Nat (n + zero) n (plus_zero n))
+    ((k: Nat) => (ih: (n: Nat) -> Eq Nat (k + n) (n + k)) => (n: Nat) => trans
       Nat
-      (succ (plus k n))
-      (succ (plus n k))
-      (plus n (succ k))
-      (cong Nat Nat ((x: Nat) => succ x) (plus k n) (plus n k) (ih n))
-      (sym Nat (plus n (succ k)) (succ (plus n k)) (plus_succ n k)))
+      (succ (k + n))
+      (succ (n + k))
+      (n + succ k)
+      (cong Nat Nat ((x: Nat) => succ x) (k + n) (n + k) (ih n))
+      (sym Nat (n + succ k) (succ (n + k)) (plus_succ n k)))
     m
 // Smoke check: instantiate plus_comm at concrete Nats.
 
@@ -84,4 +78,4 @@ val two: Nat = succ (succ zero)
 
 val three: Nat = succ two
 
-val witness: Eq Nat (plus two three) (plus three two) = plus_comm two three
+val witness: Eq Nat (two + three) (three + two) = plus_comm two three

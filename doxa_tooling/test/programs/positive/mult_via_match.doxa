@@ -7,14 +7,14 @@ data Nat: Type {
 
 fun plus(m: Nat, n: Nat): Nat = match m {
   case zero => n
-  case succ m_ => succ (plus m_ n)
+  case succ m_ => succ (m_ + n)
 }
 
 fun mult(m: Nat, n: Nat): Nat = match m {
   case zero => zero
-  case succ m_ => plus n (mult m_ n)
+  case succ m_ => n + m_ * n
 }
 
 val two: Nat = succ (succ zero)
 
-val six: Nat = mult two (succ two)
+val six: Nat = two * succ two

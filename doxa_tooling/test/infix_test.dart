@@ -26,6 +26,52 @@ void main() {
     expect(out.toString(), startsWith('OK:'));
   });
 
+  group('chained comparison diagnostics', () {
+    /// Check [fixture] and return its stderr.
+    ///
+    /// These fixtures are unparseable by design, so they live here rather than
+    /// under `test/programs/negative`, where CI runs `fmt --check` on every
+    /// file it can parse.
+    String checkFixture(String name) {
+      final file = File('test/fixtures/$name');
+      final source = SourceFile(
+        filename: file.path,
+        text: file.readAsStringSync(),
+      );
+      final out = _BufferedSink();
+      final err = _BufferedSink();
+      final code = checkSource(source, out: out, err: err);
+      expect(code, 1, reason: 'expected a parse error for $name');
+      return err.toString();
+    }
+
+    test('a second <= is reported at the operator', () {
+      final stderr = checkFixture('chained_comparison.doxa');
+      expect(stderr, contains('error: parse error'));
+      expect(stderr, contains('chained_comparison.doxa:4:31'));
+      expect(
+        stderr,
+        contains(
+          'expected: the comparison to end here; "<=" does not '
+          'associate',
+        ),
+      );
+    });
+
+    test('a second == is reported at the operator', () {
+      final stderr = checkFixture('chained_equality.doxa');
+      expect(stderr, contains('error: parse error'));
+      expect(stderr, contains('chained_equality.doxa:4:31'));
+      expect(
+        stderr,
+        contains(
+          'expected: the comparison to end here; "==" does not '
+          'associate',
+        ),
+      );
+    });
+  });
+
   group('REPL', () {
     ReplSession newSession() {
       var session = ReplSession();
