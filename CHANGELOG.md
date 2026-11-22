@@ -20,6 +20,14 @@ project is ready.
 - Added `simp`, `cases`, `constructor`, `auto`, and `omega` (#12).
 - Added `have` steps and `calc` equality chains to the proof surface.
 
+**Language surface**
+
+- Added the infix operators `*`, `+`, `<=`, and `==` for `mult`, `plus`,
+  `leq`, and `eqb`. `*` binds tighter than `+`, both bind tighter than the
+  comparisons, arithmetic associates left, comparisons do not associate, and
+  each operator expands to exactly one top-level function. The formatter
+  prints the operators and parenthesizes only where precedence requires.
+
 **Standard library and package imports**
 
 - Packaged the standard library as `doxa_stdlib` and resolved `package:`

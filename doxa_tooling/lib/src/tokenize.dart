@@ -38,7 +38,7 @@ export 'package:rumil_tokens/rumil_tokens.dart'
 /// | `comment`        | [Comment]          | `// …`, `/* … */`|
 /// | `number`         | [NumberLit]        | `0 1 2`          |
 /// | `punctuation`    | [Punctuation]      | `(){}[]:;,|.=`   |
-/// | `punctuation`    | [Operator]         | `-> =>`          |
+/// | `punctuation`    | [Operator]         | `-> => <= == + *` |
 /// | `type-name`      | [Identifier]       | `Nat List Bool` (semantic refinement in Layer 3) |
 /// | `binder`         | [Identifier]       | params, lambda binders (approximate, refined in Layer 3) |
 /// | `constructor`    | [Identifier]       | `zero succ nil cons` (approximate, refined in Layer 3) |
@@ -52,7 +52,8 @@ const LangGrammar doxaGrammar = LangGrammar(
   blockComment: ('/*', '*/'),
   stringDelimiters: [],
   punctuationChars: '(){}[]:;,|.=',
-  multiCharOperators: ['->', '=>'],
+  operatorChars: '+*',
+  multiCharOperators: ['->', '=>', '<=', '=='],
 );
 
 // ---------------------------------------------------------------------------

@@ -9,10 +9,10 @@ val plus: Nat -> Nat -> Nat =
   (m: Nat) => (n: Nat) => Nat.rec ((_: Nat) => Nat) n ((_: Nat) => (rec: Nat) => succ rec) m
 
 val mult: Nat -> Nat -> Nat =
-  (m: Nat) => (n: Nat) => Nat.rec ((_: Nat) => Nat) zero ((_: Nat) => (rec: Nat) => plus n rec) m
+  (m: Nat) => (n: Nat) => Nat.rec ((_: Nat) => Nat) zero ((_: Nat) => (rec: Nat) => n + rec) m
 
 val two: Nat = succ (succ zero)
 
-val four: Nat = mult two two
+val four: Nat = two * two
 
-val six: Nat = mult two (succ two)
+val six: Nat = two * succ two

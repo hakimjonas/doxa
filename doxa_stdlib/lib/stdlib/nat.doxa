@@ -17,12 +17,12 @@ data Lt: Nat -> Nat -> Prop {
 
 fun plus(m: Nat, n: Nat): Nat = match m {
   case zero => n
-  case succ m_ => succ (plus m_ n)
+  case succ m_ => succ (m_ + n)
 }
 
 fun mult(m: Nat, n: Nat): Nat = match m {
   case zero => zero
-  case succ m_ => plus n (mult m_ n)
+  case succ m_ => n + m_ * n
 }
 // `pow exp base`: exp^base. Note the arg order, `exp` is the
 // decreasing argument, and the decreasing arg must be the first
@@ -32,7 +32,7 @@ fun mult(m: Nat, n: Nat): Nat = match m {
 
 fun pow(exp: Nat, base: Nat): Nat = match exp {
   case zero => succ zero
-  case succ e_ => mult base (pow e_ base)
+  case succ e_ => base * pow e_ base
 }
 // Non-strict "less-or-equal": leq m n = true_ iff m ≤ n.
 
@@ -40,7 +40,7 @@ fun leq(m: Nat, n: Nat): Bool = match m {
   case zero => true_
   case succ m_ => match n {
     case zero => false_
-    case succ n_ => leq m_ n_
+    case succ n_ => m_ <= n_
   }
 }
 // Truncated subtraction: sub m n = m - n, or 0 if m < n.
@@ -56,7 +56,7 @@ fun sub(m: Nat, n: Nat): Nat = match m {
 
 fun lt(m: Nat, n: Nat): Bool = match n {
   case zero => false_
-  case succ n_ => leq m n_
+  case succ n_ => m <= n_
 }
 // Modulo via iterated subtraction: mod_acc k m n keeps subtracting n
 // from m up to k times.  Structurally recursive on k (first arg).
@@ -87,7 +87,7 @@ fun gcd_acc(k: Nat, m: Nat, n: Nat): Nat = match k {
 val gcd: (m: Nat) -> (n: Nat) -> Nat =
   (m: Nat) => (n: Nat) => match m {
     case zero => n
-    case succ m_ => gcd_acc (plus m n) m n
+    case succ m_ => gcd_acc (m + n) m n
   }
 // Integer division: div m n = floor(m / n), 0 if n = 0.
 // Uses iterated subtraction, structurally recursive on k.
@@ -107,17 +107,17 @@ val div: (m: Nat) -> (n: Nat) -> Nat =
   }
 // Least common multiple: lcm m n = m * n / gcd m n
 
-val lcm: (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => div (mult m n) (gcd m n)
+val lcm: (m: Nat) -> (n: Nat) -> Nat = (m: Nat) => (n: Nat) => div (m * n) (gcd m n)
 // Coprime: gcd m n == 1 (and therefore nonzero).
 
 val coprime: (m: Nat) -> (n: Nat) -> Bool =
-  (m: Nat) => (n: Nat) => and_ (leq (gcd m n) (succ zero)) (lt zero (gcd m n))
+  (m: Nat) => (n: Nat) => and_ (gcd m n <= succ zero) (lt zero (gcd m n))
 // Divisibility: does d divide n?  True when d > 0 and n % d == 0.
 
 val divides: (d: Nat) -> (n: Nat) -> Bool =
   (d: Nat) => (n: Nat) => match d {
     case zero => false_
-    case succ d_ => leq (mod n (succ d_)) zero
+    case succ d_ => mod n (succ d_) <= zero
   }
 // Prime: n >= 2 and has no divisor d where 2 <= d < n.
 

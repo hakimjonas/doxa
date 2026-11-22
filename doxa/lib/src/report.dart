@@ -61,6 +61,9 @@ String reportParseFailure(
       cp == 125 || // { }
       cp == 58 || // :
       cp == 61 || // =
+      cp == 60 || // < (for <=)
+      cp == 42 || // * (infix multiplication)
+      cp == 43 || // + (infix addition)
       cp == 44 || // ,
       cp == 46 || // .
       cp == 45 || // - (for ->)

@@ -53,8 +53,10 @@ void main() {
     });
 
     test('fun declaration single-expression body', () {
+      // `plus x x` and `x + x` are the same tree; the printer spells the
+      // four standard-library operations infix.
       const input = 'fun double(x: Nat) : Nat = plus x x';
-      const expected = 'fun double(x: Nat): Nat = plus x x\n';
+      const expected = 'fun double(x: Nat): Nat = x + x\n';
       expect(formatSource(input), equals(expected));
     });
 
@@ -80,13 +82,13 @@ void main() {
 
     test('fun declaration with struct annotation', () {
       const input = 'fun f(a: Nat, b: Nat) : Nat {struct a} = plus a b';
-      const expected = 'fun f(a: Nat, b: Nat): Nat {struct a} = plus a b\n';
+      const expected = 'fun f(a: Nat, b: Nat): Nat {struct a} = a + b\n';
       expect(formatSource(input), equals(expected));
     });
 
     test('fun declaration with multiple params', () {
       const input = 'fun add(x: Nat, y: Nat) : Nat = plus x y';
-      const expected = 'fun add(x: Nat, y: Nat): Nat = plus x y\n';
+      const expected = 'fun add(x: Nat, y: Nat): Nat = x + y\n';
       expect(formatSource(input), equals(expected));
     });
 
@@ -264,6 +266,89 @@ fun f(x: Nat): Nat {
           'fun f(x: Nat): Nat = match x { case zero => zero }// tail\n'
           'val x = zero';
       expect(formatSource(source), contains('}\n// tail\n\nval x = zero\n'));
+    });
+  });
+
+  group('infix operators', () {
+    /// Format [input] and require the result to equal [expected] and to be a
+    /// fixed point of the formatter.
+    void formatsTo(String input, String expected) {
+      final formatted = formatSource(input);
+      expect(formatted, equals(expected));
+      expect(formatSource(formatted), equals(formatted));
+      _expectParses(formatted);
+    }
+
+    test('infix source formats to itself', () {
+      formatsTo('val p: Nat = a + b * c', 'val p: Nat = a + b * c\n');
+    });
+
+    test('a source needing parentheses keeps them', () {
+      formatsTo('val p: Nat = (a + b) * c', 'val p: Nat = (a + b) * c\n');
+    });
+
+    test('a left-associated chain needs no parentheses', () {
+      formatsTo('val p: Nat = a + b + c', 'val p: Nat = a + b + c\n');
+    });
+
+    test('a right operand at the same precedence is parenthesized', () {
+      formatsTo('val p: Nat = plus a (plus b c)', 'val p: Nat = a + (b + c)\n');
+    });
+
+    test('prefix plus formats to infix', () {
+      formatsTo('val p = plus a b', 'val p = a + b\n');
+    });
+
+    test('prefix mult inside plus keeps the tighter operand bare', () {
+      formatsTo('val p = mult (plus a b) c', 'val p = (a + b) * c\n');
+    });
+
+    test('an operator applied to three arguments keeps the extra ones', () {
+      formatsTo('val p = plus a b c', 'val p = (a + b) c\n');
+    });
+
+    test('an infix application used as an argument is parenthesized', () {
+      formatsTo('val p = f (plus a b)', 'val p = f (a + b)\n');
+    });
+
+    test('comparisons print infix', () {
+      formatsTo('val p = leq a b', 'val p = a <= b\n');
+      formatsTo('val p = eqb a b', 'val p = a == b\n');
+    });
+
+    test('a nested comparison keeps the parentheses', () {
+      formatsTo('val p = leq (leq a b) c', 'val p = (a <= b) <= c\n');
+      formatsTo('val p = leq a (leq b c)', 'val p = a <= (b <= c)\n');
+    });
+
+    test('arithmetic binds tighter than a comparison', () {
+      formatsTo('val p = leq (plus a b) c', 'val p = a + b <= c\n');
+      formatsTo('val p = leq a (mult b c)', 'val p = a <= b * c\n');
+    });
+
+    test('a calc chain formats its endpoints and steps infix', () {
+      formatsTo(
+        'val c = calc(a + b = plus a b := p; plus a b = b + a := q)',
+        'val c =\n'
+            '  calc(\n'
+            '    a + b = a + b := p;\n'
+            '    a + b = b + a := q\n'
+            '  )\n',
+      );
+    });
+
+    test('a match scrutinee may be an infix expression', () {
+      formatsTo(
+        'val p = match a + b { case zero => zero }',
+        'val p = match a + b {\n  case zero => zero\n}\n',
+      );
+    });
+
+    test('a long chain stays on one line and rounds trip', () {
+      const input =
+          'val p = aaaaaaaaaa + bbbbbbbbbb + cccccccccc + dddddddddd'
+          ' + eeeeeeeeee + ffffffffff';
+      formatsTo(input, '$input\n');
     });
   });
 

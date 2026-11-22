@@ -13,10 +13,10 @@ data Vec[A: Type]: Nat -> Type {
 
 fun plus(m: Nat, n: Nat): Nat = match m {
   case zero => n
-  case succ m_ => succ (plus m_ n)
+  case succ m_ => succ (m_ + n)
 }
 
-fun vappend{A: Type, n: Nat, m: Nat}(xs: Vec A n, ys: Vec A m): Vec A (plus n m) = match xs {
+fun vappend{A: Type, n: Nat, m: Nat}(xs: Vec A n, ys: Vec A m): Vec A (n + m) = match xs {
   case vnil => ys
-  case vcons k x rest => vcons (plus k m) x (vappend rest ys)
+  case vcons k x rest => vcons (k + m) x (vappend rest ys)
 }

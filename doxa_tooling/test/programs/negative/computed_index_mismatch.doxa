@@ -7,7 +7,7 @@ data Nat: Type {
 
 fun plus(m: Nat, n: Nat): Nat = match m {
   case zero => n
-  case succ m_ => succ (plus m_ n)
+  case succ m_ => succ (m_ + n)
 }
 
 data Vec[A: Type]: Nat -> Type {
@@ -16,7 +16,7 @@ data Vec[A: Type]: Nat -> Type {
 }
 
 data D: Nat -> Type {
-  pack: (n: Nat) -> (m: Nat) -> D (plus n m);
+  pack: (n: Nat) -> (m: Nat) -> D (n + m);
 }
 
 fun bad(n: Nat, d: D n): Vec Nat n = match d {

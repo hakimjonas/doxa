@@ -20,12 +20,12 @@ fun leq(m: Nat, n: Nat): Bool = match m {
   case zero => t_
   case succ m_ => match n {
     case zero => f_
-    case succ n_ => leq m_ n_
+    case succ n_ => m_ <= n_
   }
 }
 // max of two Nats.
 
-fun max(m: Nat, n: Nat): Nat = match leq m n {
+fun max(m: Nat, n: Nat): Nat = match m <= n {
   case t_ => n
   case f_ => m
 }

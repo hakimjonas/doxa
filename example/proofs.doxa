@@ -38,27 +38,27 @@ val sample: List Nat = cons one (cons two nil)
 // `plus zero n` reduces to `n` definitionally (plus recurses on its
 // first argument), so the proof is a bare reflexivity.
 
-val plus_zero_left: (n: Nat) -> Eq Nat (plus zero n) n = (n: Nat) => refl n
+val plus_zero_left: (n: Nat) -> Eq Nat (zero + n) n = (n: Nat) => refl n
 // `plus n zero = n` needs induction: `n` is the recursion variable, so
 // it does not reduce. Proven with the dependent eliminator `Nat.ind`.
 
-val plus_zero_right: (n: Nat) -> Eq Nat (plus n zero) n =
+val plus_zero_right: (n: Nat) -> Eq Nat (n + zero) n =
   Nat.ind
-    ((k: Nat) => Eq Nat (plus k zero) k)
+    ((k: Nat) => Eq Nat (k + zero) k)
     (refl zero)
-    ((m: Nat) => (ih: Eq Nat (plus m zero) m) => cong ((k: Nat) => succ k) ih)
+    ((m: Nat) => (ih: Eq Nat (m + zero) m) => cong ((k: Nat) => succ k) ih)
 // length distributes over append:
 //   length (append xs ys) = plus (length xs) (length ys)
 // by induction on the first list.
 
 val length_append: (A: Type)
--> (xs: List A) -> (ys: List A) -> Eq Nat (length (append xs ys)) (plus (length xs) (length ys)) =
+-> (xs: List A) -> (ys: List A) -> Eq Nat (length (append xs ys)) (length xs + length ys) =
   (A: Type) => List.ind
     A
-    ((zs: List A) => (ys: List A) -> Eq Nat (length (append zs ys)) (plus (length zs) (length ys)))
+    ((zs: List A) => (ys: List A) -> Eq Nat (length (append zs ys)) (length zs + length ys))
     ((ys: List A) => refl (length ys))
     ((h: A) => (t: List A) => (ih: (ys: List A)
-    -> Eq Nat (length (append t ys)) (plus (length t) (length ys))) => (ys: List A) => cong
+    -> Eq Nat (length (append t ys)) (length t + length ys)) => (ys: List A) => cong
       ((k: Nat) => succ k)
       (ih ys))
 // Proofs can also refute. `False` is the empty type (no constructors);

@@ -15,14 +15,14 @@ data Tree: Type {
 
 fun plus(m: Nat, n: Nat): Nat = match m {
   case zero => n
-  case succ m_ => succ (plus m_ n)
+  case succ m_ => succ (m_ + n)
 }
 
 fun treeSize(t: Tree): Nat = match t {
   case tnode fs => succ (forestSize fs)
 } and forestSize(fs: Forest): Nat = match fs {
   case fnil => zero
-  case fcons t rest => plus (treeSize t) (forestSize rest)
+  case fcons t rest => treeSize t + forestSize rest
 }
 
 val leaf: Tree = tnode fnil

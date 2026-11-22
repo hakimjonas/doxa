@@ -34,7 +34,7 @@ fun vlength{A: Type, n: Nat}(v: Vec A n): Nat = match v {
 // Append vectors. Length sums: `Vec[A] n ++ Vec[A] m : Vec[A]
 // (plus n m)`.
 
-fun vappend{A: Type, n: Nat, m: Nat}(xs: Vec A n, ys: Vec A m): Vec A (plus n m) = match xs {
+fun vappend{A: Type, n: Nat, m: Nat}(xs: Vec A n, ys: Vec A m): Vec A (n + m) = match xs {
   case vnil => ys
-  case vcons k x rest => vcons (plus k m) x (vappend rest ys)
+  case vcons k x rest => vcons (k + m) x (vappend rest ys)
 }

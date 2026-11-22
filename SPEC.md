@@ -38,6 +38,25 @@ Newlines are whitespace. Line comments start with `//`; block comments use `/*` 
 
 Application is juxtaposition and associates to the left: `f x y` parses as `(f x) y`. Brackets are a postfix form on an identifier and contain one or more comma-separated expressions; `List[A]` applies `List` to `A`, and a term after a bracket form is ordinary application, so `Vec[A] n` applies the result to `n`.
 
+Four infix operators stand for the standard-library operations. Each one is desugared at parse time into an application of a top-level function, so it denotes an ordinary term: `a + b` and `plus a b` are the same term.
+
+| Operator | Expands to | Associativity |
+|---|---|---|
+| `*` | `mult` | left |
+| `+` | `plus` | left |
+| `<=` | `leq` | none |
+| `==` | `eqb` | none |
+
+`*` binds tighter than `+`, and both bind tighter than the comparisons, which share one level. Application binds tighter than every operator, and `->` binds looser than every operator. `a + b * c` parses as `plus a (mult b c)`, and `a * b + c` parses as `plus (mult a b) c`. A left-associative operator groups to the left, so `a + b + c` is `plus (plus a b) c`.
+
+The comparisons do not associate. Writing `a <= b <= c`, `a == b == c`, or `a <= b == c` is a parse error at the second operator, and the diagnostic names that operator. A parenthesized comparison is an ordinary expression, so `(a <= b) == c` parses.
+
+The operators are monomorphic. `+` expands to `plus` and to nothing else; the surface has no overloaded arithmetic, and the algebra monoids' `add` and `mul` are not reachable through `+` and `*`. `==` expands to `eqb`, whose implicit `Eqb` dictionary argument is inserted by elaboration, so instance search selects the instance: `x == y` type-checks wherever an `Eqb` instance exists, including `Nat`, `Bool`, and `List Nat`.
+
+The expansion is a plain identifier use resolved in the scope of the use site. A local binding of `plus` shadows the standard library's `plus` for `a + b` exactly as it does for `plus a b`. An operator whose expanded name is not in scope reports an unresolved name whose span is the operator itself.
+
+`calc` endpoints and step proofs use the same expression grammar, so a chain can spell its arithmetic either way: `calc(a + b = b + a := plus_comm a b)` parses and checks like `calc(plus a b = plus b a := plus_comm a b)`. The `=` between a step's endpoints and the `:=` before its proof are relations, not the `==` operator.
+
 Lambdas use `(x: A) => body` or `{x: A} => body`, and curly binders are implicit. The unannotated `(x) => body` requires an expected Pi type. Pi types use `(x: A) -> B`, `{x: A} -> B`, or `A -> B`; `A -> B -> C` associates to the right, and the non-dependent arrow has an unnamed explicit binder.
 
 `calc` chains equalities as named steps. The form is

@@ -20,12 +20,12 @@ fun intPlusHelp(n: Nat, m: Nat): Int = match n {
 
 fun intPlus(a: Int, b: Int): Int = match a {
   case pos n => match b {
-    case pos m => pos (plus n m)
+    case pos m => pos (n + m)
     case neg m => intPlusHelp n m
   }
   case neg n => match b {
     case pos m => intPlusHelp m n
-    case neg m => neg (succ (plus n m))
+    case neg m => neg (succ (n + m))
   }
 }
 
@@ -41,23 +41,23 @@ fun intSub(a: Int, b: Int): Int = intPlus a (intNeg b)
 
 fun intMult(a: Int, b: Int): Int = match a {
   case pos n => match b {
-    case pos m => pos (mult n m)
-    case neg m => intNeg (pos (mult n (succ m)))
+    case pos m => pos (n * m)
+    case neg m => intNeg (pos (n * succ m))
   }
   case neg n => match b {
-    case pos m => intNeg (pos (mult (succ n) m))
-    case neg m => pos (succ (plus (plus (mult n m) n) m))
+    case pos m => intNeg (pos (succ n * m))
+    case neg m => pos (succ (n * m + n + m))
   }
 }
 
 fun intLeq(a: Int, b: Int): Bool = match a {
   case pos n => match b {
-    case pos m => leq n m
+    case pos m => n <= m
     case neg _ => false_
   }
   case neg n => match b {
     case pos _ => true_
-    case neg m => leq m n
+    case neg m => m <= n
   }
 }
 

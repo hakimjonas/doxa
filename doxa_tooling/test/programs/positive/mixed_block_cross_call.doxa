@@ -9,10 +9,10 @@ data Nat: Type {
 
 fun plus(m: Nat, n: Nat): Nat = match m {
   case zero => n
-  case succ m_ => succ (plus m_ n)
+  case succ m_ => succ (m_ + n)
 }
 
-fun double(x: Nat): Nat = plus x x and triple(x: Nat): Nat = plus x (plus x x)
+fun double(x: Nat): Nat = x + x and triple(x: Nat): Nat = x + (x + x)
 
 val two: Nat = succ (succ zero)
 

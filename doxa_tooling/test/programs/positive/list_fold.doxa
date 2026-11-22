@@ -11,14 +11,14 @@ data List[A: Type]: Type {
 
 fun plus(m: Nat, n: Nat): Nat = match m {
   case zero => n
-  case succ m_ => succ (plus m_ n)
+  case succ m_ => succ (m_ + n)
 }
 // Recurse on the list; accumulator passes through untouched.
 // The designated decreasing arg is `xs`, the first explicit arg.
 
 fun sumAcc(xs: List Nat, acc: Nat): Nat = match xs {
   case nil => acc
-  case cons x rest => sumAcc rest (plus acc x)
+  case cons x rest => sumAcc rest (acc + x)
 }
 
 fun sum(xs: List Nat): Nat = sumAcc xs zero

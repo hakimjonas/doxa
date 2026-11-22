@@ -9,7 +9,7 @@ data Nat: Type {
 
 fun plus(m: Nat, n: Nat): Nat = match m {
   case zero => n
-  case succ m_ => succ (plus m_ n)
+  case succ m_ => succ (m_ + n)
 }
 
 data Vec[A: Type]: Nat -> Type {
@@ -22,13 +22,13 @@ fun vecOf(n: Nat): Vec Nat n = match n {
   case succ k => vcons k zero (vecOf k)
 }
 
-fun vappend{A: Type, n: Nat, m: Nat}(xs: Vec A n, ys: Vec A m): Vec A (plus n m) = match xs {
+fun vappend{A: Type, n: Nat, m: Nat}(xs: Vec A n, ys: Vec A m): Vec A (n + m) = match xs {
   case vnil => ys
-  case vcons k x rest => vcons (plus k m) x (vappend rest ys)
+  case vcons k x rest => vcons (k + m) x (vappend rest ys)
 }
 
 data D: Nat -> Type {
-  pack: (n: Nat) -> (m: Nat) -> D (plus n m);
+  pack: (n: Nat) -> (m: Nat) -> D (n + m);
 }
 // The pack arm's expected type must refine `n` to `plus a b`, or the
 // body's `Vec Nat (plus a b)` cannot check against `Vec Nat n`.
@@ -39,9 +39,9 @@ fun dToVec(n: Nat, d: D n): Vec Nat n = match d {
 // Explicit recursor application: the synthesized type must be usable,
 // and ι must reduce through the computed index.
 
-val d1: D (plus zero (succ zero)) = pack zero (succ zero)
+val d1: D (zero + succ zero) = pack zero (succ zero)
 
 val first: Nat =
-  D.rec ((k: Nat) => (d: D k) => Nat) (plus zero (succ zero)) ((a: Nat) => (b: Nat) => a) d1
+  D.rec ((k: Nat) => (d: D k) => Nat) (zero + succ zero) ((a: Nat) => (b: Nat) => a) d1
 
 val firstIsZero: Eq Nat first zero = refl

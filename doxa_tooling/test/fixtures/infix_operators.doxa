@@ -1,0 +1,34 @@
+// The four infix operators, checked through the CLI.
+//
+// Covers arithmetic precedence, both comparisons, `==` at Nat, Bool, and
+// List Nat through the `Eqb` instances, a `calc` chain whose endpoints and
+// steps use `+`, and a tactic block over the same expansion.
+import "../../../doxa_stdlib/lib/stdlib/proofs.doxa"
+import "../../../doxa_stdlib/lib/stdlib/eqb_instances.doxa"
+
+val two : Nat = succ (succ zero)
+
+val productFirst : Nat = two + two * two
+
+val sumFirst : Nat = (two + two) * two
+
+val leqSum : Bool = two <= two + two
+
+val eqNat : Bool = two == two
+
+val eqBool : Bool = true_ == false_
+
+val eqList : Bool = cons two nil == cons two nil
+
+val rotate : (a: Nat) -> (b: Nat) -> Eq Nat (a + b + zero) (b + a) =
+  (a: Nat) => (b: Nat) => calc(
+    a + b + zero = a + (b + zero) := plus_assoc a b zero;
+    a + (b + zero) = a + b := cong ((x: Nat) => a + x) (plus_zero b);
+    a + b = b + a := plus_comm a b
+  )
+
+theorem commute : (a: Nat) -> (b: Nat) -> Eq Nat (a + b) (b + a) = by {
+  intro a;
+  intro b;
+  exact plus_comm a b
+}
