@@ -108,17 +108,22 @@ arithmetic decreasing argument such as `sub m n` is rejected.
 
 The standard library covers arithmetic, `Nat`, `Bool`, `List`, `Vec`,
 `Option`, `Sigma`, `Int`, equality, the `sqrt2` case study, and the algebra
-monoids with their `Nat` and `List` instances. It is not an algebraic
-hierarchy: there are no groups, rings, or further algebra instances.
-`rational.doxa` is a first cut with a constructor and no operations or
-lemmas. Others can instantiate the monoids and extend the library.
+monoids and the additive group, with `Nat` and `List` monoid instances plus
+`AddMonoid[Int]` and `AddGroup[Int]`. The hierarchy stops there: there is no
+ring class, no commutative group class, and `AddGroup` has only the `Int`
+instance. A `Ring` class cannot sit beside `Monoid` because `Monoid` already
+declares `mul`, `mone`, `mul_assoc`, `mul_one_left`, and `mul_one_right` as
+global projections. `rational.doxa` is a first cut with a constructor and no
+operations or lemmas. Others can instantiate the classes and extend the
+library.
 
 ### Next
 
 Proof ergonomics: notation for the naming surface. Then the remaining gated
 surface, a checked termination measure, and `Quot.ind` for a propositional
-eliminator. Then the algebraic hierarchy (groups and rings), once the `Int`
-associativity and identity laws are in the library.
+eliminator. Then the rest of the algebraic hierarchy, which needs a
+class-method namespace that lets a ring class state multiplication fields
+that `Monoid` already declares.
 
 ### Distribution
 

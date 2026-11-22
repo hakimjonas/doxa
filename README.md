@@ -39,8 +39,9 @@ Doxa requires Dart 3.7 or later.
   method bodies are not supported; see [`SPEC.md`](SPEC.md#typeclasses).
 - The standard-library package, with `Nat`, `Bool`, `List`, `Option`, `Vec`,
   `Sigma`, `Int`, `Rational`, equality, the `Eqb` class and its instances,
-  the algebra monoids (`AddMonoid`, `AddCommMonoid`, `Monoid`,
-  `CommMonoid`) with `Nat` and `List` instances, and arithmetic lemmas.
+  the algebra classes (`AddMonoid`, `AddCommMonoid`, `AddGroup`, `Monoid`,
+  `CommMonoid`) with `Nat` and `List` instances, `AddMonoid[Int]` and
+  `AddGroup[Int]`, and arithmetic lemmas.
   Programs reach it through `package:` imports.
 
 ## Quick start
