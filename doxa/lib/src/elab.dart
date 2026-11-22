@@ -36,6 +36,7 @@ import 'check.dart'
         NotAType,
         NotAQuotient,
         QuotFnNotRespectingRelation,
+        QuotLiftNeedsConstantResult,
         QuotSoundNeedsInjection,
         TypeMismatch,
         UnknownTypeReached;
@@ -3154,6 +3155,13 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
       if (expectedV is! VPi) throw NotAFunction(expectedV);
       final quotV = expectedV.domain;
       if (quotV is! VQuot) throw NotAQuotient(quotV);
+      // The result type is fixed by `lift`'s type, so a codomain that
+      // reads the quotient element would be a dependent elimination.
+      // The slice has no dependent elimination. Mirrors the kernel rule
+      // in `_Check(TQuotLift)`.
+      if (mentionsEnclosingBinder(expectedV.codomain.body)) {
+        throw QuotLiftNeedsConstantResult(expectedV);
+      }
       final level = state.ctx.level;
       final bodyV = eval(
         expectedV.codomain.body,

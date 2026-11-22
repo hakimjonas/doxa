@@ -183,6 +183,20 @@ val congruent: Eq Nat (sumQ (mk a)) (sumQ (mk a)) = cong sumQ e0
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
+    test('a lift whose result type reads the quotient element is rejected', () {
+      final r = runSource('''
+$_pairPrelude
+val dep: (q: Quot(Pair, sameSum)) -> Eq (Quot(Pair, sameSum)) q q =
+  lift((p: Pair) => mk p,
+       (x: Pair) => (y: Pair) => (h: sameSum x y) => Quot.sound h)
+''');
+      expect(r.code, 1);
+      expect(
+        r.stderr,
+        contains('quotient elimination needs a constant result type'),
+      );
+    });
+
     test('a relation that is not a relation is rejected on its span', () {
       final r = runSource('''
 $_pairPrelude
