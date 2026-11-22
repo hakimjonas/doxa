@@ -406,7 +406,7 @@
           "kind": "optional",
           "content": {
             "kind": "ref",
-            "name": "termination_by"
+            "name": "decreases"
           }
         },
         {
@@ -654,20 +654,49 @@
         }
       ]
     },
-    "termination_by": {
+    "decreases": {
       "kind": "seq",
       "elements": [
         {
           "kind": "lit",
-          "value": "termination_by"
+          "value": "decreases"
+        },
+        {
+          "kind": "lit",
+          "value": "("
         },
         {
           "kind": "field",
           "name": "measure",
           "content": {
-            "kind": "ref",
-            "name": "_expr"
+            "kind": "seq",
+            "elements": [
+              {
+                "kind": "ref",
+                "name": "identifier"
+              },
+              {
+                "kind": "repeat",
+                "content": {
+                  "kind": "seq",
+                  "elements": [
+                    {
+                      "kind": "lit",
+                      "value": ","
+                    },
+                    {
+                      "kind": "ref",
+                      "name": "identifier"
+                    }
+                  ]
+                }
+              }
+            ]
           }
+        },
+        {
+          "kind": "lit",
+          "value": ")"
         }
       ]
     },
@@ -2065,7 +2094,7 @@
           "kind": "optional",
           "content": {
             "kind": "ref",
-            "name": "termination_by"
+            "name": "decreases"
           }
         },
         {

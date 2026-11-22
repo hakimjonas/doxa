@@ -156,7 +156,8 @@ fun idImplicit{A: Type}(x: A): A = x
 ```
 
 The parser also accepts mixed and implicit-first groups, `{struct name}`, and
-`termination_by (name, ...)` after a function's result type. These are
+`decreases (p1, ..., pn)` after a function's result type. The `decreases`
+annotation is a checked lexicographic measure (see below). These are
 declaration fragments because `T`, `U`, `V`, and `body` require definitions:
 
 <!-- doxa: fragment -->
@@ -165,7 +166,7 @@ fun f[A]{B: Type}(x: A): B = body
 fun f[A: Eqb](x: A): A = body
 opaque fun f(x: T): U = body
 fun f(x: T): U {struct x} = body
-fun f(x: T, y: U): V termination_by (x, y) = body
+fun f(x: T, y: U): V decreases (x, y) = body
 ```
 
 Mutual declarations join members with `and fun` or `and data`. The members of a mutual block are in scope in the block's bodies.
@@ -190,6 +191,42 @@ elaboration, not by the call, and do not shift the position.
 Evaluation unfolds a recursive function only when its designated argument is a
 constructor, so a recursive call on an unrefined variable stays stuck instead
 of unfolding.
+
+### Lexicographic measures
+
+A `fun` may name a lexicographic measure instead of relying on the designated
+argument:
+
+```doxa
+import "package:doxa_stdlib/stdlib/nat.doxa"
+
+fun ack(m: Nat, n: Nat): Nat decreases (m, n) = match m {
+  case zero => succ n
+  case succ m_ => match n {
+    case zero => ack m_ (succ zero)
+    case succ n_ => ack m_ (ack m n_)
+  }
+}
+```
+
+`decreases (p1, ..., pn)` supplies the measure `mu(x) = (x.p1, ..., x.pn)` into
+the lexicographic product of the strict sub-term orders on the named value
+parameters. Every recursive call must satisfy `mu(call) <lex mu(caller)`. The
+checker walks each call left to right: the first position whose argument is not
+syntactically the caller's unshadowed parameter `pi` must pass a strict
+sub-term of `pi`, and every earlier position must pass that same parameter. A
+strict sub-term is a pattern binder from a match on `pi`, a pattern binder of a
+match on such a binder (transitively), or a step binder of a data recursor
+whose scrutinee is such a sub-term. An unapplied self-reference is rejected.
+
+The measure names value parameters only. A call whose decreasing argument is an
+arithmetic term such as `sub m n` is rejected, because the checker tracks
+syntactic sub-terms, not arithmetic facts. A measured member may not be a
+member of a mutual block, and it may not also carry `{struct name}`.
+
+Evaluation places the guard on the first named parameter: the function unfolds
+only when that parameter is a constructor. A function whose first measured
+parameter stays neutral therefore stays stuck instead of unfolding.
 
 ## Inductive types and matching
 

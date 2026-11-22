@@ -167,11 +167,14 @@ The three soundness gaps in section 3 are closed:
    lift's result type are `Type 0`, and there is no `Quot.ind`. Covered by
    `doxa/test/quotient_test.dart`, `doxa_tooling/test/quotient_surface_test.dart`,
    and the `doxa_tooling/test/fixtures/quotient_pair.doxa` acceptance module.
-2. **Multi-parameter `termination_by`.** Every `termination_by` is
-   rejected before the recursion check can be skipped
-   (`TerminationByUnsupported`). Covered by
-   `doxa_tooling/test/wf_recursion_test.dart`, including the
-   multi-parameter and mutual-block cases.
+2. **Multi-parameter `termination_by`.** Replaced by a checked measure. The
+   annotation is now spelled `decreases (p1, ..., pn)` and names a
+   lexicographic tuple of value parameters under the strict sub-term order.
+   Every recursive call must decrease the tuple; the annotation is rejected
+   when it is empty, names a non-parameter or a duplicate, appears on a
+   non-recursive or mutual member, or is combined with `{struct name}`.
+   Arithmetic decreasing arguments such as `sub m n` are rejected. Covered by
+   `doxa_tooling/test/wf_recursion_test.dart`.
 3. **Typeclasses.** `typeclass` and `impl` declarations are rejected
    before registration (`TypeclassUnsupported`), so no class-constrained
    implicit can resolve silently. Covered by

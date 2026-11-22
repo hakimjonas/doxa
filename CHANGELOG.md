@@ -8,6 +8,12 @@ project is ready.
 
 **Kernel soundness**
 
+- Replaced the gated `termination_by` annotation with a checked
+  `decreases (p1, ..., pn)` lexicographic measure. Every recursive call must
+  decrease the named tuple under the strict sub-term order. Empty, duplicate,
+  unknown, non-recursive, mutual-block, and `{struct}` combinations are
+  rejected, and an arithmetic decreasing argument such as `sub m n` is
+  rejected because the checker tracks syntactic sub-terms only.
 - Replaced the `TType(0)` sentinel with an explicit unknown marker (#7).
 - Resolved top-level bindings during inductive index evaluation (#8).
 - Completed the match, induction, and tactic soundness pass (#10).

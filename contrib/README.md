@@ -25,7 +25,7 @@ if exists("b:current_syntax")
   finish
 endif
 
-syntax keyword doxaKeyword val fun data type match case returning import and by opaque rec struct termination_by where as typeclass impl theorem with
+syntax keyword doxaKeyword val fun data type match case returning import and by opaque rec struct decreases where as typeclass impl theorem with
 syntax keyword doxaType Type Prop SProp
 syntax match doxaNumber "\<[0-9]\+\>"
 syntax region doxaString start=+"+ skip=+\\"+ end=+"+
@@ -88,7 +88,7 @@ Minimal major mode for `doxa-mode`:
 (setq doxa-font-lock-keywords
       `((,(regexp-opt '("val" "fun" "data" "type" "match" "case"
                         "returning" "import" "and" "by" "opaque"
-                        "rec" "struct" "termination_by" "where"
+                        "rec" "struct" "decreases" "where"
                         "as" "typeclass" "impl" "theorem" "with")
                       'words)
          . font-lock-keyword-face)

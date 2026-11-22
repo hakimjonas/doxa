@@ -83,8 +83,8 @@ The publishing hold in [`AGENTS.md`](../AGENTS.md) stands.
 The declaration-boundary audit is closed. The remaining limits concern
 completeness. Solved metavariables are validated at the solve site, and the
 implemented rules are specified in [`SPEC.md`](../SPEC.md).
-Quotient construction, elimination, and soundness are checked; `termination_by`
-remains gated with a named diagnostic. The completeness limits are general
+Quotient construction, elimination, and soundness are checked; a lexicographic
+`decreases` measure is checked over named value parameters. The completeness limits are general
 pattern unification and indexed recursors beyond the current first-order
 refinement.
 
@@ -101,7 +101,8 @@ arguments, parameterised instances, superclasses with the derived parent
 dictionary, local dictionaries, and multi-parameter classes. Default method
 bodies are the remaining typeclass gap. Quotients have `mk`, `lift`, and
 `Quot.sound` over a checked relation, without a propositional eliminator;
-`termination_by` is gated.
+`decreases` checks a lexicographic measure over named value parameters, and an
+arithmetic decreasing argument such as `sub m n` is rejected.
 
 ### Useful
 
