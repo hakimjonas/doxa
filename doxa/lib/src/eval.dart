@@ -2777,6 +2777,36 @@ Object _drive(
           if (shape == null) {
             throw QuotSoundNeedsInjection(forceHeadMeta(ctx, expected));
           }
+          // The term caches the two carrier elements its injections
+          // wrap. They are the term's subject, so they must convert with
+          // the elements the expected equation names. A mismatch would
+          // let a checked term carry operands that do not belong to its
+          // type, and quoting it later would reproduce the wrong
+          // equation.
+          final lhsV = eval(term.lhs, ctx.env);
+          final rhsV = eval(term.rhs, ctx.env);
+          final lhsConv = conv(
+            ctx.level,
+            lhsV,
+            shape.lhs,
+            dataDecls: ctx.dataDecls,
+            metas: ctx.metas,
+            topBindings: ctx.env.topBindings,
+          );
+          if (lhsConv is ConvMismatch) {
+            throw TypeMismatch(lhsV, shape.lhs, lhsConv, level: ctx.level);
+          }
+          final rhsConv = conv(
+            ctx.level,
+            rhsV,
+            shape.rhs,
+            dataDecls: ctx.dataDecls,
+            metas: ctx.metas,
+            topBindings: ctx.env.topBindings,
+          );
+          if (rhsConv is ConvMismatch) {
+            throw TypeMismatch(rhsV, shape.rhs, rhsConv, level: ctx.level);
+          }
           // The witness must inhabit the relation on the two elements.
           check(
             ctx,
