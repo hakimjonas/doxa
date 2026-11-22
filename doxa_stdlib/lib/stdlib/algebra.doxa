@@ -1,5 +1,6 @@
-// Monoids and commutative monoids, with instances for `Nat` (addition and
-// multiplication) and `List` (append).
+// Monoids, commutative monoids, and additive groups, with instances for `Nat`
+// (addition and multiplication), `List` (append), and `Int` (addition and
+// negation).
 //
 // Additive and multiplicative structures are separate classes. The instance
 // table holds one dictionary per class and tuple of target heads, and search
@@ -9,13 +10,21 @@
 //
 // The laws are ordinary dictionary fields. A law field names the operation
 // projections declared before it, so `add_assoc` is stated over `add` and each
-// instance proves it over that instance's operation. `AddCommMonoid` and
-// `CommMonoid` embed their monoid as a superclass dictionary, so a constraint
-// `[A: AddCommMonoid]` supplies `AddMonoid A` by projection.
+// instance proves it over that instance's operation. `AddCommMonoid`,
+// `AddGroup`, and `CommMonoid` embed their monoid as a superclass dictionary,
+// so a constraint `[A: AddCommMonoid]` or `[A: AddGroup]` supplies
+// `AddMonoid A` by projection. The inverse field is `negate` because `neg` is
+// a constructor of `Int` and class methods are global projections.
+//
+// Rings are not part of this hierarchy. `Monoid` already declares `mul`,
+// `mone`, `mul_assoc`, `mul_one_left`, and `mul_one_right` as global
+// projections, so a `Ring` class beside it cannot redeclare those fields. The
+// `Int` multiplicative laws stay lemmas in `int.doxa` for a future ring class.
 //
 // `sum` folds a list with `add` and `azero`. `sumViaComm` takes the
 // commutative constraint and uses the same fold through the derived parent
-// dictionary.
+// dictionary. `double` and `negTwice` take the group constraint, and `double`
+// reaches `add` through the parent dictionary.
 import "int.doxa"
 
 import "proofs.doxa"

@@ -1,5 +1,16 @@
 // Integers: Int = Pos Nat | Neg Nat where Pos n = n, Neg n = -(n+1).
 // Zero is Pos zero, avoiding double representation of zero.
+//
+// Additive group lemmas: `intPlus_assoc`, `intPlus_zero_left`,
+// `intPlus_zero_right`, `intAdd_neg_left`, and `intAdd_neg_right`, with
+// `intPlus_comm`, `intNegAdd`, and `intNeg_neg` alongside. `algebra.doxa`
+// uses them for its `AddMonoid[Int]` and `AddGroup[Int]` instances.
+//
+// Multiplicative lemmas: `intMult_assoc`, `intMult_one_left`,
+// `intMult_one_right`, `intMul_add`, `intAdd_mul`, and `intMult_comm`. The
+// first five are the laws a ring instance needs; `intMult_comm` is the
+// commutativity law. This module has no ring class because `Monoid` in
+// `algebra.doxa` already owns the multiplication projections.
 import "bool.doxa"
 
 import "eq.doxa"

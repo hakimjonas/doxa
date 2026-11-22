@@ -74,8 +74,10 @@ and `package:` usage.
   instances with linear targets, constrained parameters with trailing
   dictionary arguments, and depth-bounded instance search. The standard
   library provides `Eqb` instances for `Nat`, `Bool`, and `List`, and the
-  algebra classes `AddMonoid`, `AddCommMonoid`, `Monoid`, and `CommMonoid`
-  with `Nat` and `List` instances plus `sum` and `sumViaComm`. Default method
+  algebra classes `AddMonoid`, `AddCommMonoid`, `AddGroup`, `Monoid`, and
+  `CommMonoid` with `Nat` and `List` instances, `AddMonoid[Int]` and
+  `AddGroup[Int]`, and `sum`, `sumViaComm`, `double`, and `negTwice`. There
+  is no ring class and no commutative group class. Default method
   bodies are not supported; see [`SPEC.md`](../SPEC.md#typeclasses).
 - Block expressions with `val` bindings
 - Tactics: `by { ... }` with `intro`, `exact`, `apply`, `refl`, `rewrite`,
