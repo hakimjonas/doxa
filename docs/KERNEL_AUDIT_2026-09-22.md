@@ -180,6 +180,16 @@ The three soundness gaps in section 3 are closed:
    implicit can resolve silently. Covered by
    `doxa/test/typeclass_test.dart`.
 
+4. **Tactic-block recursion blind spot.** The structural and measured checks
+   skipped `by` blocks, so a recursive call inside a block was invisible to
+   both. A call that was otherwise decreasing could grow inside a block, as
+   in `plus (f n_) (by { exact f (succ n) })`, and a function whose only call
+   was in a block crashed during the kernel check with an unbound `TTop`.
+   Both checkers now visit the block's embedded expressions, threading the
+   names the tactics introduce, and reject any reference to the function or a
+   block member with `RecursionInTacticBlock`. A block with no recursive
+   reference is accepted. Covered by `doxa_tooling/test/wf_recursion_test.dart`.
+
 Meta-solution handling is summarised in
 [`KERNEL_INVARIANTS.md`](KERNEL_INVARIANTS.md): solve-site validation and
 declaration-site evaluation are closed; the deeper-inlining gap and its

@@ -8,6 +8,13 @@ project is ready.
 
 **Kernel soundness**
 
+- Rejected recursive calls hidden inside `by` blocks. The structural and
+  measured recursion checks previously skipped tactic blocks, so a call that
+  grew inside a block could pass the check, and a function whose only call
+  was in a block crashed during the kernel check. Both checkers now scan the
+  block's embedded expressions with the names the tactics introduce and
+  report `RecursionInTacticBlock`. A block with no recursive reference is
+  still accepted.
 - Replaced the gated `termination_by` annotation with a checked
   `decreases (p1, ..., pn)` lexicographic measure. Every recursive call must
   decrease the named tuple under the strict sub-term order. Empty, duplicate,
