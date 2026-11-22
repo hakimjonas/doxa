@@ -4,6 +4,7 @@ import 'package:doxa/src/elab.dart';
 import 'package:doxa/src/env.dart';
 import 'package:doxa/src/eval.dart';
 import 'package:doxa/src/parse.dart';
+import 'package:doxa/src/prelude.dart';
 import 'package:doxa/src/surface.dart';
 import 'package:doxa/src/term.dart';
 import 'package:doxa/src/value.dart';
@@ -134,6 +135,82 @@ final DataDecl _vecDecl = DataDecl(
 
 List<DataDecl> _natDataDecls() => [_natDecl];
 
+/// The prelude's declarations (`Eq`, `Acc`) plus `Nat`: the registry a
+/// quotient test needs.
+List<DataDecl> _natEqDecls() => [...loadPrelude().dataDecls, _natDecl];
+
+/// A context with `Nat` and `Eq` registered and no binders.
+Ctx _natEqCtx() =>
+    CNil.withRegistries(dataDecls: _natEqDecls(), topBindings: const {});
+
+/// A top environment with `Nat` and `Eq` registered and no bindings.
+TopEnv _natEnv() => TopEnv(const [], _natEqDecls(), const {}, const {});
+
+/// The relation `(a: Nat) => (b: Nat) => Eq Nat a b`, as a term.
+Term _natRelTerm() => const TLam(
+  TData('Nat', <Term>[]),
+  TLam(
+    TData('Nat', <Term>[]),
+    TData('Eq', [TData('Nat', <Term>[]), TBound(1), TBound(0)]),
+  ),
+);
+
+/// The relation `(a: Nat) => (b: Nat) => Eq Nat a b`, as a value.
+Value _natRel() => eval(
+  const TLam(
+    TData('Nat', <Term>[]),
+    TLam(
+      TData('Nat', <Term>[]),
+      TData('Eq', [TData('Nat', <Term>[]), TBound(1), TBound(0)]),
+    ),
+  ),
+  ENil.withRegistries(dataDecls: _natEqDecls(), topBindings: const {}),
+);
+
+/// `Quot(Nat, rel)`, as a value.
+Value _natQuot() => VQuot(const VData('Nat', <Value>[]), _natRel());
+
+/// `mk (zero: Nat)`, as a value.
+const Value _mkZero = VQuotMk(VConstr('Nat', 'zero', <Value>[]));
+
+/// `refl Nat zero : Eq Nat zero zero`.
+Term _natRefl() => const TConstr('Eq', 'refl', [
+  TData('Nat', <Term>[]),
+  TConstr('Nat', 'zero', []),
+]);
+
+/// `(x: Nat) -> (y: Nat) -> R x y -> Eq Nat x y`, with [proofBody] as the
+/// innermost proof. `TBound(0)` is `h : R x y`, which is the expected
+/// equation, so passing it through is the identity compatibility proof.
+Term _natCompatProof(Term proofBody) => TLam(
+  const TData('Nat', <Term>[]),
+  TLam(
+    const TData('Nat', <Term>[]),
+    TLam(
+      const TData('Eq', [TData('Nat', <Term>[]), TBound(1), TBound(0)]),
+      proofBody,
+    ),
+  ),
+);
+
+/// `Quot(Nat, rel) -> Nat`, as a value.
+Value _natLiftType() => eval(
+  const TPi(
+    TQuot(
+      TData('Nat', <Term>[]),
+      TLam(
+        TData('Nat', <Term>[]),
+        TLam(
+          TData('Nat', <Term>[]),
+          TData('Eq', [TData('Nat', <Term>[]), TBound(1), TBound(0)]),
+        ),
+      ),
+    ),
+    TData('Nat', <Term>[]),
+  ),
+  ENil.withRegistries(dataDecls: _natEqDecls(), topBindings: const {}),
+);
+
 List<DataDecl> _vecDataDecls() => [_vecDecl];
 
 // ---------------------------------------------------------------------------
@@ -162,17 +239,17 @@ void main() {
       expect((v as VQuotMk).arg, isA<VType>());
     });
 
-    test('lift ι-reduction via eval of TQuotLift', () {
-      final v = eval(
-        const TQuotLift(
-          TQuotMk(TType(LLevel(0))),
-          TLam(TType(LLevel(0)), TBound(0)),
-          TProp(),
-        ),
+    test('lift applies to an injection by ι-reduction', () {
+      // `lift f h` evaluates to a function value; applying it to `mk a`
+      // computes `f a`. The compatibility proof is not consulted.
+      final liftV = eval(
+        const TQuotLift(TLam(TType(LLevel(0)), TBound(0)), TProp()),
         const ENil(),
       );
-      expect(v, isA<VType>());
-      expect((v as VType).level, equals(const LLevel(0)));
+      expect(liftV, isA<VQuotLift>());
+      final applied = apply(liftV, const VQuotMk(VType(LLevel(0))));
+      expect(applied, isA<VType>());
+      expect((applied as VType).level, equals(const LLevel(0)));
     });
 
     test('VQuotMk not definitionally equal for different args', () {
@@ -189,6 +266,15 @@ void main() {
       expect(conv(0, const VQuotMk(arg), const VQuotMk(arg)), isA<ConvOk>());
     });
 
+    test('VQuotMk equal args compare structurally, not by identity', () {
+      // Two separately evaluated but equal arguments are distinct objects;
+      // conversion descends into them rather than testing identity.
+      final a1 = eval(const TConstr('Nat', 'zero', []), const ENil());
+      final a2 = eval(const TConstr('Nat', 'zero', []), const ENil());
+      expect(identical(a1, a2), isFalse);
+      expect(conv(0, VQuotMk(a1), VQuotMk(a2)), isA<ConvOk>());
+    });
+
     test('round-trip eval -> quote -> eval', () {
       const t = TQuot(
         TType(LLevel(0)),
@@ -202,23 +288,23 @@ void main() {
 
     test('neutral QuotLift stays stuck and quotes correctly', () {
       const stuck = VQuotLift(
-        VNeutral(NVar(0)),
         VLam(VType(LLevel(0)), Closure(ENil(), TBound(0))),
         VProp(),
       );
       expect(quote(1, stuck), isA<TQuotLift>());
     });
 
-    test('stuck QuotLift creates neutral when applied', () {
-      final result = apply(
-        const VQuotLift(
-          VNeutral(NVar(0)),
-          VLam(VType(LLevel(0)), Closure(ENil(), TBound(0))),
-          VProp(),
-        ),
-        const VType(LLevel(0)),
+    test('a stuck lift applied to a neutral keeps the lift as its head', () {
+      const liftV = VQuotLift(
+        VLam(VType(LLevel(0)), Closure(ENil(), TBound(0))),
+        VProp(),
       );
+      final result = apply(liftV, const VNeutral(NVar(0)));
       expect(result, isA<VNeutral>());
+      final quoted = quote(1, result);
+      // `lift f h q`, not `f q`: the head is the lift itself.
+      expect(quoted, isA<TApp>());
+      expect((quoted as TApp).fn, isA<TQuotLift>());
     });
 
     test('VQuot carriers compare structurally in conv', () {
@@ -244,65 +330,202 @@ void main() {
     });
 
     test('TQuot infers as VType', () {
-      const q = TQuot(
-        TType(LLevel(0)),
-        TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())),
-      );
-      const ctx = CNil.withRegistries(dataDecls: [], topBindings: {});
-      expect(infer(ctx, q), isA<VType>());
+      final q = TQuot(const TData('Nat', <Term>[]), _natRelTerm());
+      expect(infer(_natEqCtx(), q), isA<VType>());
     });
 
     test('TQuotMk is rejected in infer mode', () {
-      const ctx = CNil.withRegistries(dataDecls: [], topBindings: {});
       expect(
-        () => infer(ctx, const TQuotMk(TType(LLevel(0)))),
-        throwsA(
-          isA<QuotientTermUnsupported>().having(
-            (e) => e.term,
-            'term',
-            'Quot.mk',
-          ),
-        ),
+        () => infer(_natEqCtx(), const TQuotMk(TConstr('Nat', 'zero', []))),
+        throwsA(isA<QuotMkInInferMode>()),
       );
     });
 
-    test('TQuotMk is rejected in check mode', () {
-      const ctx = CNil.withRegistries(dataDecls: [], topBindings: {});
+    test('TQuotMk checks against a quotient type', () {
       expect(
-        () =>
-            check(ctx, const TQuotMk(TType(LLevel(0))), const VType(LLevel(0))),
-        throwsA(isA<QuotientTermUnsupported>()),
+        check(
+          _natEqCtx(),
+          const TQuotMk(TConstr('Nat', 'zero', [])),
+          _natQuot(),
+        ),
+        isA<VQuot>(),
+      );
+    });
+
+    test('TQuotMk against a non-quotient expected type is rejected', () {
+      expect(
+        () => check(
+          _natEqCtx(),
+          const TQuotMk(TConstr('Nat', 'zero', [])),
+          const VData('Nat', <Value>[]),
+        ),
+        throwsA(isA<NotAQuotient>()),
+      );
+    });
+
+    test('TQuotMk rejects an element outside the carrier', () {
+      expect(
+        () => check(
+          _natEqCtx(),
+          const TQuotMk(TConstr('Nat', 'succ', [TData('Nat', <Term>[])])),
+          VQuot(const VData('Bool', <Value>[]), _natRel()),
+        ),
+        throwsA(isA<TypeMismatch>()),
       );
     });
 
     test('infer TQuot rejects non-sort carrier', () {
       const q = TQuot(
         TLam(TType(LLevel(0)), TBound(0)),
-        TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())),
+        TLam(TType(LLevel(0)), TLam(TType(LLevel(0)), TProp())),
       );
-      const ctx = CNil.withRegistries(dataDecls: [], topBindings: {});
-      expect(() => infer(ctx, q), throwsA(isA<NotAType>()));
+      expect(() => infer(_natEqCtx(), q), throwsA(isA<NotAType>()));
     });
 
-    test('infer TQuotLift rejects the term before inspecting any subterm', () {
-      // The quotient operand is an out-of-scope `TBound(7)`. If the
-      // kernel inferred it, it would abort on the index. The
-      // rejection has to come first.
-      const t = TQuotLift(
-        TBound(7),
-        TLam(TType(LLevel(0)), TBound(0)),
-        TProp(),
-      );
-      const ctx = CNil.withRegistries(dataDecls: [], topBindings: {});
+    test('infer TQuot rejects a relation that is not a relation', () {
+      // `Type` is a sort, not a binary relation on `Nat`.
       expect(
-        () => infer(ctx, t),
-        throwsA(
-          isA<QuotientTermUnsupported>().having(
-            (e) => e.term,
-            'term',
-            'Quot.lift',
+        () => infer(
+          _natEqCtx(),
+          const TQuot(TData('Nat', <Term>[]), TType(LLevel(0))),
+        ),
+        throwsA(isA<TypeMismatch>()),
+      );
+    });
+
+    test('TQuotLift is rejected in infer mode', () {
+      expect(
+        () => infer(
+          _natEqCtx(),
+          const TQuotLift(TLam(TData('Nat', <Term>[]), TBound(0)), TProp()),
+        ),
+        throwsA(isA<QuotLiftInInferMode>()),
+      );
+    });
+
+    test('TQuotLift checks against a function from a quotient', () {
+      // `lift (n => n) (x => y => h => h) : Quot(Nat, rel) -> Nat`.
+      final expected = _natLiftType();
+      final term = TQuotLift(
+        const TLam(TData('Nat', <Term>[]), TBound(0)),
+        _natCompatProof(const TBound(0)),
+      );
+      expect(check(_natEqCtx(), term, expected), isA<VPi>());
+    });
+
+    test('a lift function that does not respect the relation is rejected', () {
+      // `const zero` sends both classes to zero, so it needs
+      // `Eq Nat zero zero` from a relation proof it does not have.
+      final term = TQuotLift(
+        const TLam(TData('Nat', <Term>[]), TConstr('Nat', 'zero', [])),
+        _natCompatProof(const TBound(0)),
+      );
+      expect(
+        () => check(_natEqCtx(), term, _natLiftType()),
+        throwsA(isA<QuotFnNotRespectingRelation>()),
+      );
+    });
+
+    test('TQuotLift against a non-function expected type is rejected', () {
+      expect(
+        () => check(
+          _natEqCtx(),
+          const TQuotLift(TLam(TData('Nat', <Term>[]), TBound(0)), TProp()),
+          const VData('Nat', <Value>[]),
+        ),
+        throwsA(isA<NotAFunction>()),
+      );
+    });
+
+    test('TQuotLift against a function not from a quotient is rejected', () {
+      expect(
+        () => check(
+          _natEqCtx(),
+          const TQuotLift(TLam(TData('Nat', <Term>[]), TBound(0)), TProp()),
+          eval(
+            const TPi(TData('Nat', <Term>[]), TData('Nat', <Term>[])),
+            ENil.withRegistries(
+              dataDecls: _natEqDecls(),
+              topBindings: const {},
+            ),
           ),
         ),
+        throwsA(isA<NotAQuotient>()),
+      );
+    });
+
+    test('TQuotSound checks against an equality of injections', () {
+      final term = TQuotSound(
+        const TConstr('Nat', 'zero', []),
+        const TConstr('Nat', 'zero', []),
+        _natRefl(),
+      );
+      final expected = VData('Eq', [_natQuot(), _mkZero, _mkZero]);
+      expect(check(_natEqCtx(), term, expected), isA<VData>());
+    });
+
+    test('TQuotSound is rejected in infer mode', () {
+      expect(
+        () => infer(
+          _natEqCtx(),
+          TQuotSound(
+            const TConstr('Nat', 'zero', []),
+            const TConstr('Nat', 'zero', []),
+            _natRefl(),
+          ),
+        ),
+        throwsA(isA<QuotSoundInInferMode>()),
+      );
+    });
+
+    test('TQuotSound against a non-equality is rejected', () {
+      expect(
+        () => check(
+          _natEqCtx(),
+          TQuotSound(
+            const TConstr('Nat', 'zero', []),
+            const TConstr('Nat', 'zero', []),
+            _natRefl(),
+          ),
+          const VData('Nat', <Value>[]),
+        ),
+        throwsA(isA<QuotSoundNeedsInjection>()),
+      );
+    });
+
+    test('TQuotSound with a witness of the wrong relation is rejected', () {
+      // The expected relation is `Eq Nat zero zero`; this witness proves
+      // `Eq Nat (succ zero) (succ zero)`.
+      const term = TQuotSound(
+        TConstr('Nat', 'zero', []),
+        TConstr('Nat', 'zero', []),
+        TConstr('Eq', 'refl', [
+          TData('Nat', <Term>[]),
+          TConstr('Nat', 'succ', [TData('Nat', <Term>[])]),
+        ]),
+      );
+      final expected = VData('Eq', [_natQuot(), _mkZero, _mkZero]);
+      expect(
+        () => check(_natEqCtx(), term, expected),
+        throwsA(isA<TypeMismatch>()),
+      );
+    });
+
+    test('VQuotSound proofs are definitionally equal by irrelevance', () {
+      final ctx = _natEqCtx();
+      final soundV = eval(
+        TQuotSound(
+          const TConstr('Nat', 'zero', []),
+          const TConstr('Nat', 'zero', []),
+          _natRefl(),
+        ),
+        ctx.env,
+      );
+      // A different proof of the same proposition: `refl`.
+      final reflV = eval(_natRefl(), ctx.env);
+      expect(
+        conv(ctx.level, soundV, reflV, dataDecls: ctx.dataDecls),
+        isA<ConvOk>(),
       );
     });
 
@@ -329,34 +552,46 @@ void main() {
     // --- Elaboration tests ---
 
     test('elaborate Quot expression', () {
-      final e = _parse('Quot(Type, (a: Type) -> (b: Type) -> Prop)');
-      final term = elabExpr(TopEnv.empty, e);
+      final e = _parse('Quot(Nat, (a: Nat) => (b: Nat) => Eq Nat a b)');
+      final term = elabExpr(_natEnv(), e);
       expect(term, isA<TQuot>());
       final tq = term as TQuot;
-      expect(tq.carrier, isA<TType>());
-      expect(tq.relation, isA<TPi>());
+      expect(tq.carrier, isA<TData>());
+      expect(tq.relation, isA<TLam>());
     });
 
     test('elaborate and infer Quot type', () {
-      final e = _parse('Quot(Type, (a: Type) -> (b: Type) -> Prop)');
-      final term = elabExpr(TopEnv.empty, e);
-      final ctx = TopEnv.empty.toCtx();
-      expect(infer(ctx, term), isA<VType>());
+      final e = _parse('Quot(Nat, (a: Nat) => (b: Nat) => Eq Nat a b)');
+      final env = _natEnv();
+      final term = elabExpr(env, e);
+      expect(infer(env.toCtx(), term), isA<VType>());
     });
 
-    test('elaborate mk expression is rejected', () {
+    test('elaborating mk without an expected type names the form', () {
       final e = _parse('mk Type');
       expect(
         () => elabExpr(TopEnv.empty, e),
-        throwsA(isA<QuotientUnsupported>()),
+        throwsA(
+          isA<QuotientNeedsExpectedType>().having(
+            (err) => err.form,
+            'form',
+            'mk',
+          ),
+        ),
       );
     });
 
-    test('elaborate lift expression is rejected', () {
+    test('elaborating lift without an expected type names the form', () {
       final e = _parse('lift(Type, (x: Type) => x)');
       expect(
         () => elabExpr(TopEnv.empty, e),
-        throwsA(isA<QuotientUnsupported>()),
+        throwsA(
+          isA<QuotientNeedsExpectedType>().having(
+            (err) => err.form,
+            'form',
+            'lift',
+          ),
+        ),
       );
     });
 
@@ -375,7 +610,9 @@ void main() {
     test(
       'Quot.lift into Type with Prop carrier succeeds (quotients are Type-sorted)',
       () {
-        const q = TQuot(TProp(), TPi(TProp(), TPi(TProp(), TProp())));
+        // `(a: Prop) => (b: Prop) => a` is Prop-valued, so it is a
+        // relation on Prop.
+        const q = TQuot(TProp(), TLam(TProp(), TLam(TProp(), TBound(1))));
         const ctx = CNil.withRegistries(dataDecls: [], topBindings: {});
         final qType = infer(ctx, q);
         expect(qType, isA<VType>());
@@ -387,51 +624,43 @@ void main() {
     test(
       'Quot with Prop carrier is Type-sorted, not Prop-sorted (Lean 3 fix is architectural)',
       () {
-        const q = TQuot(TProp(), TPi(TProp(), TPi(TProp(), TProp())));
+        const q = TQuot(TProp(), TLam(TProp(), TLam(TProp(), TBound(1))));
         const ctx = CNil.withRegistries(dataDecls: [], topBindings: {});
         final qType = infer(ctx, q);
         expect(qType, isA<VType>());
+        expect((qType as VType).level, equals(const LLevel(1)));
 
-        const q2 = TQuot(
-          TType(LLevel(0)),
-          TPi(TType(LLevel(0)), TPi(TType(LLevel(0)), TProp())),
-        );
-        final q2Type = infer(ctx, q2);
-        expect(q2Type, isA<VType>());
-        // Type(0) sorts at Type 1, so the quotient also sorts at Type 1.
-        expect((q2Type as VType).level, equals(const LLevel(1)));
+        // A Type-0 carrier keeps the quotient at Type 0.
+        final q2 = TQuot(const TData('Nat', <Term>[]), _natRelTerm());
+        final q2Type = infer(_natEqCtx(), q2);
+        expect((q2Type as VType).level, equals(const LLevel(0)));
       },
     );
 
-    test('TQuotLift with a VQuot-typed quot and arbitrary proof is rejected '
-        'in infer mode', () {
-      // A well-formed quotient binder, a proper function, and an
-      // arbitrary compatibility proof. The elimination is rejected
-      // because the kernel cannot check the proof, not because the
-      // shape is wrong.
-      const base = CNil.withRegistries(dataDecls: [], topBindings: {});
-      const env = ENil.withRegistries(dataDecls: [], topBindings: {});
-      final ctx = CCons(
-        const VQuot(VType(LLevel(0)), VProp()),
-        const VNeutral(NVar(0)),
-        env.extend(const VNeutral(NVar(0))),
-        1,
-        base,
+    test('a lift whose function does not respect the relation is rejected '
+        'in check mode', () {
+      // A well-formed quotient, a function that ignores its argument, and
+      // a proof that does not establish the required equation.
+      final ctx = _natEqCtx();
+      const term = TQuotLift(
+        TLam(TData('Nat', <Term>[]), TConstr('Nat', 'zero', [])),
+        TLam(TData('Nat', <Term>[]), TLam(TData('Nat', <Term>[]), TProp())),
       );
-      const q = TQuotLift(
-        TBound(0),
-        TLam(TType(LLevel(0)), TType(LLevel(0))),
-        TProp(),
+      expect(
+        () => check(ctx, term, _natLiftType()),
+        throwsA(isA<QuotFnNotRespectingRelation>()),
       );
-      expect(() => infer(ctx, q), throwsA(isA<QuotientTermUnsupported>()));
     });
 
-    test('TQuotLift is rejected in check mode', () {
-      const ctx = CNil.withRegistries(dataDecls: [], topBindings: {});
-      const q = TQuotLift(TBound(7), TType(LLevel(0)), TType(LLevel(0)));
+    test('TQuotLift checked against a non-function is rejected', () {
+      final ctx = _natEqCtx();
+      final term = TQuotLift(
+        const TLam(TData('Nat', <Term>[]), TBound(0)),
+        _natCompatProof(const TBound(0)),
+      );
       expect(
-        () => check(ctx, q, const VType(LLevel(0))),
-        throwsA(isA<QuotientTermUnsupported>()),
+        () => check(ctx, term, const VData('Nat', <Value>[])),
+        throwsA(isA<NotAFunction>()),
       );
     });
 

@@ -45,8 +45,9 @@ bool hasMeta(Term t) => switch (t) {
   TQuot(:final carrier, :final relation) =>
     hasMeta(carrier) || hasMeta(relation),
   TQuotMk(:final arg) => hasMeta(arg),
-  TQuotLift(:final quot, :final fn, :final proof) =>
-    hasMeta(quot) || hasMeta(fn) || hasMeta(proof),
+  TQuotLift(:final fn, :final proof) => hasMeta(fn) || hasMeta(proof),
+  TQuotSound(:final lhs, :final rhs, :final proof) =>
+    hasMeta(lhs) || hasMeta(rhs) || hasMeta(proof),
   TType() ||
   TUnknown() ||
   TProp() ||
