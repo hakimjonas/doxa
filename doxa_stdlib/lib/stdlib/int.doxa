@@ -1729,7 +1729,7 @@ val intMultAssocPos: (n: Nat)
       })
     b
 
-val intMultAssoc: (a: Int)
+val intMult_assoc: (a: Int)
 -> (b: Int) -> (c: Int) -> Eq Int (intMult (intMult a b) c) (intMult a (intMult b c)) =
   (a: Int) => Int.ind
     ((x: Int) => (b: Int) -> (c: Int) -> Eq Int (intMult (intMult x b) c) (intMult x (intMult b c)))
@@ -1786,7 +1786,7 @@ val intMultAssoc: (a: Int)
     a
 // --- Distributivity -------------------------------------------------------
 
-val intAddMul: (a: Int)
+val intAdd_mul: (a: Int)
 -> (b: Int) -> (c: Int) -> Eq Int (intMult a (intPlus b c)) (intPlus (intMult a b) (intMult a c)) =
   (a: Int) => Int.ind
     ((x: Int) => (b: Int)
@@ -1864,7 +1864,7 @@ val intAddMul: (a: Int)
       })
     a
 
-val intMultComm: (a: Int) -> (b: Int) -> Eq Int (intMult a b) (intMult b a) =
+val intMult_comm: (a: Int) -> (b: Int) -> Eq Int (intMult a b) (intMult b a) =
   (a: Int) => Int.ind
     ((x: Int) => (y: Int) -> Eq Int (intMult x y) (intMult y x))
     ((n: Nat) => (y: Int) => Int.ind
@@ -1925,11 +1925,16 @@ val intMultComm: (a: Int) -> (b: Int) -> Eq Int (intMult a b) (intMult b a) =
       y)
     a
 
-val intMulAdd: (a: Int)
+val intMul_add: (a: Int)
 -> (b: Int) -> (c: Int) -> Eq Int (intMult (intPlus a b) c) (intPlus (intMult a c) (intMult b c)) =
   (a: Int) => (b: Int) => (c: Int) => {
-    val e1: Eq Int (intMult (intPlus a b) c) (intMult c (intPlus a b)) = intMultComm (intPlus a b) c;
-    val e2: Eq Int (intMult c (intPlus a b)) (intPlus (intMult c a) (intMult c b)) = intAddMul c a b;
+    val e1: Eq Int (intMult (intPlus a b) c) (intMult c (intPlus a b)) = intMult_comm
+      (intPlus a b)
+      c;
+    val e2: Eq Int (intMult c (intPlus a b)) (intPlus (intMult c a) (intMult c b)) = intAdd_mul
+      c
+      a
+      b;
     val e3: Eq Int (intPlus (intMult c a) (intMult c b)) (intPlus (intMult a c) (intMult b c)) = trans_e
       Int
       (intPlus (intMult c a) (intMult c b))
@@ -1941,14 +1946,14 @@ val intMulAdd: (a: Int)
         ((t: Int) => intPlus t (intMult c b))
         (intMult c a)
         (intMult a c)
-        (sym_e Int (intMult a c) (intMult c a) (intMultComm a c)))
+        (sym_e Int (intMult a c) (intMult c a) (intMult_comm a c)))
       (cong_e
         Int
         Int
         ((t: Int) => intPlus (intMult a c) t)
         (intMult c b)
         (intMult b c)
-        (sym_e Int (intMult b c) (intMult c b) (intMultComm b c)));
+        (sym_e Int (intMult b c) (intMult c b) (intMult_comm b c)));
     trans_e
       Int
       (intMult (intPlus a b) c)
@@ -1968,7 +1973,7 @@ val intMulAdd: (a: Int)
 val intOneMult: (n: Nat) -> Eq Nat (succ zero * n) n =
   (n: Nat) => trans_e Nat (succ zero * n) (n * succ zero) n (mult_comm (succ zero) n) (mult_one n)
 
-val intMultOneLeft: (a: Int) -> Eq Int (intMult (pos (succ zero)) a) a =
+val intMult_one_left: (a: Int) -> Eq Int (intMult (pos (succ zero)) a) a =
   Int.ind
     ((x: Int) => Eq Int (intMult (pos (succ zero)) x) x)
     ((n: Nat) => cong_e Nat Int ((t: Nat) => pos t) (succ zero * n) n (intOneMult n))
@@ -1986,7 +1991,7 @@ val intMultOneLeft: (a: Int) -> Eq Int (intMult (pos (succ zero)) a) a =
         (mult_comm (succ zero) (succ n))
         (mult_one (succ n))))
 
-val intMultOneRight: (a: Int) -> Eq Int (intMult a (pos (succ zero))) a =
+val intMult_one_right: (a: Int) -> Eq Int (intMult a (pos (succ zero))) a =
   Int.ind
     ((x: Int) => Eq Int (intMult x (pos (succ zero))) x)
     ((n: Nat) => cong_e Nat Int ((t: Nat) => pos t) (n * succ zero) n (mult_one n))
