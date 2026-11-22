@@ -37,6 +37,10 @@
 7. Format `format.doxa`, verify the resulting layout, then undo the edit.
 8. Check Outline, folding, completion, signature help, and semantic
    highlighting in `main.doxa` and `dependency.doxa`.
+9. In `operators.doxa`, `->`, `=>`, `<=`, `==`, `+`, and `*` must be colored
+   as operators. The same operators in the header comment must keep the
+   comment color. Type a string such as `"-> => <= == + *"` on a blank line:
+   the operators must keep the string color. Undo the edit.
 
 ## Imported unsaved text
 
