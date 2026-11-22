@@ -1,0 +1,9 @@
+// Consumer of the stdlib additive group, checked through the CLI. `double`
+// reaches `add` through the `AddGroup` superclass dictionary and `negTwice`
+// composes the inverse twice, so both `refl` proofs run on the `Int` instance.
+import "../../../doxa_stdlib/lib/stdlib/algebra.doxa"
+
+val double_one: Eq Int (double Int (pos (succ zero))) (pos (succ (succ zero))) =
+  refl (pos (succ (succ zero)))
+
+val negTwice_zero: Eq Int (negTwice Int (pos zero)) (pos zero) = refl (pos zero)

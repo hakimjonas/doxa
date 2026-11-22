@@ -106,3 +106,7 @@ fun sum[A: AddMonoid](xs: List A): A = match xs {
 }
 
 fun sumViaComm[A: AddCommMonoid](xs: List A): A = sum A xs
+
+fun double[A: AddGroup](x: A): A = add x x
+
+fun negTwice[A: AddGroup](x: A): A = negate (negate x)
