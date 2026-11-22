@@ -2936,12 +2936,18 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
         // type is unknown, not `Type 0`.
         Value builtV = const VUnknown();
         if (headVAsPi != null) {
-          final argV = eval(argT, state.ctx.env);
+          final metas = state.ctx.metas;
+          final argKey = eval(argT, state.ctx.env);
+          final argV =
+              metas == null
+                  ? argKey
+                  : forceMetaHead(argKey, metas, state.ctx.env.topBindings);
+          final codEnv =
+              metas == null
+                  ? headVAsPi.codomain.env
+                  : forceEnvMetaHeads(headVAsPi.codomain.env, metas);
           try {
-            builtV = eval(
-              headVAsPi.codomain.body,
-              headVAsPi.codomain.env.extend(argV),
-            );
+            builtV = eval(headVAsPi.codomain.body, codEnv.extend(argV));
           } on StateError catch (_) {
             // The codomain eval failed — the VPi was built at a
             // different env depth.  Use the current elaboration env
@@ -3178,7 +3184,11 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
       if (shape == null) {
         throw QuotSoundNeedsInjection(forceHeadMeta(state.ctx, expected));
       }
-      final relationV = apply(apply(shape.quot.relation, shape.lhs), shape.rhs);
+      final relationV = apply(
+        apply(shape.quot.relation, shape.lhs, state.ctx.dataDecls),
+        shape.rhs,
+        state.ctx.dataDecls,
+      );
       final proofT = _checkExpr(state, proof, relationV);
       return TQuotSound(
         quote(state.ctx.level, shape.lhs),

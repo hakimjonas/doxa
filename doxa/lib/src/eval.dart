@@ -3614,7 +3614,26 @@ Object _drive(
           case _InferAppHaveArgV(:final cod):
             // `value` is the evaluated argument. Evaluate the codomain
             // body in the closure's env extended with the arg.
-            step = _Eval(cod.body, cod.env.extend(value));
+            //
+            // The argument was checked against the domain just before
+            // this point, and that check may have solved metavariables
+            // the closure's env captured (the implicit arguments of the
+            // head, for example). Evaluation does not consult the
+            // meta-context, so an entry still holding a solved meta's
+            // neutral would reduce to a stuck form: for `cong f p`, the
+            // codomain `Eq B (f x) (f y)` would evaluate `f ?x` before
+            // `?x` is visible, and a lift's ι rule cannot fire on the
+            // neutral. Force the solved heads in the env and on the
+            // argument first, so the codomain sees the solutions.
+            if (metas == null) {
+              step = _Eval(cod.body, cod.env.extend(value));
+            } else {
+              final argV = _forceMetaHead(value, metas, cod.env.topBindings);
+              step = _Eval(
+                cod.body,
+                _forceEnvMetas(cod.env, metas).extend(argV),
+              );
+            }
 
           case _InferProjFieldType(
             :final fieldName,
@@ -6459,6 +6478,18 @@ Value forceHeadMeta(Ctx ctx, Value value) {
   if (metas == null) return value;
   return _forceMetaHead(value, metas, ctx.env.topBindings);
 }
+
+/// Force solved metavariable heads on every entry of [env].
+///
+/// A closure captures the environment its body was elaborated under. When
+/// that environment holds an inserted implicit argument as a metavariable,
+/// a later argument's type check can solve the meta while the captured entry
+/// still points at the neutral. Evaluation does not consult the meta-context,
+/// so a body evaluated under the stale entry gets stuck where the solution
+/// would have reduced. The elaborator's application path forces the codomain
+/// environment before evaluating the result type for the same reason the
+/// kernel's `_Infer(TApp)` does.
+Env forceEnvMetaHeads(Env env, MetaContext metas) => _forceEnvMetas(env, metas);
 
 /// If [v] is `VNeutral` whose spine ends in an `NMeta` head, return
 /// `(id, spine)` where spine is in leftmost-first order (first-applied
