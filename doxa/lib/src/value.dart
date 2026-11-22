@@ -344,37 +344,50 @@ final class VQuot extends Value {
 
 /// A quotient element value: `Quot.mk(a)`.
 ///
-/// The value-level image of [TQuotMk]. The checker rejects the term
-/// (`QuotientTermUnsupported`), so this value is reachable only through
-/// [eval] on kernel terms that bypass checking. Internal until the
-/// quotient elimination is completed.
+/// The value-level image of [TQuotMk]. Two injections are definitionally
+/// equal when their arguments are; the relation does not enter conversion
+/// (only the propositional `Quot.sound` does).
 final class VQuotMk extends Value {
-  /// The field.
+  /// The injected element.
   final Value arg;
 
-  /// The field.
+  /// Creates a quotient injection value.
   const VQuotMk(this.arg);
 }
 
-/// A stuck quotient lift (waiting for the quot argument to become VQuotMk).
-/// Once the quot is canonical, ι-reduction fires: lift(mk(a), f, proof) → f(a).
+/// The induced map of a quotient elimination, `Quot.lift(f, proof)`,
+/// waiting for its quotient argument.
 ///
-/// The value-level image of [TQuotLift]. The checker rejects the term
-/// (`QuotientTermUnsupported`), so this value is reachable only through
-/// [eval] on kernel terms that bypass checking. Internal until the
-/// quotient elimination is completed.
+/// The value-level image of [TQuotLift]. Applying it to a [VQuotMk]
+/// computes `f(a)`; applied to anything else it stays stuck with this value
+/// as the neutral head.
 final class VQuotLift extends Value {
-  /// The field.
-  final Value quot;
-
-  /// The field.
+  /// The function on the carrier.
   final Value fn;
 
-  /// The field.
+  /// The compatibility proof.
   final Value proof;
 
-  /// The field.
-  const VQuotLift(this.quot, this.fn, this.proof);
+  /// Creates a quotient elimination value.
+  const VQuotLift(this.fn, this.proof);
+}
+
+/// A quotient soundness proof value: the image of [TQuotSound].
+///
+/// The value is opaque: it never reduces, and as a proof of a proposition it
+/// takes the generic proof-irrelevance path in conversion.
+final class VQuotSound extends Value {
+  /// The left injection.
+  final Value lhs;
+
+  /// The right injection.
+  final Value rhs;
+
+  /// The proof that the relation holds.
+  final Value proof;
+
+  /// Creates a quotient soundness value.
+  const VQuotSound(this.lhs, this.rhs, this.proof);
 }
 
 /// A β-redex whose reduction is deferred until a driver operation

@@ -160,9 +160,12 @@ class _Printer {
           '${term(relation, _precTop, depth: depth - 1)})',
     TQuotMk(:final arg) =>
       'Quot.mk(${term(arg, _precAppArg, depth: depth - 1)})',
-    TQuotLift(:final quot, :final fn, :final proof) =>
-      'Quot.lift(${term(quot, _precAppArg, depth: depth - 1)}, '
-          '${term(fn, _precAppArg, depth: depth - 1)}, '
+    TQuotLift(:final fn, :final proof) =>
+      'Quot.lift(${term(fn, _precAppArg, depth: depth - 1)}, '
+          '${term(proof, _precAppArg, depth: depth - 1)})',
+    TQuotSound(:final lhs, :final rhs, :final proof) =>
+      'Quot.sound(${term(lhs, _precAppArg, depth: depth - 1)}, '
+          '${term(rhs, _precAppArg, depth: depth - 1)}, '
           '${term(proof, _precAppArg, depth: depth - 1)})',
     TProj(:final expr, :final fieldName) =>
       '${term(expr, _precAppArg, depth: depth - 1)}.$fieldName',
@@ -415,7 +418,9 @@ bool _refBound(Term t, int depth) => switch (t) {
   TQuot(:final carrier, :final relation) =>
     _refBound(carrier, depth) || _refBound(relation, depth),
   TQuotMk(:final arg) => _refBound(arg, depth),
-  TQuotLift(:final quot, :final fn, :final proof) =>
-    _refBound(quot, depth) || _refBound(fn, depth) || _refBound(proof, depth),
+  TQuotLift(:final fn, :final proof) =>
+    _refBound(fn, depth) || _refBound(proof, depth),
+  TQuotSound(:final lhs, :final rhs, :final proof) =>
+    _refBound(lhs, depth) || _refBound(rhs, depth) || _refBound(proof, depth),
   TProj(:final expr, fieldName: final _) => _refBound(expr, depth),
 };

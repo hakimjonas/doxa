@@ -354,76 +354,99 @@ final class PropEliminationIntoType extends DoxaCheckError {
       'PropEliminationIntoType($dataName, result sort: $resultSort)';
 }
 
-/// A quotient injection ([TQuotMk]) or elimination ([TQuotLift]) reached
-/// the kernel.
+/// A quotient injection ([TQuotMk]) reached the checker in infer mode.
 ///
-/// The kernel does not check `lift`'s compatibility proof, and `mk` has
-/// no sound rule without the quotient elimination it belongs to, so
-/// neither term has a typing rule the kernel can justify. The surface
-/// elaborator rejects the syntax with [QuotientUnsupported]; this error
-/// is the boundary for consumers that build kernel terms directly. Both
-/// [infer] and [check] raise it before inspecting any subterm.
-///
-/// Quotient *formation* (`TQuot`) is unaffected: the type former is
-/// sound.
-///
-/// Reserved for the 1.0 completion, when the elimination rule is
-/// checked: the diagnostic classes below describe conditions the kernel
-/// cannot currently reach because these terms are rejected first.
-final class QuotientTermUnsupported extends DoxaCheckError {
-  /// The rejected form, e.g. `Quot.mk` or `Quot.lift`.
-  final String term;
-
-  /// Creates the rejection.
-  const QuotientTermUnsupported(this.term);
-
-  @override
-  String toString() => 'QuotientTermUnsupported($term)';
-}
-
-/// Reserved for the 1.0 quotient completion: a term expected to be a
-/// quotient type but the inferred type was not a [VQuot].
-///
-/// Unreachable while [QuotientTermUnsupported] rejects the elimination
-/// before its operand is inferred.
-final class NotAQuotient extends DoxaCheckError {
-  /// Creates a type mismatch.
-  final Value actual;
-
-  /// The member.
-  const NotAQuotient(this.actual);
-  @override
-  String toString() => 'NotAQuotient(actual: $actual)';
-}
-
-/// Reserved for the 1.0 quotient completion: [TQuotMk] cannot be
-/// inferred and must appear in a check context.
-///
-/// Unreachable while [QuotientTermUnsupported] rejects both modes.
+/// The carrier and the relation of the quotient come from the expected type,
+/// and the injected element alone does not determine them.
 final class QuotMkInInferMode extends DoxaCheckError {
-  /// The member.
+  /// Creates the rejection.
   const QuotMkInInferMode();
+
   @override
   String toString() => 'QuotMkInInferMode()';
 }
 
-/// Reserved for the 1.0 quotient completion: the compatibility proof for
-/// `Quot.lift` does not have the correct type.
+/// A quotient elimination ([TQuotLift]) reached the checker in infer mode.
 ///
-/// Unreachable while [QuotientTermUnsupported] rejects the elimination
-/// before the proof is checked.
+/// The elimination's type is `Quot A R -> B`, which the expected type
+/// supplies; nothing in `lift f h` determines the quotient or the result
+/// type.
+final class QuotLiftInInferMode extends DoxaCheckError {
+  /// Creates the rejection.
+  const QuotLiftInInferMode();
+
+  @override
+  String toString() => 'QuotLiftInInferMode()';
+}
+
+/// A quotient soundness proof ([TQuotSound]) reached the checker in infer
+/// mode.
+///
+/// The two elements the equation relates come from the expected equality.
+final class QuotSoundInInferMode extends DoxaCheckError {
+  /// Creates the rejection.
+  const QuotSoundInInferMode();
+
+  @override
+  String toString() => 'QuotSoundInInferMode()';
+}
+
+/// A term expected to be a quotient type, or a function from one, but the
+/// inferred type was neither.
+final class NotAQuotient extends DoxaCheckError {
+  /// The value that was expected to involve a quotient.
+  final Value actual;
+
+  /// Creates the error.
+  const NotAQuotient(this.actual);
+
+  @override
+  String toString() => 'NotAQuotient(actual: $actual)';
+}
+
+/// The compatibility proof for `Quot.lift` does not have the required type.
 final class QuotFnNotRespectingRelation extends DoxaCheckError {
-  /// The member.
+  /// The proof's inferred type.
   final Value got;
 
-  /// The member.
+  /// The compatibility type the proof had to inhabit.
   final Value expected;
 
-  /// The member.
+  /// Creates the error.
   const QuotFnNotRespectingRelation(this.got, this.expected);
+
   @override
   String toString() =>
       'QuotFnNotRespectingRelation(got: $got, expected: $expected)';
+}
+
+/// `Quot.lift` was checked against a function type whose result depends on
+/// the quotient element.
+///
+/// The elimination returns a type fixed in advance, so a dependent result
+/// would be the dependent elimination this slice does not provide.
+final class QuotLiftNeedsConstantResult extends DoxaCheckError {
+  /// The function type that was supplied.
+  final Value expected;
+
+  /// Creates the error.
+  const QuotLiftNeedsConstantResult(this.expected);
+
+  @override
+  String toString() => 'QuotLiftNeedsConstantResult(expected: $expected)';
+}
+
+/// `Quot.sound` was checked against a type other than
+/// `Eq (Quot A R) (Quot.mk a) (Quot.mk b)`.
+final class QuotSoundNeedsInjection extends DoxaCheckError {
+  /// The expected type that could not be decomposed.
+  final Value expected;
+
+  /// Creates the error.
+  const QuotSoundNeedsInjection(this.expected);
+
+  @override
+  String toString() => 'QuotSoundNeedsInjection(expected: $expected)';
 }
 
 /// A solved metavariable's solution does not inhabit the type recorded

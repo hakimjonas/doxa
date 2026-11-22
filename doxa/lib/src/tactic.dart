@@ -1661,9 +1661,12 @@ List<Value> _valueSubterms(Value value, int level) {
         visit(relation, lvl);
       case VQuotMk(:final arg):
         visit(arg, lvl);
-      case VQuotLift(:final quot, :final fn, :final proof):
-        visit(quot, lvl);
+      case VQuotLift(:final fn, :final proof):
         visit(fn, lvl);
+        visit(proof, lvl);
+      case VQuotSound(:final lhs, :final rhs, :final proof):
+        visit(lhs, lvl);
+        visit(rhs, lvl);
         visit(proof, lvl);
       case VDelayed(:final closure, :final arg):
         visit(arg, lvl);
@@ -2057,10 +2060,15 @@ Term _replaceTermInTerm(Term t, Term from, Term to) {
       );
     case TQuotMk(:final arg):
       return TQuotMk(_replaceTermInTerm(arg, from, to));
-    case TQuotLift(:final quot, :final fn, :final proof):
+    case TQuotLift(:final fn, :final proof):
       return TQuotLift(
-        _replaceTermInTerm(quot, from, to),
         _replaceTermInTerm(fn, from, to),
+        _replaceTermInTerm(proof, from, to),
+      );
+    case TQuotSound(:final lhs, :final rhs, :final proof):
+      return TQuotSound(
+        _replaceTermInTerm(lhs, from, to),
+        _replaceTermInTerm(rhs, from, to),
         _replaceTermInTerm(proof, from, to),
       );
     case TProj(:final expr, :final fieldName):
@@ -2125,6 +2133,7 @@ void _validateTerm(Term t, Ctx ctx, int depth) {
         TQuot() ||
         TQuotMk() ||
         TQuotLift() ||
+        TQuotSound() ||
         TProj() ||
         TRec():
       break;
