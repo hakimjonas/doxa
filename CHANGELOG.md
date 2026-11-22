@@ -8,6 +8,10 @@ project is ready.
 
 **Kernel soundness**
 
+- Rejected `auto` and `omega` in the `by` block of a recursive function.
+  Both tactics apply top-level names from the environment, and a recursive
+  member is pre-bound during its own check, so either could call the
+  function without an expression the recursion check can scan.
 - Rejected recursive calls hidden inside `by` blocks. The structural and
   measured recursion checks previously skipped tactic blocks, so a call that
   grew inside a block could pass the check, and a function whose only call

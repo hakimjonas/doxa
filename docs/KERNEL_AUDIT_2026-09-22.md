@@ -188,7 +188,12 @@ The three soundness gaps in section 3 are closed:
    Both checkers now visit the block's embedded expressions, threading the
    names the tactics introduce, and reject any reference to the function or a
    block member with `RecursionInTacticBlock`. A block with no recursive
-   reference is accepted. Covered by `doxa_tooling/test/wf_recursion_test.dart`.
+   reference is accepted. `auto` and `omega` apply top-level names without an
+   embedded expression, so in a recursive block they are rejected as well: a
+   recursive member is pre-bound and either tactic can apply it, as in
+   `match n { case zero => by { auto } case succ n_ => f n_ }`. A
+   non-recursive block may use them. Covered by
+   `doxa_tooling/test/wf_recursion_test.dart`.
 
 Meta-solution handling is summarised in
 [`KERNEL_INVARIANTS.md`](KERNEL_INVARIANTS.md): solve-site validation and

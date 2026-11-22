@@ -192,7 +192,11 @@ A recursive call inside a `by` block is rejected with
 `RecursionInTacticBlock`, because the checker does not model the tactic
 context and cannot see the arguments the block would supply. The rejection
 applies to every call in a block, including one that would otherwise
-decrease. A `by` block with no recursive reference is allowed.
+decrease. In a recursive function the block may also not contain `auto` or
+`omega`: both apply top-level names, and a recursive member is pre-bound, so
+either tactic can call the function without an expression the checker can
+scan. A non-recursive `by` block is allowed, including one that uses `auto`
+or `omega`.
 
 Evaluation unfolds a recursive function only when its designated argument is a
 constructor, so a recursive call on an unrefined variable stays stuck instead
@@ -230,8 +234,9 @@ arithmetic term such as `sub m n` is rejected, because the checker tracks
 syntactic sub-terms, not arithmetic facts. A measured member may not be a
 member of a mutual block, and it may not also carry `{struct name}`. A
 recursive call inside a `by` block is rejected for the same reason as in the
-structural rule: the checker does not model the tactic context. A `by` block
-with no recursive reference is allowed.
+structural rule: the checker does not model the tactic context. A measured
+member is recursive by construction, so its block may not contain `auto` or
+`omega` either.
 
 Evaluation places the guard on the first named parameter: the function unfolds
 only when that parameter is a constructor. A function whose first measured
