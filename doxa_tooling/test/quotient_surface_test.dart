@@ -146,6 +146,43 @@ val transported: (x: Pair) -> (y: Pair) -> sameSum x y ->
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
+    test('a lift composes with Quot.sound through cong', () {
+      final r = runSource('''
+$_pairPrelude
+val soundAt: (x: Pair) -> (y: Pair) -> sameSum x y ->
+    Eq (Quot(Pair, sameSum)) (mk x) (mk y) =
+  (x: Pair) => (y: Pair) => (h: sameSum x y) => Quot.sound h
+
+val sumQ: Quot(Pair, sameSum) -> Nat =
+  lift(sum, (x: Pair) => (y: Pair) => (h: sameSum x y) => h)
+
+val respected: (x: Pair) -> (y: Pair) -> sameSum x y ->
+    Eq Nat (sumQ (mk x)) (sumQ (mk y)) =
+  (x: Pair) => (y: Pair) => (h: sameSum x y) => cong sumQ (soundAt x y h)
+
+val respectWrapped: (x: Pair) -> (y: Pair) -> sameSum x y ->
+    Eq Nat (sumQ (mk x)) (sumQ (mk y)) =
+  (x: Pair) => (y: Pair) => (h: sameSum x y) =>
+    cong ((q: Quot(Pair, sameSum)) => sumQ q) (soundAt x y h)
+''');
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('cong through a lift solves the indices from the proof argument', () {
+      final r = runSource('''
+$_pairPrelude
+val sumQ: Quot(Pair, sameSum) -> Nat =
+  lift(sum, (x: Pair) => (y: Pair) => (h: sameSum x y) => h)
+
+val a: Pair = pair zero zero
+val e0: Eq (Quot(Pair, sameSum)) (mk a) (mk a) =
+  Quot.sound (refl (sum a))
+
+val congruent: Eq Nat (sumQ (mk a)) (sumQ (mk a)) = cong sumQ e0
+''');
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
     test('a relation that is not a relation is rejected on its span', () {
       final r = runSource('''
 $_pairPrelude

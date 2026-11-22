@@ -20,11 +20,9 @@ val soundAt: (x: Pair) -> (y: Pair) -> sameSum x y -> Eq (Quot(Pair, sameSum)) (
 val sumQ: (Quot(Pair, sameSum)) -> Nat = lift(sum, (x: Pair) => (y: Pair) => (h: sameSum x y) => h)
 
 val compute: (p: Pair) -> Eq Nat (sumQ (mk p)) (sum p) = (p: Pair) => refl (sum p)
-// The lift commutes with the relation up to conversion: `sumQ (mk x)`
-// reduces to `sum x` by the ι rule, so the relation's own proof inhabits
-// the goal directly. (A `cong sumQ (soundAt x y h)` spelling meets the
-// same fact, but its intermediate `sumQ ?a` is evaluated before `?a` is
-// solved; see the round's notes.)
+// The lift commutes with the relation propositionally: `sumQ (mk x)` reduces
+// to `sum x` by the ι rule, so `cong` transports the equality along the
+// quotient equation.
 
 val respected: (x: Pair) -> (y: Pair) -> sameSum x y -> Eq Nat (sumQ (mk x)) (sumQ (mk y)) =
-  (x: Pair) => (y: Pair) => (h: sameSum x y) => h
+  (x: Pair) => (y: Pair) => (h: sameSum x y) => cong sumQ (soundAt x y h)

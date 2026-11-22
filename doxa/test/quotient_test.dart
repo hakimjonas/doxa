@@ -437,6 +437,49 @@ void main() {
       );
     });
 
+    test('TQuotLift with a result type that reads the quotient binder is '
+        'rejected', () {
+      // `(q: Quot(Nat, rel)) -> Eq (Quot(Nat, rel)) q q`: the codomain
+      // mentions the binder, which would be a dependent elimination.
+      final expected = eval(
+        const TPi(
+          TQuot(
+            TData('Nat', <Term>[]),
+            TLam(
+              TData('Nat', <Term>[]),
+              TLam(
+                TData('Nat', <Term>[]),
+                TData('Eq', [TData('Nat', <Term>[]), TBound(1), TBound(0)]),
+              ),
+            ),
+          ),
+          TData('Eq', [
+            TQuot(
+              TData('Nat', <Term>[]),
+              TLam(
+                TData('Nat', <Term>[]),
+                TLam(
+                  TData('Nat', <Term>[]),
+                  TData('Eq', [TData('Nat', <Term>[]), TBound(1), TBound(0)]),
+                ),
+              ),
+            ),
+            TBound(0),
+            TBound(0),
+          ]),
+        ),
+        ENil.withRegistries(dataDecls: _natEqDecls(), topBindings: const {}),
+      );
+      final term = TQuotLift(
+        const TLam(TData('Nat', <Term>[]), TBound(0)),
+        _natCompatProof(const TBound(0)),
+      );
+      expect(
+        () => check(_natEqCtx(), term, expected),
+        throwsA(isA<QuotLiftNeedsConstantResult>()),
+      );
+    });
+
     test('TQuotLift against a function not from a quotient is rejected', () {
       expect(
         () => check(
@@ -503,6 +546,43 @@ void main() {
           TData('Nat', <Term>[]),
           TConstr('Nat', 'succ', [TData('Nat', <Term>[])]),
         ]),
+      );
+      final expected = VData('Eq', [_natQuot(), _mkZero, _mkZero]);
+      expect(
+        () => check(_natEqCtx(), term, expected),
+        throwsA(isA<TypeMismatch>()),
+      );
+    });
+
+    test('TQuotSound rejects a cached injection the expected equation '
+        'does not name', () {
+      // Forged term: the cached left injection names `succ zero`, while
+      // the expected equation names `mk zero` on both sides. The witness
+      // is valid for the expected relation, so only the cached operand
+      // check can reject the term.
+      final term = TQuotSound(
+        const TConstr('Nat', 'succ', [TData('Nat', <Term>[])]),
+        const TConstr('Nat', 'zero', []),
+        _natRefl(),
+      );
+      final expected = VData('Eq', [_natQuot(), _mkZero, _mkZero]);
+      expect(
+        () => check(_natEqCtx(), term, expected),
+        throwsA(
+          isA<TypeMismatch>()
+              .having((e) => e.got, 'got', isA<VConstr>())
+              .having((e) => e.expected, 'expected', isA<VConstr>()),
+        ),
+      );
+    });
+
+    test('TQuotSound rejects a cached right injection the expected '
+        'equation does not name', () {
+      // Mirror of the left case: the right operand is forged.
+      final term = TQuotSound(
+        const TConstr('Nat', 'zero', []),
+        const TConstr('Nat', 'succ', [TData('Nat', <Term>[])]),
+        _natRefl(),
       );
       final expected = VData('Eq', [_natQuot(), _mkZero, _mkZero]);
       expect(
