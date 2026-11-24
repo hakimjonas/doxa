@@ -1,14 +1,14 @@
 // Integers: Int = Pos Nat | Neg Nat where Pos n = n, Neg n = -(n+1).
 // Zero is Pos zero, avoiding double representation of zero.
 //
-// Additive group lemmas: `intPlus_assoc`, `intPlus_zero_left`,
-// `intPlus_zero_right`, `intAdd_neg_left`, and `intAdd_neg_right`, with
-// `intPlus_comm`, `intNegAdd`, and `intNeg_neg` alongside. `algebra.doxa`
+// Additive group lemmas: `intPlusAssoc`, `intPlusZeroLeft`,
+// `intPlusZeroRight`, `intAddNegateLeft`, and `intAddNegateRight`, with
+// `intPlusComm`, `intNegateAdd`, and `intNegateNegate` alongside. `algebra.doxa`
 // uses them for its `AddMonoid[Int]` and `AddGroup[Int]` instances.
 //
-// Multiplicative lemmas: `intMult_assoc`, `intMult_one_left`,
-// `intMult_one_right`, `intMul_add`, `intAdd_mul`, and `intMult_comm`. The
-// first five are the laws a ring instance needs; `intMult_comm` is the
+// Multiplicative lemmas: `intMultiplyAssoc`, `intMultiplyOneLeft`,
+// `intMultiplyOneRight`, `intMultiplyAdd`, `intAddMultiply`, and `intMultiplyComm`. The
+// first five are the laws a ring instance needs; `intMultiplyComm` is the
 // commutativity law. This module has no ring class because `Monoid` in
 // `algebra.doxa` already owns the multiplication projections.
 import "bool.doxa"
@@ -44,7 +44,7 @@ fun intPlus(a: Int, b: Int): Int = match a {
   }
 }
 
-fun intNeg(a: Int): Int = match a {
+fun intNegate(a: Int): Int = match a {
   case pos n => match n {
     case zero => pos zero
     case succ n_ => neg n_
@@ -52,15 +52,15 @@ fun intNeg(a: Int): Int = match a {
   case neg n => pos (succ n)
 }
 
-fun intSub(a: Int, b: Int): Int = intPlus a (intNeg b)
+fun intSub(a: Int, b: Int): Int = intPlus a (intNegate b)
 
-fun intMult(a: Int, b: Int): Int = match a {
+fun intMultiply(a: Int, b: Int): Int = match a {
   case pos n => match b {
     case pos m => pos (n * m)
-    case neg m => intNeg (pos (n * succ m))
+    case neg m => intNegate (pos (n * succ m))
   }
   case neg n => match b {
-    case pos m => intNeg (pos (succ n * m))
+    case pos m => intNegate (pos (succ n * m))
     case neg m => pos (succ (n * m + n + m))
   }
 }
@@ -108,11 +108,11 @@ fun intDiv(a: Int, b: Int): Int = match b {
     case zero => pos zero
     case succ m_ => match a {
       case pos n => pos (div n (succ m_))
-      case neg n => intNeg (pos (intDivNegQ (div (succ n) (succ m_)) (mod (succ n) (succ m_))))
+      case neg n => intNegate (pos (intDivNegQ (div (succ n) (succ m_)) (mod (succ n) (succ m_))))
     }
   }
   case neg m => match a {
-    case pos n => intNeg (pos (div n (succ m)))
+    case pos n => intNegate (pos (div n (succ m)))
     case neg n => pos (intDivNegQ (div (succ n) (succ m)) (mod (succ n) (succ m)))
   }
 }
@@ -131,9 +131,9 @@ fun intMod(a: Int, b: Int): Int = match b {
   }
 }
 // --- Lemmas ---
-// intPlus_comm: a + b = b + a
+// intPlusComm: a + b = b + a
 
-val intPlus_comm: (a: Int) -> (b: Int) -> Eq Int (intPlus a b) (intPlus b a) =
+val intPlusComm: (a: Int) -> (b: Int) -> Eq Int (intPlus a b) (intPlus b a) =
   Int.ind
     ((x: Int) => (y: Int) -> Eq Int (intPlus x y) (intPlus y x))
     ((n: Nat) => (y: Int) => Int.ind
@@ -146,54 +146,54 @@ val intPlus_comm: (a: Int) -> (b: Int) -> Eq Int (intPlus a b) (intPlus b a) =
       ((m: Nat) => refl (intPlusHelp m n))
       ((m: Nat) => cong_e Nat Int ((k: Nat) => neg (succ k)) (n + m) (m + n) (plus_comm n m))
       y)
-// intNeg_neg: neg (neg a) = a
+// intNegateNegate: neg (neg a) = a
 
-val intNeg_neg: (a: Int) -> Eq Int (intNeg (intNeg a)) a =
+val intNegateNegate: (a: Int) -> Eq Int (intNegate (intNegate a)) a =
   Int.ind
-    ((x: Int) => Eq Int (intNeg (intNeg x)) x)
+    ((x: Int) => Eq Int (intNegate (intNegate x)) x)
     ((n: Nat) => Nat.ind
-      ((k: Nat) => Eq Int (intNeg (intNeg (pos k))) (pos k))
+      ((k: Nat) => Eq Int (intNegate (intNegate (pos k))) (pos k))
       (refl (pos zero))
-      ((k: Nat) => (_: Eq Int (intNeg (intNeg (pos k))) (pos k)) => refl (pos (succ k)))
+      ((k: Nat) => (_: Eq Int (intNegate (intNegate (pos k))) (pos k)) => refl (pos (succ k)))
       n)
     ((n: Nat) => refl (neg n))
-// intSign_pos: sign of positive is true
+// intSignPos: sign of positive is true
 
-fun intSign_pos(n: Nat): Eq Bool (intSign (pos n)) true_ = refl true_
-// intSign_neg: sign of negative is false
+fun intSignPos(n: Nat): Eq Bool (intSign (pos n)) true_ = refl true_
+// intSignNeg: sign of negative is false
 
-fun intSign_neg(n: Nat): Eq Bool (intSign (neg n)) false_ = refl false_
-// intAbs_pos: abs of positive is n
+fun intSignNeg(n: Nat): Eq Bool (intSign (neg n)) false_ = refl false_
+// intAbsPos: abs of positive is n
 
-fun intAbs_pos(n: Nat): Eq Nat (intAbs (pos n)) n = refl n
-// intAbs_neg: abs of negative is succ n
+fun intAbsPos(n: Nat): Eq Nat (intAbs (pos n)) n = refl n
+// intAbsNeg: abs of negative is succ n
 
-fun intAbs_neg(n: Nat): Eq Nat (intAbs (neg n)) (succ n) = refl (succ n)
+fun intAbsNeg(n: Nat): Eq Nat (intAbs (neg n)) (succ n) = refl (succ n)
 
-val intNeg_pos_zero: Eq Int (intNeg (pos zero)) (pos zero) = refl (pos zero)
+val intNegatePosZero: Eq Int (intNegate (pos zero)) (pos zero) = refl (pos zero)
 
-val intMult_neg_intNeg: (m: Nat)
--> (u: Nat) -> Eq Int (intMult (neg m) (intNeg (pos u))) (pos (succ m * u)) =
+val intMultiplyNegIntNegate: (m: Nat)
+-> (u: Nat) -> Eq Int (intMultiply (neg m) (intNegate (pos u))) (pos (succ m * u)) =
   (m: Nat) => (u: Nat) => Nat.ind
-    ((k: Nat) => Eq Int (intMult (neg m) (intNeg (pos k))) (pos (succ m * k)))
+    ((k: Nat) => Eq Int (intMultiply (neg m) (intNegate (pos k))) (pos (succ m * k)))
     (trans_e
       Int
-      (intNeg (pos (succ m * zero)))
-      (intNeg (pos zero))
+      (intNegate (pos (succ m * zero)))
+      (intNegate (pos zero))
       (pos (succ m * zero))
-      (cong_e Nat Int ((t: Nat) => intNeg (pos t)) (succ m * zero) zero (mult_zero (succ m)))
+      (cong_e Nat Int ((t: Nat) => intNegate (pos t)) (succ m * zero) zero (mult_zero (succ m)))
       (trans_e
         Int
-        (intNeg (pos zero))
+        (intNegate (pos zero))
         (pos zero)
         (pos (succ m * zero))
-        intNeg_pos_zero
+        intNegatePosZero
         (sym_e
           Int
           (pos (succ m * zero))
           (pos zero)
           (cong_e Nat Int ((t: Nat) => pos t) (succ m * zero) zero (mult_zero (succ m))))))
-    ((k: Nat) => (ih: Eq Int (intMult (neg m) (intNeg (pos k))) (pos (succ m * k))) => {
+    ((k: Nat) => (ih: Eq Int (intMultiply (neg m) (intNegate (pos k))) (pos (succ m * k))) => {
       val a: Nat = m * k + m;
       val l: Nat = succ (a + k);
       val t1: Nat = a + succ k;
@@ -240,12 +240,12 @@ val intMult_neg_intNeg: (m: Nat)
       })
     u
 
-val intDivMod_pos_pos: (n: Nat)
+val intDivModPosPos: (n: Nat)
 -> (m: Nat)
   -> Eq
       Int
       (intPlus
-        (intMult (pos (succ m)) (intDiv (pos n) (pos (succ m))))
+        (intMultiply (pos (succ m)) (intDiv (pos n) (pos (succ m))))
         (intMod (pos n) (pos (succ m))))
       (pos n) =
   (n: Nat) => (m: Nat) => cong_e
@@ -268,14 +268,19 @@ val intDivMod_pos_pos: (n: Nat)
         (mult_comm (succ m) (div n (succ m))))
       (div_add_mod n (succ m) (lt_zero_succ m)))
 
-val intDivMod_pos_neg: (n: Nat)
+val intDivModPosNeg: (n: Nat)
 -> (m: Nat)
-  -> Eq Int (intPlus (intMult (neg m) (intDiv (pos n) (neg m))) (intMod (pos n) (neg m))) (pos n) =
+  -> Eq
+      Int
+      (intPlus (intMultiply (neg m) (intDiv (pos n) (neg m))) (intMod (pos n) (neg m)))
+      (pos n) =
   (n: Nat) => (m: Nat) => {
     val B: Nat = succ m;
     val u: Nat = div n B;
     val v: Nat = mod n B;
-    val e1: Eq Int (intMult (neg m) (intDiv (pos n) (neg m))) (pos (B * u)) = intMult_neg_intNeg m u;
+    val e1: Eq Int (intMultiply (neg m) (intDiv (pos n) (neg m))) (pos (B * u)) = intMultiplyNegIntNegate
+      m
+      u;
     val chain: Eq Nat (B * u + v) n = trans_e
       Nat
       (B * u + v)
@@ -292,57 +297,57 @@ val intDivMod_pos_neg: (n: Nat)
       chain;
     trans_e
       Int
-      (intPlus (intMult (neg m) (intDiv (pos n) (neg m))) (intMod (pos n) (neg m)))
+      (intPlus (intMultiply (neg m) (intDiv (pos n) (neg m))) (intMod (pos n) (neg m)))
       (intPlus (pos (B * u)) (intMod (pos n) (neg m)))
       (pos n)
       (cong_e
         Int
         Int
         ((t: Int) => intPlus t (intMod (pos n) (neg m)))
-        (intMult (neg m) (intDiv (pos n) (neg m)))
+        (intMultiply (neg m) (intDiv (pos n) (neg m)))
         (pos (B * u))
         e1)
       e2
     }
 
-val intDivMod_pos: (n: Nat)
--> (b: Int) -> Eq Int (intPlus (intMult b (intDiv (pos n) b)) (intMod (pos n) b)) (pos n) =
+val intDivModPos: (n: Nat)
+-> (b: Int) -> Eq Int (intPlus (intMultiply b (intDiv (pos n) b)) (intMod (pos n) b)) (pos n) =
   (n: Nat) => (b: Int) => Int.ind
-    ((y: Int) => Eq Int (intPlus (intMult y (intDiv (pos n) y)) (intMod (pos n) y)) (pos n))
+    ((y: Int) => Eq Int (intPlus (intMultiply y (intDiv (pos n) y)) (intMod (pos n) y)) (pos n))
     ((m: Nat) => Nat.ind
       ((k: Nat) => Eq
         Int
-        (intPlus (intMult (pos k) (intDiv (pos n) (pos k))) (intMod (pos n) (pos k)))
+        (intPlus (intMultiply (pos k) (intDiv (pos n) (pos k))) (intMod (pos n) (pos k)))
         (pos n))
       (refl (pos n))
       ((k: Nat) => (ih: Eq
         Int
-        (intPlus (intMult (pos k) (intDiv (pos n) (pos k))) (intMod (pos n) (pos k)))
-        (pos n)) => intDivMod_pos_pos n k)
+        (intPlus (intMultiply (pos k) (intDiv (pos n) (pos k))) (intMod (pos n) (pos k)))
+        (pos n)) => intDivModPosPos n k)
       m)
-    ((m: Nat) => intDivMod_pos_neg n m)
+    ((m: Nat) => intDivModPosNeg n m)
     b
 
-val intMult_pos_intNeg: (B: Nat)
--> (k: Nat) -> Eq Int (intMult (pos B) (intNeg (pos k))) (intNeg (pos (B * k))) =
+val intMultiplyPosIntNegate: (B: Nat)
+-> (k: Nat) -> Eq Int (intMultiply (pos B) (intNegate (pos k))) (intNegate (pos (B * k))) =
   (B: Nat) => (k: Nat) => Nat.ind
-    ((i: Nat) => Eq Int (intMult (pos B) (intNeg (pos i))) (intNeg (pos (B * i))))
+    ((i: Nat) => Eq Int (intMultiply (pos B) (intNegate (pos i))) (intNegate (pos (B * i))))
     (trans_e
       Int
       (pos (B * zero))
       (pos zero)
-      (intNeg (pos (B * zero)))
+      (intNegate (pos (B * zero)))
       (cong_e Nat Int ((t: Nat) => pos t) (B * zero) zero (mult_zero B))
       (sym_e
         Int
-        (intNeg (pos (B * zero)))
+        (intNegate (pos (B * zero)))
         (pos zero)
-        (cong_e Nat Int ((t: Nat) => intNeg (pos t)) (B * zero) zero (mult_zero B))))
-    ((i: Nat) => (ih: Eq Int (intMult (pos B) (intNeg (pos i))) (intNeg (pos (B * i)))) => refl
-      (intNeg (pos (B * succ i))))
+        (cong_e Nat Int ((t: Nat) => intNegate (pos t)) (B * zero) zero (mult_zero B))))
+    ((i: Nat) => (ih: Eq Int (intMultiply (pos B) (intNegate (pos i))) (intNegate (pos (B * i)))) => refl
+      (intNegate (pos (B * succ i))))
     k
 
-val intPlusHelp_plus: (x: Nat) -> (y: Nat) -> Eq Int (intPlusHelp x (y + x)) (neg y) =
+val intPlusHelpPlus: (x: Nat) -> (y: Nat) -> Eq Int (intPlusHelp x (y + x)) (neg y) =
   (x: Nat) => (y: Nat) => Nat.ind
     ((k: Nat) => Eq Int (intPlusHelp k (y + k)) (neg y))
     (cong_e Nat Int ((t: Nat) => neg t) (y + zero) y (plus_zero y))
@@ -361,7 +366,7 @@ val intPlusHelp_plus: (x: Nat) -> (y: Nat) -> Eq Int (intPlusHelp x (y + x)) (ne
       ih)
     x
 
-val intDivNeg_shift_help: (n: Nat)
+val intDivNegShiftHelp: (n: Nat)
 -> (B: Nat)
   -> (u: Nat)
     -> (v: Nat)
@@ -448,13 +453,13 @@ val intDivNeg_shift_help: (n: Nat)
     h
     hB
 
-val intDivNeg_shift: (n: Nat)
+val intDivNegShift: (n: Nat)
 -> (m: Nat)
   -> Eq
       Nat
       (succ m * intDivNegQ (div (succ n) (succ m)) (mod (succ n) (succ m)))
       (succ (n + intModNegR (succ m) (mod (succ n) (succ m)))) =
-  (n: Nat) => (m: Nat) => intDivNeg_shift_help
+  (n: Nat) => (m: Nat) => intDivNegShiftHelp
     n
     (succ m)
     (div (succ n) (succ m))
@@ -462,128 +467,131 @@ val intDivNeg_shift: (n: Nat)
     (div_add_mod (succ n) (succ m) (lt_zero_succ m))
     (lt_leq (mod (succ n) (succ m)) (succ m) (mod_lt (succ n) (succ m) (lt_zero_succ m)))
 
-val intMult_neg_pos: (m: Nat)
--> (k: Nat) -> Eq Int (intMult (neg m) (pos k)) (intNeg (pos (succ m * k))) =
+val intMultiplyNegPos: (m: Nat)
+-> (k: Nat) -> Eq Int (intMultiply (neg m) (pos k)) (intNegate (pos (succ m * k))) =
   (m: Nat) => (k: Nat) => refl
 
-val intDivMod_neg_pos: (n: Nat)
+val intDivModNegPos: (n: Nat)
 -> (m: Nat)
   -> Eq
       Int
       (intPlus
-        (intMult (pos (succ m)) (intDiv (neg n) (pos (succ m))))
+        (intMultiply (pos (succ m)) (intDiv (neg n) (pos (succ m))))
         (intMod (neg n) (pos (succ m))))
       (neg n) =
   (n: Nat) => (m: Nat) => {
     val B: Nat = succ m;
     val k: Nat = intDivNegQ (div (succ n) B) (mod (succ n) B);
     val r: Nat = intModNegR B (mod (succ n) B);
-    val e1: Eq Int (intMult (pos B) (intDiv (neg n) (pos B))) (intNeg (pos (B * k))) = intMult_pos_intNeg
+    val e1: Eq Int (intMultiply (pos B) (intDiv (neg n) (pos B))) (intNegate (pos (B * k))) = intMultiplyPosIntNegate
       B
       k;
-    val e2: Eq Int (intNeg (pos (B * k))) (intNeg (pos (succ (n + r)))) = cong_e
+    val e2: Eq Int (intNegate (pos (B * k))) (intNegate (pos (succ (n + r)))) = cong_e
       Nat
       Int
-      ((t: Nat) => intNeg (pos t))
+      ((t: Nat) => intNegate (pos t))
       (B * k)
       (succ (n + r))
-      (intDivNeg_shift n m);
-    val e3: Eq Int (intPlus (intNeg (pos (succ (n + r)))) (pos r)) (neg n) = intPlusHelp_plus r n;
+      (intDivNegShift n m);
+    val e3: Eq Int (intPlus (intNegate (pos (succ (n + r)))) (pos r)) (neg n) = intPlusHelpPlus r n;
     trans_e
       Int
-      (intPlus (intMult (pos B) (intDiv (neg n) (pos B))) (intMod (neg n) (pos B)))
-      (intPlus (intNeg (pos (B * k))) (intMod (neg n) (pos B)))
+      (intPlus (intMultiply (pos B) (intDiv (neg n) (pos B))) (intMod (neg n) (pos B)))
+      (intPlus (intNegate (pos (B * k))) (intMod (neg n) (pos B)))
       (neg n)
       (cong_e
         Int
         Int
         ((t: Int) => intPlus t (intMod (neg n) (pos B)))
-        (intMult (pos B) (intDiv (neg n) (pos B)))
-        (intNeg (pos (B * k)))
+        (intMultiply (pos B) (intDiv (neg n) (pos B)))
+        (intNegate (pos (B * k)))
         e1)
       (trans_e
         Int
-        (intPlus (intNeg (pos (B * k))) (intMod (neg n) (pos B)))
-        (intPlus (intNeg (pos (succ (n + r)))) (intMod (neg n) (pos B)))
+        (intPlus (intNegate (pos (B * k))) (intMod (neg n) (pos B)))
+        (intPlus (intNegate (pos (succ (n + r)))) (intMod (neg n) (pos B)))
         (neg n)
         (cong_e
           Int
           Int
           ((t: Int) => intPlus t (intMod (neg n) (pos B)))
-          (intNeg (pos (B * k)))
-          (intNeg (pos (succ (n + r))))
+          (intNegate (pos (B * k)))
+          (intNegate (pos (succ (n + r))))
           e2)
         e3)
     }
 
-val intDivMod_neg_neg: (n: Nat)
+val intDivModNegNeg: (n: Nat)
 -> (m: Nat)
-  -> Eq Int (intPlus (intMult (neg m) (intDiv (neg n) (neg m))) (intMod (neg n) (neg m))) (neg n) =
+  -> Eq
+      Int
+      (intPlus (intMultiply (neg m) (intDiv (neg n) (neg m))) (intMod (neg n) (neg m)))
+      (neg n) =
   (n: Nat) => (m: Nat) => {
     val B: Nat = succ m;
     val k: Nat = intDivNegQ (div (succ n) B) (mod (succ n) B);
     val r: Nat = intModNegR B (mod (succ n) B);
-    val e2: Eq Int (intNeg (pos (B * k))) (intNeg (pos (succ (n + r)))) = cong_e
+    val e2: Eq Int (intNegate (pos (B * k))) (intNegate (pos (succ (n + r)))) = cong_e
       Nat
       Int
-      ((t: Nat) => intNeg (pos t))
+      ((t: Nat) => intNegate (pos t))
       (B * k)
       (succ (n + r))
-      (intDivNeg_shift n m);
-    val e3: Eq Int (intPlus (intNeg (pos (succ (n + r)))) (pos r)) (neg n) = intPlusHelp_plus r n;
+      (intDivNegShift n m);
+    val e3: Eq Int (intPlus (intNegate (pos (succ (n + r)))) (pos r)) (neg n) = intPlusHelpPlus r n;
     trans_e
       Int
-      (intPlus (intMult (neg m) (intDiv (neg n) (neg m))) (intMod (neg n) (neg m)))
-      (intPlus (intNeg (pos (B * k))) (intMod (neg n) (neg m)))
+      (intPlus (intMultiply (neg m) (intDiv (neg n) (neg m))) (intMod (neg n) (neg m)))
+      (intPlus (intNegate (pos (B * k))) (intMod (neg n) (neg m)))
       (neg n)
       (cong_e
         Int
         Int
         ((t: Int) => intPlus t (intMod (neg n) (neg m)))
-        (intMult (neg m) (intDiv (neg n) (neg m)))
-        (intNeg (pos (B * k)))
-        (intMult_neg_pos m k))
+        (intMultiply (neg m) (intDiv (neg n) (neg m)))
+        (intNegate (pos (B * k)))
+        (intMultiplyNegPos m k))
       (trans_e
         Int
-        (intPlus (intNeg (pos (B * k))) (intMod (neg n) (neg m)))
-        (intPlus (intNeg (pos (succ (n + r)))) (intMod (neg n) (neg m)))
+        (intPlus (intNegate (pos (B * k))) (intMod (neg n) (neg m)))
+        (intPlus (intNegate (pos (succ (n + r)))) (intMod (neg n) (neg m)))
         (neg n)
         (cong_e
           Int
           Int
           ((t: Int) => intPlus t (intMod (neg n) (neg m)))
-          (intNeg (pos (B * k)))
-          (intNeg (pos (succ (n + r))))
+          (intNegate (pos (B * k)))
+          (intNegate (pos (succ (n + r))))
           e2)
         e3)
     }
 
-val intDivMod_neg: (n: Nat)
--> (b: Int) -> Eq Int (intPlus (intMult b (intDiv (neg n) b)) (intMod (neg n) b)) (neg n) =
+val intDivModNeg: (n: Nat)
+-> (b: Int) -> Eq Int (intPlus (intMultiply b (intDiv (neg n) b)) (intMod (neg n) b)) (neg n) =
   (n: Nat) => (b: Int) => Int.ind
-    ((y: Int) => Eq Int (intPlus (intMult y (intDiv (neg n) y)) (intMod (neg n) y)) (neg n))
+    ((y: Int) => Eq Int (intPlus (intMultiply y (intDiv (neg n) y)) (intMod (neg n) y)) (neg n))
     ((m: Nat) => Nat.ind
       ((k: Nat) => Eq
         Int
-        (intPlus (intMult (pos k) (intDiv (neg n) (pos k))) (intMod (neg n) (pos k)))
+        (intPlus (intMultiply (pos k) (intDiv (neg n) (pos k))) (intMod (neg n) (pos k)))
         (neg n))
       (refl (neg n))
       ((k: Nat) => (ih: Eq
         Int
-        (intPlus (intMult (pos k) (intDiv (neg n) (pos k))) (intMod (neg n) (pos k)))
-        (neg n)) => intDivMod_neg_pos n k)
+        (intPlus (intMultiply (pos k) (intDiv (neg n) (pos k))) (intMod (neg n) (pos k)))
+        (neg n)) => intDivModNegPos n k)
       m)
-    ((m: Nat) => intDivMod_neg_neg n m)
+    ((m: Nat) => intDivModNegNeg n m)
     b
 
-val intDivMod: (a: Int) -> (b: Int) -> Eq Int (intPlus (intMult b (intDiv a b)) (intMod a b)) a =
+val intDivMod: (a: Int) -> (b: Int) -> Eq Int (intPlus (intMultiply b (intDiv a b)) (intMod a b)) a =
   (a: Int) => Int.ind
-    ((x: Int) => (b: Int) -> Eq Int (intPlus (intMult b (intDiv x b)) (intMod x b)) x)
-    ((n: Nat) => (b: Int) => intDivMod_pos n b)
-    ((n: Nat) => (b: Int) => intDivMod_neg n b)
+    ((x: Int) => (b: Int) -> Eq Int (intPlus (intMultiply b (intDiv x b)) (intMod x b)) x)
+    ((n: Nat) => (b: Int) => intDivModPos n b)
+    ((n: Nat) => (b: Int) => intDivModNeg n b)
     a
 
-val intPlus_one: (r: Nat) -> Eq Int (intPlus (pos r) (pos (succ zero))) (pos (succ r)) =
+val intPlusOne: (r: Nat) -> Eq Int (intPlus (pos r) (pos (succ zero))) (pos (succ r)) =
   (r: Nat) => cong_e
     Nat
     Int
@@ -598,7 +606,7 @@ val intPlus_one: (r: Nat) -> Eq Int (intPlus (pos r) (pos (succ zero))) (pos (su
       (plus_succ r zero)
       (cong_e Nat Nat ((t: Nat) => succ t) (r + zero) r (plus_zero r)))
 
-val intModNegR_bound: (m: Nat) -> (v: Nat) -> Eq Bool (succ (intModNegR (succ m) v) <= succ m) true_ =
+val intModNegRBound: (m: Nat) -> (v: Nat) -> Eq Bool (succ (intModNegR (succ m) v) <= succ m) true_ =
   (m: Nat) => (v: Nat) => Nat.ind
     ((i: Nat) => Eq Bool (succ (intModNegR (succ m) i) <= succ m) true_)
     (refl true_)
@@ -608,7 +616,7 @@ val intModNegR_bound: (m: Nat) -> (v: Nat) -> Eq Bool (succ (intModNegR (succ m)
       (lt_zero_succ i))
     v
 
-val intMod_nonneg: (a: Int)
+val intModNonneg: (a: Int)
 -> (b: Int) -> (Eq Int b (pos zero) -> False) -> Eq Bool (intLeq (pos zero) (intMod a b)) true_ =
   (a: Int) => (b: Int) => (h: Eq Int b (pos zero) -> False) => Int.ind
     ((y: Int) => (Eq Int y (pos zero) -> False) -> Eq Bool (intLeq (pos zero) (intMod a y)) true_)
@@ -637,7 +645,7 @@ val intMod_nonneg: (a: Int)
     b
     h
 
-val intMod_lt: (a: Int)
+val intModLt: (a: Int)
 -> (b: Int)
   -> (Eq Int b (pos zero) -> False)
     -> Eq Bool (intLeq (intPlus (intMod a b) (pos (succ zero))) (pos (intAbs b))) true_ =
@@ -678,7 +686,7 @@ val intMod_lt: (a: Int)
             ((t: Int) => intLeq t (pos (succ j)))
             (intPlus (pos (mod n (succ j))) (pos (succ zero)))
             (pos (succ (mod n (succ j))))
-            (intPlus_one (mod n (succ j))))
+            (intPlusOne (mod n (succ j))))
           (lt_succ_leq (mod n (succ j)) (succ j) (mod_lt n (succ j) (lt_zero_succ j))))
         ((n: Nat) => trans_e
           Bool
@@ -693,8 +701,8 @@ val intMod_lt: (a: Int)
             ((t: Int) => intLeq t (pos (succ j)))
             (intPlus (pos (intModNegR (succ j) (mod (succ n) (succ j)))) (pos (succ zero)))
             (pos (succ (intModNegR (succ j) (mod (succ n) (succ j)))))
-            (intPlus_one (intModNegR (succ j) (mod (succ n) (succ j)))))
-          (intModNegR_bound j (mod (succ n) (succ j))))
+            (intPlusOne (intModNegR (succ j) (mod (succ n) (succ j)))))
+          (intModNegRBound j (mod (succ n) (succ j))))
         a)
       m)
     ((m: Nat) => (h0: Eq Int (neg m) (pos zero) -> False) => Int.ind
@@ -713,7 +721,7 @@ val intMod_lt: (a: Int)
           ((t: Int) => intLeq t (pos (succ m)))
           (intPlus (pos (mod n (succ m))) (pos (succ zero)))
           (pos (succ (mod n (succ m))))
-          (intPlus_one (mod n (succ m))))
+          (intPlusOne (mod n (succ m))))
         (lt_succ_leq (mod n (succ m)) (succ m) (mod_lt n (succ m) (lt_zero_succ m))))
       ((n: Nat) => trans_e
         Bool
@@ -728,14 +736,14 @@ val intMod_lt: (a: Int)
           ((t: Int) => intLeq t (pos (succ m)))
           (intPlus (pos (intModNegR (succ m) (mod (succ n) (succ m)))) (pos (succ zero)))
           (pos (succ (intModNegR (succ m) (mod (succ n) (succ m)))))
-          (intPlus_one (intModNegR (succ m) (mod (succ n) (succ m)))))
-        (intModNegR_bound m (mod (succ n) (succ m))))
+          (intPlusOne (intModNegR (succ m) (mod (succ n) (succ m)))))
+        (intModNegRBound m (mod (succ n) (succ m))))
       a)
     b
     h
 // --- intPlusHelp arithmetic helpers ---------------------------------------
 
-val intPlusHelp_shift_left: (n: Nat)
+val intPlusHelpShiftLeft: (n: Nat)
 -> (x: Nat) -> (y: Nat) -> Eq Int (intPlus (pos n) (intPlusHelp x y)) (intPlusHelp (n + x) y) =
   (n: Nat) => (x: Nat) => Nat.ind
     ((k: Nat) => (y: Nat) -> Eq Int (intPlus (pos n) (intPlusHelp k y)) (intPlusHelp (n + k) y))
@@ -774,7 +782,7 @@ val intPlusHelp_shift_left: (n: Nat)
       y)
     x
 
-val intPlusHelp_add_right: (x: Nat)
+val intPlusHelpAddRight: (x: Nat)
 -> (y: Nat) -> (p: Nat) -> Eq Int (intPlus (intPlusHelp x y) (pos p)) (intPlusHelp (x + p) y) =
   (x: Nat) => Nat.ind
     ((k: Nat) => (y: Nat)
@@ -791,7 +799,7 @@ val intPlusHelp_add_right: (x: Nat)
       y)
     x
 
-val intPlusHelp_neg_right: (x: Nat)
+val intPlusHelpNegRight: (x: Nat)
 -> (y: Nat) -> (p: Nat) -> Eq Int (intPlus (intPlusHelp x y) (neg p)) (intPlusHelp x (succ (y + p))) =
   (x: Nat) => Nat.ind
     ((k: Nat) => (y: Nat)
@@ -811,7 +819,7 @@ val intPlusHelp_neg_right: (x: Nat)
       y)
     x
 
-val intPlusHelp_neg_shift: (n: Nat)
+val intPlusHelpNegShift: (n: Nat)
 -> (x: Nat) -> (y: Nat) -> Eq Int (intPlus (neg n) (intPlusHelp x y)) (intPlusHelp x (succ (n + y))) =
   (n: Nat) => (x: Nat) => Nat.ind
     ((k: Nat) => (y: Nat)
@@ -846,19 +854,19 @@ val intPlusHelp_neg_shift: (n: Nat)
     x
 // --- Additive monoid laws --------------------------------------------------
 
-val intPlus_zero_left: (a: Int) -> Eq Int (intPlus (pos zero) a) a =
+val intPlusZeroLeft: (a: Int) -> Eq Int (intPlus (pos zero) a) a =
   Int.ind
     ((x: Int) => Eq Int (intPlus (pos zero) x) x)
     ((n: Nat) => refl (pos n))
     ((n: Nat) => refl (neg n))
 
-val intPlus_zero_right: (a: Int) -> Eq Int (intPlus a (pos zero)) a =
+val intPlusZeroRight: (a: Int) -> Eq Int (intPlus a (pos zero)) a =
   Int.ind
     ((x: Int) => Eq Int (intPlus x (pos zero)) x)
     ((n: Nat) => cong_e Nat Int ((t: Nat) => pos t) (n + zero) n (plus_zero n))
     ((n: Nat) => refl (neg n))
 
-val intPlus_assoc: (a: Int)
+val intPlusAssoc: (a: Int)
 -> (b: Int) -> (c: Int) -> Eq Int (intPlus (intPlus a b) c) (intPlus a (intPlus b c)) =
   (a: Int) => Int.ind
     ((x: Int) => (y: Int) -> (z: Int) -> Eq Int (intPlus (intPlus x y) z) (intPlus x (intPlus y z)))
@@ -875,7 +883,7 @@ val intPlus_assoc: (a: Int)
           Int
           (intPlus (pos n) (intPlusHelp m p))
           (intPlusHelp (n + m) p)
-          (intPlusHelp_shift_left n m p))
+          (intPlusHelpShiftLeft n m p))
         z)
       ((m: Nat) => (z: Int) => Int.ind
         ((v: Int) => Eq
@@ -887,13 +895,13 @@ val intPlus_assoc: (a: Int)
           (intPlus (intPlusHelp n m) (pos p))
           (intPlusHelp (n + p) m)
           (intPlus (pos n) (intPlusHelp p m))
-          (intPlusHelp_add_right n m p)
+          (intPlusHelpAddRight n m p)
           (sym_e
             Int
             (intPlus (pos n) (intPlusHelp p m))
             (intPlusHelp (n + p) m)
-            (intPlusHelp_shift_left n p m)))
-        ((p: Nat) => intPlusHelp_neg_right n m p)
+            (intPlusHelpShiftLeft n p m)))
+        ((p: Nat) => intPlusHelpNegRight n m p)
         z)
       y)
     ((n: Nat) => (y: Int) => Int.ind
@@ -904,18 +912,18 @@ val intPlus_assoc: (a: Int)
           Int
           (intPlus (intPlus (neg n) (pos m)) v)
           (intPlus (neg n) (intPlus (pos m) v)))
-        ((p: Nat) => intPlusHelp_add_right m n p)
+        ((p: Nat) => intPlusHelpAddRight m n p)
         ((p: Nat) => trans_e
           Int
           (intPlus (intPlusHelp m n) (neg p))
           (intPlusHelp m (succ (n + p)))
           (intPlus (neg n) (intPlusHelp m p))
-          (intPlusHelp_neg_right m n p)
+          (intPlusHelpNegRight m n p)
           (sym_e
             Int
             (intPlus (neg n) (intPlusHelp m p))
             (intPlusHelp m (succ (n + p)))
-            (intPlusHelp_neg_shift n m p)))
+            (intPlusHelpNegShift n m p)))
         z)
       ((m: Nat) => (z: Int) => Int.ind
         ((v: Int) => Eq
@@ -926,7 +934,7 @@ val intPlus_assoc: (a: Int)
           Int
           (intPlus (neg n) (intPlusHelp p m))
           (intPlusHelp p (succ (n + m)))
-          (intPlusHelp_neg_shift n p m))
+          (intPlusHelpNegShift n p m))
         ((p: Nat) => cong_e
           Nat
           Int
@@ -951,35 +959,35 @@ val intPlus_assoc: (a: Int)
     a
 // --- Additive inverse laws -------------------------------------------------
 
-val intPlusHelp_succ_self: (n: Nat) -> Eq Int (intPlusHelp (succ n) n) (pos zero) =
+val intPlusHelpSuccSelf: (n: Nat) -> Eq Int (intPlusHelp (succ n) n) (pos zero) =
   (n: Nat) => Nat.ind
     ((k: Nat) => Eq Int (intPlusHelp (succ k) k) (pos zero))
     (refl (pos zero))
     ((k: Nat) => (ih: Eq Int (intPlusHelp (succ k) k) (pos zero)) => ih)
     n
 
-val intAdd_neg_left: (a: Int) -> Eq Int (intPlus (intNeg a) a) (pos zero) =
+val intAddNegateLeft: (a: Int) -> Eq Int (intPlus (intNegate a) a) (pos zero) =
   Int.ind
-    ((x: Int) => Eq Int (intPlus (intNeg x) x) (pos zero))
+    ((x: Int) => Eq Int (intPlus (intNegate x) x) (pos zero))
     ((n: Nat) => Nat.ind
-      ((k: Nat) => Eq Int (intPlus (intNeg (pos k)) (pos k)) (pos zero))
+      ((k: Nat) => Eq Int (intPlus (intNegate (pos k)) (pos k)) (pos zero))
       (refl (pos zero))
-      ((k: Nat) => (_: Eq Int (intPlus (intNeg (pos k)) (pos k)) (pos zero)) => intPlusHelp_succ_self
+      ((k: Nat) => (_: Eq Int (intPlus (intNegate (pos k)) (pos k)) (pos zero)) => intPlusHelpSuccSelf
         k)
       n)
-    ((n: Nat) => intPlusHelp_succ_self n)
+    ((n: Nat) => intPlusHelpSuccSelf n)
 
-val intAdd_neg_right: (a: Int) -> Eq Int (intPlus a (intNeg a)) (pos zero) =
+val intAddNegateRight: (a: Int) -> Eq Int (intPlus a (intNegate a)) (pos zero) =
   (a: Int) => trans_e
     Int
-    (intPlus a (intNeg a))
-    (intPlus (intNeg a) a)
+    (intPlus a (intNegate a))
+    (intPlus (intNegate a) a)
     (pos zero)
-    (intPlus_comm a (intNeg a))
-    (intAdd_neg_left a)
+    (intPlusComm a (intNegate a))
+    (intAddNegateLeft a)
 // --- Multiplication magnitude facts ---------------------------------------
 
-val intSuccMult: (n: Nat) -> (m: Nat) -> Eq Nat (succ n * succ m) (succ (n * m + n + m)) =
+val intSuccMultiply: (n: Nat) -> (m: Nat) -> Eq Nat (succ n * succ m) (succ (n * m + n + m)) =
   (n: Nat) => (m: Nat) => trans_e
     Nat
     (succ n * succ m)
@@ -1013,56 +1021,69 @@ val intSuccMult: (n: Nat) -> (m: Nat) -> Eq Nat (succ n * succ m) (succ (n * m +
             (sym_e Nat (n * m + n + m) (n * m + (n + m)) (plus_assoc (n * m) n m))))))
 // --- The negation laws for multiplication ---------------------------------
 
-val intMult_neg_right: (a: Int) -> (b: Int) -> Eq Int (intMult a (intNeg b)) (intNeg (intMult a b)) =
+val intMultiplyNegateRight: (a: Int)
+-> (b: Int) -> Eq Int (intMultiply a (intNegate b)) (intNegate (intMultiply a b)) =
   (a: Int) => Int.ind
-    ((x: Int) => (y: Int) -> Eq Int (intMult x (intNeg y)) (intNeg (intMult x y)))
+    ((x: Int) => (y: Int) -> Eq Int (intMultiply x (intNegate y)) (intNegate (intMultiply x y)))
     ((n: Nat) => (y: Int) => Int.ind
-      ((w: Int) => Eq Int (intMult (pos n) (intNeg w)) (intNeg (intMult (pos n) w)))
+      ((w: Int) => Eq Int (intMultiply (pos n) (intNegate w)) (intNegate (intMultiply (pos n) w)))
       ((m: Nat) => Nat.ind
-        ((k: Nat) => Eq Int (intMult (pos n) (intNeg (pos k))) (intNeg (intMult (pos n) (pos k))))
+        ((k: Nat) => Eq
+          Int
+          (intMultiply (pos n) (intNegate (pos k)))
+          (intNegate (intMultiply (pos n) (pos k))))
         (trans_e
           Int
           (pos (n * zero))
           (pos zero)
-          (intNeg (pos (n * zero)))
+          (intNegate (pos (n * zero)))
           (cong_e Nat Int ((t: Nat) => pos t) (n * zero) zero (mult_zero n))
           (trans_e
             Int
             (pos zero)
-            (intNeg (pos zero))
-            (intNeg (pos (n * zero)))
-            (sym_e Int (intNeg (pos zero)) (pos zero) intNeg_pos_zero)
+            (intNegate (pos zero))
+            (intNegate (pos (n * zero)))
+            (sym_e Int (intNegate (pos zero)) (pos zero) intNegatePosZero)
             (sym_e
               Int
-              (intNeg (pos (n * zero)))
-              (intNeg (pos zero))
-              (cong_e Nat Int ((t: Nat) => intNeg (pos t)) (n * zero) zero (mult_zero n)))))
+              (intNegate (pos (n * zero)))
+              (intNegate (pos zero))
+              (cong_e Nat Int ((t: Nat) => intNegate (pos t)) (n * zero) zero (mult_zero n)))))
         ((k: Nat) => (_: Eq
           Int
-          (intMult (pos n) (intNeg (pos k)))
-          (intNeg (intMult (pos n) (pos k)))) => refl (intNeg (pos (n * succ k))))
+          (intMultiply (pos n) (intNegate (pos k)))
+          (intNegate (intMultiply (pos n) (pos k)))) => refl (intNegate (pos (n * succ k))))
         m)
       ((m: Nat) => sym_e
         Int
-        (intNeg (intNeg (pos (n * succ m))))
+        (intNegate (intNegate (pos (n * succ m))))
         (pos (n * succ m))
-        (intNeg_neg (pos (n * succ m))))
+        (intNegateNegate (pos (n * succ m))))
       y)
     ((n: Nat) => (y: Int) => Int.ind
-      ((w: Int) => Eq Int (intMult (neg n) (intNeg w)) (intNeg (intMult (neg n) w)))
+      ((w: Int) => Eq Int (intMultiply (neg n) (intNegate w)) (intNegate (intMultiply (neg n) w)))
       ((m: Nat) => Nat.ind
-        ((k: Nat) => Eq Int (intMult (neg n) (intNeg (pos k))) (intNeg (intMult (neg n) (pos k))))
+        ((k: Nat) => Eq
+          Int
+          (intMultiply (neg n) (intNegate (pos k)))
+          (intNegate (intMultiply (neg n) (pos k))))
         (trans_e
           Int
-          (intNeg (pos (succ n * zero)))
+          (intNegate (pos (succ n * zero)))
           (pos (succ n * zero))
-          (intNeg (intNeg (pos (succ n * zero))))
+          (intNegate (intNegate (pos (succ n * zero))))
           (trans_e
             Int
-            (intNeg (pos (succ n * zero)))
+            (intNegate (pos (succ n * zero)))
             (pos zero)
             (pos (succ n * zero))
-            (cong_e Nat Int ((t: Nat) => intNeg (pos t)) (succ n * zero) zero (mult_zero (succ n)))
+            (cong_e
+              Nat
+              Int
+              ((t: Nat) => intNegate (pos t))
+              (succ n * zero)
+              zero
+              (mult_zero (succ n)))
             (cong_e
               Nat
               Int
@@ -1072,17 +1093,17 @@ val intMult_neg_right: (a: Int) -> (b: Int) -> Eq Int (intMult a (intNeg b)) (in
               (sym_e Nat (succ n * zero) zero (mult_zero (succ n)))))
           (sym_e
             Int
-            (intNeg (intNeg (pos (succ n * zero))))
+            (intNegate (intNegate (pos (succ n * zero))))
             (pos (succ n * zero))
-            (intNeg_neg (pos (succ n * zero)))))
+            (intNegateNegate (pos (succ n * zero)))))
         ((k: Nat) => (_: Eq
           Int
-          (intMult (neg n) (intNeg (pos k)))
-          (intNeg (intMult (neg n) (pos k)))) => trans_e
+          (intMultiply (neg n) (intNegate (pos k)))
+          (intNegate (intMultiply (neg n) (pos k)))) => trans_e
           Int
           (pos (succ (n * k + n + k)))
           (pos (succ n * succ k))
-          (intNeg (intNeg (pos (succ n * succ k))))
+          (intNegate (intNegate (pos (succ n * succ k))))
           (sym_e
             Int
             (pos (succ n * succ k))
@@ -1093,43 +1114,50 @@ val intMult_neg_right: (a: Int) -> (b: Int) -> Eq Int (intMult a (intNeg b)) (in
               ((t: Nat) => pos t)
               (succ n * succ k)
               (succ (n * k + n + k))
-              (intSuccMult n k)))
+              (intSuccMultiply n k)))
           (sym_e
             Int
-            (intNeg (intNeg (pos (succ n * succ k))))
+            (intNegate (intNegate (pos (succ n * succ k))))
             (pos (succ n * succ k))
-            (intNeg_neg (pos (succ n * succ k)))))
+            (intNegateNegate (pos (succ n * succ k)))))
         m)
       ((m: Nat) => cong_e
         Nat
         Int
-        ((t: Nat) => intNeg (pos t))
+        ((t: Nat) => intNegate (pos t))
         (succ n * succ m)
         (succ (n * m + n + m))
-        (intSuccMult n m))
+        (intSuccMultiply n m))
       y)
     a
 
-val intMult_neg_left: (a: Int) -> (b: Int) -> Eq Int (intMult (intNeg a) b) (intNeg (intMult a b)) =
+val intMultiplyNegateLeft: (a: Int)
+-> (b: Int) -> Eq Int (intMultiply (intNegate a) b) (intNegate (intMultiply a b)) =
   (a: Int) => Int.ind
-    ((x: Int) => (y: Int) -> Eq Int (intMult (intNeg x) y) (intNeg (intMult x y)))
+    ((x: Int) => (y: Int) -> Eq Int (intMultiply (intNegate x) y) (intNegate (intMultiply x y)))
     ((n: Nat) => (y: Int) => Int.ind
-      ((w: Int) => Eq Int (intMult (intNeg (pos n)) w) (intNeg (intMult (pos n) w)))
+      ((w: Int) => Eq Int (intMultiply (intNegate (pos n)) w) (intNegate (intMultiply (pos n) w)))
       ((m: Nat) => Nat.ind
-        ((k: Nat) => Eq Int (intMult (intNeg (pos k)) (pos m)) (intNeg (intMult (pos k) (pos m))))
+        ((k: Nat) => Eq
+          Int
+          (intMultiply (intNegate (pos k)) (pos m))
+          (intNegate (intMultiply (pos k) (pos m))))
         (refl (pos zero))
         ((k: Nat) => (_: Eq
           Int
-          (intMult (intNeg (pos k)) (pos m))
-          (intNeg (intMult (pos k) (pos m)))) => refl (intNeg (pos (succ k * m))))
+          (intMultiply (intNegate (pos k)) (pos m))
+          (intNegate (intMultiply (pos k) (pos m)))) => refl (intNegate (pos (succ k * m))))
         n)
       ((m: Nat) => Nat.ind
-        ((k: Nat) => Eq Int (intMult (intNeg (pos k)) (neg m)) (intNeg (intMult (pos k) (neg m))))
+        ((k: Nat) => Eq
+          Int
+          (intMultiply (intNegate (pos k)) (neg m))
+          (intNegate (intMultiply (pos k) (neg m))))
         (refl (pos zero))
         ((k: Nat) => (_: Eq
           Int
-          (intMult (intNeg (pos k)) (neg m))
-          (intNeg (intMult (pos k) (neg m)))) => sym_e
+          (intMultiply (intNegate (pos k)) (neg m))
+          (intNegate (intMultiply (pos k) (neg m)))) => sym_e
           Int
           (pos (succ k * succ m))
           (pos (succ (k * m + k + m)))
@@ -1139,133 +1167,154 @@ val intMult_neg_left: (a: Int) -> (b: Int) -> Eq Int (intMult (intNeg a) b) (int
             ((t: Nat) => pos t)
             (succ k * succ m)
             (succ (k * m + k + m))
-            (intSuccMult k m)))
+            (intSuccMultiply k m)))
         n)
       y)
     ((n: Nat) => (y: Int) => Int.ind
-      ((w: Int) => Eq Int (intMult (intNeg (neg n)) w) (intNeg (intMult (neg n) w)))
+      ((w: Int) => Eq Int (intMultiply (intNegate (neg n)) w) (intNegate (intMultiply (neg n) w)))
       ((m: Nat) => sym_e
         Int
-        (intNeg (intNeg (pos (succ n * m))))
+        (intNegate (intNegate (pos (succ n * m))))
         (pos (succ n * m))
-        (intNeg_neg (pos (succ n * m))))
+        (intNegateNegate (pos (succ n * m))))
       ((m: Nat) => cong_e
         Nat
         Int
-        ((t: Nat) => intNeg (pos t))
+        ((t: Nat) => intNegate (pos t))
         (succ n * succ m)
         (succ (n * m + n + m))
-        (intSuccMult n m))
+        (intSuccMultiply n m))
       y)
     a
 // --- Multiplication by a positive integer ---------------------------------
 
-val intMultPosZero: (z: Int) -> Eq Int (intMult (pos zero) z) (pos zero) =
+val intMultiplyPosZero: (z: Int) -> Eq Int (intMultiply (pos zero) z) (pos zero) =
   Int.ind
-    ((x: Int) => Eq Int (intMult (pos zero) x) (pos zero))
+    ((x: Int) => Eq Int (intMultiply (pos zero) x) (pos zero))
     ((m: Nat) => refl (pos zero))
     ((m: Nat) => refl (pos zero))
 
-val intPlusNegPos: (m: Nat) -> (B: Nat) -> Eq Int (intPlus (neg m) (intNeg (pos B))) (neg (m + B)) =
+val intPlusNegPos: (m: Nat)
+-> (B: Nat) -> Eq Int (intPlus (neg m) (intNegate (pos B))) (neg (m + B)) =
   (m: Nat) => (B: Nat) => Nat.ind
-    ((k: Nat) => Eq Int (intPlus (neg m) (intNeg (pos k))) (neg (m + k)))
+    ((k: Nat) => Eq Int (intPlus (neg m) (intNegate (pos k))) (neg (m + k)))
     (sym_e
       Int
       (neg (m + zero))
       (neg m)
       (cong_e Nat Int ((t: Nat) => neg t) (m + zero) m (plus_zero m)))
-    ((k: Nat) => (_: Eq Int (intPlus (neg m) (intNeg (pos k))) (neg (m + k))) => sym_e
+    ((k: Nat) => (_: Eq Int (intPlus (neg m) (intNegate (pos k))) (neg (m + k))) => sym_e
       Int
       (neg (m + succ k))
       (neg (succ (m + k)))
       (cong_e Nat Int ((t: Nat) => neg t) (m + succ k) (succ (m + k)) (plus_succ m k)))
     B
 
-val intMultPosStep: (k: Nat)
--> (z: Int) -> Eq Int (intMult (pos (succ k)) z) (intPlus z (intMult (pos k) z)) =
+val intMultiplyPosStep: (k: Nat)
+-> (z: Int) -> Eq Int (intMultiply (pos (succ k)) z) (intPlus z (intMultiply (pos k) z)) =
   (k: Nat) => (z: Int) => Int.ind
-    ((x: Int) => Eq Int (intMult (pos (succ k)) x) (intPlus x (intMult (pos k) x)))
+    ((x: Int) => Eq Int (intMultiply (pos (succ k)) x) (intPlus x (intMultiply (pos k) x)))
     ((m: Nat) => refl (pos (m + k * m)))
     ((m: Nat) => sym_e
       Int
-      (intPlus (neg m) (intNeg (pos (k * succ m))))
+      (intPlus (neg m) (intNegate (pos (k * succ m))))
       (neg (m + k * succ m))
       (intPlusNegPos m (k * succ m)))
     z
 
-val intMultPosSum: (n1: Nat)
+val intMultiplyPosSum: (n1: Nat)
 -> (n2: Nat)
   -> (z: Int)
-    -> Eq Int (intMult (pos (n1 + n2)) z) (intPlus (intMult (pos n1) z) (intMult (pos n2) z)) =
+    -> Eq
+        Int
+        (intMultiply (pos (n1 + n2)) z)
+        (intPlus (intMultiply (pos n1) z) (intMultiply (pos n2) z)) =
   (n1: Nat) => Nat.ind
     ((k: Nat) => (n2: Nat)
     -> (z: Int)
-      -> Eq Int (intMult (pos (k + n2)) z) (intPlus (intMult (pos k) z) (intMult (pos n2) z)))
+      -> Eq
+          Int
+          (intMultiply (pos (k + n2)) z)
+          (intPlus (intMultiply (pos k) z) (intMultiply (pos n2) z)))
     ((n2: Nat) => (z: Int) => {
-      val f: Eq Int (intPlus (intMult (pos zero) z) (intMult (pos n2) z)) (intMult (pos n2) z) = trans_e
+      val f: Eq
         Int
-        (intPlus (intMult (pos zero) z) (intMult (pos n2) z))
-        (intPlus (pos zero) (intMult (pos n2) z))
-        (intMult (pos n2) z)
+        (intPlus (intMultiply (pos zero) z) (intMultiply (pos n2) z))
+        (intMultiply (pos n2) z) = trans_e
+        Int
+        (intPlus (intMultiply (pos zero) z) (intMultiply (pos n2) z))
+        (intPlus (pos zero) (intMultiply (pos n2) z))
+        (intMultiply (pos n2) z)
         (cong_e
           Int
           Int
-          ((t: Int) => intPlus t (intMult (pos n2) z))
-          (intMult (pos zero) z)
+          ((t: Int) => intPlus t (intMultiply (pos n2) z))
+          (intMultiply (pos zero) z)
           (pos zero)
-          (intMultPosZero z))
-        (intPlus_zero_left (intMult (pos n2) z));
-      sym_e Int (intPlus (intMult (pos zero) z) (intMult (pos n2) z)) (intMult (pos n2) z) f
+          (intMultiplyPosZero z))
+        (intPlusZeroLeft (intMultiply (pos n2) z));
+      sym_e
+        Int
+        (intPlus (intMultiply (pos zero) z) (intMultiply (pos n2) z))
+        (intMultiply (pos n2) z)
+        f
       })
     ((k: Nat) => (ih: (n2: Nat)
     -> (z: Int)
-      -> Eq Int (intMult (pos (k + n2)) z) (intPlus (intMult (pos k) z) (intMult (pos n2) z))) => (n2: Nat) => (z: Int) => {
-      val e1: Eq Int (intMult (pos (succ k + n2)) z) (intPlus z (intMult (pos (k + n2)) z)) = intMultPosStep
+      -> Eq
+          Int
+          (intMultiply (pos (k + n2)) z)
+          (intPlus (intMultiply (pos k) z) (intMultiply (pos n2) z))) => (n2: Nat) => (z: Int) => {
+      val e1: Eq Int (intMultiply (pos (succ k + n2)) z) (intPlus z (intMultiply (pos (k + n2)) z)) = intMultiplyPosStep
         (k + n2)
         z;
       val e2: Eq
         Int
-        (intPlus z (intMult (pos (k + n2)) z))
-        (intPlus z (intPlus (intMult (pos k) z) (intMult (pos n2) z))) = cong_e
+        (intPlus z (intMultiply (pos (k + n2)) z))
+        (intPlus z (intPlus (intMultiply (pos k) z) (intMultiply (pos n2) z))) = cong_e
         Int
         Int
         ((t: Int) => intPlus z t)
-        (intMult (pos (k + n2)) z)
-        (intPlus (intMult (pos k) z) (intMult (pos n2) z))
+        (intMultiply (pos (k + n2)) z)
+        (intPlus (intMultiply (pos k) z) (intMultiply (pos n2) z))
         (ih n2 z);
       val e3: Eq
         Int
-        (intPlus z (intPlus (intMult (pos k) z) (intMult (pos n2) z)))
-        (intPlus (intPlus z (intMult (pos k) z)) (intMult (pos n2) z)) = sym_e
+        (intPlus z (intPlus (intMultiply (pos k) z) (intMultiply (pos n2) z)))
+        (intPlus (intPlus z (intMultiply (pos k) z)) (intMultiply (pos n2) z)) = sym_e
         Int
-        (intPlus (intPlus z (intMult (pos k) z)) (intMult (pos n2) z))
-        (intPlus z (intPlus (intMult (pos k) z) (intMult (pos n2) z)))
-        (intPlus_assoc z (intMult (pos k) z) (intMult (pos n2) z));
+        (intPlus (intPlus z (intMultiply (pos k) z)) (intMultiply (pos n2) z))
+        (intPlus z (intPlus (intMultiply (pos k) z) (intMultiply (pos n2) z)))
+        (intPlusAssoc z (intMultiply (pos k) z) (intMultiply (pos n2) z));
       val e4: Eq
         Int
-        (intPlus (intPlus z (intMult (pos k) z)) (intMult (pos n2) z))
-        (intPlus (intMult (pos (succ k)) z) (intMult (pos n2) z)) = cong_e
+        (intPlus (intPlus z (intMultiply (pos k) z)) (intMultiply (pos n2) z))
+        (intPlus (intMultiply (pos (succ k)) z) (intMultiply (pos n2) z)) = cong_e
         Int
         Int
-        ((t: Int) => intPlus t (intMult (pos n2) z))
-        (intPlus z (intMult (pos k) z))
-        (intMult (pos (succ k)) z)
-        (sym_e Int (intMult (pos (succ k)) z) (intPlus z (intMult (pos k) z)) (intMultPosStep k z));
+        ((t: Int) => intPlus t (intMultiply (pos n2) z))
+        (intPlus z (intMultiply (pos k) z))
+        (intMultiply (pos (succ k)) z)
+        (sym_e
+          Int
+          (intMultiply (pos (succ k)) z)
+          (intPlus z (intMultiply (pos k) z))
+          (intMultiplyPosStep k z));
       trans_e
         Int
-        (intMult (pos (succ k + n2)) z)
-        (intPlus (intPlus z (intMult (pos k) z)) (intMult (pos n2) z))
-        (intPlus (intMult (pos (succ k)) z) (intMult (pos n2) z))
+        (intMultiply (pos (succ k + n2)) z)
+        (intPlus (intPlus z (intMultiply (pos k) z)) (intMultiply (pos n2) z))
+        (intPlus (intMultiply (pos (succ k)) z) (intMultiply (pos n2) z))
         (trans_e
           Int
-          (intMult (pos (succ k + n2)) z)
-          (intPlus z (intPlus (intMult (pos k) z) (intMult (pos n2) z)))
-          (intPlus (intPlus z (intMult (pos k) z)) (intMult (pos n2) z))
+          (intMultiply (pos (succ k + n2)) z)
+          (intPlus z (intPlus (intMultiply (pos k) z) (intMultiply (pos n2) z)))
+          (intPlus (intPlus z (intMultiply (pos k) z)) (intMultiply (pos n2) z))
           (trans_e
             Int
-            (intMult (pos (succ k + n2)) z)
-            (intPlus z (intMult (pos (k + n2)) z))
-            (intPlus z (intPlus (intMult (pos k) z) (intMult (pos n2) z)))
+            (intMultiply (pos (succ k + n2)) z)
+            (intPlus z (intMultiply (pos (k + n2)) z))
+            (intPlus z (intPlus (intMultiply (pos k) z) (intMultiply (pos n2) z)))
             e1
             e2)
           e3)
@@ -1273,54 +1322,57 @@ val intMultPosSum: (n1: Nat)
       })
     n1
 
-val intMultPosAssoc: (n: Nat)
--> (m: Nat) -> (z: Int) -> Eq Int (intMult (pos n) (intMult (pos m) z)) (intMult (pos (n * m)) z) =
+val intMultiplyPosAssoc: (n: Nat)
+-> (m: Nat)
+  -> (z: Int) -> Eq Int (intMultiply (pos n) (intMultiply (pos m) z)) (intMultiply (pos (n * m)) z) =
   (n: Nat) => Nat.ind
     ((k: Nat) => (m: Nat)
-    -> (z: Int) -> Eq Int (intMult (pos k) (intMult (pos m) z)) (intMult (pos (k * m)) z))
+    -> (z: Int)
+      -> Eq Int (intMultiply (pos k) (intMultiply (pos m) z)) (intMultiply (pos (k * m)) z))
     ((m: Nat) => (z: Int) => trans_e
       Int
-      (intMult (pos zero) (intMult (pos m) z))
+      (intMultiply (pos zero) (intMultiply (pos m) z))
       (pos zero)
-      (intMult (pos (zero * m)) z)
-      (intMultPosZero (intMult (pos m) z))
-      (sym_e Int (intMult (pos (zero * m)) z) (pos zero) (intMultPosZero z)))
+      (intMultiply (pos (zero * m)) z)
+      (intMultiplyPosZero (intMultiply (pos m) z))
+      (sym_e Int (intMultiply (pos (zero * m)) z) (pos zero) (intMultiplyPosZero z)))
     ((k: Nat) => (ih: (m: Nat)
-    -> (z: Int) -> Eq Int (intMult (pos k) (intMult (pos m) z)) (intMult (pos (k * m)) z)) => (m: Nat) => (z: Int) => {
+    -> (z: Int)
+      -> Eq Int (intMultiply (pos k) (intMultiply (pos m) z)) (intMultiply (pos (k * m)) z)) => (m: Nat) => (z: Int) => {
       val e1: Eq
         Int
-        (intMult (pos (succ k)) (intMult (pos m) z))
-        (intPlus (intMult (pos m) z) (intMult (pos k) (intMult (pos m) z))) = intMultPosStep
+        (intMultiply (pos (succ k)) (intMultiply (pos m) z))
+        (intPlus (intMultiply (pos m) z) (intMultiply (pos k) (intMultiply (pos m) z))) = intMultiplyPosStep
         k
-        (intMult (pos m) z);
+        (intMultiply (pos m) z);
       val e2: Eq
         Int
-        (intPlus (intMult (pos m) z) (intMult (pos k) (intMult (pos m) z)))
-        (intPlus (intMult (pos m) z) (intMult (pos (k * m)) z)) = cong_e
+        (intPlus (intMultiply (pos m) z) (intMultiply (pos k) (intMultiply (pos m) z)))
+        (intPlus (intMultiply (pos m) z) (intMultiply (pos (k * m)) z)) = cong_e
         Int
         Int
-        ((t: Int) => intPlus (intMult (pos m) z) t)
-        (intMult (pos k) (intMult (pos m) z))
-        (intMult (pos (k * m)) z)
+        ((t: Int) => intPlus (intMultiply (pos m) z) t)
+        (intMultiply (pos k) (intMultiply (pos m) z))
+        (intMultiply (pos (k * m)) z)
         (ih m z);
       val e3: Eq
         Int
-        (intPlus (intMult (pos m) z) (intMult (pos (k * m)) z))
-        (intMult (pos (m + k * m)) z) = sym_e
+        (intPlus (intMultiply (pos m) z) (intMultiply (pos (k * m)) z))
+        (intMultiply (pos (m + k * m)) z) = sym_e
         Int
-        (intMult (pos (m + k * m)) z)
-        (intPlus (intMult (pos m) z) (intMult (pos (k * m)) z))
-        (intMultPosSum m (k * m) z);
+        (intMultiply (pos (m + k * m)) z)
+        (intPlus (intMultiply (pos m) z) (intMultiply (pos (k * m)) z))
+        (intMultiplyPosSum m (k * m) z);
       trans_e
         Int
-        (intMult (pos (succ k)) (intMult (pos m) z))
-        (intPlus (intMult (pos m) z) (intMult (pos (k * m)) z))
-        (intMult (pos (succ k * m)) z)
+        (intMultiply (pos (succ k)) (intMultiply (pos m) z))
+        (intPlus (intMultiply (pos m) z) (intMultiply (pos (k * m)) z))
+        (intMultiply (pos (succ k * m)) z)
         (trans_e
           Int
-          (intMult (pos (succ k)) (intMult (pos m) z))
-          (intPlus (intMult (pos m) z) (intMult (pos k) (intMult (pos m) z)))
-          (intPlus (intMult (pos m) z) (intMult (pos (k * m)) z))
+          (intMultiply (pos (succ k)) (intMultiply (pos m) z))
+          (intPlus (intMultiply (pos m) z) (intMultiply (pos k) (intMultiply (pos m) z)))
+          (intPlus (intMultiply (pos m) z) (intMultiply (pos (k * m)) z))
           e1
           e2)
         e3
@@ -1333,7 +1385,7 @@ val intPlusMiddle: (a: Int)
     -> (d: Int)
       -> Eq Int (intPlus (intPlus a b) (intPlus c d)) (intPlus (intPlus a c) (intPlus b d)) =
   (a: Int) => (b: Int) => (c: Int) => (d: Int) => {
-    val e1: Eq Int (intPlus (intPlus a b) (intPlus c d)) (intPlus a (intPlus b (intPlus c d))) = intPlus_assoc
+    val e1: Eq Int (intPlus (intPlus a b) (intPlus c d)) (intPlus a (intPlus b (intPlus c d))) = intPlusAssoc
       a
       b
       (intPlus c d);
@@ -1343,26 +1395,26 @@ val intPlusMiddle: (a: Int)
       ((t: Int) => intPlus a t)
       (intPlus b (intPlus c d))
       (intPlus (intPlus b c) d)
-      (sym_e Int (intPlus (intPlus b c) d) (intPlus b (intPlus c d)) (intPlus_assoc b c d));
+      (sym_e Int (intPlus (intPlus b c) d) (intPlus b (intPlus c d)) (intPlusAssoc b c d));
     val e3: Eq Int (intPlus a (intPlus (intPlus b c) d)) (intPlus a (intPlus (intPlus c b) d)) = cong_e
       Int
       Int
       ((t: Int) => intPlus a t)
       (intPlus (intPlus b c) d)
       (intPlus (intPlus c b) d)
-      (cong_e Int Int ((t: Int) => intPlus t d) (intPlus b c) (intPlus c b) (intPlus_comm b c));
+      (cong_e Int Int ((t: Int) => intPlus t d) (intPlus b c) (intPlus c b) (intPlusComm b c));
     val e4: Eq Int (intPlus a (intPlus (intPlus c b) d)) (intPlus a (intPlus c (intPlus b d))) = cong_e
       Int
       Int
       ((t: Int) => intPlus a t)
       (intPlus (intPlus c b) d)
       (intPlus c (intPlus b d))
-      (intPlus_assoc c b d);
+      (intPlusAssoc c b d);
     val e5: Eq Int (intPlus a (intPlus c (intPlus b d))) (intPlus (intPlus a c) (intPlus b d)) = sym_e
       Int
       (intPlus (intPlus a c) (intPlus b d))
       (intPlus a (intPlus c (intPlus b d)))
-      (intPlus_assoc a c (intPlus b d));
+      (intPlusAssoc a c (intPlus b d));
     trans_e
       Int
       (intPlus (intPlus a b) (intPlus c d))
@@ -1393,402 +1445,427 @@ val intPlusMiddle: (a: Int)
 val intMultPosAdd: (n: Nat)
 -> (b: Int)
   -> (c: Int)
-    -> Eq Int (intMult (pos n) (intPlus b c)) (intPlus (intMult (pos n) b) (intMult (pos n) c)) =
+    -> Eq
+        Int
+        (intMultiply (pos n) (intPlus b c))
+        (intPlus (intMultiply (pos n) b) (intMultiply (pos n) c)) =
   (n: Nat) => Nat.ind
     ((k: Nat) => (b: Int)
     -> (c: Int)
-      -> Eq Int (intMult (pos k) (intPlus b c)) (intPlus (intMult (pos k) b) (intMult (pos k) c)))
+      -> Eq
+          Int
+          (intMultiply (pos k) (intPlus b c))
+          (intPlus (intMultiply (pos k) b) (intMultiply (pos k) c)))
     ((b: Int) => (c: Int) => {
-      val f: Eq Int (intPlus (intMult (pos zero) b) (intMult (pos zero) c)) (pos zero) = trans_e
+      val f: Eq Int (intPlus (intMultiply (pos zero) b) (intMultiply (pos zero) c)) (pos zero) = trans_e
         Int
-        (intPlus (intMult (pos zero) b) (intMult (pos zero) c))
+        (intPlus (intMultiply (pos zero) b) (intMultiply (pos zero) c))
         (intPlus (pos zero) (pos zero))
         (pos zero)
         (trans_e
           Int
-          (intPlus (intMult (pos zero) b) (intMult (pos zero) c))
-          (intPlus (pos zero) (intMult (pos zero) c))
+          (intPlus (intMultiply (pos zero) b) (intMultiply (pos zero) c))
+          (intPlus (pos zero) (intMultiply (pos zero) c))
           (intPlus (pos zero) (pos zero))
           (cong_e
             Int
             Int
-            ((t: Int) => intPlus t (intMult (pos zero) c))
-            (intMult (pos zero) b)
+            ((t: Int) => intPlus t (intMultiply (pos zero) c))
+            (intMultiply (pos zero) b)
             (pos zero)
-            (intMultPosZero b))
+            (intMultiplyPosZero b))
           (cong_e
             Int
             Int
             ((t: Int) => intPlus (pos zero) t)
-            (intMult (pos zero) c)
+            (intMultiply (pos zero) c)
             (pos zero)
-            (intMultPosZero c)))
-        (intPlus_zero_left (pos zero));
+            (intMultiplyPosZero c)))
+        (intPlusZeroLeft (pos zero));
       trans_e
         Int
-        (intMult (pos zero) (intPlus b c))
+        (intMultiply (pos zero) (intPlus b c))
         (pos zero)
-        (intPlus (intMult (pos zero) b) (intMult (pos zero) c))
-        (intMultPosZero (intPlus b c))
-        (sym_e Int (intPlus (intMult (pos zero) b) (intMult (pos zero) c)) (pos zero) f)
+        (intPlus (intMultiply (pos zero) b) (intMultiply (pos zero) c))
+        (intMultiplyPosZero (intPlus b c))
+        (sym_e Int (intPlus (intMultiply (pos zero) b) (intMultiply (pos zero) c)) (pos zero) f)
       })
     ((k: Nat) => (ih: (b: Int)
     -> (c: Int)
-      -> Eq Int (intMult (pos k) (intPlus b c)) (intPlus (intMult (pos k) b) (intMult (pos k) c))) => (b: Int) => (c: Int) => {
+      -> Eq
+          Int
+          (intMultiply (pos k) (intPlus b c))
+          (intPlus (intMultiply (pos k) b) (intMultiply (pos k) c))) => (b: Int) => (c: Int) => {
       val e1: Eq
         Int
-        (intMult (pos (succ k)) (intPlus b c))
-        (intPlus (intPlus b c) (intMult (pos k) (intPlus b c))) = intMultPosStep k (intPlus b c);
+        (intMultiply (pos (succ k)) (intPlus b c))
+        (intPlus (intPlus b c) (intMultiply (pos k) (intPlus b c))) = intMultiplyPosStep
+        k
+        (intPlus b c);
       val e2: Eq
         Int
-        (intPlus (intPlus b c) (intMult (pos k) (intPlus b c)))
-        (intPlus (intPlus b c) (intPlus (intMult (pos k) b) (intMult (pos k) c))) = cong_e
+        (intPlus (intPlus b c) (intMultiply (pos k) (intPlus b c)))
+        (intPlus (intPlus b c) (intPlus (intMultiply (pos k) b) (intMultiply (pos k) c))) = cong_e
         Int
         Int
         ((t: Int) => intPlus (intPlus b c) t)
-        (intMult (pos k) (intPlus b c))
-        (intPlus (intMult (pos k) b) (intMult (pos k) c))
+        (intMultiply (pos k) (intPlus b c))
+        (intPlus (intMultiply (pos k) b) (intMultiply (pos k) c))
         (ih b c);
       val e3: Eq
         Int
-        (intPlus (intPlus b c) (intPlus (intMult (pos k) b) (intMult (pos k) c)))
-        (intPlus (intPlus b (intMult (pos k) b)) (intPlus c (intMult (pos k) c))) = intPlusMiddle
+        (intPlus (intPlus b c) (intPlus (intMultiply (pos k) b) (intMultiply (pos k) c)))
+        (intPlus (intPlus b (intMultiply (pos k) b)) (intPlus c (intMultiply (pos k) c))) = intPlusMiddle
         b
         c
-        (intMult (pos k) b)
-        (intMult (pos k) c);
+        (intMultiply (pos k) b)
+        (intMultiply (pos k) c);
       val fwd: Eq
         Int
-        (intPlus (intMult (pos (succ k)) b) (intMult (pos (succ k)) c))
-        (intPlus (intPlus b (intMult (pos k) b)) (intPlus c (intMult (pos k) c))) = trans_e
+        (intPlus (intMultiply (pos (succ k)) b) (intMultiply (pos (succ k)) c))
+        (intPlus (intPlus b (intMultiply (pos k) b)) (intPlus c (intMultiply (pos k) c))) = trans_e
         Int
-        (intPlus (intMult (pos (succ k)) b) (intMult (pos (succ k)) c))
-        (intPlus (intPlus b (intMult (pos k) b)) (intMult (pos (succ k)) c))
-        (intPlus (intPlus b (intMult (pos k) b)) (intPlus c (intMult (pos k) c)))
+        (intPlus (intMultiply (pos (succ k)) b) (intMultiply (pos (succ k)) c))
+        (intPlus (intPlus b (intMultiply (pos k) b)) (intMultiply (pos (succ k)) c))
+        (intPlus (intPlus b (intMultiply (pos k) b)) (intPlus c (intMultiply (pos k) c)))
         (cong_e
           Int
           Int
-          ((t: Int) => intPlus t (intMult (pos (succ k)) c))
-          (intMult (pos (succ k)) b)
-          (intPlus b (intMult (pos k) b))
-          (intMultPosStep k b))
+          ((t: Int) => intPlus t (intMultiply (pos (succ k)) c))
+          (intMultiply (pos (succ k)) b)
+          (intPlus b (intMultiply (pos k) b))
+          (intMultiplyPosStep k b))
         (cong_e
           Int
           Int
-          ((t: Int) => intPlus (intPlus b (intMult (pos k) b)) t)
-          (intMult (pos (succ k)) c)
-          (intPlus c (intMult (pos k) c))
-          (intMultPosStep k c));
+          ((t: Int) => intPlus (intPlus b (intMultiply (pos k) b)) t)
+          (intMultiply (pos (succ k)) c)
+          (intPlus c (intMultiply (pos k) c))
+          (intMultiplyPosStep k c));
       trans_e
         Int
-        (intMult (pos (succ k)) (intPlus b c))
-        (intPlus (intPlus b (intMult (pos k) b)) (intPlus c (intMult (pos k) c)))
-        (intPlus (intMult (pos (succ k)) b) (intMult (pos (succ k)) c))
+        (intMultiply (pos (succ k)) (intPlus b c))
+        (intPlus (intPlus b (intMultiply (pos k) b)) (intPlus c (intMultiply (pos k) c)))
+        (intPlus (intMultiply (pos (succ k)) b) (intMultiply (pos (succ k)) c))
         (trans_e
           Int
-          (intMult (pos (succ k)) (intPlus b c))
-          (intPlus (intPlus b c) (intPlus (intMult (pos k) b) (intMult (pos k) c)))
-          (intPlus (intPlus b (intMult (pos k) b)) (intPlus c (intMult (pos k) c)))
+          (intMultiply (pos (succ k)) (intPlus b c))
+          (intPlus (intPlus b c) (intPlus (intMultiply (pos k) b) (intMultiply (pos k) c)))
+          (intPlus (intPlus b (intMultiply (pos k) b)) (intPlus c (intMultiply (pos k) c)))
           (trans_e
             Int
-            (intMult (pos (succ k)) (intPlus b c))
-            (intPlus (intPlus b c) (intMult (pos k) (intPlus b c)))
-            (intPlus (intPlus b c) (intPlus (intMult (pos k) b) (intMult (pos k) c)))
+            (intMultiply (pos (succ k)) (intPlus b c))
+            (intPlus (intPlus b c) (intMultiply (pos k) (intPlus b c)))
+            (intPlus (intPlus b c) (intPlus (intMultiply (pos k) b) (intMultiply (pos k) c)))
             e1
             e2)
           e3)
         (sym_e
           Int
-          (intPlus (intMult (pos (succ k)) b) (intMult (pos (succ k)) c))
-          (intPlus (intPlus b (intMult (pos k) b)) (intPlus c (intMult (pos k) c)))
+          (intPlus (intMultiply (pos (succ k)) b) (intMultiply (pos (succ k)) c))
+          (intPlus (intPlus b (intMultiply (pos k) b)) (intPlus c (intMultiply (pos k) c)))
           fwd)
       })
     n
 // --- Negation and addition ------------------------------------------------
 
-val intNegUnique: (x: Int) -> (y: Int) -> Eq Int (intPlus x y) (pos zero) -> Eq Int x (intNeg y) =
+val intNegateUnique: (x: Int)
+-> (y: Int) -> Eq Int (intPlus x y) (pos zero) -> Eq Int x (intNegate y) =
   (x: Int) => (y: Int) => (h: Eq Int (intPlus x y) (pos zero)) => {
     val e1: Eq Int x (intPlus x (pos zero)) = sym_e
       Int
       (intPlus x (pos zero))
       x
-      (intPlus_zero_right x);
-    val e2: Eq Int (intPlus x (pos zero)) (intPlus x (intPlus y (intNeg y))) = cong_e
+      (intPlusZeroRight x);
+    val e2: Eq Int (intPlus x (pos zero)) (intPlus x (intPlus y (intNegate y))) = cong_e
       Int
       Int
       ((t: Int) => intPlus x t)
       (pos zero)
-      (intPlus y (intNeg y))
-      (sym_e Int (intPlus y (intNeg y)) (pos zero) (intAdd_neg_right y));
-    val e3: Eq Int (intPlus x (intPlus y (intNeg y))) (intPlus (intPlus x y) (intNeg y)) = sym_e
+      (intPlus y (intNegate y))
+      (sym_e Int (intPlus y (intNegate y)) (pos zero) (intAddNegateRight y));
+    val e3: Eq Int (intPlus x (intPlus y (intNegate y))) (intPlus (intPlus x y) (intNegate y)) = sym_e
       Int
-      (intPlus (intPlus x y) (intNeg y))
-      (intPlus x (intPlus y (intNeg y)))
-      (intPlus_assoc x y (intNeg y));
-    val e4: Eq Int (intPlus (intPlus x y) (intNeg y)) (intPlus (pos zero) (intNeg y)) = cong_e
+      (intPlus (intPlus x y) (intNegate y))
+      (intPlus x (intPlus y (intNegate y)))
+      (intPlusAssoc x y (intNegate y));
+    val e4: Eq Int (intPlus (intPlus x y) (intNegate y)) (intPlus (pos zero) (intNegate y)) = cong_e
       Int
       Int
-      ((t: Int) => intPlus t (intNeg y))
+      ((t: Int) => intPlus t (intNegate y))
       (intPlus x y)
       (pos zero)
       h;
-    val e5: Eq Int (intPlus (pos zero) (intNeg y)) (intNeg y) = intPlus_zero_left (intNeg y);
+    val e5: Eq Int (intPlus (pos zero) (intNegate y)) (intNegate y) = intPlusZeroLeft (intNegate y);
     trans_e
       Int
       x
-      (intPlus (intPlus x y) (intNeg y))
-      (intNeg y)
+      (intPlus (intPlus x y) (intNegate y))
+      (intNegate y)
       (trans_e
         Int
         x
-        (intPlus x (intPlus y (intNeg y)))
-        (intPlus (intPlus x y) (intNeg y))
-        (trans_e Int x (intPlus x (pos zero)) (intPlus x (intPlus y (intNeg y))) e1 e2)
+        (intPlus x (intPlus y (intNegate y)))
+        (intPlus (intPlus x y) (intNegate y))
+        (trans_e Int x (intPlus x (pos zero)) (intPlus x (intPlus y (intNegate y))) e1 e2)
         e3)
       (trans_e
         Int
-        (intPlus (intPlus x y) (intNeg y))
-        (intPlus (pos zero) (intNeg y))
-        (intNeg y)
+        (intPlus (intPlus x y) (intNegate y))
+        (intPlus (pos zero) (intNegate y))
+        (intNegate y)
         e4
         e5)
     }
 
 val intPlusNegNegZero: (x: Int)
--> (y: Int) -> Eq Int (intPlus (intPlus (intNeg x) (intNeg y)) (intPlus x y)) (pos zero) =
+-> (y: Int) -> Eq Int (intPlus (intPlus (intNegate x) (intNegate y)) (intPlus x y)) (pos zero) =
   (x: Int) => (y: Int) => {
     val e1: Eq
       Int
-      (intPlus (intPlus (intNeg x) (intNeg y)) (intPlus x y))
-      (intPlus (intNeg x) (intPlus (intNeg y) (intPlus x y))) = intPlus_assoc
-      (intNeg x)
-      (intNeg y)
+      (intPlus (intPlus (intNegate x) (intNegate y)) (intPlus x y))
+      (intPlus (intNegate x) (intPlus (intNegate y) (intPlus x y))) = intPlusAssoc
+      (intNegate x)
+      (intNegate y)
       (intPlus x y);
     val e2: Eq
       Int
-      (intPlus (intNeg x) (intPlus (intNeg y) (intPlus x y)))
-      (intPlus (intNeg x) (intPlus (intPlus (intNeg y) x) y)) = cong_e
+      (intPlus (intNegate x) (intPlus (intNegate y) (intPlus x y)))
+      (intPlus (intNegate x) (intPlus (intPlus (intNegate y) x) y)) = cong_e
       Int
       Int
-      ((t: Int) => intPlus (intNeg x) t)
-      (intPlus (intNeg y) (intPlus x y))
-      (intPlus (intPlus (intNeg y) x) y)
+      ((t: Int) => intPlus (intNegate x) t)
+      (intPlus (intNegate y) (intPlus x y))
+      (intPlus (intPlus (intNegate y) x) y)
       (sym_e
         Int
-        (intPlus (intPlus (intNeg y) x) y)
-        (intPlus (intNeg y) (intPlus x y))
-        (intPlus_assoc (intNeg y) x y));
+        (intPlus (intPlus (intNegate y) x) y)
+        (intPlus (intNegate y) (intPlus x y))
+        (intPlusAssoc (intNegate y) x y));
     val e3: Eq
       Int
-      (intPlus (intNeg x) (intPlus (intPlus (intNeg y) x) y))
-      (intPlus (intNeg x) (intPlus (intPlus x (intNeg y)) y)) = cong_e
+      (intPlus (intNegate x) (intPlus (intPlus (intNegate y) x) y))
+      (intPlus (intNegate x) (intPlus (intPlus x (intNegate y)) y)) = cong_e
       Int
       Int
-      ((t: Int) => intPlus (intNeg x) t)
-      (intPlus (intPlus (intNeg y) x) y)
-      (intPlus (intPlus x (intNeg y)) y)
+      ((t: Int) => intPlus (intNegate x) t)
+      (intPlus (intPlus (intNegate y) x) y)
+      (intPlus (intPlus x (intNegate y)) y)
       (cong_e
         Int
         Int
         ((t: Int) => intPlus t y)
-        (intPlus (intNeg y) x)
-        (intPlus x (intNeg y))
-        (intPlus_comm (intNeg y) x));
+        (intPlus (intNegate y) x)
+        (intPlus x (intNegate y))
+        (intPlusComm (intNegate y) x));
     val e4: Eq
       Int
-      (intPlus (intNeg x) (intPlus (intPlus x (intNeg y)) y))
-      (intPlus (intNeg x) (intPlus x (intPlus (intNeg y) y))) = cong_e
+      (intPlus (intNegate x) (intPlus (intPlus x (intNegate y)) y))
+      (intPlus (intNegate x) (intPlus x (intPlus (intNegate y) y))) = cong_e
       Int
       Int
-      ((t: Int) => intPlus (intNeg x) t)
-      (intPlus (intPlus x (intNeg y)) y)
-      (intPlus x (intPlus (intNeg y) y))
-      (intPlus_assoc x (intNeg y) y);
+      ((t: Int) => intPlus (intNegate x) t)
+      (intPlus (intPlus x (intNegate y)) y)
+      (intPlus x (intPlus (intNegate y) y))
+      (intPlusAssoc x (intNegate y) y);
     val e5: Eq
       Int
-      (intPlus (intNeg x) (intPlus x (intPlus (intNeg y) y)))
-      (intPlus (intNeg x) (intPlus x (pos zero))) = cong_e
+      (intPlus (intNegate x) (intPlus x (intPlus (intNegate y) y)))
+      (intPlus (intNegate x) (intPlus x (pos zero))) = cong_e
       Int
       Int
-      ((t: Int) => intPlus (intNeg x) (intPlus x t))
-      (intPlus (intNeg y) y)
+      ((t: Int) => intPlus (intNegate x) (intPlus x t))
+      (intPlus (intNegate y) y)
       (pos zero)
-      (intAdd_neg_left y);
-    val e6: Eq Int (intPlus (intNeg x) (intPlus x (pos zero))) (intPlus (intNeg x) x) = cong_e
+      (intAddNegateLeft y);
+    val e6: Eq Int (intPlus (intNegate x) (intPlus x (pos zero))) (intPlus (intNegate x) x) = cong_e
       Int
       Int
-      ((t: Int) => intPlus (intNeg x) t)
+      ((t: Int) => intPlus (intNegate x) t)
       (intPlus x (pos zero))
       x
-      (intPlus_zero_right x);
-    val e7: Eq Int (intPlus (intNeg x) x) (pos zero) = intAdd_neg_left x;
+      (intPlusZeroRight x);
+    val e7: Eq Int (intPlus (intNegate x) x) (pos zero) = intAddNegateLeft x;
     trans_e
       Int
-      (intPlus (intPlus (intNeg x) (intNeg y)) (intPlus x y))
-      (intPlus (intNeg x) (intPlus x (pos zero)))
+      (intPlus (intPlus (intNegate x) (intNegate y)) (intPlus x y))
+      (intPlus (intNegate x) (intPlus x (pos zero)))
       (pos zero)
       (trans_e
         Int
-        (intPlus (intPlus (intNeg x) (intNeg y)) (intPlus x y))
-        (intPlus (intNeg x) (intPlus (intPlus x (intNeg y)) y))
-        (intPlus (intNeg x) (intPlus x (pos zero)))
+        (intPlus (intPlus (intNegate x) (intNegate y)) (intPlus x y))
+        (intPlus (intNegate x) (intPlus (intPlus x (intNegate y)) y))
+        (intPlus (intNegate x) (intPlus x (pos zero)))
         (trans_e
           Int
-          (intPlus (intPlus (intNeg x) (intNeg y)) (intPlus x y))
-          (intPlus (intNeg x) (intPlus (intPlus (intNeg y) x) y))
-          (intPlus (intNeg x) (intPlus (intPlus x (intNeg y)) y))
+          (intPlus (intPlus (intNegate x) (intNegate y)) (intPlus x y))
+          (intPlus (intNegate x) (intPlus (intPlus (intNegate y) x) y))
+          (intPlus (intNegate x) (intPlus (intPlus x (intNegate y)) y))
           (trans_e
             Int
-            (intPlus (intPlus (intNeg x) (intNeg y)) (intPlus x y))
-            (intPlus (intNeg x) (intPlus (intNeg y) (intPlus x y)))
-            (intPlus (intNeg x) (intPlus (intPlus (intNeg y) x) y))
+            (intPlus (intPlus (intNegate x) (intNegate y)) (intPlus x y))
+            (intPlus (intNegate x) (intPlus (intNegate y) (intPlus x y)))
+            (intPlus (intNegate x) (intPlus (intPlus (intNegate y) x) y))
             e1
             e2)
           e3)
         (trans_e
           Int
-          (intPlus (intNeg x) (intPlus (intPlus x (intNeg y)) y))
-          (intPlus (intNeg x) (intPlus x (intPlus (intNeg y) y)))
-          (intPlus (intNeg x) (intPlus x (pos zero)))
+          (intPlus (intNegate x) (intPlus (intPlus x (intNegate y)) y))
+          (intPlus (intNegate x) (intPlus x (intPlus (intNegate y) y)))
+          (intPlus (intNegate x) (intPlus x (pos zero)))
           e4
           e5))
       (trans_e
         Int
-        (intPlus (intNeg x) (intPlus x (pos zero)))
-        (intPlus (intNeg x) x)
+        (intPlus (intNegate x) (intPlus x (pos zero)))
+        (intPlus (intNegate x) x)
         (pos zero)
         e6
         e7)
     }
 
-val intNegAdd: (x: Int) -> (y: Int) -> Eq Int (intNeg (intPlus x y)) (intPlus (intNeg x) (intNeg y)) =
+val intNegateAdd: (x: Int)
+-> (y: Int) -> Eq Int (intNegate (intPlus x y)) (intPlus (intNegate x) (intNegate y)) =
   (x: Int) => (y: Int) => sym_e
     Int
-    (intPlus (intNeg x) (intNeg y))
-    (intNeg (intPlus x y))
-    (intNegUnique (intPlus (intNeg x) (intNeg y)) (intPlus x y) (intPlusNegNegZero x y))
+    (intPlus (intNegate x) (intNegate y))
+    (intNegate (intPlus x y))
+    (intNegateUnique (intPlus (intNegate x) (intNegate y)) (intPlus x y) (intPlusNegNegZero x y))
 // --- Associativity --------------------------------------------------------
 
-val intMultAssocPos: (n: Nat)
--> (b: Int) -> (c: Int) -> Eq Int (intMult (intMult (pos n) b) c) (intMult (pos n) (intMult b c)) =
+val intMultiplyAssocPos: (n: Nat)
+-> (b: Int)
+  -> (c: Int)
+    -> Eq Int (intMultiply (intMultiply (pos n) b) c) (intMultiply (pos n) (intMultiply b c)) =
   (n: Nat) => (b: Int) => Int.ind
-    ((w: Int) => (c: Int) -> Eq Int (intMult (intMult (pos n) w) c) (intMult (pos n) (intMult w c)))
+    ((w: Int) => (c: Int)
+    -> Eq Int (intMultiply (intMultiply (pos n) w) c) (intMultiply (pos n) (intMultiply w c)))
     ((m: Nat) => (c: Int) => sym_e
       Int
-      (intMult (pos n) (intMult (pos m) c))
-      (intMult (pos (n * m)) c)
-      (intMultPosAssoc n m c))
+      (intMultiply (pos n) (intMultiply (pos m) c))
+      (intMultiply (pos (n * m)) c)
+      (intMultiplyPosAssoc n m c))
     ((m: Nat) => (c: Int) => {
-      val e1: Eq Int (intMult (intMult (pos n) (neg m)) c) (intNeg (intMult (pos (n * succ m)) c)) = intMult_neg_left
-        (pos (n * succ m))
-        c;
+      val e1: Eq
+        Int
+        (intMultiply (intMultiply (pos n) (neg m)) c)
+        (intNegate (intMultiply (pos (n * succ m)) c)) = intMultiplyNegateLeft (pos (n * succ m)) c;
       val e2: Eq
         Int
-        (intNeg (intMult (pos (n * succ m)) c))
-        (intNeg (intMult (pos n) (intMult (pos (succ m)) c))) = sym_e
+        (intNegate (intMultiply (pos (n * succ m)) c))
+        (intNegate (intMultiply (pos n) (intMultiply (pos (succ m)) c))) = sym_e
         Int
-        (intNeg (intMult (pos n) (intMult (pos (succ m)) c)))
-        (intNeg (intMult (pos (n * succ m)) c))
+        (intNegate (intMultiply (pos n) (intMultiply (pos (succ m)) c)))
+        (intNegate (intMultiply (pos (n * succ m)) c))
         (cong_e
           Int
           Int
-          ((t: Int) => intNeg t)
-          (intMult (pos n) (intMult (pos (succ m)) c))
-          (intMult (pos (n * succ m)) c)
-          (intMultPosAssoc n (succ m) c));
+          ((t: Int) => intNegate t)
+          (intMultiply (pos n) (intMultiply (pos (succ m)) c))
+          (intMultiply (pos (n * succ m)) c)
+          (intMultiplyPosAssoc n (succ m) c));
       val e3: Eq
         Int
-        (intNeg (intMult (pos n) (intMult (pos (succ m)) c)))
-        (intMult (pos n) (intNeg (intMult (pos (succ m)) c))) = sym_e
+        (intNegate (intMultiply (pos n) (intMultiply (pos (succ m)) c)))
+        (intMultiply (pos n) (intNegate (intMultiply (pos (succ m)) c))) = sym_e
         Int
-        (intMult (pos n) (intNeg (intMult (pos (succ m)) c)))
-        (intNeg (intMult (pos n) (intMult (pos (succ m)) c)))
-        (intMult_neg_right (pos n) (intMult (pos (succ m)) c));
+        (intMultiply (pos n) (intNegate (intMultiply (pos (succ m)) c)))
+        (intNegate (intMultiply (pos n) (intMultiply (pos (succ m)) c)))
+        (intMultiplyNegateRight (pos n) (intMultiply (pos (succ m)) c));
       val e4: Eq
         Int
-        (intMult (pos n) (intNeg (intMult (pos (succ m)) c)))
-        (intMult (pos n) (intMult (neg m) c)) = cong_e
+        (intMultiply (pos n) (intNegate (intMultiply (pos (succ m)) c)))
+        (intMultiply (pos n) (intMultiply (neg m) c)) = cong_e
         Int
         Int
-        ((t: Int) => intMult (pos n) t)
-        (intNeg (intMult (pos (succ m)) c))
-        (intMult (intNeg (pos (succ m))) c)
+        ((t: Int) => intMultiply (pos n) t)
+        (intNegate (intMultiply (pos (succ m)) c))
+        (intMultiply (intNegate (pos (succ m))) c)
         (sym_e
           Int
-          (intMult (intNeg (pos (succ m))) c)
-          (intNeg (intMult (pos (succ m)) c))
-          (intMult_neg_left (pos (succ m)) c));
+          (intMultiply (intNegate (pos (succ m))) c)
+          (intNegate (intMultiply (pos (succ m)) c))
+          (intMultiplyNegateLeft (pos (succ m)) c));
       trans_e
         Int
-        (intMult (intMult (pos n) (neg m)) c)
-        (intNeg (intMult (pos n) (intMult (pos (succ m)) c)))
-        (intMult (pos n) (intMult (neg m) c))
+        (intMultiply (intMultiply (pos n) (neg m)) c)
+        (intNegate (intMultiply (pos n) (intMultiply (pos (succ m)) c)))
+        (intMultiply (pos n) (intMultiply (neg m) c))
         (trans_e
           Int
-          (intMult (intMult (pos n) (neg m)) c)
-          (intNeg (intMult (pos (n * succ m)) c))
-          (intNeg (intMult (pos n) (intMult (pos (succ m)) c)))
+          (intMultiply (intMultiply (pos n) (neg m)) c)
+          (intNegate (intMultiply (pos (n * succ m)) c))
+          (intNegate (intMultiply (pos n) (intMultiply (pos (succ m)) c)))
           e1
           e2)
         (trans_e
           Int
-          (intNeg (intMult (pos n) (intMult (pos (succ m)) c)))
-          (intMult (pos n) (intNeg (intMult (pos (succ m)) c)))
-          (intMult (pos n) (intMult (neg m) c))
+          (intNegate (intMultiply (pos n) (intMultiply (pos (succ m)) c)))
+          (intMultiply (pos n) (intNegate (intMultiply (pos (succ m)) c)))
+          (intMultiply (pos n) (intMultiply (neg m) c))
           e3
           e4)
       })
     b
 
-val intMult_assoc: (a: Int)
--> (b: Int) -> (c: Int) -> Eq Int (intMult (intMult a b) c) (intMult a (intMult b c)) =
+val intMultiplyAssoc: (a: Int)
+-> (b: Int)
+  -> (c: Int) -> Eq Int (intMultiply (intMultiply a b) c) (intMultiply a (intMultiply b c)) =
   (a: Int) => Int.ind
-    ((x: Int) => (b: Int) -> (c: Int) -> Eq Int (intMult (intMult x b) c) (intMult x (intMult b c)))
-    ((n: Nat) => (b: Int) => (c: Int) => intMultAssocPos n b c)
+    ((x: Int) => (b: Int)
+    -> (c: Int) -> Eq Int (intMultiply (intMultiply x b) c) (intMultiply x (intMultiply b c)))
+    ((n: Nat) => (b: Int) => (c: Int) => intMultiplyAssocPos n b c)
     ((n: Nat) => (b: Int) => (c: Int) => {
-      val e1: Eq Int (intMult (intMult (neg n) b) c) (intMult (intNeg (intMult (pos (succ n)) b)) c) = cong_e
+      val e1: Eq
+        Int
+        (intMultiply (intMultiply (neg n) b) c)
+        (intMultiply (intNegate (intMultiply (pos (succ n)) b)) c) = cong_e
         Int
         Int
-        ((t: Int) => intMult t c)
-        (intMult (neg n) b)
-        (intNeg (intMult (pos (succ n)) b))
-        (intMult_neg_left (pos (succ n)) b);
+        ((t: Int) => intMultiply t c)
+        (intMultiply (neg n) b)
+        (intNegate (intMultiply (pos (succ n)) b))
+        (intMultiplyNegateLeft (pos (succ n)) b);
       val e2: Eq
         Int
-        (intMult (intNeg (intMult (pos (succ n)) b)) c)
-        (intNeg (intMult (intMult (pos (succ n)) b) c)) = intMult_neg_left
-        (intMult (pos (succ n)) b)
+        (intMultiply (intNegate (intMultiply (pos (succ n)) b)) c)
+        (intNegate (intMultiply (intMultiply (pos (succ n)) b) c)) = intMultiplyNegateLeft
+        (intMultiply (pos (succ n)) b)
         c;
       val e3: Eq
         Int
-        (intNeg (intMult (intMult (pos (succ n)) b) c))
-        (intNeg (intMult (pos (succ n)) (intMult b c))) = cong_e
+        (intNegate (intMultiply (intMultiply (pos (succ n)) b) c))
+        (intNegate (intMultiply (pos (succ n)) (intMultiply b c))) = cong_e
         Int
         Int
-        ((t: Int) => intNeg t)
-        (intMult (intMult (pos (succ n)) b) c)
-        (intMult (pos (succ n)) (intMult b c))
-        (intMultAssocPos (succ n) b c);
-      val e4: Eq Int (intNeg (intMult (pos (succ n)) (intMult b c))) (intMult (neg n) (intMult b c)) = sym_e
+        ((t: Int) => intNegate t)
+        (intMultiply (intMultiply (pos (succ n)) b) c)
+        (intMultiply (pos (succ n)) (intMultiply b c))
+        (intMultiplyAssocPos (succ n) b c);
+      val e4: Eq
         Int
-        (intMult (neg n) (intMult b c))
-        (intNeg (intMult (pos (succ n)) (intMult b c)))
-        (intMult_neg_left (pos (succ n)) (intMult b c));
+        (intNegate (intMultiply (pos (succ n)) (intMultiply b c)))
+        (intMultiply (neg n) (intMultiply b c)) = sym_e
+        Int
+        (intMultiply (neg n) (intMultiply b c))
+        (intNegate (intMultiply (pos (succ n)) (intMultiply b c)))
+        (intMultiplyNegateLeft (pos (succ n)) (intMultiply b c));
       trans_e
         Int
-        (intMult (intMult (neg n) b) c)
-        (intNeg (intMult (pos (succ n)) (intMult b c)))
-        (intMult (neg n) (intMult b c))
+        (intMultiply (intMultiply (neg n) b) c)
+        (intNegate (intMultiply (pos (succ n)) (intMultiply b c)))
+        (intMultiply (neg n) (intMultiply b c))
         (trans_e
           Int
-          (intMult (intMult (neg n) b) c)
-          (intNeg (intMult (intMult (pos (succ n)) b) c))
-          (intNeg (intMult (pos (succ n)) (intMult b c)))
+          (intMultiply (intMultiply (neg n) b) c)
+          (intNegate (intMultiply (intMultiply (pos (succ n)) b) c))
+          (intNegate (intMultiply (pos (succ n)) (intMultiply b c)))
           (trans_e
             Int
-            (intMult (intMult (neg n) b) c)
-            (intMult (intNeg (intMult (pos (succ n)) b)) c)
-            (intNeg (intMult (intMult (pos (succ n)) b) c))
+            (intMultiply (intMultiply (neg n) b) c)
+            (intMultiply (intNegate (intMultiply (pos (succ n)) b)) c)
+            (intNegate (intMultiply (intMultiply (pos (succ n)) b) c))
             e1
             e2)
           e3)
@@ -1797,77 +1874,92 @@ val intMult_assoc: (a: Int)
     a
 // --- Distributivity -------------------------------------------------------
 
-val intAdd_mul: (a: Int)
--> (b: Int) -> (c: Int) -> Eq Int (intMult a (intPlus b c)) (intPlus (intMult a b) (intMult a c)) =
+val intAddMultiply: (a: Int)
+-> (b: Int)
+  -> (c: Int) -> Eq Int (intMultiply a (intPlus b c)) (intPlus (intMultiply a b) (intMultiply a c)) =
   (a: Int) => Int.ind
     ((x: Int) => (b: Int)
-    -> (c: Int) -> Eq Int (intMult x (intPlus b c)) (intPlus (intMult x b) (intMult x c)))
+    -> (c: Int)
+      -> Eq Int (intMultiply x (intPlus b c)) (intPlus (intMultiply x b) (intMultiply x c)))
     ((n: Nat) => (b: Int) => (c: Int) => intMultPosAdd n b c)
     ((n: Nat) => (b: Int) => (c: Int) => {
-      val e1: Eq Int (intMult (neg n) (intPlus b c)) (intNeg (intMult (pos (succ n)) (intPlus b c))) = intMult_neg_left
+      val e1: Eq
+        Int
+        (intMultiply (neg n) (intPlus b c))
+        (intNegate (intMultiply (pos (succ n)) (intPlus b c))) = intMultiplyNegateLeft
         (pos (succ n))
         (intPlus b c);
       val e2: Eq
         Int
-        (intNeg (intMult (pos (succ n)) (intPlus b c)))
-        (intNeg (intPlus (intMult (pos (succ n)) b) (intMult (pos (succ n)) c))) = cong_e
+        (intNegate (intMultiply (pos (succ n)) (intPlus b c)))
+        (intNegate (intPlus (intMultiply (pos (succ n)) b) (intMultiply (pos (succ n)) c))) = cong_e
         Int
         Int
-        ((t: Int) => intNeg t)
-        (intMult (pos (succ n)) (intPlus b c))
-        (intPlus (intMult (pos (succ n)) b) (intMult (pos (succ n)) c))
+        ((t: Int) => intNegate t)
+        (intMultiply (pos (succ n)) (intPlus b c))
+        (intPlus (intMultiply (pos (succ n)) b) (intMultiply (pos (succ n)) c))
         (intMultPosAdd (succ n) b c);
       val e3: Eq
         Int
-        (intNeg (intPlus (intMult (pos (succ n)) b) (intMult (pos (succ n)) c)))
-        (intPlus (intNeg (intMult (pos (succ n)) b)) (intNeg (intMult (pos (succ n)) c))) = intNegAdd
-        (intMult (pos (succ n)) b)
-        (intMult (pos (succ n)) c);
+        (intNegate (intPlus (intMultiply (pos (succ n)) b) (intMultiply (pos (succ n)) c)))
+        (intPlus
+          (intNegate (intMultiply (pos (succ n)) b))
+          (intNegate (intMultiply (pos (succ n)) c))) = intNegateAdd
+        (intMultiply (pos (succ n)) b)
+        (intMultiply (pos (succ n)) c);
       val e4: Eq
         Int
-        (intPlus (intNeg (intMult (pos (succ n)) b)) (intNeg (intMult (pos (succ n)) c)))
-        (intPlus (intMult (neg n) b) (intMult (neg n) c)) = trans_e
+        (intPlus
+          (intNegate (intMultiply (pos (succ n)) b))
+          (intNegate (intMultiply (pos (succ n)) c)))
+        (intPlus (intMultiply (neg n) b) (intMultiply (neg n) c)) = trans_e
         Int
-        (intPlus (intNeg (intMult (pos (succ n)) b)) (intNeg (intMult (pos (succ n)) c)))
-        (intPlus (intMult (neg n) b) (intNeg (intMult (pos (succ n)) c)))
-        (intPlus (intMult (neg n) b) (intMult (neg n) c))
+        (intPlus
+          (intNegate (intMultiply (pos (succ n)) b))
+          (intNegate (intMultiply (pos (succ n)) c)))
+        (intPlus (intMultiply (neg n) b) (intNegate (intMultiply (pos (succ n)) c)))
+        (intPlus (intMultiply (neg n) b) (intMultiply (neg n) c))
         (cong_e
           Int
           Int
-          ((t: Int) => intPlus t (intNeg (intMult (pos (succ n)) c)))
-          (intNeg (intMult (pos (succ n)) b))
-          (intMult (neg n) b)
+          ((t: Int) => intPlus t (intNegate (intMultiply (pos (succ n)) c)))
+          (intNegate (intMultiply (pos (succ n)) b))
+          (intMultiply (neg n) b)
           (sym_e
             Int
-            (intMult (neg n) b)
-            (intNeg (intMult (pos (succ n)) b))
-            (intMult_neg_left (pos (succ n)) b)))
+            (intMultiply (neg n) b)
+            (intNegate (intMultiply (pos (succ n)) b))
+            (intMultiplyNegateLeft (pos (succ n)) b)))
         (cong_e
           Int
           Int
-          ((t: Int) => intPlus (intMult (neg n) b) t)
-          (intNeg (intMult (pos (succ n)) c))
-          (intMult (neg n) c)
+          ((t: Int) => intPlus (intMultiply (neg n) b) t)
+          (intNegate (intMultiply (pos (succ n)) c))
+          (intMultiply (neg n) c)
           (sym_e
             Int
-            (intMult (neg n) c)
-            (intNeg (intMult (pos (succ n)) c))
-            (intMult_neg_left (pos (succ n)) c)));
+            (intMultiply (neg n) c)
+            (intNegate (intMultiply (pos (succ n)) c))
+            (intMultiplyNegateLeft (pos (succ n)) c)));
       trans_e
         Int
-        (intMult (neg n) (intPlus b c))
-        (intPlus (intNeg (intMult (pos (succ n)) b)) (intNeg (intMult (pos (succ n)) c)))
-        (intPlus (intMult (neg n) b) (intMult (neg n) c))
+        (intMultiply (neg n) (intPlus b c))
+        (intPlus
+          (intNegate (intMultiply (pos (succ n)) b))
+          (intNegate (intMultiply (pos (succ n)) c)))
+        (intPlus (intMultiply (neg n) b) (intMultiply (neg n) c))
         (trans_e
           Int
-          (intMult (neg n) (intPlus b c))
-          (intNeg (intPlus (intMult (pos (succ n)) b) (intMult (pos (succ n)) c)))
-          (intPlus (intNeg (intMult (pos (succ n)) b)) (intNeg (intMult (pos (succ n)) c)))
+          (intMultiply (neg n) (intPlus b c))
+          (intNegate (intPlus (intMultiply (pos (succ n)) b) (intMultiply (pos (succ n)) c)))
+          (intPlus
+            (intNegate (intMultiply (pos (succ n)) b))
+            (intNegate (intMultiply (pos (succ n)) c)))
           (trans_e
             Int
-            (intMult (neg n) (intPlus b c))
-            (intNeg (intMult (pos (succ n)) (intPlus b c)))
-            (intNeg (intPlus (intMult (pos (succ n)) b) (intMult (pos (succ n)) c)))
+            (intMultiply (neg n) (intPlus b c))
+            (intNegate (intMultiply (pos (succ n)) (intPlus b c)))
+            (intNegate (intPlus (intMultiply (pos (succ n)) b) (intMultiply (pos (succ n)) c)))
             e1
             e2)
           e3)
@@ -1875,26 +1967,26 @@ val intAdd_mul: (a: Int)
       })
     a
 
-val intMult_comm: (a: Int) -> (b: Int) -> Eq Int (intMult a b) (intMult b a) =
+val intMultiplyComm: (a: Int) -> (b: Int) -> Eq Int (intMultiply a b) (intMultiply b a) =
   (a: Int) => Int.ind
-    ((x: Int) => (y: Int) -> Eq Int (intMult x y) (intMult y x))
+    ((x: Int) => (y: Int) -> Eq Int (intMultiply x y) (intMultiply y x))
     ((n: Nat) => (y: Int) => Int.ind
-      ((w: Int) => Eq Int (intMult (pos n) w) (intMult w (pos n)))
+      ((w: Int) => Eq Int (intMultiply (pos n) w) (intMultiply w (pos n)))
       ((m: Nat) => cong_e Nat Int ((t: Nat) => pos t) (n * m) (m * n) (mult_comm n m))
       ((m: Nat) => cong_e
         Nat
         Int
-        ((t: Nat) => intNeg (pos t))
+        ((t: Nat) => intNegate (pos t))
         (n * succ m)
         (succ m * n)
         (mult_comm n (succ m)))
       y)
     ((n: Nat) => (y: Int) => Int.ind
-      ((w: Int) => Eq Int (intMult (neg n) w) (intMult w (neg n)))
+      ((w: Int) => Eq Int (intMultiply (neg n) w) (intMultiply w (neg n)))
       ((m: Nat) => cong_e
         Nat
         Int
-        ((t: Nat) => intNeg (pos t))
+        ((t: Nat) => intNegate (pos t))
         (succ n * m)
         (m * succ n)
         (mult_comm (succ n) m))
@@ -1936,62 +2028,66 @@ val intMult_comm: (a: Int) -> (b: Int) -> Eq Int (intMult a b) (intMult b a) =
       y)
     a
 
-val intMul_add: (a: Int)
--> (b: Int) -> (c: Int) -> Eq Int (intMult (intPlus a b) c) (intPlus (intMult a c) (intMult b c)) =
+val intMultiplyAdd: (a: Int)
+-> (b: Int)
+  -> (c: Int) -> Eq Int (intMultiply (intPlus a b) c) (intPlus (intMultiply a c) (intMultiply b c)) =
   (a: Int) => (b: Int) => (c: Int) => {
-    val e1: Eq Int (intMult (intPlus a b) c) (intMult c (intPlus a b)) = intMult_comm
+    val e1: Eq Int (intMultiply (intPlus a b) c) (intMultiply c (intPlus a b)) = intMultiplyComm
       (intPlus a b)
       c;
-    val e2: Eq Int (intMult c (intPlus a b)) (intPlus (intMult c a) (intMult c b)) = intAdd_mul
+    val e2: Eq Int (intMultiply c (intPlus a b)) (intPlus (intMultiply c a) (intMultiply c b)) = intAddMultiply
       c
       a
       b;
-    val e3: Eq Int (intPlus (intMult c a) (intMult c b)) (intPlus (intMult a c) (intMult b c)) = trans_e
+    val e3: Eq
       Int
-      (intPlus (intMult c a) (intMult c b))
-      (intPlus (intMult a c) (intMult c b))
-      (intPlus (intMult a c) (intMult b c))
+      (intPlus (intMultiply c a) (intMultiply c b))
+      (intPlus (intMultiply a c) (intMultiply b c)) = trans_e
+      Int
+      (intPlus (intMultiply c a) (intMultiply c b))
+      (intPlus (intMultiply a c) (intMultiply c b))
+      (intPlus (intMultiply a c) (intMultiply b c))
       (cong_e
         Int
         Int
-        ((t: Int) => intPlus t (intMult c b))
-        (intMult c a)
-        (intMult a c)
-        (sym_e Int (intMult a c) (intMult c a) (intMult_comm a c)))
+        ((t: Int) => intPlus t (intMultiply c b))
+        (intMultiply c a)
+        (intMultiply a c)
+        (sym_e Int (intMultiply a c) (intMultiply c a) (intMultiplyComm a c)))
       (cong_e
         Int
         Int
-        ((t: Int) => intPlus (intMult a c) t)
-        (intMult c b)
-        (intMult b c)
-        (sym_e Int (intMult b c) (intMult c b) (intMult_comm b c)));
+        ((t: Int) => intPlus (intMultiply a c) t)
+        (intMultiply c b)
+        (intMultiply b c)
+        (sym_e Int (intMultiply b c) (intMultiply c b) (intMultiplyComm b c)));
     trans_e
       Int
-      (intMult (intPlus a b) c)
-      (intPlus (intMult c a) (intMult c b))
-      (intPlus (intMult a c) (intMult b c))
+      (intMultiply (intPlus a b) c)
+      (intPlus (intMultiply c a) (intMultiply c b))
+      (intPlus (intMultiply a c) (intMultiply b c))
       (trans_e
         Int
-        (intMult (intPlus a b) c)
-        (intMult c (intPlus a b))
-        (intPlus (intMult c a) (intMult c b))
+        (intMultiply (intPlus a b) c)
+        (intMultiply c (intPlus a b))
+        (intPlus (intMultiply c a) (intMultiply c b))
         e1
         e2)
       e3
     }
 // --- Multiplicative identity ---------------------------------------------
 
-val intOneMult: (n: Nat) -> Eq Nat (succ zero * n) n =
+val intOneMultiply: (n: Nat) -> Eq Nat (succ zero * n) n =
   (n: Nat) => trans_e Nat (succ zero * n) (n * succ zero) n (mult_comm (succ zero) n) (mult_one n)
 
-val intMult_one_left: (a: Int) -> Eq Int (intMult (pos (succ zero)) a) a =
+val intMultiplyOneLeft: (a: Int) -> Eq Int (intMultiply (pos (succ zero)) a) a =
   Int.ind
-    ((x: Int) => Eq Int (intMult (pos (succ zero)) x) x)
-    ((n: Nat) => cong_e Nat Int ((t: Nat) => pos t) (succ zero * n) n (intOneMult n))
+    ((x: Int) => Eq Int (intMultiply (pos (succ zero)) x) x)
+    ((n: Nat) => cong_e Nat Int ((t: Nat) => pos t) (succ zero * n) n (intOneMultiply n))
     ((n: Nat) => cong_e
       Nat
       Int
-      ((t: Nat) => intNeg (pos t))
+      ((t: Nat) => intNegate (pos t))
       (succ zero * succ n)
       (succ n)
       (trans_e
@@ -2002,14 +2098,14 @@ val intMult_one_left: (a: Int) -> Eq Int (intMult (pos (succ zero)) a) a =
         (mult_comm (succ zero) (succ n))
         (mult_one (succ n))))
 
-val intMult_one_right: (a: Int) -> Eq Int (intMult a (pos (succ zero))) a =
+val intMultiplyOneRight: (a: Int) -> Eq Int (intMultiply a (pos (succ zero))) a =
   Int.ind
-    ((x: Int) => Eq Int (intMult x (pos (succ zero))) x)
+    ((x: Int) => Eq Int (intMultiply x (pos (succ zero))) x)
     ((n: Nat) => cong_e Nat Int ((t: Nat) => pos t) (n * succ zero) n (mult_one n))
     ((n: Nat) => cong_e
       Nat
       Int
-      ((t: Nat) => intNeg (pos t))
+      ((t: Nat) => intNegate (pos t))
       (succ n * succ zero)
       (succ n)
       (mult_one (succ n)))

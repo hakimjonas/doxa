@@ -29,7 +29,7 @@ fun intPlus(a: Int, b: Int): Int = match a {
   }
 }
 
-fun intNeg(a: Int): Int = match a {
+fun intNegate(a: Int): Int = match a {
   case pos n => match n {
     case zero => pos zero
     case succ n_ => neg n_
@@ -37,15 +37,15 @@ fun intNeg(a: Int): Int = match a {
   case neg n => pos (succ n)
 }
 
-fun intSub(a: Int, b: Int): Int = intPlus a (intNeg b)
+fun intSub(a: Int, b: Int): Int = intPlus a (intNegate b)
 
-fun intMult(a: Int, b: Int): Int = match a {
+fun intMultiply(a: Int, b: Int): Int = match a {
   case pos n => match b {
     case pos m => pos (n * m)
-    case neg m => intNeg (pos (n * succ m))
+    case neg m => intNegate (pos (n * succ m))
   }
   case neg n => match b {
-    case pos m => intNeg (pos (succ n * m))
+    case pos m => intNegate (pos (succ n * m))
     case neg m => pos (succ (n * m + n + m))
   }
 }

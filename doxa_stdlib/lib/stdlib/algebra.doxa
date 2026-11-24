@@ -111,34 +111,34 @@ impl AddMonoid[Int] {
   fun add(x: Int, y: Int): Int = intPlus x y;
   fun addZero(): Int = pos zero;
   fun addAssoc(x: Int, y: Int, z: Int): Eq Int (intPlus (intPlus x y) z) (intPlus x (intPlus y z)) =
-    intPlus_assoc x y z;
-  fun addZeroLeft(x: Int): Eq Int (intPlus (pos zero) x) x = intPlus_zero_left x;
-  fun addZeroRight(x: Int): Eq Int (intPlus x (pos zero)) x = intPlus_zero_right x;
+    intPlusAssoc x y z;
+  fun addZeroLeft(x: Int): Eq Int (intPlus (pos zero) x) x = intPlusZeroLeft x;
+  fun addZeroRight(x: Int): Eq Int (intPlus x (pos zero)) x = intPlusZeroRight x;
 }
 
 impl AddGroup[Int] {
-  fun negate(x: Int): Int = intNeg x;
-  fun addNegateLeft(x: Int): Eq Int (intPlus (intNeg x) x) (pos zero) = intAdd_neg_left x;
-  fun addNegateRight(x: Int): Eq Int (intPlus x (intNeg x)) (pos zero) = intAdd_neg_right x;
+  fun negate(x: Int): Int = intNegate x;
+  fun addNegateLeft(x: Int): Eq Int (intPlus (intNegate x) x) (pos zero) = intAddNegateLeft x;
+  fun addNegateRight(x: Int): Eq Int (intPlus x (intNegate x)) (pos zero) = intAddNegateRight x;
 }
 
 impl Ring[Int] {
-  fun multiply(x: Int, y: Int): Int = intMult x y;
+  fun multiply(x: Int, y: Int): Int = intMultiply x y;
   fun one(): Int = pos (succ zero);
   fun multiplyAssoc(x: Int, y: Int, z: Int): Eq
     Int
-    (intMult (intMult x y) z)
-    (intMult x (intMult y z)) = intMult_assoc x y z;
-  fun multiplyOneLeft(x: Int): Eq Int (intMult (pos (succ zero)) x) x = intMult_one_left x;
-  fun multiplyOneRight(x: Int): Eq Int (intMult x (pos (succ zero))) x = intMult_one_right x;
+    (intMultiply (intMultiply x y) z)
+    (intMultiply x (intMultiply y z)) = intMultiplyAssoc x y z;
+  fun multiplyOneLeft(x: Int): Eq Int (intMultiply (pos (succ zero)) x) x = intMultiplyOneLeft x;
+  fun multiplyOneRight(x: Int): Eq Int (intMultiply x (pos (succ zero))) x = intMultiplyOneRight x;
   fun multiplyAdd(x: Int, y: Int, z: Int): Eq
     Int
-    (intMult (intPlus x y) z)
-    (intPlus (intMult x z) (intMult y z)) = intMul_add x y z;
+    (intMultiply (intPlus x y) z)
+    (intPlus (intMultiply x z) (intMultiply y z)) = intMultiplyAdd x y z;
   fun addMultiply(x: Int, y: Int, z: Int): Eq
     Int
-    (intMult x (intPlus y z))
-    (intPlus (intMult x y) (intMult x z)) = intAdd_mul x y z;
+    (intMultiply x (intPlus y z))
+    (intPlus (intMultiply x y) (intMultiply x z)) = intAddMultiply x y z;
 }
 
 fun sum[A: AddMonoid](xs: List A): A = match xs {
