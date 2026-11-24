@@ -56,7 +56,11 @@ the reason is noted in the gaps section.
 | Typeclasses | Instance-target validation rejects unsupported shapes | `doxa/test/parameterised_instance_test.dart` | "invalid target shapes are rejected with their reasons" | Yes |
 | Typeclasses | Overlapping instances are rejected | `doxa/test/parameterised_instance_test.dart`, `doxa/test/typeclass_elab_test.dart` | "a second List instance is rejected as overlapping", "a second instance for the same class and head is rejected" | Yes |
 | Typeclasses | Instance bodies do not see the instance being defined | `doxa/test/parameterised_instance_test.dart` | "a bare instance body cannot resolve its own instance", "a parameterised instance body cannot resolve its own instance" | Yes |
-| Typeclasses | Method names share the global namespace | `doxa/test/typeclass_elab_test.dart` | "two classes cannot share a method name" | Yes |
+| Typeclasses | Projections are named `Class.method`; two classes may declare the same field name | `doxa/test/typeclass_elab_test.dart`, `doxa/test/typeclass_namespace_test.dart` | "two classes may share a method name", "two classes declare the same method and keep both projections" | Yes |
+| Typeclasses | A qualified projection works in a term and a type and inherits from a parent | `doxa/test/typeclass_namespace_test.dart` | "Class.method resolves a projection in a term and a type", "a subclass-qualified name resolves to the parent projection" | Yes |
+| Typeclasses | A bare method name resolves through a local dictionary, a constrained parameter, or a unique class; otherwise `AmbiguousClassMethod` | `doxa/test/typeclass_namespace_test.dart`, `doxa_tooling/test/typeclass_surface_test.dart` | "a constrained parameter selects its class projection", "a local dictionary selects its class projection", "a unique declaring class resolves without a local dictionary", "an ambiguous bare name names the candidate classes", "an ambiguous bare method name reports the diagnostic" | Yes |
+| Typeclasses | A class's law fields read the current class first, then its parents | `doxa/test/typeclass_namespace_test.dart`, `doxa/test/typeclass_laws_test.dart` | "a law reads its own method, then a parent method", "a law field names an operation declared earlier", "a law that references a later method is rejected" | Yes |
+| Typeclasses | `Ring` with the `Int` instance and the `square` exercise | `doxa_stdlib/lib/stdlib/algebra.doxa`, `doxa_tooling/test/typeclass_surface_test.dart` | "a ring checks the square and the qualified projections" | Yes |
 | Typeclasses | Unsupported class forms report their named diagnostics | `doxa/test/typeclass_elab_test.dart`, `doxa_tooling/test/typeclass_surface_test.dart` | "superclasses are rejected with the class and parent names", "a partial instance is rejected naming the missing method", "an unknown method is rejected", "an unknown class is rejected" | Yes |
 | Documentation blocks | Every unmarked `doxa` block in `SPEC.md` and `README.md` is a checked program | `doxa_tooling/test/doc_blocks_test.dart` | "doxa blocks in the normative documents check" | Yes |
 
@@ -97,3 +101,6 @@ The multi-field projection and multi-method class gaps are closed.
 two-field record, a parameterised record, a third field, a dependent field, and
 a nested record. `doxa/test/typeclass_elab_test.dart` checks a two-method class
 whose methods reduce and a class whose method types mention the parameter.
+`doxa/test/typeclass_namespace_test.dart` checks class-qualified projections,
+bare-name resolution, the superclass chain, and law-field resolution, and the
+ring fixture checks `Ring[Int]` and `square` through the CLI.

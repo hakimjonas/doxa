@@ -386,11 +386,11 @@ val computes : (p: Pair) -> Eq Nat (sumQ (mk p)) (sum p) =
 ## Typeclasses
 
 A `typeclass` declaration produces a dictionary type and one projection per
-method. The dictionary type is an ordinary inductive with a single
-constructor and one field for the superclass dictionary when a superclass is
-declared, followed by one field per method. A class may declare more than one
-type parameter; the dictionary carries all of them and each projection binds
-them implicitly.
+method. A projection is identified by its class and method, `Class.method`.
+The dictionary type is an ordinary inductive with a single constructor and one
+field for the superclass dictionary when a superclass is declared, followed by
+one field per method. A class may declare more than one type parameter; the
+dictionary carries all of them and each projection binds them implicitly.
 
 ```doxa
 import "package:doxa_stdlib/stdlib/bool.doxa"
@@ -411,10 +411,46 @@ data Eqb[A: Type] : Type {
 ```
 
 together with the projection
-`eqb : {A: Type} -> (x: A) -> (y: A) -> {inst: Eqb A} -> Bool`. A projection
-binds the class parameters implicitly, then the method's explicit arguments,
-then the dictionary as an implicit binder after them; its body applies the
-dictionary field to the explicit arguments.
+`Eqb.eqb : {A: Type} -> (x: A) -> (y: A) -> {inst: Eqb A} -> Bool`. A
+projection binds the class parameters implicitly, then the method's explicit
+arguments, then the dictionary as an implicit binder after them; its body
+applies the dictionary field to the explicit arguments.
+
+### Projection names
+
+The projection's name is `Class.method`, and the dictionary field keeps the
+bare method name. A dictionary value therefore still projects with `d.mul`.
+`Class.method` is usable in a term and in a type and applies like any function.
+A method inherited from a parent resolves through the class that declares it:
+`Ring.add` names the `AddMonoid.add` projection.
+
+A bare method name resolves when it selects one projection:
+
+- A local dictionary, or a constrained parameter, whose class declares the
+  method selects that class. The class may reach the declaring class through
+  the superclass chain.
+- Otherwise a unique declaring class selects the projection.
+- When more than one class declares the name and no local dictionary selects
+  one, elaboration reports `AmbiguousClassMethod` and names the
+  `Class.method` forms.
+
+Inside a class declaration, the class's own law fields resolve a bare method
+against the current class first, then its parents. `Ring`'s `mul_assoc`
+therefore reads `Ring.mul`, and `Ring`'s `mul_add` reads `Ring.mul` and the
+inherited `AddMonoid.add`.
+
+```doxa
+import "package:doxa_stdlib/stdlib/algebra.doxa"
+
+val product : Nat = Monoid.mul (succ zero) (succ zero)
+val product_eq : Eq Nat product (succ zero) = refl product
+val integerProduct : Int = Ring.mul (pos (succ zero)) (pos (succ zero))
+val integerProduct_eq : Eq Int integerProduct (pos (succ zero)) =
+  refl integerProduct
+
+fun twice[A: AddMonoid](x: A): A = add x x
+fun selfMul[A: Ring](x: A): A = mul x x
+```
 
 ### Superclasses
 
@@ -437,10 +473,10 @@ data Ord[A: Type] : Type {
 }
 ```
 
-The parent's methods remain the parent's projections; `Ord` adds only `cmp`.
-The superclass reference must apply the parent class to distinct class type
-parameters, with every class parameter appearing once. A parent class with
-more than one parameter follows the same rule.
+The parent's methods remain the parent's projections, named `Eqb.eqb`; `Ord`
+adds only `Ord.cmp`. The superclass reference must apply the parent class to
+distinct class type parameters, with every class parameter appearing once. A
+parent class with more than one parameter follows the same rule.
 
 An `impl` of a subclass resolves the parent dictionary by instance search at
 registration, with the instance's own parameters and their dictionaries in
@@ -513,7 +549,9 @@ A local dictionary is an ordinary `val` binding of the dictionary type. The
 class constructor `mk_<Class>` builds the value, and instance search consults
 in-scope local binders before the registered instances. The binding supplies
 the dictionary to a call in its scope when that call is checked against a
-known result type; the example annotates the intermediate result.
+known result type; the example annotates the intermediate result. A local
+dictionary or constrained parameter of a class also selects that class's
+projection for a bare method name.
 
 <!-- doxa: fragment -->
 ```doxa
@@ -604,8 +642,11 @@ arguments and the resolved dictionaries in binder order. A failed inner
 discharge reports `NoInstanceFound` for the inner class and type. A chain
 longer than the depth bound reports `InstanceSearchDepthExceeded`.
 
-Class method names are top-level projection names and share the global
-namespace; two classes cannot declare the same method name.
+Class method projections share the top-level namespace under their
+`Class.method` names, so two classes may declare the same field name. The
+dictionary constructor keeps the bare field names, and an `impl` matches its
+methods to those field names. A bare method reference follows the resolution
+rules under Projection names.
 
 This version does not implement default method bodies. A class method with a
 body is rejected with `TypeclassUnsupported`. A missing or unknown method is

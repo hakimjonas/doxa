@@ -96,10 +96,11 @@ Fourteen tactic steps are available: `intro`, `exact`, `apply`, `refl`,
 Four infix operators, `*`, `+`, `<=`, and `==`, spell `mult`, `plus`, `leq`,
 and `eqb`; the operators are monomorphic to those functions, so the algebra
 monoids' `add` and `mul` are not reachable through them.
-Typeclasses cover single-parameter classes, instance search, explicit type
-arguments, parameterised instances, superclasses with the derived parent
-dictionary, local dictionaries, and multi-parameter classes. Default method
-bodies are the remaining typeclass gap. Quotients have `mk`, `lift`, and
+Typeclasses cover single-parameter classes, class-qualified projections,
+instance search, explicit type arguments, parameterised instances,
+superclasses with the derived parent dictionary, local dictionaries, and
+multi-parameter classes. Default method bodies and the camelCase naming pass
+are the remaining typeclass gaps. Quotients have `mk`, `lift`, and
 `Quot.sound` over a checked relation, without a propositional eliminator;
 `decreases` checks a lexicographic measure over named value parameters, and an
 arithmetic decreasing argument such as `sub m n` is rejected.
@@ -107,13 +108,13 @@ arithmetic decreasing argument such as `sub m n` is rejected.
 ### Useful
 
 The standard library covers arithmetic, `Nat`, `Bool`, `List`, `Vec`,
-`Option`, `Sigma`, `Int`, equality, the `sqrt2` case study, and the algebra
-monoids and the additive group, with `Nat` and `List` monoid instances plus
-`AddMonoid[Int]` and `AddGroup[Int]`. The hierarchy stops there: there is no
-ring class, no commutative group class, and `AddGroup` has only the `Int`
-instance. A `Ring` class cannot sit beside `Monoid` because `Monoid` already
-declares `mul`, `mone`, `mul_assoc`, `mul_one_left`, and `mul_one_right` as
-global projections. `rational.doxa` is a first cut with a constructor and no
+`Option`, `Sigma`, `Int`, equality, the `sqrt2` case study, the algebra
+monoids and the additive group, and a ring, with `Nat` and `List` monoid
+instances plus `AddMonoid[Int]`, `AddGroup[Int]`, and `Ring[Int]`. `Ring`
+declares its own `mul` and `mone`; the class-qualified projections keep them
+distinct from `Monoid`'s. The hierarchy stops there: there is no additive
+commutative group and no commutative ring, and `AddGroup` and `Ring` have only
+the `Int` instances. `rational.doxa` is a first cut with a constructor and no
 operations or lemmas. Others can instantiate the classes and extend the
 library.
 
@@ -121,9 +122,9 @@ library.
 
 Proof ergonomics: notation for the naming surface. Then the remaining gated
 surface, a checked termination measure, and `Quot.ind` for a propositional
-eliminator. Then the rest of the algebraic hierarchy, which needs a
-class-method namespace that lets a ring class state multiplication fields
-that `Monoid` already declares.
+eliminator. The spelling pass moves the class fields and laws to camelCase
+(`addZero`, `multiplyAssoc`, `addNegateLeft`). Then the rest of the algebraic
+hierarchy: the additive commutative group and the commutative ring.
 
 ### Distribution
 

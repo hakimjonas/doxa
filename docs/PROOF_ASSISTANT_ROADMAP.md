@@ -79,6 +79,9 @@ The arithmetic semantics are specified in `docs/arithmetic.md` and tested, and
 | Multi-method classes | **Done** |
 | Superclasses | **Done** |
 | Local instances | **Done** |
+| Class-qualified projections and bare-name resolution | **Done** |
+| `Ring` and the `Ring[Int]` instance | **Done** |
+| camelCase naming pass | Open |
 | Default method bodies | Open |
 | Multi-parameter classes | **Done** |
 
