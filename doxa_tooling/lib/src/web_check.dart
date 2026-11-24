@@ -725,6 +725,7 @@ String _checkErrorKind(DoxaCheckError error) => switch (error) {
 String _elabErrorKind(ElabError error) => switch (error) {
   UnresolvedName _ => 'unresolved_name',
   DuplicateDeclaration _ => 'duplicate_declaration',
+  AmbiguousClassMethod _ => 'ambiguous_class_method',
   LambdaRequiresAnnotation _ => 'lambda_requires_annotation',
   NonStructuralRecursion _ => 'non_structural_recursion',
   RecursionInTacticBlock _ => 'recursion_in_tactic_block',

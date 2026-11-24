@@ -423,6 +423,30 @@ final class UnknownInstanceMethod extends ElabError {
   String toString() => 'UnknownInstanceMethod($className.$methodName @ $span)';
 }
 
+/// A bare class-method name names a method declared by more than one class
+/// and no local dictionary selects one.
+///
+/// Each class declares its own projection, so a bare name is only usable
+/// when it names one projection. [candidates] holds the `Class.method`
+/// forms, in declaration order.
+final class AmbiguousClassMethod extends ElabError {
+  /// The bare name as written.
+  final String methodName;
+
+  /// The `Class.method` forms the name could name.
+  final List<String> candidates;
+
+  @override
+  final DoxaSpan span;
+
+  /// Creates an ambiguous-class-method error.
+  const AmbiguousClassMethod(this.methodName, this.candidates, this.span);
+
+  @override
+  String toString() =>
+      'AmbiguousClassMethod($methodName: ${candidates.join(", ")} @ $span)';
+}
+
 /// An `impl` target does not have a shape instance search can match.
 ///
 /// A bare variable target, a closed argument, a repeated parameter, or a
@@ -1342,7 +1366,15 @@ final class _ElabState {
   /// The elaborator-local name stack (de Bruijn resolution).
   final _LocalScope names;
 
-  const _ElabState(this.topEnv, this.ctx, this.names);
+  /// The class whose declaration is being elaborated, when any.
+  ///
+  /// While a class's law fields elaborate, a bare method reference
+  /// resolves through this class first, then its parents. Elsewhere the
+  /// field is null and bare resolution uses the local dictionaries and
+  /// the class registry.
+  final String? currentClass;
+
+  const _ElabState(this.topEnv, this.ctx, this.names, {this.currentClass});
 
   /// Extend state with a new binder [name] of [type]. The [ctx] gains
   /// a fresh neutral at the current level; [names] gains the name at
@@ -1351,7 +1383,12 @@ final class _ElabState {
     String name,
     Value type, [
     DoxaSpan span = DoxaSpan.synthetic,
-  ]) => _ElabState(topEnv, ctx.extend(type), names.push(name, span));
+  ]) => _ElabState(
+    topEnv,
+    ctx.extend(type),
+    names.push(name, span),
+    currentClass: currentClass,
+  );
 
   /// Extend state with a let-bound binder whose type and concrete
   /// [value] are both known (the `_inferExpr(SLet)` path). Uses
@@ -1364,7 +1401,12 @@ final class _ElabState {
     Value type,
     Value value, [
     DoxaSpan span = DoxaSpan.synthetic,
-  ]) => _ElabState(topEnv, ctx.extendWith(type, value), names.push(name, span));
+  ]) => _ElabState(
+    topEnv,
+    ctx.extendWith(type, value),
+    names.push(name, span),
+    currentClass: currentClass,
+  );
 
   /// Look up a local [name]: returns (index, type, binder span) or null if it does
   /// not name a local binder. The index is a de Bruijn index into
@@ -2567,6 +2609,23 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
         }
       }
       if (state.topEnv.indexOfFromEnd(name) < 0) {
+        // Fall back to a class method projection. A bare method name is
+        // usable when the current class, a local dictionary, or a unique
+        // declaring class selects it.
+        final qualified = _resolveBareClassMethod(state, name, expr.span);
+        final classEntry =
+            qualified == null ? null : state.ctx.env.lookupTop(qualified);
+        if (qualified != null && classEntry != null) {
+          _recordSemInfo(
+            state,
+            expr.span,
+            qualified,
+            SemInfoKind.topBinding,
+            classEntry.type,
+            state.topEnv.spanOf(qualified),
+          );
+          return (TTop(qualified), classEntry.type);
+        }
         throw UnresolvedName(name, expr.span);
       }
       final topEntry = state.ctx.env.lookupTop(name);
@@ -2624,9 +2683,10 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
         // Fall through to name qualification.
       }
 
-      // Try namespace-qualified lookup: Nat.plus → look up `plus`
-      // in namespace `Nat`. Also handles type-applied qualifiers
-      // like `Acc[Nat].rec` where the qualifier is `App(Ident("Acc"), ...)`.
+      // The qualifier's head name, for class-qualified projections and
+      // namespace-qualified names. Handles a bare identifier and a
+      // type-applied qualifier like `Acc[Nat].rec` whose head is an
+      // identifier.
       String? qualName;
       if (qualifier.kind is SIdentKind) {
         qualName = (qualifier.kind as SIdentKind).name;
@@ -2634,6 +2694,37 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
         final fn = (qualifier.kind as SAppKind).fn.kind;
         if (fn is SIdentKind) qualName = fn.name;
       }
+
+      // Try a class-qualified projection: `Class.method`. The record
+      // attempt above runs first, so a dictionary projection is never
+      // shadowed. A method inherited from a parent resolves to the
+      // parent's projection, which is where the dictionary field lives.
+      if (qualName != null) {
+        final declared = _declaringClass(
+          state.topEnv.classRegistry,
+          qualName,
+          name,
+        );
+        if (declared != null) {
+          final qualified = '$declared.$name';
+          final entry = state.ctx.env.lookupTop(qualified);
+          if (entry != null) {
+            _recordSemInfo(
+              state,
+              expr.span,
+              qualified,
+              SemInfoKind.topBinding,
+              entry.type,
+              state.topEnv.spanOf(qualified),
+            );
+            return (TTop(qualified), entry.type);
+          }
+        }
+      }
+
+      // Try namespace-qualified lookup: Nat.plus → look up `plus`
+      // in namespace `Nat`. Also handles type-applied qualifiers
+      // like `Acc[Nat].rec` where the qualifier is `App(Ident("Acc"), ...)`.
       if (qualName != null && state.topEnv.lookupQualified(qualName, name)) {
         // Resolve `name` against the full registry: constructors,
         // data types, and top bindings, in that order (mirroring
@@ -4007,6 +4098,95 @@ int? _localDictionaryIndex(_ElabState state, String className, VData domain) {
 /// is rejected rather than explored.
 const _instanceSearchDepth = 8;
 
+/// The class in [className]'s superclass chain that declares [methodName],
+/// or null when neither the class nor an ancestor declares it.
+///
+/// A subclass that inherits a method without redeclaring it resolves to
+/// the ancestor's projection. The chain walk stops on a cycle so a
+/// malformed registry cannot loop.
+String? _declaringClass(
+  Map<String, ClassInfo> registry,
+  String className,
+  String methodName,
+) {
+  var current = className;
+  final seen = <String>{};
+  while (seen.add(current)) {
+    final info = registry[current];
+    if (info == null) return null;
+    if (info.methods.any((method) => method.$1 == methodName)) return current;
+    final parent = info.superclassName;
+    if (parent == null) return null;
+    current = parent;
+  }
+  return null;
+}
+
+/// Whether [className] is [ancestor] or a subclass of it, walking the
+/// superclass chain.
+bool _classChainContains(
+  Map<String, ClassInfo> registry,
+  String className,
+  String ancestor,
+) {
+  var current = className;
+  final seen = <String>{};
+  while (seen.add(current)) {
+    if (current == ancestor) return true;
+    final parent = registry[current]?.superclassName;
+    if (parent == null) return false;
+    current = parent;
+  }
+  return false;
+}
+
+/// Whether a local binder in [state] supplies a dictionary for
+/// [candidate] or for a subclass of it.
+///
+/// A constrained parameter lowers to an implicit dictionary binder, so
+/// this is the same test for `[A: Ring]` and for a local
+/// `val d : Ring A` binding whose type is in scope.
+bool _classHasLocalDictionary(_ElabState state, String candidate) {
+  for (var i = 0; i < state.ctx.level; i++) {
+    final type = state.ctx.lookupType(i);
+    if (type is VData &&
+        _classChainContains(state.topEnv.classRegistry, type.name, candidate)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Resolve a bare class-method reference [name] to its qualified
+/// `Class.method` projection, or null when no class declares it.
+///
+/// Inside a class declaration the current class wins, then its parents.
+/// Elsewhere a local dictionary for a declaring class (or a subclass of
+/// one) wins, then a unique declaring class. Two surviving candidates
+/// raise [AmbiguousClassMethod].
+String? _resolveBareClassMethod(_ElabState state, String name, DoxaSpan span) {
+  final registry = state.topEnv.classRegistry;
+  final current = state.currentClass;
+  if (current != null) {
+    final declared = _declaringClass(registry, current, name);
+    if (declared != null) return '$declared.$name';
+  }
+  final candidates = [
+    for (final info in registry.values)
+      if (info.methods.any((method) => method.$1 == name)) info.className,
+  ];
+  if (candidates.isEmpty) return null;
+  final local = [
+    for (final candidate in candidates)
+      if (_classHasLocalDictionary(state, candidate)) candidate,
+  ];
+  final pool = local.isEmpty ? candidates : local;
+  if (pool.length == 1) return '${pool.single}.$name';
+  throw AmbiguousClassMethod(name, [
+    for (final candidate in pool) '$candidate.$name',
+  ], span);
+}
+
 /// Whether two target-head tuples are equal.
 bool _sameHeads(List<String> left, List<String> right) {
   if (left.length != right.length) return false;
@@ -4370,7 +4550,12 @@ Value _stripBodyIsNormal(Value v) => switch (v) {
 /// matches `checkDeclResult`'s co-recursive-group discipline and keeps
 /// `eval` on elab-time terms stuck rather than reducing through a
 /// binding whose body does not exist yet.
-_ElabState _shimState(TopEnv topEnv, _LocalScope locals, {MetaContext? metas}) {
+_ElabState _shimState(
+  TopEnv topEnv,
+  _LocalScope locals, {
+  MetaContext? metas,
+  String? currentClass,
+}) {
   // Build a Ctx with real top-binding values where available, and
   // NTop neutral stubs for mutual-block pre-bindings (flagged
   // [TopBinding.isPreBinding] by `_elabFunBlock` pass 1).
@@ -4432,7 +4617,7 @@ _ElabState _shimState(TopEnv topEnv, _LocalScope locals, {MetaContext? metas}) {
     ctx = ctx.extend(const VUnknown());
     scope = scope.push(names[i]);
   }
-  return _ElabState(topEnv, ctx, scope);
+  return _ElabState(topEnv, ctx, scope, currentClass: currentClass);
 }
 
 Term _elabExpr(
@@ -5376,9 +5561,12 @@ DeclResult _elabTypeclass(
       throw DuplicateDeclaration(method.name, seenMethods[method.name]!, span);
     }
     seenMethods[method.name] = span;
-    final existing = topEnv.spanOf(method.name);
+    // Projections are class-qualified, so another class may declare the
+    // same field name. Only the qualified name must be free.
+    final qualifiedName = '$name.${method.name}';
+    final existing = topEnv.spanOf(qualifiedName);
     if (existing != null) {
-      throw DuplicateDeclaration(method.name, existing, span);
+      throw DuplicateDeclaration(qualifiedName, existing, span);
     }
     if (method.defaultBody != null) {
       throw TypeclassUnsupported(
@@ -5484,14 +5672,21 @@ DeclResult _elabTypeclass(
       );
     }
     final projection = TopBinding(
-      name: method.name,
-      type: _buildFunType(projectionEnv, binders, returnType, metas: metas),
+      name: '$name.${method.name}',
+      type: _buildFunType(
+        projectionEnv,
+        binders,
+        returnType,
+        metas: metas,
+        currentClass: name,
+      ),
       term: _buildFunBody(
         projectionEnv,
         binders,
         body,
         returnType,
         metas: metas,
+        currentClass: name,
       ),
       span: span,
     );
@@ -6469,6 +6664,7 @@ Term _buildFunBody(
   SExpr returnType, {
   MetaContext? metas,
   List<_FunBinder> contextBinders = const [],
+  String? currentClass,
 }) {
   // Build `_ElabState` from the outer topEnv, starting with no
   // locals. Push each binder with its real Value-level type so the
@@ -6479,7 +6675,12 @@ Term _buildFunBody(
   // method body sees the instance's type parameters and dictionaries in
   // scope, while the emitted lambda chain covers only the method's own
   // binders.
-  var state = _shimState(topEnv, const _LocalNil(), metas: metas);
+  var state = _shimState(
+    topEnv,
+    const _LocalNil(),
+    metas: metas,
+    currentClass: currentClass,
+  );
   final (contextState, _) = _pushBinders(state, contextBinders);
   final (innerState, domains) = _pushBinders(contextState, binders);
   state = innerState;
@@ -6572,9 +6773,15 @@ Term _buildFunType(
   List<_FunBinder> binders,
   SExpr returnType, {
   MetaContext? metas,
+  String? currentClass,
 }) {
   final (state, domains) = _pushBinders(
-    _shimState(topEnv, const _LocalNil(), metas: metas),
+    _shimState(
+      topEnv,
+      const _LocalNil(),
+      metas: metas,
+      currentClass: currentClass,
+    ),
     binders,
   );
   final (returnT, _) = _inferExpr(state, returnType);

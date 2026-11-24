@@ -343,6 +343,20 @@ String reportElabError(SourceFile source, ElabError error, {AnsiColor? color}) {
       sb.write(source.formatContext(span, color: c));
       sb.writeln('  "$name" was previously declared here:');
       sb.writeln('    ${source.formatStart(previousSpan)}');
+    case AmbiguousClassMethod(
+      :final methodName,
+      :final candidates,
+      :final span,
+    ):
+      sb.writeln("${c.error('error')}: ambiguous class method");
+      sb.write(source.formatContext(span, color: c));
+      sb.writeln(
+        '  "$methodName" is declared by more than one class; '
+        'qualify it:',
+      );
+      for (final candidate in candidates) {
+        sb.writeln('    $candidate');
+      }
     case LambdaRequiresAnnotation(:final name, :final span):
       sb.writeln("${c.error('error')}: lambda requires a type annotation");
       sb.write(source.formatContext(span, color: c));

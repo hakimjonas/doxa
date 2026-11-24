@@ -60,7 +60,8 @@ void main() {
       expect(ctor.args.length, 1);
       expect(ctor.args.single.name, 'eqb');
 
-      final projections = env.bindings.where((b) => b.name == 'eqb').toList();
+      final projections =
+          env.bindings.where((b) => b.name == 'Eqb.eqb').toList();
       expect(projections.length, 1);
 
       // {A: Type} -> (x: A) -> (y: A) -> {inst: Eqb A} -> Bool
@@ -306,10 +307,9 @@ val bad: Bool = eqb xs xs
   });
 
   group('class declarations', () {
-    test('two classes cannot share a method name', () {
-      expect(
-        () => checkProgram(
-          pp('''
+    test('two classes may share a method name', () {
+      final env = checkProgram(
+        pp('''
 $_prelude
 typeclass ShowA[A: Type] {
   fun show(x: A): Bool;
@@ -318,20 +318,27 @@ typeclass ShowB[A: Type] {
   fun show(x: A): Bool;
 }
 '''),
+      );
+      // The projections are class-qualified, so the bare name is free
+      // and each class keeps its own projection.
+      expect(env.bindings.where((b) => b.name == 'ShowA.show'), hasLength(1));
+      expect(env.bindings.where((b) => b.name == 'ShowB.show'), hasLength(1));
+      expect(env.bindings.where((b) => b.name == 'show'), isEmpty);
+    });
+
+    test('one class cannot declare a method twice', () {
+      expect(
+        () => checkProgram(
+          pp('''
+$_prelude
+typeclass Twice[A: Type] {
+  fun show(x: A): Bool;
+  fun show(x: A): Bool;
+}
+'''),
         ),
         throwsA(
-          isA<DuplicateDeclaration>()
-              .having((e) => e.name, 'name', 'show')
-              .having(
-                (e) => e.previousSpan.start < e.span.start,
-                'previous span precedes the redeclaration',
-                isTrue,
-              )
-              .having(
-                (e) => e.previousSpan.isSynthetic || e.span.isSynthetic,
-                'both spans are source spans',
-                isFalse,
-              ),
+          isA<DuplicateDeclaration>().having((e) => e.name, 'name', 'show'),
         ),
       );
     });
@@ -451,8 +458,8 @@ val gz: Nat = g zero
 
       final classInfo = env.classRegistry['Both']!;
       expect(classInfo.methods.length, 2);
-      expect(env.bindings.where((b) => b.name == 'f'), hasLength(1));
-      expect(env.bindings.where((b) => b.name == 'g'), hasLength(1));
+      expect(env.bindings.where((b) => b.name == 'Both.f'), hasLength(1));
+      expect(env.bindings.where((b) => b.name == 'Both.g'), hasLength(1));
       expect(_ctorName(_evalBinding(env, 'fz')), 'succ');
       expect(_ctorName(_evalBinding(env, 'gz')), 'zero');
     });

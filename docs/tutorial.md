@@ -863,12 +863,12 @@ for a non-indexed data type with one constructor.
 ## 11. Typeclasses
 
 A `typeclass` declaration produces a dictionary type and one projection per
-method. A class may declare more than one method; each method becomes a
-projection and a dictionary field. An `impl` declaration produces a dictionary
-value for a head type, optionally applied to the instance's own type
-parameters. Resolution happens during elaboration: a constrained parameter
-becomes an implicit dictionary parameter, and a method call inserts the
-dictionary it needs.
+method. A projection is named by its class and method, `Class.method`. A class
+may declare more than one method; each method becomes a projection and a
+dictionary field. An `impl` declaration produces a dictionary value for a head
+type, optionally applied to the instance's own type parameters. Resolution
+happens during elaboration: a constrained parameter becomes an implicit
+dictionary parameter, and a method call inserts the dictionary it needs.
 
 ```doxa
 data Nat : Type {
@@ -907,7 +907,7 @@ val boolSame : Bool = same Bool true_ true_
 
 `typeclass Eqb[A: Type]` produces the dictionary type `Eqb[A]`, a
 single-constructor inductive with one field per method, and the projection
-`eqb`. `impl Eqb[Nat]` registers one instance for the head `Nat`. A second
+`Eqb.eqb`. `impl Eqb[Nat]` registers one instance for the head `Nat`. A second
 instance for the same class and head is rejected with
 `OverlappingInstances`.
 
@@ -916,6 +916,14 @@ is an implicit argument placed after the value parameters, so the class
 parameter is solved from them first. The call `same Nat zero zero` supplies
 `Nat` and resolves `Eqb[Nat]` by search. Inside `same`, `eqb x y` uses the
 dictionary parameter directly, so no search runs there.
+
+A projection's identity is its class and method, so two classes may both
+declare `mul`. Write `Monoid.mul` or `Ring.mul` to name one. A bare `mul`
+resolves when a local dictionary or constrained parameter selects its class,
+or when only one class declares the name. Otherwise elaboration reports
+`AmbiguousClassMethod` and lists the `Class.method` forms. Inside a class
+declaration, the class's own law fields read the current class first, then its
+parents.
 
 ### Parameterised instances
 
@@ -1106,9 +1114,10 @@ This slice has these limits:
   a separate instance declaration. The binding supplies the dictionary to a
   call in its scope when the call is checked against a known result type.
 - Coherence is global: one instance per class and tuple of target heads.
-- Method names share the global namespace, because each method becomes a
-  top-level projection. Two classes cannot declare the same method name; the
-  second declaration is rejected with `DuplicateDeclaration`.
+- Methods become top-level projections under their `Class.method` names, so
+  two classes may declare the same field name. A bare name that two classes
+  could supply and no local dictionary selects is rejected with
+  `AmbiguousClassMethod`.
 - Method default bodies are not implemented. Every instance supplies every
   method, and a missing method is rejected with `MissingInstanceMethod`.
 - For a single-parameter class, a target is a bare type constructor or a type
@@ -1130,11 +1139,12 @@ This slice has these limits:
 
 ### The algebra library
 
-The standard library ships monoids, commutative monoids, and the additive
-group. `AddCommMonoid`, `CommMonoid`, and `AddGroup` embed their parent as a
-superclass dictionary, so an `AddCommMonoid` dictionary also supplies
-`AddMonoid`. `sum` folds a list with `add` and `azero`, and `sumViaComm`
-takes the commutative constraint:
+The standard library ships monoids, commutative monoids, the additive group,
+and a ring. `AddCommMonoid`, `CommMonoid`, `AddGroup`, and `Ring` embed their
+parent as a superclass dictionary, so an `AddCommMonoid` dictionary also
+supplies `AddMonoid` and a `Ring` dictionary also supplies `AddGroup`. `sum`
+folds a list with `add` and `azero`, and `sumViaComm` takes the commutative
+constraint:
 
 ```doxa
 import "package:doxa_stdlib/stdlib/algebra.doxa"
@@ -1168,6 +1178,28 @@ val two_eq : Eq Int two (pos (succ (succ zero))) = refl two
 A projection binds the class parameter implicitly, so `negate` takes the
 value alone; `sum` and `double` declare their parameter explicitly in `[...]`,
 so they take `Nat` or `Int` before the value.
+
+`Ring` extends `AddGroup` with its own `mul`, `mone`, and the multiplication
+laws. `Ring.mul` and `Monoid.mul` are distinct projections with the same field
+name. `Ring[Int]` proves the laws from the lemmas in `int.doxa`, and `square`
+multiplies a value by itself under a `Ring` constraint:
+
+```doxa
+import "package:doxa_stdlib/stdlib/algebra.doxa"
+
+val square_two : Eq Int (square Int (pos (succ (succ zero))))
+  (pos (succ (succ (succ (succ zero))))) =
+  refl (pos (succ (succ (succ (succ zero)))))
+val ringProduct : Int = Ring.mul (pos (succ zero)) (pos (succ zero))
+val ringProduct_eq : Eq Int ringProduct (pos (succ zero)) = refl ringProduct
+val monoidProduct : Nat = Monoid.mul (succ zero) (succ zero)
+val monoidProduct_eq : Eq Nat monoidProduct (succ zero) = refl monoidProduct
+```
+
+The `square` law `square_one` is proved in the module. The additive
+commutative variants (`AddCommGroup`, `CommRing`), the naming pass that moves
+the class fields and laws to camelCase, and default method bodies are not
+present.
 
 A class that is not passed as a constraint can still be used as an ordinary
 record type. A user-defined record is an explicit dictionary:

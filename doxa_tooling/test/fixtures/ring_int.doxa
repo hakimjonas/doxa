@@ -1,0 +1,11 @@
+// Consumer of the stdlib ring: the `Int` instance, the `square` exercise,
+// and the class-qualified projections. `square_one` is proved in the module;
+// this file proves a second `refl` at two, plus the qualified operations.
+import "../../../doxa_stdlib/lib/stdlib/algebra.doxa"
+
+val two: Int = pos (succ (succ zero))
+val four: Int = pos (succ (succ (succ (succ zero))))
+
+val square_two: Eq Int (square Int two) four = refl four
+val ring_mul_two_two: Eq Int (Ring.mul two two) four = refl four
+val ring_add_two_two: Eq Int (Ring.add two two) four = refl four

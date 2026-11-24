@@ -71,10 +71,16 @@ project is ready.
   replacing the 0.8.4 rejection (#14).
 - Added parameterised instances, recursive dictionary discharge, and the
   self-recursion soundness fix (#15).
-- Added `AddGroup` to the standard-library algebra module, proved
-  `AddMonoid[Int]` and `AddGroup[Int]`, and aligned the `Int` multiplication
-  law names with the class-field convention. Rings are deferred because
-  `Monoid` already declares the multiplication projections.
+- Added `AddGroup` to the standard-library algebra module and proved
+  `AddMonoid[Int]` and `AddGroup[Int]`.
+- Identified class projections by class and method (`Monoid.mul`,
+  `Ring.mul`), so two classes may declare the same field name. A bare method
+  name resolves through a local dictionary or a unique declaring class, and an
+  ambiguous name reports `AmbiguousClassMethod`. Inside a class, its law
+  fields read the current class first, then its parents.
+- Added `Ring` beside `Monoid`, with the `Ring[Int]` instance and the `square`
+  exercise. The additive commutative variants, the camelCase naming pass, and
+  default method bodies are not present.
 
 **Records and projections**
 

@@ -97,7 +97,7 @@ void main() {
       final env = _checked('val q = eqb zero zero');
       expect(
         prettyTerm(_binding(env, 'q').term),
-        'eqb Nat zero zero _impl_Eqb_Nat',
+        'Eqb.eqb Nat zero zero _impl_Eqb_Nat',
       );
     });
 

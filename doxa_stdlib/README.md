@@ -14,7 +14,7 @@ https://github.com/hakimjonas/doxa#status.
 | `Bool` | `bool.doxa` |
 | `Eq` | `eq.doxa` (`sym`, `trans`, `cong`, `subst`) |
 | `Eqb` | `eqb.doxa` (class), `eqb_instances.doxa` (instances for `Nat`, `Bool`, `List`) |
-| `Algebra` | `algebra.doxa` (`AddMonoid`, `AddCommMonoid`, `AddGroup`, `Monoid`, `CommMonoid`; `Nat` and `List` instances; `AddMonoid[Int]` and `AddGroup[Int]`; `sum`, `sumViaComm`, `double`, `negTwice`) |
+| `Algebra` | `algebra.doxa` (`AddMonoid`, `AddCommMonoid`, `AddGroup`, `Monoid`, `CommMonoid`, `Ring`; class-qualified projections such as `Ring.mul`; `Nat` and `List` instances; `AddMonoid[Int]`, `AddGroup[Int]`, and `Ring[Int]`; `sum`, `sumViaComm`, `double`, `negTwice`, `square`) |
 | `List` | `list.doxa` |
 | `Option` | `option.doxa` |
 | `Vec` | `vec.doxa` (length-indexed vectors) |
@@ -104,7 +104,7 @@ class and its `Nat`, `Bool`, and `List` instances, so `eqb` resolves at
 those types without a local class.
 
 `import "package:doxa_stdlib/stdlib/Algebra/package.doxa"` brings the algebra
-classes, the `Nat` and `List` monoid instances, the `Int` additive
+classes, the `Nat` and `List` monoid instances, the `Int` additive and ring
 instances, and the folds:
 
 ```doxa

@@ -16,15 +16,18 @@
 // `AddMonoid A` by projection. The inverse field is `negate` because `neg` is
 // a constructor of `Int` and class methods are global projections.
 //
-// Rings are not part of this hierarchy. `Monoid` already declares `mul`,
-// `mone`, `mul_assoc`, `mul_one_left`, and `mul_one_right` as global
-// projections, so a `Ring` class beside it cannot redeclare those fields. The
-// `Int` multiplicative laws stay lemmas in `int.doxa` for a future ring class.
+// `Ring` extends `AddGroup` with its own multiplicative operation and laws.
+// Projections are class-qualified, so `Ring.mul` and `Monoid.mul` are distinct
+// even though both classes declare a `mul` field. A bare `mul` resolves to a
+// local dictionary's class, or to the only declaring class when one exists.
+// The additive commutative variants, the naming pass, and default method
+// bodies are not part of this module.
 //
 // `sum` folds a list with `add` and `azero`. `sumViaComm` takes the
 // commutative constraint and uses the same fold through the derived parent
 // dictionary. `double` and `negTwice` take the group constraint, and `double`
-// reaches `add` through the parent dictionary.
+// reaches `add` through the parent dictionary. `square` multiplies a value by
+// itself under a `Ring` constraint.
 import "int.doxa"
 
 import "proofs.doxa"
@@ -53,6 +56,16 @@ typeclass Monoid[A: Type] {
   fun mul_assoc(x: A, y: A, z: A): Eq A (mul (mul x y) z) (mul x (mul y z));
   fun mul_one_left(x: A): Eq A (mul mone x) x;
   fun mul_one_right(x: A): Eq A (mul x mone) x;
+}
+
+typeclass Ring[A: Type]: AddGroup A {
+  fun mul(x: A, y: A): A;
+  fun mone(): A;
+  fun mul_assoc(x: A, y: A, z: A): Eq A (mul (mul x y) z) (mul x (mul y z));
+  fun mul_one_left(x: A): Eq A (mul mone x) x;
+  fun mul_one_right(x: A): Eq A (mul x mone) x;
+  fun mul_add(x: A, y: A, z: A): Eq A (mul (add x y) z) (add (mul x z) (mul y z));
+  fun add_mul(x: A, y: A, z: A): Eq A (mul x (add y z)) (add (mul x y) (mul x z));
 }
 
 typeclass CommMonoid[A: Type]: Monoid A {
@@ -109,6 +122,23 @@ impl AddGroup[Int] {
   fun add_neg_right(x: Int): Eq Int (intPlus x (intNeg x)) (pos zero) = intAdd_neg_right x;
 }
 
+impl Ring[Int] {
+  fun mul(x: Int, y: Int): Int = intMult x y;
+  fun mone(): Int = pos (succ zero);
+  fun mul_assoc(x: Int, y: Int, z: Int): Eq Int (intMult (intMult x y) z) (intMult x (intMult y z)) =
+    intMult_assoc x y z;
+  fun mul_one_left(x: Int): Eq Int (intMult (pos (succ zero)) x) x = intMult_one_left x;
+  fun mul_one_right(x: Int): Eq Int (intMult x (pos (succ zero))) x = intMult_one_right x;
+  fun mul_add(x: Int, y: Int, z: Int): Eq
+    Int
+    (intMult (intPlus x y) z)
+    (intPlus (intMult x z) (intMult y z)) = intMul_add x y z;
+  fun add_mul(x: Int, y: Int, z: Int): Eq
+    Int
+    (intMult x (intPlus y z))
+    (intPlus (intMult x y) (intMult x z)) = intAdd_mul x y z;
+}
+
 fun sum[A: AddMonoid](xs: List A): A = match xs {
   case nil => azero
   case cons x rest => add x (sum A rest)
@@ -119,3 +149,7 @@ fun sumViaComm[A: AddCommMonoid](xs: List A): A = sum A xs
 fun double[A: AddGroup](x: A): A = add x x
 
 fun negTwice[A: AddGroup](x: A): A = negate (negate x)
+
+fun square[A: Ring](x: A): A = mul x x
+
+val square_one: Eq Int (square Int (pos (succ zero))) (pos (succ zero)) = refl (pos (succ zero))

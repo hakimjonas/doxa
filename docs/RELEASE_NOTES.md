@@ -69,16 +69,18 @@ and `package:` usage.
 **Surface syntax**
 - ML-family surface: `fun`, `val`, `data`, `match`, `import`, `theorem`
 - Implicit arguments (`{A: Type}`) and explicit type parameters (`[A: Type]`)
-- Typeclasses: single-parameter classes, superclasses with the derived parent
-  dictionary, multi-parameter classes, local dictionaries, parameterised
-  instances with linear targets, constrained parameters with trailing
-  dictionary arguments, and depth-bounded instance search. The standard
-  library provides `Eqb` instances for `Nat`, `Bool`, and `List`, and the
-  algebra classes `AddMonoid`, `AddCommMonoid`, `AddGroup`, `Monoid`, and
-  `CommMonoid` with `Nat` and `List` instances, `AddMonoid[Int]` and
-  `AddGroup[Int]`, and `sum`, `sumViaComm`, `double`, and `negTwice`. There
-  is no ring class and no commutative group class. Default method
-  bodies are not supported; see [`SPEC.md`](../SPEC.md#typeclasses).
+- Typeclasses: single-parameter classes, class-qualified projections
+  (`Class.method`), superclasses with the derived parent dictionary,
+  multi-parameter classes, local dictionaries, parameterised instances with
+  linear targets, constrained parameters with trailing dictionary arguments,
+  and depth-bounded instance search. The standard library provides `Eqb`
+  instances for `Nat`, `Bool`, and `List`, and the algebra classes
+  `AddMonoid`, `AddCommMonoid`, `AddGroup`, `Monoid`, `CommMonoid`, and
+  `Ring` with `Nat` and `List` instances, `AddMonoid[Int]`, `AddGroup[Int]`,
+  and `Ring[Int]`, plus `sum`, `sumViaComm`, `double`, `negTwice`, and
+  `square`. There is no additive commutative group and no commutative ring.
+  Default method bodies are not supported;
+  see [`SPEC.md`](../SPEC.md#typeclasses).
 - Block expressions with `val` bindings
 - Tactics: `by { ... }` with `intro`, `exact`, `apply`, `refl`, `rewrite`,
   `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`,
@@ -167,9 +169,10 @@ These are design non-goals, not omissions:
   Closed target arguments such as `impl Eqb[List Nat]` are rejected with
   `UnsupportedInstanceTarget`, as are repeated parameters and bare variable
   targets. Coherence is one instance per class and head.
-- **Typeclass method names**: each method becomes a top-level projection, so
-  method names share the global namespace and two classes cannot declare the
-  same name.
+- **Typeclass method names**: each method becomes a top-level projection
+  identified by its class and method, so two classes may declare the same
+  field name. A bare name resolves through a local dictionary or a unique
+  declaring class; otherwise it reports `AmbiguousClassMethod`.
 - **Typeclass scope**: a method with a default body is rejected with
   `TypeclassUnsupported`, so every instance supplies every method. An
   instance method body does not see the instance being defined; recursion is

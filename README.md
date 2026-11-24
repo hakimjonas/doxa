@@ -33,15 +33,17 @@ Doxa requires Dart 3.7 or later.
 - Quotients: `Quot(A, R)` with a checked relation, `mk` in check mode, `lift`
   with a checked compatibility proof, and the propositional `Quot.sound`.
   Carriers and lift results are at `Type 0` and there is no `Quot.ind` yet.
-- Typeclasses with single-parameter classes, instance search, explicit type
-  arguments, parameterised instances, superclasses with the derived parent
-  dictionary, local dictionaries, and multi-parameter classes. Default
+- Typeclasses with class-qualified projections (`Class.method`), instance
+  search, explicit type arguments, parameterised instances, superclasses with
+  the derived parent dictionary, local dictionaries, and multi-parameter
+  classes. A bare method name resolves through a local dictionary or a unique
+  declaring class; an ambiguous one reports `AmbiguousClassMethod`. Default
   method bodies are not supported; see [`SPEC.md`](SPEC.md#typeclasses).
 - The standard-library package, with `Nat`, `Bool`, `List`, `Option`, `Vec`,
   `Sigma`, `Int`, `Rational`, equality, the `Eqb` class and its instances,
   the algebra classes (`AddMonoid`, `AddCommMonoid`, `AddGroup`, `Monoid`,
-  `CommMonoid`) with `Nat` and `List` instances, `AddMonoid[Int]` and
-  `AddGroup[Int]`, and arithmetic lemmas.
+  `CommMonoid`, `Ring`) with `Nat` and `List` instances, `AddMonoid[Int]`,
+  `AddGroup[Int]`, and `Ring[Int]`, and arithmetic lemmas.
   Programs reach it through `package:` imports.
 
 ## Quick start
