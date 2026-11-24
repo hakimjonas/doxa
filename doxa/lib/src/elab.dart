@@ -4027,12 +4027,18 @@ Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
     final metaId = metas.freshTermMeta(closedType, state.ctx);
     // Build the meta applied to every outer bound variable. At this
     // depth, TBound(k) for k in [0, state.ctx.level) references
-    // each binder in scope (innermost at TBound(0)).
+    // each binder in scope (innermost at TBound(0)). The term keeps the
+    // binders so the emitted program applies the solution to their
+    // values.
     Term insertedMetaTerm = TMeta(metaId);
     for (var k = state.ctx.level - 1; k >= 0; k--) {
       insertedMetaTerm = TApp(insertedMetaTerm, TBound(k));
     }
-    final metaValue = eval(insertedMetaTerm, state.ctx.env);
+    // The value the unifier sees applies the meta to each binder's
+    // meta-neutral, not its value. A let binder's value is its bound
+    // expression (or an alias of an outer variable); using it gives a
+    // constant or repeated spine that pattern unification cannot solve.
+    final metaValue = eval(insertedMetaTerm, state.ctx.metaEnv);
     curT = switch (curT) {
       TData(:final name, :final args) =>
         TData(name, [...args, insertedMetaTerm]) as Term,
@@ -4690,6 +4696,7 @@ Ctx substNVarInCtx(Ctx ctx, int scrutLevel, Value replacement) {
     case CCons(
       :final type,
       :final value,
+      :final neutral,
       :final env,
       :final level,
       :final rest,
@@ -4699,7 +4706,7 @@ Ctx substNVarInCtx(Ctx ctx, int scrutLevel, Value replacement) {
       if (identical(newType, type) && identical(newRest, rest)) {
         return ctx;
       }
-      return CCons(newType, value, env, level, newRest);
+      return CCons(newType, value, neutral, env, level, newRest);
   }
 }
 
@@ -4713,6 +4720,7 @@ Ctx _normalizeChangedCtx(Ctx ctx, int armLevel, Env armEnv) {
     case CCons(
       :final type,
       :final value,
+      :final neutral,
       :final env,
       :final level,
       :final rest,
@@ -4722,7 +4730,7 @@ Ctx _normalizeChangedCtx(Ctx ctx, int armLevel, Env armEnv) {
       if (identical(newType, type) && identical(newRest, rest)) {
         return ctx;
       }
-      return CCons(newType, value, env, level, newRest);
+      return CCons(newType, value, neutral, env, level, newRest);
   }
 }
 
@@ -5557,10 +5565,18 @@ DeclResult _elabTypeclass(
   }
   final seenMethods = <String, DoxaSpan>{};
   for (final method in methods) {
+    // The method signature carries a source span; fall back to the class
+    // span only for a method without a type (a default-body form, which
+    // is rejected below).
+    final methodSpan = method.type?.span ?? span;
     if (seenMethods.containsKey(method.name)) {
-      throw DuplicateDeclaration(method.name, seenMethods[method.name]!, span);
+      throw DuplicateDeclaration(
+        method.name,
+        seenMethods[method.name]!,
+        methodSpan,
+      );
     }
-    seenMethods[method.name] = span;
+    seenMethods[method.name] = methodSpan;
     // Projections are class-qualified, so another class may declare the
     // same field name. Only the qualified name must be free.
     final qualifiedName = '$name.${method.name}';

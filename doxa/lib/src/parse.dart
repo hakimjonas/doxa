@@ -1621,9 +1621,11 @@ SExpr _buildMethodPi(
   String name,
   List<(String, SExpr, DoxaSpan)> params,
   SExpr retType,
+  DoxaSpan span,
 ) {
-  var ty = retType;
-  const span = DoxaSpan.synthetic;
+  // A method with no parameters is its return type; give it the method
+  // span so a duplicate diagnostic can point at the declaration.
+  var ty = params.isEmpty ? SExpr(retType.kind, span) : retType;
   for (final p in params.reversed) {
     ty = SExpr(SPiKind(p.$1, p.$2, ty, paramSpan: p.$3), span);
   }
@@ -1637,11 +1639,15 @@ Parser<ParseError, SClassMethod> _buildMethodBody(
   SExpr? defaultBody,
   int start,
 ) {
+  final methodSpan =
+      retType.span.isSynthetic
+          ? DoxaSpan.synthetic
+          : DoxaSpan(start, retType.span.end);
   final body = defaultBody;
   return succeed<ParseError, SClassMethod>(
     SClassMethod(
       name,
-      _buildMethodPi(name, params, retType),
+      _buildMethodPi(name, params, retType, methodSpan),
       defaultBody: body,
     ),
   );

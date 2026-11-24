@@ -290,4 +290,72 @@ val r : Nat = {
       check(ctx, b.term, eval(b.type, ctx.env));
     });
   });
+
+  group('Block bindings before implicit calls', () {
+    const prelude = '''
+data Eq[A: Type]: A -> A -> Prop {
+  refl: (x: A) -> Eq A x x;
+}
+data Nat : Type { zero : Nat; succ : Nat -> Nat; }
+fun idI{A: Type}(x: A): A = x
+''';
+
+    test('a block val before an implicit call checks', () {
+      // The inserted meta must be applied to a distinct neutral for the
+      // binding, not to its value.
+      final env = checkProgram(
+        parseProgramOk('''
+$prelude
+fun g(x: Nat): Nat = { val d : Nat = zero; idI x }
+val r : Eq Nat (g (succ zero)) (succ zero) = refl (succ zero)
+'''),
+      );
+      expect(env.bindings.where((b) => b.name == 'r'), hasLength(1));
+    });
+
+    test('an aliased block value before an implicit call checks', () {
+      final env = checkProgram(
+        parseProgramOk('''
+$prelude
+fun g(x: Nat, y: Nat): Nat = { val d : Nat = y; idI x }
+val r : Eq Nat (g (succ zero) (succ (succ zero))) (succ zero) =
+  refl (succ zero)
+'''),
+      );
+      expect(env.bindings.where((b) => b.name == 'r'), hasLength(1));
+    });
+
+    test('a block val keeps its definitional unfolding', () {
+      final env = checkProgram(
+        parseProgramOk('''
+$prelude
+fun g(x: Nat): Nat = { val d : Nat = zero; d }
+val r : Eq Nat (g (succ zero)) zero = refl zero
+'''),
+      );
+      expect(env.bindings.where((b) => b.name == 'r'), hasLength(1));
+    });
+
+    test('an aliased block val keeps its definitional unfolding', () {
+      final env = checkProgram(
+        parseProgramOk('''
+$prelude
+fun g(y: Nat): Nat = { val d : Nat = y; d }
+val r : Eq Nat (g (succ zero)) (succ zero) = refl (succ zero)
+'''),
+      );
+      expect(env.bindings.where((b) => b.name == 'r'), hasLength(1));
+    });
+
+    test('an implicit call on the block binding itself checks', () {
+      final env = checkProgram(
+        parseProgramOk('''
+$prelude
+fun g(x: Nat): Nat = { val d : Nat = zero; idI d }
+val r : Eq Nat (g (succ zero)) zero = refl zero
+'''),
+      );
+      expect(env.bindings.where((b) => b.name == 'r'), hasLength(1));
+    });
+  });
 }

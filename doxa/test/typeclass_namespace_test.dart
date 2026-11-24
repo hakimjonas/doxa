@@ -109,18 +109,23 @@ val rightResult: Nat = underRight Nat (succ zero)
     });
 
     test('a local dictionary selects its class projection', () {
-      // A dictionary in a local binder disambiguates the bare name, even
-      // though both classes declare `tag`. The dictionary is an ordinary
-      // value of the dictionary type, as `val` and instance search use.
+      // A block `val` dictionary disambiguates the bare name, even
+      // though both classes declare `tag`. SPEC's local dictionary is an
+      // ordinary `val` binding of the dictionary type.
       final env = checkProgram(
         pp('''
 $_prelude
 $_twoTags
-fun withLeft(d: Left Nat, x: Nat): Nat = tag x
-fun withRight(d: Right Nat, x: Nat): Nat = tag x
-val localLeft: Nat = withLeft (mk_Left ((y: Nat) => zero)) (succ zero)
-val localRight: Nat =
-  withRight (mk_Right ((y: Nat) => succ y)) (succ zero)
+fun withLeft(x: Nat): Nat = {
+  val d : Left Nat = mk_Left ((y: Nat) => zero);
+  tag x
+}
+fun withRight(x: Nat): Nat = {
+  val d : Right Nat = mk_Right ((y: Nat) => succ y);
+  tag x
+}
+val localLeft: Nat = withLeft (succ zero)
+val localRight: Nat = withRight (succ zero)
 '''),
       );
 

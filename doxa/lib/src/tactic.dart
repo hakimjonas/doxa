@@ -506,7 +506,7 @@ TacticFn Function(Term) tacticApply =
             metaTerm = TApp(metaTerm, TBound(k));
           }
           args.add(metaTerm);
-          final metaValue = eval(metaTerm, s.ctx.env);
+          final metaValue = eval(metaTerm, s.ctx.metaEnv);
           currentType = eval(
             pi.codomain.body,
             pi.codomain.env.extend(metaValue),
@@ -533,7 +533,7 @@ TacticFn Function(Term) tacticApply =
               closedOverCtx: s.ctx,
             ),
           );
-          final metaValue = eval(metaTerm, s.ctx.env);
+          final metaValue = eval(metaTerm, s.ctx.metaEnv);
           currentType = eval(
             pi.codomain.body,
             pi.codomain.env.extend(metaValue),
@@ -1558,7 +1558,7 @@ _instantiateSimpRule(TacticState s, _SimpRuleSource source) {
       metaTerm = TApp(metaTerm, TBound(k));
     }
     proof = TApp(proof, metaTerm);
-    final metaValue = eval(metaTerm, s.ctx.env);
+    final metaValue = eval(metaTerm, s.ctx.metaEnv);
     type = eval(pi.codomain.body, pi.codomain.env.extend(metaValue));
   }
   if (type is! VData || type.name != 'Eq' || type.args.length != 3) {
@@ -1746,7 +1746,7 @@ TacticResult tacticConstructor(TacticState s) {
         metaTerm = TApp(metaTerm, TBound(k));
       }
       argTerms.add(metaTerm);
-      teleEnv = teleEnv.extend(eval(metaTerm, s.ctx.env));
+      teleEnv = teleEnv.extend(eval(metaTerm, s.ctx.metaEnv));
     }
     // A constructor term carries the data parameters first, then the
     // constructor's own arguments; the kernel's constructor signature
