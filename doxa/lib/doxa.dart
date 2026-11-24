@@ -45,6 +45,7 @@ export 'src/elab.dart'
         ElabError,
         UnresolvedName,
         DuplicateDeclaration,
+        AmbiguousClassMethod,
         NonStructuralRecursion,
         RecursionInTacticBlock,
         LambdaRequiresAnnotation,

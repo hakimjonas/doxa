@@ -91,8 +91,8 @@ val l2 : Eq Nat (op (op zero)) zero = law2 zero
 '''),
       );
 
-      expect(env.bindings.where((b) => b.name == 'law1'), hasLength(1));
-      expect(env.bindings.where((b) => b.name == 'law2'), hasLength(1));
+      expect(env.bindings.where((b) => b.name == 'Op.law1'), hasLength(1));
+      expect(env.bindings.where((b) => b.name == 'Op.law2'), hasLength(1));
       expect(_ctorName(_evalBinding(env, 'l1')), 'refl');
       expect(_ctorName(_evalBinding(env, 'l2')), 'refl');
     });

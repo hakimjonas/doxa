@@ -133,7 +133,7 @@ typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool }
 '''),
       );
       expect(env.lookupData('Eqb'), isNotNull);
-      expect(env.bindings.any((b) => b.name == 'eqb'), isTrue);
+      expect(env.bindings.any((b) => b.name == 'Eqb.eqb'), isTrue);
     });
 
     test('impl declaration is accepted for a declared class', () {
