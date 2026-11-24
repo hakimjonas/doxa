@@ -112,6 +112,28 @@ typeclass WithDefault[A: Type]: Default[A] {
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
+    test('a ring checks the square and the qualified projections', () {
+      // The fixture imports the ring, so the module's `square_one` refl and
+      // the fixture's `square_two` refl are both checked, together with
+      // `Ring.mul` and the inherited `Ring.add`.
+      final fixture = File('test/fixtures/ring_int.doxa');
+      final r = runSource(fixture.readAsStringSync(), filename: fixture.path);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+      expect(r.stdout, contains('OK'));
+    });
+
+    test('an ambiguous bare method name reports the diagnostic', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/algebra.doxa"
+val bad: Nat = mul (succ zero) (succ zero)
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('ambiguous class method'));
+      expect(r.stderr, contains('Monoid.mul'));
+      expect(r.stderr, contains('Ring.mul'));
+    });
+
     test('an unknown class reports the named diagnostic', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
