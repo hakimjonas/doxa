@@ -222,6 +222,43 @@ val viaSubEq: Eq Nat (Sub.probe (succ zero)) zero = refl zero
     });
   });
 
+  group('mul under Monoid and Ring', () {
+    test('the constraint selects a different mul projection', () {
+      // `Monoid.mul` returns its left argument and `Ring.mul` its right
+      // argument, so the reduced values show which projection ran.
+      final env = checkProgram(
+        pp('''
+$_prelude
+typeclass AddGroup[A: Type] {
+  fun add(x: A, y: A): A;
+}
+typeclass Monoid[A: Type] {
+  fun mul(x: A, y: A): A;
+}
+typeclass Ring[A: Type]: AddGroup A {
+  fun mul(x: A, y: A): A;
+}
+impl Monoid[Nat] {
+  fun mul(x: Nat, y: Nat): Nat = x;
+}
+impl AddGroup[Nat] {
+  fun add(x: Nat, y: Nat): Nat = plus x y;
+}
+impl Ring[Nat] {
+  fun mul(x: Nat, y: Nat): Nat = y;
+}
+fun monoidMul[A: Monoid](x: A, y: A): A = mul x y
+fun ringMul[A: Ring](x: A, y: A): A = mul x y
+val left: Nat = monoidMul Nat zero (succ zero)
+val right: Nat = ringMul Nat zero (succ zero)
+'''),
+      );
+
+      expect(_ctorName(_evalBinding(env, 'left')), 'zero');
+      expect(_ctorName(_evalBinding(env, 'right')), 'succ');
+    });
+  });
+
   group('class law fields', () {
     const classes = '''
 typeclass MulOnly[A: Type] {
