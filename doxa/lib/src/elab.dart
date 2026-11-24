@@ -423,7 +423,8 @@ final class UnknownInstanceMethod extends ElabError {
   String toString() => 'UnknownInstanceMethod($className.$methodName @ $span)';
 }
 
-/// A bare class-method name names a method declared by more than one class.
+/// A bare class-method name names a method declared by more than one class
+/// and no local dictionary selects one.
 ///
 /// Each class declares its own projection, so a bare name is only usable
 /// when it names one projection. [candidates] holds the `Class.method`
@@ -4121,12 +4122,48 @@ String? _declaringClass(
   return null;
 }
 
+/// Whether [className] is [ancestor] or a subclass of it, walking the
+/// superclass chain.
+bool _classChainContains(
+  Map<String, ClassInfo> registry,
+  String className,
+  String ancestor,
+) {
+  var current = className;
+  final seen = <String>{};
+  while (seen.add(current)) {
+    if (current == ancestor) return true;
+    final parent = registry[current]?.superclassName;
+    if (parent == null) return false;
+    current = parent;
+  }
+  return false;
+}
+
+/// Whether a local binder in [state] supplies a dictionary for
+/// [candidate] or for a subclass of it.
+///
+/// A constrained parameter lowers to an implicit dictionary binder, so
+/// this is the same test for `[A: Ring]` and for a local
+/// `val d : Ring A` binding whose type is in scope.
+bool _classHasLocalDictionary(_ElabState state, String candidate) {
+  for (var i = 0; i < state.ctx.level; i++) {
+    final type = state.ctx.lookupType(i);
+    if (type is VData &&
+        _classChainContains(state.topEnv.classRegistry, type.name, candidate)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// Resolve a bare class-method reference [name] to its qualified
 /// `Class.method` projection, or null when no class declares it.
 ///
 /// Inside a class declaration the current class wins, then its parents.
-/// Elsewhere a unique declaring class supplies the projection; more than
-/// one candidate raises [AmbiguousClassMethod].
+/// Elsewhere a local dictionary for a declaring class (or a subclass of
+/// one) wins, then a unique declaring class. Two surviving candidates
+/// raise [AmbiguousClassMethod].
 String? _resolveBareClassMethod(_ElabState state, String name, DoxaSpan span) {
   final registry = state.topEnv.classRegistry;
   final current = state.currentClass;
@@ -4139,9 +4176,14 @@ String? _resolveBareClassMethod(_ElabState state, String name, DoxaSpan span) {
       if (info.methods.any((method) => method.$1 == name)) info.className,
   ];
   if (candidates.isEmpty) return null;
-  if (candidates.length == 1) return '${candidates.single}.$name';
+  final local = [
+    for (final candidate in candidates)
+      if (_classHasLocalDictionary(state, candidate)) candidate,
+  ];
+  final pool = local.isEmpty ? candidates : local;
+  if (pool.length == 1) return '${pool.single}.$name';
   throw AmbiguousClassMethod(name, [
-    for (final candidate in candidates) '$candidate.$name',
+    for (final candidate in pool) '$candidate.$name',
   ], span);
 }
 
