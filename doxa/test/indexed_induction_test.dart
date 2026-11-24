@@ -96,7 +96,7 @@ val eq_sym : (A: Type) -> (x: A) -> (y: A) -> Eq A x y -> Eq A y x = by {
       // `Eq Nat (vlength v) n` and neither `refl` nor `rewrite ih` fits.
       final env = _elabAndCheck('''
 $_vec
-val vlength_index : (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) n =
+val vlengthIndex : (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) n =
   by {
     intro A;
     intro n;
@@ -107,7 +107,7 @@ val vlength_index : (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) 
     refl
   }
 ''');
-      expect(_binding(env, 'vlength_index').name, 'vlength_index');
+      expect(_binding(env, 'vlengthIndex').name, 'vlengthIndex');
     });
 
     test('a compound-index induction closes at the constructor indices', () {

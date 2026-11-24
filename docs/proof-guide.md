@@ -49,7 +49,7 @@ A helper parity_flip_b expresses the recurrence:
 
 <!-- doxa: fragment -->
 ```doxa
-fun parity_flip_b(b: Bool): Bool = match b {
+fun parityFlipB(b: Bool): Bool = match b {
   case true_ => false_
   case false_ => true_
 }
@@ -69,8 +69,8 @@ The parity of a sum is determined by the parities of the summands:
 
 <!-- doxa: fragment -->
 ```doxa
-val even_plus_parity : (a: Nat) -> (b: Nat) ->
-  Eq Bool (even (plus a b)) (parity_comb (even a) (even b))
+val evenPlusParity : (a: Nat) -> (b: Nat) ->
+  Eq Bool (even (plus a b)) (parityComb (even a) (even b))
 ```
 
 `parity_comb p q` is `true_` when `p` and `q` have the same value. The
@@ -94,7 +94,7 @@ If n^2 = 2*m^2 then n is even:
 
 <!-- doxa: fragment -->
 ```doxa
-val sqrt2_parity : (n: Nat) -> (m: Nat) ->
+val sqrt2Parity : (n: Nat) -> (m: Nat) ->
   Eq Nat (square n) (multiply two (square m)) -> Eq Bool (even n) true_
 ```
 
@@ -110,8 +110,8 @@ strong-induction principle:
 <!-- doxa: fragment -->
 ```doxa
 data Lt : Nat -> Nat -> Prop {
-  lt_succ : (n: Nat) -> Lt n (succ n);
-  lt_trans : (n: Nat) -> (m: Nat) -> (k: Nat) -> Lt n m -> Lt m k -> Lt n k;
+  ltSucc : (n: Nat) -> Lt n (succ n);
+  ltTrans : (n: Nat) -> (m: Nat) -> (k: Nat) -> Lt n m -> Lt m k -> Lt n k;
 }
 ```
 

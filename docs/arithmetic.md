@@ -37,8 +37,8 @@ Both are proved in `doxa_stdlib/lib/stdlib/proofs.doxa`:
 
 <!-- doxa: fragment -->
 ```doxa
-div_zero : (m: Nat) -> Eq Nat (div m zero) zero
-mod_zero : (m: Nat) -> Eq Nat (mod m zero) m
+divZero : (m: Nat) -> Eq Nat (div m zero) zero
+modZero : (m: Nat) -> Eq Nat (mod m zero) m
 ```
 
 ### Positive divisors
@@ -83,8 +83,8 @@ by eliminating `b` with the equation in the motive.
 
 <!-- doxa: fragment -->
 ```doxa
-fun mod_acc(k: Nat, m: Nat, n: Nat): Nat
-fun div_acc(k: Nat, m: Nat, n: Nat): Nat
+fun modAcc(k: Nat, m: Nat, n: Nat): Nat
+fun divAcc(k: Nat, m: Nat, n: Nat): Nat
 ```
 
 `mod m n` calls `mod_acc m m n`, and `div m n` calls `div_acc m m n` for a

@@ -75,25 +75,25 @@ typeclass CommMonoid[A: Type]: Monoid A {
 impl AddMonoid[Nat] {
   fun add(x: Nat, y: Nat): Nat = x + y;
   fun addZero(): Nat = zero;
-  fun addAssoc(x: Nat, y: Nat, z: Nat): Eq Nat (x + y + z) (x + (y + z)) = plus_assoc x y z;
+  fun addAssoc(x: Nat, y: Nat, z: Nat): Eq Nat (x + y + z) (x + (y + z)) = plusAssoc x y z;
   fun addZeroLeft(x: Nat): Eq Nat (zero + x) x = refl x;
-  fun addZeroRight(x: Nat): Eq Nat (x + zero) x = plus_zero x;
+  fun addZeroRight(x: Nat): Eq Nat (x + zero) x = plusZero x;
 }
 
 impl AddCommMonoid[Nat] {
-  fun addComm(x: Nat, y: Nat): Eq Nat (x + y) (y + x) = plus_comm x y;
+  fun addComm(x: Nat, y: Nat): Eq Nat (x + y) (y + x) = plusComm x y;
 }
 
 impl Monoid[Nat] {
   fun multiply(x: Nat, y: Nat): Nat = x * y;
   fun one(): Nat = succ zero;
-  fun multiplyAssoc(x: Nat, y: Nat, z: Nat): Eq Nat (x * y * z) (x * (y * z)) = mult_assoc x y z;
-  fun multiplyOneLeft(x: Nat): Eq Nat (succ zero * x) x = plus_zero x;
-  fun multiplyOneRight(x: Nat): Eq Nat (x * succ zero) x = mult_one x;
+  fun multiplyAssoc(x: Nat, y: Nat, z: Nat): Eq Nat (x * y * z) (x * (y * z)) = multiplyAssoc x y z;
+  fun multiplyOneLeft(x: Nat): Eq Nat (succ zero * x) x = plusZero x;
+  fun multiplyOneRight(x: Nat): Eq Nat (x * succ zero) x = multiplyOne x;
 }
 
 impl CommMonoid[Nat] {
-  fun multiplyComm(x: Nat, y: Nat): Eq Nat (x * y) (y * x) = mult_comm x y;
+  fun multiplyComm(x: Nat, y: Nat): Eq Nat (x * y) (y * x) = multiplyComm x y;
 }
 
 impl [A: Type] AddMonoid[List A] {
@@ -102,9 +102,9 @@ impl [A: Type] AddMonoid[List A] {
   fun addAssoc(xs: List A, ys: List A, zs: List A): Eq
     (List A)
     (append (append xs ys) zs)
-    (append xs (append ys zs)) = append_assoc A xs ys zs;
+    (append xs (append ys zs)) = appendAssoc A xs ys zs;
   fun addZeroLeft(xs: List A): Eq (List A) (append nil xs) xs = refl xs;
-  fun addZeroRight(xs: List A): Eq (List A) (append xs nil) xs = append_nil A xs;
+  fun addZeroRight(xs: List A): Eq (List A) (append xs nil) xs = appendNil A xs;
 }
 
 impl AddMonoid[Int] {

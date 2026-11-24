@@ -1,6 +1,6 @@
 // Induction-style proof that addition on Nat commutes, composing the derived
-// equality lemmas (sym, trans, cong) and the helper lemmas plus_zero and
-// plus_succ via Nat.ind.
+// equality lemmas (sym, trans, cong) and the helper lemmas plusZero and
+// plusSucc via Nat.ind.
 data Nat: Type {
   zero: Nat;
   succ: Nat -> Nat;
@@ -38,15 +38,15 @@ val cong: (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) -> (y: A) -> Eq A x y 
     y
     ((z: A) => refl (f z))
     p
-// Base lemmas for plus_comm.
+// Base lemmas for plusComm.
 
-val plus_zero: (n: Nat) -> Eq Nat (n + zero) n =
+val plusZero: (n: Nat) -> Eq Nat (n + zero) n =
   Nat.ind
     ((k: Nat) => Eq Nat (k + zero) k)
     (refl zero)
     ((m: Nat) => (ih: Eq Nat (m + zero) m) => cong Nat Nat ((k: Nat) => succ k) (m + zero) m ih)
 
-val plus_succ: (m: Nat) -> (n: Nat) -> Eq Nat (m + succ n) (succ (m + n)) =
+val plusSucc: (m: Nat) -> (n: Nat) -> Eq Nat (m + succ n) (succ (m + n)) =
   (m: Nat) => Nat.ind
     ((k: Nat) => (n: Nat) -> Eq Nat (k + succ n) (succ (k + n)))
     ((n: Nat) => refl (succ n))
@@ -60,22 +60,22 @@ val plus_succ: (m: Nat) -> (n: Nat) -> Eq Nat (m + succ n) (succ (m + n)) =
     m
 // The capstone.
 
-val plus_comm: (m: Nat) -> (n: Nat) -> Eq Nat (m + n) (n + m) =
+val plusComm: (m: Nat) -> (n: Nat) -> Eq Nat (m + n) (n + m) =
   (m: Nat) => Nat.ind
     ((k: Nat) => (n: Nat) -> Eq Nat (k + n) (n + k))
-    ((n: Nat) => sym Nat (n + zero) n (plus_zero n))
+    ((n: Nat) => sym Nat (n + zero) n (plusZero n))
     ((k: Nat) => (ih: (n: Nat) -> Eq Nat (k + n) (n + k)) => (n: Nat) => trans
       Nat
       (succ (k + n))
       (succ (n + k))
       (n + succ k)
       (cong Nat Nat ((x: Nat) => succ x) (k + n) (n + k) (ih n))
-      (sym Nat (n + succ k) (succ (n + k)) (plus_succ n k)))
+      (sym Nat (n + succ k) (succ (n + k)) (plusSucc n k)))
     m
-// Smoke check: instantiate plus_comm at concrete Nats.
+// Smoke check: instantiate plusComm at concrete Nats.
 
 val two: Nat = succ (succ zero)
 
 val three: Nat = succ two
 
-val witness: Eq Nat (two + three) (three + two) = plus_comm two three
+val witness: Eq Nat (two + three) (three + two) = plusComm two three

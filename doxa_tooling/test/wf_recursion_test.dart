@@ -75,13 +75,13 @@ val accProp : Prop = Acc[Nat] rel zero
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
-    test('acc_intro resolves (arity mismatch means name found)', () {
-      // The parameterized `acc_intro` takes `x` and the accessibility
+    test('accIntro resolves (arity mismatch means name found)', () {
+      // The parameterized `accIntro` takes `x` and the accessibility
       // function. Supplying one explicit argument produces an arity
       // mismatch, which proves the constructor name resolves.
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
-val intro = Acc[Nat].acc_intro zero
+val intro = Acc[Nat].accIntro zero
 ''';
       final r = runSource(src);
       expect(r.stderr, contains('arity mismatch'));
@@ -369,9 +369,9 @@ fun down(n: Nat): Nat decreases (n) = match n {
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
-    test('strong_ind computes through nat_wf and Acc.rec', () {
-      // `observed_iota` forces `strong_ind P step zero` through
-      // `nat_wf zero` and Acc.rec to `step zero ... = refl zero`.
+    test('strongInd computes through natWf and Acc.rec', () {
+      // `observed_iota` forces `strongInd P step zero` through
+      // `natWf zero` and Acc.rec to `step zero ... = refl zero`.
       const src = '''
 import "../doxa_stdlib/lib/stdlib/proofs.doxa"
 fun P(n: Nat): Prop = Eq Nat n n
@@ -379,7 +379,7 @@ fun step(n: Nat, ih: (k: Nat) -> Lt k n -> P k): P n = refl n
 val observed: Nat = Eq.rect Nat
   ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => Nat)
   zero zero ((z: Nat) => zero)
-  (strong_ind P step zero)
+  (strongInd P step zero)
 val observed_iota: Eq Nat observed zero = refl zero
 ''';
       final r = runSource(src);
@@ -409,7 +409,7 @@ val racc = Acc.rec Nat
     });
 
     test('a fully applied Acc.rec with a Prop motive type-checks', () {
-      // The IH is function-shaped over the same Pi chain as acc_intro's
+      // The IH is function-shaped over the same Pi chain as accIntro's
       // recursive argument.
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"
@@ -463,7 +463,7 @@ val acc_rect_true: (n: Nat) -> Acc Nat rel n -> Nat =
     h
 val acc_rect_iota:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
-  Eq Nat (acc_rect_true n (acc_intro n f)) zero =
+  Eq Nat (acc_rect_true n (accIntro n f)) zero =
   (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => refl zero
 ''';
       final r = runSource(src);
@@ -490,7 +490,7 @@ val observe:
   (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => Eq.rect Nat
     ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => Nat)
     n n ((z: Nat) => zero)
-    (acc_true n (acc_intro n f))
+    (acc_true n (accIntro n f))
 val observe_iota:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
   Eq Nat (observe n f) zero =
@@ -581,7 +581,7 @@ val acc_expected:
 val acc_ih_iota:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
   (r: rel n n) ->
-  Eq Nat (acc_ih n (acc_intro n f) r) (acc_expected n f r) =
+  Eq Nat (acc_ih n (accIntro n f) r) (acc_expected n f r) =
   (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => (r: rel n n) =>
     refl (acc_expected n f r)
 ''';

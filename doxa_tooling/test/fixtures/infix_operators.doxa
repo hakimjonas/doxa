@@ -22,13 +22,13 @@ val eqList : Bool = cons two nil == cons two nil
 
 val rotate : (a: Nat) -> (b: Nat) -> Eq Nat (a + b + zero) (b + a) =
   (a: Nat) => (b: Nat) => calc(
-    a + b + zero = a + (b + zero) := plus_assoc a b zero;
-    a + (b + zero) = a + b := cong ((x: Nat) => a + x) (plus_zero b);
-    a + b = b + a := plus_comm a b
+    a + b + zero = a + (b + zero) := plusAssoc a b zero;
+    a + (b + zero) = a + b := cong ((x: Nat) => a + x) (plusZero b);
+    a + b = b + a := plusComm a b
   )
 
 theorem commute : (a: Nat) -> (b: Nat) -> Eq Nat (a + b) (b + a) = by {
   intro a;
   intro b;
-  exact plus_comm a b
+  exact plusComm a b
 }

@@ -277,14 +277,14 @@ data Nat : Type {
     test('induction arms are consumed in order and the IH is usable', () {
       final env = _elabAndCheck('''
 $_natPlus
-val plus_zero : (n: Nat) -> Eq Nat (plus n zero) n = (n: Nat) => by {
+val plusZero : (n: Nat) -> Eq Nat (plus n zero) n = (n: Nat) => by {
   induction n;
   refl;
   rewrite ih;
   refl
 }
 ''');
-      expect(env.bindings.where((b) => b.name == 'plus_zero'), hasLength(1));
+      expect(env.bindings.where((b) => b.name == 'plusZero'), hasLength(1));
     });
 
     test('a reflexivity goal closes with one refl per arm', () {

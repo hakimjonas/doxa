@@ -61,14 +61,14 @@ fun plus(m: Nat, n: Nat): Nat = match m {
 ''';
 
 const _proofs = '''
-val plus_zero : (n: Nat) -> Eq Nat (plus n zero) n = by {
+val plusZero : (n: Nat) -> Eq Nat (plus n zero) n = by {
   intro n;
   induction n;
   refl;
   rewrite ih;
   refl
 }
-val plus_succ : (m: Nat) -> (n: Nat) -> Eq Nat (plus m (succ n)) (succ (plus m n)) = by {
+val plusSucc : (m: Nat) -> (n: Nat) -> Eq Nat (plus m (succ n)) (succ (plus m n)) = by {
   intro m;
   intro n;
   induction m;
@@ -102,7 +102,7 @@ val t2 : (a: Nat) -> (b: Nat) -> Eq Nat a b -> Eq Nat (succ a) (succ b) = by {
     });
 
     test('instantiates a Pi lemma with a compound left side', () {
-      // `plus_zero` has type `(n: Nat) -> Eq Nat (plus n zero) n`.
+      // `plusZero` has type `(n: Nat) -> Eq Nat (plus n zero) n`.
       // Matching its left side against the goal's nested occurrence
       // requires solving the binder's meta and rewriting the subterm.
       final env = _elabAndCheck('''
@@ -110,14 +110,14 @@ $_nat
 $_proofs
 val t3 : (n: Nat) -> Eq Nat (plus (plus n zero) zero) n = by {
   intro n;
-  simp [plus_zero]
+  simp [plusZero]
 }
 ''');
       expect(_binding(env, 't3').name, 't3');
     });
 
     test('runs two lemmas in sequence to a fixed point', () {
-      // `plus_zero` exposes the left side of `plus_succ`.
+      // `plusZero` exposes the left side of `plusSucc`.
       final env = _elabAndCheck('''
 $_nat
 $_proofs
@@ -125,7 +125,7 @@ val t4 : (m: Nat) -> (n: Nat) ->
     Eq Nat (plus (plus m (succ n)) zero) (succ (plus m n)) = by {
   intro m;
   intro n;
-  simp [plus_zero, plus_succ]
+  simp [plusZero, plusSucc]
 }
 ''');
       expect(_binding(env, 't4').name, 't4');
@@ -182,8 +182,8 @@ val t7 : (m: Nat) -> (n: Nat) ->
     Eq Nat (plus (plus m (succ n)) zero) (succ (plus m n)) = by {
   intro m;
   intro n;
-  simp [plus_zero];
-  rewrite (plus_succ m n);
+  simp [plusZero];
+  rewrite (plusSucc m n);
   refl
 }
 ''');

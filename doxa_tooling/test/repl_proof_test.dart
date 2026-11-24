@@ -213,7 +213,7 @@ void main() {
         ' case zero => n case succ k => succ (plus k n) }',
       );
       (_, session) = session.processInput(
-        ':goal theorem plus_zero : (n: Nat) -> Eq Nat (plus n zero) n',
+        ':goal theorem plusZero : (n: Nat) -> Eq Nat (plus n zero) n',
       );
       (_, session) = session.processInput(':step intro n');
 
@@ -258,7 +258,7 @@ void main() {
       expect((reflResult as ReplMeta).text, contains('Goal solved'));
 
       final (qedResult, _) = session.processInput(':qed');
-      expect((qedResult as ReplMeta).text, contains('plus_zero'));
+      expect((qedResult as ReplMeta).text, contains('plusZero'));
     });
   });
 

@@ -78,9 +78,9 @@ import "package:doxa_stdlib/stdlib/proofs.doxa"
 val rotate : (a: Nat) -> (b: Nat) ->
     Eq Nat (plus (plus a b) zero) (plus b a) =
   (a: Nat) => (b: Nat) => calc(
-    plus (plus a b) zero = plus a (plus b zero) := plus_assoc a b zero;
-    plus a (plus b zero) = plus a b := cong ((x: Nat) => plus a x) (plus_zero b);
-    plus a b = plus b a := plus_comm a b
+    plus (plus a b) zero = plus a (plus b zero) := plusAssoc a b zero;
+    plus a (plus b zero) = plus a b := cong ((x: Nat) => plus a x) (plusZero b);
+    plus a b = plus b a := plusComm a b
   )
 ```
 

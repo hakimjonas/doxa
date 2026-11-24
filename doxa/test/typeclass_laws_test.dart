@@ -43,13 +43,13 @@ fun cong{A: Type, B: Type, x: A, y: A}(f: A -> B, p: Eq A x y): Eq B (f x) (f y)
     ((z: A) => refl (f z))
     p
 
-val plus_zero: (n: Nat) -> Eq Nat (plus n zero) n =
+val plusZero: (n: Nat) -> Eq Nat (plus n zero) n =
   Nat.ind
     ((k: Nat) => Eq Nat (plus k zero) k)
     (refl zero)
     ((m: Nat) => (ih: Eq Nat (plus m zero) m) => cong ((k: Nat) => succ k) ih)
 
-val plus_assoc: (m: Nat) -> (n: Nat) -> (p: Nat) -> Eq Nat (plus (plus m n) p) (plus m (plus n p)) =
+val plusAssoc: (m: Nat) -> (n: Nat) -> (p: Nat) -> Eq Nat (plus (plus m n) p) (plus m (plus n p)) =
   (m: Nat) => Nat.ind
     ((k: Nat) => (n: Nat) -> (p: Nat) -> Eq Nat (plus (plus k n) p) (plus k (plus n p)))
     ((n: Nat) => (p: Nat) => refl (plus n p))
@@ -136,9 +136,9 @@ impl AddMonoid[Nat] {
   fun add(x: Nat, y: Nat): Nat = plus x y;
   fun addZero: Nat = zero;
   fun addAssoc(x: Nat, y: Nat, z: Nat): Eq Nat (plus (plus x y) z) (plus x (plus y z)) =
-    plus_assoc x y z;
+    plusAssoc x y z;
   fun addZeroLeft(x: Nat): Eq Nat (plus zero x) x = refl x;
-  fun addZeroRight(x: Nat): Eq Nat (plus x zero) x = plus_zero x;
+  fun addZeroRight(x: Nat): Eq Nat (plus x zero) x = plusZero x;
 }
 
 val assoc : Eq Nat zero zero = addAssoc zero zero zero

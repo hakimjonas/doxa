@@ -71,7 +71,7 @@ void main() {
       final r = runSource('''
 import "../doxa_stdlib/lib/stdlib/proofs.doxa"
 val h: Eq Nat (succ zero) (succ zero) =
-  cong_e Nat Nat succ zero zero (refl zero)
+  congE Nat Nat succ zero zero (refl zero)
 ''');
       expect(r.code, isNot(0));
       expect(r.stderr, contains('inductive-type arity mismatch'));
@@ -83,7 +83,7 @@ val h: Eq Nat (succ zero) (succ zero) =
     test('the rejection holds in inference mode', () {
       final r = runSource('''
 import "../doxa_stdlib/lib/stdlib/proofs.doxa"
-val h = cong_e Nat Nat succ zero zero (refl zero)
+val h = congE Nat Nat succ zero zero (refl zero)
 ''');
       expect(r.code, isNot(0));
       expect(r.stderr, contains('inductive-type arity mismatch'));
@@ -93,11 +93,11 @@ val h = cong_e Nat Nat succ zero zero (refl zero)
     test('a partial constructor against a function type is rejected', () {
       final r = runSource('''
 import "../doxa_stdlib/lib/stdlib/proofs.doxa"
-val f: (n: Nat) -> Lt n (succ n) = lt_succ
+val f: (n: Nat) -> Lt n (succ n) = ltSucc
 ''');
       expect(r.code, isNot(0));
       expect(r.stderr, contains('inductive-type arity mismatch'));
-      expect(r.stderr, contains('"Lt.lt_succ" expects 1 argument'));
+      expect(r.stderr, contains('"Lt.ltSucc" expects 1 argument'));
     });
 
     test(
@@ -141,7 +141,7 @@ val p: Nat -> Nat = plus zero
       final r = runSource('''
 import "../doxa_stdlib/lib/stdlib/proofs.doxa"
 val h: Eq Nat (succ zero) (succ zero) =
-  cong_e Nat Nat ((n: Nat) => succ n) zero zero (refl zero)
+  congE Nat Nat ((n: Nat) => succ n) zero zero (refl zero)
 ''');
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });

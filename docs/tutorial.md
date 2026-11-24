@@ -100,9 +100,9 @@ val sameList: Bool = cons two nil == cons two nil
 
 val swap: (a: Nat) -> (b: Nat) -> Eq Nat (a + b + zero) (b + a) =
   (a: Nat) => (b: Nat) => calc(
-    a + b + zero = a + (b + zero) := plus_assoc a b zero;
-    a + (b + zero) = a + b := cong ((x: Nat) => a + x) (plus_zero b);
-    a + b = b + a := plus_comm a b
+    a + b + zero = a + (b + zero) := plusAssoc a b zero;
+    a + (b + zero) = a + b := cong ((x: Nat) => a + x) (plusZero b);
+    a + b = b + a := plusComm a b
   )
 ```
 
@@ -373,7 +373,7 @@ fun plus(m: Nat, n: Nat): Nat = match m {
   case succ k => succ (plus k n)
 }
 
-theorem plus_zero : (n: Nat) -> Eq Nat (plus n zero) n = by {
+theorem plusZero : (n: Nat) -> Eq Nat (plus n zero) n = by {
   intro n;
   induction n;
   refl;
@@ -416,7 +416,7 @@ val plus_nested : (m: Nat) -> (n: Nat) ->
     Eq Nat (plus (plus m (succ n)) zero) (succ (plus m n)) = by {
   intro m;
   intro n;
-  simp [plus_zero, plus_succ]
+  simp [plusZero, plusSucc]
 }
 ```
 
@@ -568,7 +568,7 @@ import "package:doxa_stdlib/stdlib/proofs.doxa"
 theorem add_zero_step : (a: Nat) -> Eq Nat (plus a zero) a = by {
   intro a;
   have z : Eq Nat (plus a zero) a;
-  exact plus_zero a;
+  exact plusZero a;
   exact z
 }
 ```
@@ -584,8 +584,8 @@ import "package:doxa_stdlib/stdlib/proofs.doxa"
 val assoc_chain : (a: Nat) -> (b: Nat) ->
     Eq Nat (plus (plus a b) zero) (plus a b) =
   (a: Nat) => (b: Nat) => calc(
-    plus (plus a b) zero = plus a (plus b zero) := plus_assoc a b zero;
-    plus a (plus b zero) = plus a b := cong ((x: Nat) => plus a x) (plus_zero b)
+    plus (plus a b) zero = plus a (plus b zero) := plusAssoc a b zero;
+    plus a (plus b zero) = plus a b := cong ((x: Nat) => plus a x) (plusZero b)
   )
 ```
 

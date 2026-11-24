@@ -19,5 +19,5 @@ data Eq[A: Type]: A -> A -> Prop {
 }
 
 data Acc[A: Type, R: A -> A -> Prop]: A -> Prop {
-  acc_intro: (x: A) -> ((y: A) -> R y x -> Acc A R y) -> Acc A R x;
+  accIntro: (x: A) -> ((y: A) -> R y x -> Acc A R y) -> Acc A R x;
 }
