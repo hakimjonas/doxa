@@ -4027,12 +4027,18 @@ Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
     final metaId = metas.freshTermMeta(closedType, state.ctx);
     // Build the meta applied to every outer bound variable. At this
     // depth, TBound(k) for k in [0, state.ctx.level) references
-    // each binder in scope (innermost at TBound(0)).
+    // each binder in scope (innermost at TBound(0)). The term keeps the
+    // binders so the emitted program applies the solution to their
+    // values.
     Term insertedMetaTerm = TMeta(metaId);
     for (var k = state.ctx.level - 1; k >= 0; k--) {
       insertedMetaTerm = TApp(insertedMetaTerm, TBound(k));
     }
-    final metaValue = eval(insertedMetaTerm, state.ctx.env);
+    // The value the unifier sees applies the meta to each binder's
+    // meta-neutral, not its value. A let binder's value is its bound
+    // expression (or an alias of an outer variable); using it gives a
+    // constant or repeated spine that pattern unification cannot solve.
+    final metaValue = eval(insertedMetaTerm, state.ctx.metaEnv);
     curT = switch (curT) {
       TData(:final name, :final args) =>
         TData(name, [...args, insertedMetaTerm]) as Term,
