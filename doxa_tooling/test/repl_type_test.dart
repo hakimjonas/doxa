@@ -55,17 +55,20 @@ ReplSession _session() {
   session = _declare(session, 'fun id2{A: Type}(x: A): A = x');
   session = _declare(
     session,
-    'typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool; }',
+    'typeclass Eqb[A: Type] { fun equals(x: A, y: A): Bool; }',
   );
   session = _declare(session, '''
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = match x {
+  fun equals(x: Nat, y: Nat): Bool = match x {
     case zero => true_
     case succ n => false_
   };
 }
 ''');
-  session = _declare(session, 'fun same[A: Eqb](x: A, y: A): Bool = eqb x y');
+  session = _declare(
+    session,
+    'fun same[A: Eqb](x: A, y: A): Bool = equals x y',
+  );
   return session;
 }
 
@@ -87,8 +90,8 @@ void main() {
   });
 
   test(':type and :norm insert a typeclass dictionary', () {
-    expect(_type(session, 'eqb zero zero'), 'Bool');
-    expect(_norm(session, 'eqb zero zero'), 'true_');
+    expect(_type(session, 'equals zero zero'), 'Bool');
+    expect(_norm(session, 'equals zero zero'), 'true_');
   });
 
   test(
@@ -104,14 +107,14 @@ void main() {
   });
 
   test(':type a partial application keeps the remaining explicit Pi', () {
-    final text = _type(session, 'eqb zero');
+    final text = _type(session, 'equals zero');
     expect(text, contains('(y: Nat)'));
     expect(text, contains('Eqb'));
     expect(text, contains('Bool'));
     expect(text, contains('->'));
     // The dictionary is not applied while the explicit argument is missing;
     // once it is supplied, the type is plain Bool.
-    expect(_type(session, 'eqb zero zero'), 'Bool');
+    expect(_type(session, 'equals zero zero'), 'Bool');
   });
 
   test(':type a bare constructor shows its signature', () {

@@ -675,10 +675,10 @@ final Parser<ParseError, SExpr> _implicitBinder = position<ParseError>()
 /// always `plus`, never an overloaded arithmetic operation.
 const List<({String symbol, String name, int bindingPower, bool associates})>
 doxaInfixOperators = [
-  (symbol: '*', name: 'mult', bindingPower: 30, associates: true),
+  (symbol: '*', name: 'multiply', bindingPower: 30, associates: true),
   (symbol: '+', name: 'plus', bindingPower: 20, associates: true),
   (symbol: '<=', name: 'leq', bindingPower: 10, associates: false),
-  (symbol: '==', name: 'eqb', bindingPower: 10, associates: false),
+  (symbol: '==', name: 'equals', bindingPower: 10, associates: false),
 ];
 
 /// Symbol to expanded name, the lookup the parser's expansion step uses.

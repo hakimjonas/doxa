@@ -272,10 +272,10 @@ fun half(n: Nat): Nat = match n {
 val lt_succ_right: (n: Nat) -> (m: Nat) -> Lt n m -> Lt n (succ m) =
   (n: Nat) => (m: Nat) => (h: Lt n m) => lt_trans n m (succ m) h (lt_succ m)
 // --- Algebraic lemmas for the sqrt2 proof --------------------------------
-// mult_4_eq: mult 4 n = mult 2 (mult 2 n)
+// mult_4_eq: multiply 4 n = multiply 2 (multiply 2 n)
 
 val mult_4_eq: (n: Nat) -> Eq Nat (four * n) (two * (two * n)) = (n: Nat) => mult_assoc two two n
-// --- mult_two_succ: mult two (succ n) = succ (succ (mult two n)) ------------
+// --- mult_two_succ: multiply two (succ n) = succ (succ (multiply two n)) ------------
 
 val mult_two_succ: (n: Nat) -> Eq Nat (two * succ n) (succ (succ (two * n))) =
   (n: Nat) => trans_e
@@ -305,7 +305,7 @@ val mult_two_succ: (n: Nat) -> Eq Nat (two * succ n) (succ (succ (two * n))) =
           (cong
             ((x: Nat) => succ x)
             (cong ((x: Nat) => succ x) (sym_e Nat (two * n) (n + n) (mult_2 n)))))))
-// --- mult_2_inj: mult two is injective -----------------------------------
+// --- mult_2_inj: multiply two is injective -----------------------------------
 
 val mult_2_inj: (a: Nat) -> (b: Nat) -> (h: Eq Nat (two * a) (two * b)) -> Eq Nat a b =
   (a: Nat) => Nat.ind
@@ -398,13 +398,13 @@ val square_double: (n: Nat) -> Eq Nat (square (two * n)) (four * square n) =
         (two * (n * (two * n)))
         (two * (two * n * n))
         (four * square n)
-        (cong_e Nat Nat (mult two) (n * (two * n)) (two * n * n) (mult_comm n (two * n)))
+        (cong_e Nat Nat (multiply two) (n * (two * n)) (two * n * n) (mult_comm n (two * n)))
         (trans_e
           Nat
           (two * (two * n * n))
           (two * (two * (n * n)))
           (four * square n)
-          (cong_e Nat Nat (mult two) (two * n * n) (two * (n * n)) (mult_assoc two n n))
+          (cong_e Nat Nat (multiply two) (two * n * n) (two * (n * n)) (mult_assoc two n n))
           (trans_e
             Nat
             (two * (two * (n * n)))

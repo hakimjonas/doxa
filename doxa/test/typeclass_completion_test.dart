@@ -25,20 +25,20 @@ data Bool : Type { true_ : Bool; false_ : Bool; }
 
 const _eqb = '''
 typeclass Eqb[A: Type] {
-  fun eqb(x: A, y: A): Bool;
+  fun equals(x: A, y: A): Bool;
 }
 ''';
 
 /// A true dictionary for Nat and a comparison helper.
 const _eqbNat = '''
-fun eqbNat(x: Nat, y: Nat): Bool = match x {
+fun equalsNat(x: Nat, y: Nat): Bool = match x {
   case zero => match y {
     case zero => true_
     case succ _ => false_
   }
   case succ n => match y {
     case zero => false_
-    case succ m => eqbNat n m
+    case succ m => equalsNat n m
   }
 }
 ''';
@@ -66,14 +66,14 @@ typeclass Ord[A: Type]: Eqb[A] {
 }
 
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun equals(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 
 impl Ord[Nat] {
-  fun cmp(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun cmp(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 
-fun eqViaOrd[A: Ord](x: A, y: A): Bool = eqb x y
+fun eqViaOrd[A: Ord](x: A, y: A): Bool = equals x y
 val r : Bool = eqViaOrd Nat zero zero
 '''),
         ),
@@ -98,18 +98,18 @@ typeclass Ordered[A: Type]: Ord[A] {
 }
 
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun equals(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 
 impl Ord[Nat] {
-  fun cmp(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun cmp(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 
 impl Ordered[Nat] {
-  fun le(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun le(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 
-fun eqViaOrdered[A: Ordered](x: A, y: A): Bool = eqb x y
+fun eqViaOrdered[A: Ordered](x: A, y: A): Bool = equals x y
 val r : Bool = eqViaOrdered Nat zero zero
 '''),
         ),
@@ -127,7 +127,7 @@ typeclass Ord[A: Type]: Eqb[A] {
 }
 
 impl Ord[Nat] {
-  fun cmp(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun cmp(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 '''),
           ),
@@ -152,16 +152,16 @@ fun eqbFalse(x: Nat, y: Nat): Bool = false_
 fun eqbTrue(x: Nat, y: Nat): Bool = true_
 
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = eqbFalse x y;
+  fun equals(x: Nat, y: Nat): Bool = eqbFalse x y;
 }
 
 impl Ord[Nat] {
   fun cmp(x: Nat, y: Nat): Bool = eqbFalse x y;
 }
 
-fun viaBoth[A: Type](eqbD: Eqb A, ordD: Ord A, x: A): Bool = eqb x x
+fun viaBoth[A: Type](eqbD: Eqb A, ordD: Ord A, x: A): Bool = equals x x
 
-val r : Bool = viaBoth Nat (mk_Eqb eqbTrue) _impl_Ord_Nat zero
+val r : Bool = viaBoth Nat (mkEqb eqbTrue) _impl_Ord_Nat zero
 '''),
         ),
       );
@@ -178,14 +178,14 @@ typeclass Ord[A: Type]: Eqb[A] {
 }
 
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun equals(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 
 impl Ord[Nat] {
-  fun cmp(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun cmp(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 
-val r : Bool = eqb zero zero
+val r : Bool = equals zero zero
 '''),
         ),
       );
@@ -209,7 +209,7 @@ typeclass OrdB[A: Type]: Eqb[A] {
   fun cmpb(x: A, y: A): Bool;
 }
 
-fun f[A: OrdA & OrdB](x: A): Bool = eqb x x
+fun f[A: OrdA & OrdB](x: A): Bool = equals x x
 '''),
             ),
           ),
@@ -318,11 +318,11 @@ typeclass Pair[A: Type, B: Type] {
 }
 
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun equals(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 
 impl[A: Eqb, B: Type] Pair[A, B] {
-  fun bothEq(x: A, y: B): Bool = eqb x x;
+  fun bothEq(x: A, y: B): Bool = equals x x;
 }
 
 val r : Bool = bothEq zero true_
@@ -615,10 +615,10 @@ typeclass Ord[A: Type]: Eqb[Nat] {
       final env = checkProgram(
         pp(
           _program('''
-fun useEqb[A: Eqb](x: A, y: A): Bool = eqb x y
+fun useEqb[A: Eqb](x: A, y: A): Bool = equals x y
 
 fun localEq(x: Nat, y: Nat): Bool = {
-  val d : Eqb Nat = mk_Eqb eqbNat;
+  val d : Eqb Nat = mkEqb equalsNat;
   val r : Bool = useEqb Nat x y;
   r
 }
@@ -639,10 +639,10 @@ typeclass Ord[A: Type]: Eqb[A] {
 }
 
 fun cmpNat(x: Nat, y: Nat): Bool = true_
-fun useEqb[A: Eqb](x: A, y: A): Bool = eqb x y
+fun useEqb[A: Eqb](x: A, y: A): Bool = equals x y
 
 fun localOrd(x: Nat, y: Nat): Bool = {
-  val d : Ord Nat = mk_Ord (mk_Eqb eqbNat) cmpNat;
+  val d : Ord Nat = mkOrd (mkEqb equalsNat) cmpNat;
   val r : Bool = useEqb Nat x y;
   r
 }
@@ -659,10 +659,10 @@ val r : Bool = localOrd zero zero
         () => checkProgram(
           pp(
             _program('''
-fun useEqb[A: Eqb](x: A, y: A): Bool = eqb x y
+fun useEqb[A: Eqb](x: A, y: A): Bool = equals x y
 
 fun localEq(x: Nat, y: Nat): Bool = {
-  val d : Eqb Nat = mk_Eqb eqbNat;
+  val d : Eqb Nat = mkEqb equalsNat;
   val r : Bool = useEqb Nat x y;
   r
 }

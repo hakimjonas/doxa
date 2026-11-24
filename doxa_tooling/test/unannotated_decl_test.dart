@@ -20,13 +20,13 @@ import '../bin/doxa.dart' show checkSource;
 const _prologue = '''
 data Nat : Type { zero : Nat; succ : Nat -> Nat; }
 data Bool : Type { true_ : Bool; false_ : Bool; }
-typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool; }
-fun eqbNat(x: Nat, y: Nat): Bool = match x {
+typeclass Eqb[A: Type] { fun equals(x: A, y: A): Bool; }
+fun equalsNat(x: Nat, y: Nat): Bool = match x {
   case zero => true_
   case succ _ => false_
 }
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun equals(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 fun const{A: Type}{B: Type}(x: A, y: B): A = x
 ''';
@@ -44,7 +44,7 @@ fun const{A: Type}{B: Type}(x: A, y: B): A = x
 
 void main() {
   test('the reproducer checks instead of aborting', () {
-    final r = _check('$_prologue\nval q = eqb zero zero\n');
+    final r = _check('$_prologue\nval q = equals zero zero\n');
     expect(r.code, 0, reason: r.err);
     expect(r.out, startsWith('OK:'));
   });
@@ -67,7 +67,7 @@ void main() {
   });
 
   test('the annotated form is unchanged', () {
-    final r = _check('$_prologue\nval q: Bool = eqb zero zero\n');
+    final r = _check('$_prologue\nval q: Bool = equals zero zero\n');
     expect(r.code, 0, reason: r.err);
     expect(r.out, startsWith('OK:'));
   });
@@ -78,17 +78,19 @@ void main() {
       for (final decl in [
         'data Nat : Type { zero : Nat; succ : Nat -> Nat; }',
         'data Bool : Type { true_ : Bool; false_ : Bool; }',
-        'fun eqbNat(x: Nat, y: Nat): Bool = match x {'
+        'fun equalsNat(x: Nat, y: Nat): Bool = match x {'
             ' case zero => true_ case succ _ => false_ }',
-        'typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool; }',
-        'impl Eqb[Nat] { fun eqb(x: Nat, y: Nat): Bool = eqbNat x y; }',
+        'typeclass Eqb[A: Type] { fun equals(x: A, y: A): Bool; }',
+        'impl Eqb[Nat] { fun equals(x: Nat, y: Nat): Bool = equalsNat x y; }',
       ]) {
         final (result, next) = session.processInput(decl);
         expect(result, isA<ReplDeclResult>(), reason: '$result');
         session = next;
       }
 
-      final (declResult, after) = session.processInput('val q = eqb zero zero');
+      final (declResult, after) = session.processInput(
+        'val q = equals zero zero',
+      );
       expect(declResult, isA<ReplDeclResult>(), reason: '$declResult');
       expect((declResult as ReplDeclResult).type, 'Bool');
 

@@ -118,10 +118,10 @@ typeclass Bad[A: Type] {
     const addMonoidClass = '''
 typeclass AddMonoid[A: Type] {
   fun add(x: A, y: A): A;
-  fun azero: A;
-  fun add_assoc(x: A, y: A, z: A): Eq A (add (add x y) z) (add x (add y z));
-  fun add_zero_left(x: A): Eq A (add azero x) x;
-  fun add_zero_right(x: A): Eq A (add x azero) x;
+  fun addZero: A;
+  fun addAssoc(x: A, y: A, z: A): Eq A (add (add x y) z) (add x (add y z));
+  fun addZeroLeft(x: A): Eq A (add addZero x) x;
+  fun addZeroRight(x: A): Eq A (add x addZero) x;
 }
 ''';
 
@@ -134,16 +134,16 @@ $addMonoidClass
 
 impl AddMonoid[Nat] {
   fun add(x: Nat, y: Nat): Nat = plus x y;
-  fun azero: Nat = zero;
-  fun add_assoc(x: Nat, y: Nat, z: Nat): Eq Nat (plus (plus x y) z) (plus x (plus y z)) =
+  fun addZero: Nat = zero;
+  fun addAssoc(x: Nat, y: Nat, z: Nat): Eq Nat (plus (plus x y) z) (plus x (plus y z)) =
     plus_assoc x y z;
-  fun add_zero_left(x: Nat): Eq Nat (plus zero x) x = refl x;
-  fun add_zero_right(x: Nat): Eq Nat (plus x zero) x = plus_zero x;
+  fun addZeroLeft(x: Nat): Eq Nat (plus zero x) x = refl x;
+  fun addZeroRight(x: Nat): Eq Nat (plus x zero) x = plus_zero x;
 }
 
-val assoc : Eq Nat zero zero = add_assoc zero zero zero
-val left : Eq Nat zero zero = add_zero_left zero
-val right : Eq Nat zero zero = add_zero_right zero
+val assoc : Eq Nat zero zero = addAssoc zero zero zero
+val left : Eq Nat zero zero = addZeroLeft zero
+val right : Eq Nat zero zero = addZeroRight zero
 '''),
       );
 
@@ -165,19 +165,19 @@ fun unit_eq(x: Unit): Eq Unit unit x =
 $addMonoidClass
 
 typeclass AddCommMonoid[A: Type]: AddMonoid[A] {
-  fun add_comm(x: A, y: A): Eq A (add x y) (add y x);
+  fun addComm(x: A, y: A): Eq A (add x y) (add y x);
 }
 
 impl AddMonoid[Unit] {
   fun add(x: Unit, y: Unit): Unit = unit;
-  fun azero: Unit = unit;
-  fun add_assoc(x: Unit, y: Unit, z: Unit): Eq Unit unit unit = refl unit;
-  fun add_zero_left(x: Unit): Eq Unit unit x = unit_eq x;
-  fun add_zero_right(x: Unit): Eq Unit unit x = unit_eq x;
+  fun addZero: Unit = unit;
+  fun addAssoc(x: Unit, y: Unit, z: Unit): Eq Unit unit unit = refl unit;
+  fun addZeroLeft(x: Unit): Eq Unit unit x = unit_eq x;
+  fun addZeroRight(x: Unit): Eq Unit unit x = unit_eq x;
 }
 
 impl AddCommMonoid[Unit] {
-  fun add_comm(x: Unit, y: Unit): Eq Unit unit unit = refl unit;
+  fun addComm(x: Unit, y: Unit): Eq Unit unit unit = refl unit;
 }
 
 fun useComm[A: AddCommMonoid](x: A): A = add x x

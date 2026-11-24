@@ -29,7 +29,7 @@ data Bool : Type { true_ : Bool; false_ : Bool; }
 /// Single-method class used throughout.
 const _eqbClass = '''
 typeclass Eqb[A: Type] {
-  fun eqb(x: A, y: A): Bool;
+  fun equals(x: A, y: A): Bool;
 }
 ''';
 
@@ -56,12 +56,12 @@ void main() {
       expect(data!.params.length, 1);
       expect(data.ctors.length, 1);
       final ctor = data.ctors.single;
-      expect(ctor.name, 'mk_Eqb');
+      expect(ctor.name, 'mkEqb');
       expect(ctor.args.length, 1);
-      expect(ctor.args.single.name, 'eqb');
+      expect(ctor.args.single.name, 'equals');
 
       final projections =
-          env.bindings.where((b) => b.name == 'Eqb.eqb').toList();
+          env.bindings.where((b) => b.name == 'Eqb.equals').toList();
       expect(projections.length, 1);
 
       // {A: Type} -> (x: A) -> (y: A) -> {inst: Eqb A} -> Bool
@@ -90,12 +90,12 @@ void main() {
         pp(
           _program('''
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = match x {
+  fun equals(x: Nat, y: Nat): Bool = match x {
     case zero => true_
     case succ n => false_
   };
 }
-val r: Bool = eqb zero zero
+val r: Bool = equals zero zero
 '''),
         ),
       );
@@ -117,18 +117,18 @@ val r: Bool = eqb zero zero
         pp(
           _program('''
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = match x {
+  fun equals(x: Nat, y: Nat): Bool = match x {
     case zero => true_
     case succ n => false_
   };
 }
 impl Eqb[Bool] {
-  fun eqb(x: Bool, y: Bool): Bool = match x {
+  fun equals(x: Bool, y: Bool): Bool = match x {
     case true_ => y
     case false_ => false_
   };
 }
-fun same[A: Eqb](x: A, y: A): Bool = eqb x y
+fun same[A: Eqb](x: A, y: A): Bool = equals x y
 val natSame: Bool = same Nat zero zero
 val boolSame: Bool = same Bool true_ true_
 '''),
@@ -158,9 +158,9 @@ val boolSame: Bool = same Bool true_ true_
       // Type. Pin both spans so the diagnostic is part of the contract.
       final sameSource = _program('''
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = true_;
+  fun equals(x: Nat, y: Nat): Bool = true_;
 }
-fun same[A: Eqb](x: A, y: A): Bool = eqb x y
+fun same[A: Eqb](x: A, y: A): Bool = equals x y
 val natSame: Bool = same zero zero
 ''');
       final sameZero = sameSource.indexOf(
@@ -202,10 +202,10 @@ val c : Nat = id zero
           pp(
             _program('''
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = true_;
+  fun equals(x: Nat, y: Nat): Bool = true_;
 }
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = false_;
+  fun equals(x: Nat, y: Nat): Bool = false_;
 }
 '''),
           ),
@@ -226,7 +226,7 @@ impl Eqb[Nat] {
           pp(
             _program('''
 data Color : Type { red : Color; blue : Color; }
-val bad: Bool = eqb red red
+val bad: Bool = equals red red
 '''),
           ),
         ),
@@ -245,7 +245,7 @@ val bad: Bool = eqb red red
             _program('''
 data Color : Type { red : Color; blue : Color; }
 fun idBool(b: Bool): Bool = b
-theorem bad : Bool := by { exact idBool (eqb red red) }
+theorem bad : Bool := by { exact idBool (equals red red) }
 '''),
           ),
         ),
@@ -272,7 +272,7 @@ $_prelude
 $_eqbClass
 $listData
 impl Eqb[List Nat] {
-  fun eqb(x: List Nat, y: List Nat): Bool = true_;
+  fun equals(x: List Nat, y: List Nat): Bool = true_;
 }
 '''),
         ),
@@ -293,7 +293,7 @@ $_prelude
 $_eqbClass
 $listData
 val xs: List Bool = nil
-val bad: Bool = eqb xs xs
+val bad: Bool = equals xs xs
 '''),
         ),
         throwsA(
@@ -382,7 +382,7 @@ typeclass Ord[A: Type]: Eqb[A] {
         throwsA(
           isA<MissingInstanceMethod>()
               .having((e) => e.className, 'className', 'Eqb')
-              .having((e) => e.methodName, 'methodName', 'eqb'),
+              .having((e) => e.methodName, 'methodName', 'equals'),
         ),
       );
     });
@@ -412,7 +412,7 @@ impl Eqb[Nat] {
           pp(
             _program('''
 impl Nope[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = true_;
+  fun equals(x: Nat, y: Nat): Bool = true_;
 }
 '''),
           ),
@@ -433,7 +433,7 @@ impl Nope[Nat] {
           pp(
             _program('''
 impl Eqb {
-  fun eqb(x: Nat, y: Nat): Bool = true_;
+  fun equals(x: Nat, y: Nat): Bool = true_;
 }
 '''),
           ),

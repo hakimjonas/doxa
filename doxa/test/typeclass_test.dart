@@ -129,11 +129,11 @@ void main() {
       final env = elabProgram(
         pp('''
 data Bool : Type { true_ : Bool; false_ : Bool; }
-typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool }
+typeclass Eqb[A: Type] { fun equals(x: A, y: A): Bool }
 '''),
       );
       expect(env.lookupData('Eqb'), isNotNull);
-      expect(env.bindings.any((b) => b.name == 'Eqb.eqb'), isTrue);
+      expect(env.bindings.any((b) => b.name == 'Eqb.equals'), isTrue);
     });
 
     test('impl declaration is accepted for a declared class', () {
@@ -141,8 +141,8 @@ typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool }
         pp('''
 data Nat : Type { zero : Nat; succ : Nat -> Nat; }
 data Bool : Type { true_ : Bool; false_ : Bool; }
-typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool }
-impl Eqb[Nat] { fun eqb(x: Nat, y: Nat): Bool = true_ }
+typeclass Eqb[A: Type] { fun equals(x: A, y: A): Bool }
+impl Eqb[Nat] { fun equals(x: Nat, y: Nat): Bool = true_ }
 '''),
       );
       expect(env.classRegistry['Eqb']!.instances.length, 1);
@@ -152,7 +152,7 @@ impl Eqb[Nat] { fun eqb(x: Nat, y: Nat): Bool = true_ }
       final env = elabProgram(
         pp('''
 data Bool : Type { true_ : Bool; false_ : Bool; }
-typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool }
+typeclass Eqb[A: Type] { fun equals(x: A, y: A): Bool }
 typeclass Ord[A: Type]: Eqb[A] { fun cmp(x: A, y: A): Bool }
 '''),
       );
@@ -167,9 +167,9 @@ typeclass Ord[A: Type]: Eqb[A] { fun cmp(x: A, y: A): Bool }
           pp('''
 data Nat : Type { zero : Nat; succ : Nat -> Nat; }
 data Bool : Type { true_ : Bool; false_ : Bool; }
-typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool }
-impl Eqb[Nat] { fun eqb(x: Nat, y: Nat): Bool = true_ }
-impl Eqb[Nat] { fun eqb(x: Nat, y: Nat): Bool = false_ }
+typeclass Eqb[A: Type] { fun equals(x: A, y: A): Bool }
+impl Eqb[Nat] { fun equals(x: Nat, y: Nat): Bool = true_ }
+impl Eqb[Nat] { fun equals(x: Nat, y: Nat): Bool = false_ }
 '''),
         ),
         throwsA(isA<OverlappingInstances>()),

@@ -882,24 +882,24 @@ data Bool : Type {
 }
 
 typeclass Eqb[A: Type] {
-  fun eqb(x: A, y: A): Bool;
+  fun equals(x: A, y: A): Bool;
 }
 
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = match x {
+  fun equals(x: Nat, y: Nat): Bool = match x {
     case zero => true_
     case succ n => false_
   };
 }
 
 impl Eqb[Bool] {
-  fun eqb(x: Bool, y: Bool): Bool = match x {
+  fun equals(x: Bool, y: Bool): Bool = match x {
     case true_ => y
     case false_ => false_
   };
 }
 
-fun same[A: Eqb](x: A, y: A): Bool = eqb x y
+fun same[A: Eqb](x: A, y: A): Bool = equals x y
 
 val natSame : Bool = same Nat zero zero
 val boolSame : Bool = same Bool true_ true_
@@ -944,11 +944,11 @@ data Bool : Type {
 }
 
 typeclass Eqb[A: Type] {
-  fun eqb(x: A, y: A): Bool;
+  fun equals(x: A, y: A): Bool;
 }
 
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = match x {
+  fun equals(x: Nat, y: Nat): Bool = match x {
     case zero => true_
     case succ n => false_
   };
@@ -964,22 +964,22 @@ fun andb(a: Bool, b: Bool): Bool = match a {
   case false_ => false_
 }
 
-fun eqbList[A: Eqb](xs: List A, ys: List A): Bool {struct xs} = match xs {
+fun equalsList[A: Eqb](xs: List A, ys: List A): Bool {struct xs} = match xs {
   case nil => match ys {
     case nil => true_
     case cons _ _ => false_
   }
   case cons h t => match ys {
     case nil => false_
-    case cons h2 t2 => andb (eqb h h2) (eqbList A t t2)
+    case cons h2 t2 => andb (equals h h2) (equalsList A t t2)
   }
 }
 
 impl[A: Eqb] Eqb[List A] {
-  fun eqb(x: List A, y: List A): Bool = eqbList A x y;
+  fun equals(x: List A, y: List A): Bool = equalsList A x y;
 }
 
-val listSame : Bool = eqb (cons zero nil) (cons zero nil)
+val listSame : Bool = equals (cons zero nil) (cons zero nil)
 ```
 
 `impl[A: Eqb] Eqb[List A]` elaborates to a binding
@@ -1000,8 +1000,8 @@ The standard library ships the class and instances for `Nat`, `Bool`, and
 ```doxa
 import "package:doxa_stdlib/stdlib/Eqb/package.doxa"
 
-val natSame : Bool = eqb zero zero
-val listSame : Bool = eqb (cons zero nil) (cons zero nil)
+val natSame : Bool = equals zero zero
+val listSame : Bool = equals (cons zero nil) (cons zero nil)
 ```
 
 Search for a goal `C T` takes the head of `T`, selects the instance
@@ -1034,33 +1034,33 @@ data Bool : Type {
 }
 
 typeclass Eqb[A: Type] {
-  fun eqb(x: A, y: A): Bool;
+  fun equals(x: A, y: A): Bool;
 }
 
 typeclass Ord[A: Type]: Eqb[A] {
   fun cmp(x: A, y: A): Bool;
 }
 
-fun eqbNat(x: Nat, y: Nat): Bool = match x {
+fun equalsNat(x: Nat, y: Nat): Bool = match x {
   case zero => match y {
     case zero => true_
     case succ _ => false_
   }
   case succ n => match y {
     case zero => false_
-    case succ m => eqbNat n m
+    case succ m => equalsNat n m
   }
 }
 
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun equals(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 
 impl Ord[Nat] {
-  fun cmp(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun cmp(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 
-fun eqViaOrd[A: Ord](x: A, y: A): Bool = eqb x y
+fun eqViaOrd[A: Ord](x: A, y: A): Bool = equals x y
 
 val throughParent : Bool = eqViaOrd Nat zero zero
 ```
@@ -1190,9 +1190,9 @@ import "package:doxa_stdlib/stdlib/algebra.doxa"
 val square_two : Eq Int (square Int (pos (succ (succ zero))))
   (pos (succ (succ (succ (succ zero))))) =
   refl (pos (succ (succ (succ (succ zero)))))
-val ringProduct : Int = Ring.mul (pos (succ zero)) (pos (succ zero))
+val ringProduct : Int = Ring.multiply (pos (succ zero)) (pos (succ zero))
 val ringProduct_eq : Eq Int ringProduct (pos (succ zero)) = refl ringProduct
-val monoidProduct : Nat = Monoid.mul (succ zero) (succ zero)
+val monoidProduct : Nat = Monoid.multiply (succ zero) (succ zero)
 val monoidProduct_eq : Eq Nat monoidProduct (succ zero) = refl monoidProduct
 ```
 

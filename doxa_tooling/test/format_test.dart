@@ -297,8 +297,8 @@ fun f(x: Nat): Nat {
       formatsTo('val p = plus a b', 'val p = a + b\n');
     });
 
-    test('prefix mult inside plus keeps the tighter operand bare', () {
-      formatsTo('val p = mult (plus a b) c', 'val p = (a + b) * c\n');
+    test('prefix multiply inside plus keeps the tighter operand bare', () {
+      formatsTo('val p = multiply (plus a b) c', 'val p = (a + b) * c\n');
     });
 
     test('an operator applied to three arguments keeps the extra ones', () {
@@ -311,7 +311,7 @@ fun f(x: Nat): Nat {
 
     test('comparisons print infix', () {
       formatsTo('val p = leq a b', 'val p = a <= b\n');
-      formatsTo('val p = eqb a b', 'val p = a == b\n');
+      formatsTo('val p = equals a b', 'val p = a == b\n');
     });
 
     test('a nested comparison keeps the parentheses', () {
@@ -321,7 +321,7 @@ fun f(x: Nat): Nat {
 
     test('arithmetic binds tighter than a comparison', () {
       formatsTo('val p = leq (plus a b) c', 'val p = a + b <= c\n');
-      formatsTo('val p = leq a (mult b c)', 'val p = a <= b * c\n');
+      formatsTo('val p = leq a (multiply b c)', 'val p = a <= b * c\n');
     });
 
     test('a calc chain formats its endpoints and steps infix', () {

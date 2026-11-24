@@ -396,7 +396,7 @@ dictionary carries all of them and each projection binds them implicitly.
 import "package:doxa_stdlib/stdlib/bool.doxa"
 
 typeclass Eqb[A: Type] {
-  fun eqb(x: A, y: A): Bool;
+  fun equals(x: A, y: A): Bool;
 }
 ```
 
@@ -406,7 +406,7 @@ elaborates to
 import "package:doxa_stdlib/stdlib/bool.doxa"
 
 data Eqb[A: Type] : Type {
-  mk_Eqb: (eqb: (x: A) -> (y: A) -> Bool) -> Eqb A;
+  mkEqb: (equals: (x: A) -> (y: A) -> Bool) -> Eqb A;
 }
 ```
 
@@ -445,19 +445,19 @@ A bare method name resolves when it selects one projection:
 ```doxa
 import "package:doxa_stdlib/stdlib/algebra.doxa"
 
-val product : Nat = Monoid.mul (succ zero) (succ zero)
+val product : Nat = Monoid.multiply (succ zero) (succ zero)
 val product_eq : Eq Nat product (succ zero) = refl product
-val integerProduct : Int = Ring.mul (pos (succ zero)) (pos (succ zero))
+val integerProduct : Int = Ring.multiply (pos (succ zero)) (pos (succ zero))
 val integerProduct_eq : Eq Int integerProduct (pos (succ zero)) =
   refl integerProduct
 
-fun mul(x: Nat, y: Nat): Nat = x * y
+fun add(x: Nat, y: Nat): Nat = plus x y
 
-val topLevel : Nat = mul (succ zero) (succ zero)
-val qualified : Nat = Monoid.mul (succ zero) (succ zero)
+val topLevel : Nat = add (succ zero) (succ zero)
+val qualified : Nat = Monoid.multiply (succ zero) (succ zero)
 
 fun twice[A: AddMonoid](x: A): A = add x x
-fun selfMul[A: Ring](x: A): A = mul x x
+fun selfMultiply[A: Ring](x: A): A = multiply x x
 ```
 
 ### Superclasses
@@ -477,7 +477,7 @@ elaborates the dictionary with the parent dictionary as its first field:
 <!-- doxa: fragment -->
 ```doxa
 data Ord[A: Type] : Type {
-  mk_Ord: (_super: Eqb A) -> (cmp: (x: A) -> (y: A) -> Bool) -> Ord A;
+  mkOrd: (_super: Eqb A) -> (cmp: (x: A) -> (y: A) -> Bool) -> Ord A;
 }
 ```
 
@@ -563,10 +563,10 @@ projection for a bare method name.
 
 <!-- doxa: fragment -->
 ```doxa
-fun useEqb[A: Eqb](x: A, y: A): Bool = eqb x y
+fun useEqb[A: Eqb](x: A, y: A): Bool = equals x y
 
 fun localEq(x: Nat, y: Nat): Bool = {
-  val d : Eqb Nat = mk_Eqb eqbNat;
+  val d : Eqb Nat = mkEqb equalsNat;
   val r : Bool = useEqb Nat x y;
   r
 }
@@ -581,7 +581,7 @@ class's instance table.
 <!-- doxa: fragment -->
 ```doxa
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = ...;
+  fun equals(x: Nat, y: Nat): Bool = ...;
 }
 ```
 
@@ -596,7 +596,7 @@ explicit value parameters, so the class parameter is solved from them first.
 ```doxa
 import "package:doxa_stdlib/stdlib/eqb.doxa"
 
-fun same[A: Eqb](x: A, y: A): Bool = eqb x y
+fun same[A: Eqb](x: A, y: A): Bool = equals x y
 ```
 
 A call supplies the type argument explicitly, as with any `[...]` parameter,
@@ -622,7 +622,7 @@ parameters.
 <!-- doxa: fragment -->
 ```doxa
 impl [A: Eqb] Eqb[List A] {
-  fun eqb(x: List A, y: List A): Bool = ...;
+  fun equals(x: List A, y: List A): Bool = ...;
 }
 ```
 

@@ -66,8 +66,8 @@ val two : Nat = succ (succ zero)
       final file = File('${project.path}/eqb_use.doxa')..writeAsStringSync('''
 import "package:doxa_stdlib/stdlib/Eqb/package.doxa"
 
-val natSame : Bool = eqb zero zero
-val listSame : Bool = eqb (cons zero nil) (cons zero nil)
+val natSame : Bool = equals zero zero
+val listSame : Bool = equals (cons zero nil) (cons zero nil)
 ''');
       final result = _runFile(file);
       expect(result.code, 0, reason: result.stderr);

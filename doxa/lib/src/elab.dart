@@ -1721,7 +1721,7 @@ Term elabExpr(TopEnv topEnv, SExpr expr) => elabExprWithType(topEnv, expr).term;
   final state = _shimState(topEnv, const _LocalNil(), metas: metas);
   var (term, typeValue) = _inferExpr(state, expr);
   // An application can end on a trailing implicit binder, such as the
-  // dictionary of `eqb zero zero`. Infer mode does not consume it in the
+  // dictionary of `equals zero zero`. Infer mode does not consume it in the
   // application loop, so finish it here. A bare identifier keeps its full
   // signature; a partial application keeps the explicit Pi that remains.
   if (expr.kind is SAppKind) {
@@ -5265,7 +5265,7 @@ DeclResult _elabDecl(
         final valState = _shimState(topEnv, const _LocalNil(), metas: metas);
         var (inferredTerm, inferredType) = _inferExpr(valState, body);
         // An application can end on a trailing implicit binder, such as the
-        // dictionary of `eqb zero zero`. Infer mode does not consume it in
+        // dictionary of `equals zero zero`. Infer mode does not consume it in
         // the application loop, so finish it here, exactly as
         // [elabExprWithType] does for an inferred expression. A bare
         // identifier keeps its full signature and a partial application keeps
@@ -5513,11 +5513,11 @@ String _classRefName(SExpr ref) => switch (ref.kind) {
 /// Elaborate a `typeclass` declaration into a dictionary data type and one
 /// projection per method.
 ///
-/// `typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool }` produces
+/// `typeclass Eqb[A: Type] { fun equals(x: A, y: A): Bool }` produces
 ///
 /// ```
 /// data Eqb[A: Type] : Type {
-///   mk_Eqb: (eqb: (x: A) -> (y: A) -> Bool) -> Eqb A;
+///   mkEqb: (equals: (x: A) -> (y: A) -> Bool) -> Eqb A;
 /// }
 /// ```
 ///
@@ -5645,7 +5645,7 @@ DeclResult _elabTypeclass(
       DoxaSpan.synthetic,
     );
   }
-  final ctorDecl = SCtorDecl('mk_$name', ctorType, DoxaSpan.synthetic);
+  final ctorDecl = SCtorDecl('mk$name', ctorType, DoxaSpan.synthetic);
   final sDataKind = SDataKind(
     name,
     typeParams,
@@ -5826,8 +5826,8 @@ List<_FunBinder> _implBinders(List<SFunTypeParam> typeParams) => [
 
 /// Elaborate an `impl` declaration into a dictionary value.
 ///
-/// `impl Eqb[Nat] { fun eqb(x: Nat, y: Nat): Bool = ... }` becomes a
-/// binding `_impl_Eqb_Nat : Eqb Nat` whose value is the `mk_Eqb`
+/// `impl Eqb[Nat] { fun equals(x: Nat, y: Nat): Bool = ... }` becomes a
+/// binding `_impl_Eqb_Nat : Eqb Nat` whose value is the `mkEqb`
 /// constructor applied to the class argument and the method lambdas, plus
 /// an [InstanceInfo] in the class's registry.
 ///
@@ -6149,7 +6149,7 @@ DeclResult _elabImpl(
   final implTerm = _wrapLambdas(
     implDomains,
     implBinders,
-    TConstr(className, 'mk_$className', [
+    TConstr(className, 'mk$className', [
       ...argTerms,
       if (superclassDictionary != null) superclassDictionary,
       ...methodTerms,

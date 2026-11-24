@@ -95,7 +95,7 @@ If n^2 = 2*m^2 then n is even:
 <!-- doxa: fragment -->
 ```doxa
 val sqrt2_parity : (n: Nat) -> (m: Nat) ->
-  Eq Nat (square n) (mult two (square m)) -> Eq Bool (even n) true_
+  Eq Nat (square n) (multiply two (square m)) -> Eq Bool (even n) true_
 ```
 
 The proof rewrites `mult two (square m)` to `plus (square m) (square m)`,

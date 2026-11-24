@@ -190,7 +190,7 @@ val seven : Nat = plus three four
     });
   });
 
-  group('Nat recursor: double / mult-by-two', () {
+  group('Nat recursor: double / multiply-by-two', () {
     test('double three = six', () {
       final env = _run('''
 data Nat : Type {

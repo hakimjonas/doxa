@@ -131,44 +131,44 @@ fun div_step(d: Nat, j: Nat, m: Nat, b: Bool): Nat = match b {
 
 val div_add_mod_step: (d: Nat) -> (j: Nat) -> (m: Nat) -> (b: Bool)
   -> Eq Bool (lt m (succ d)) b
-  -> Eq Nat (plus (mult (div_acc j (sub m (succ d)) (succ d)) (succ d))
+  -> Eq Nat (plus (multiply (div_acc j (sub m (succ d)) (succ d)) (succ d))
                  (mod_acc j (sub m (succ d)) (succ d)))
             (sub m (succ d))
-  -> Eq Nat (plus (mult (div_step d j m b) (succ d)) (mod_step d j m b)) m =
+  -> Eq Nat (plus (multiply (div_step d j m b) (succ d)) (mod_step d j m b)) m =
   (d: Nat) => (j: Nat) => (m: Nat) => (b: Bool)
     => (eq: Eq Bool (lt m (succ d)) b)
-    => (ih: Eq Nat (plus (mult (div_acc j (sub m (succ d)) (succ d)) (succ d))
+    => (ih: Eq Nat (plus (multiply (div_acc j (sub m (succ d)) (succ d)) (succ d))
                           (mod_acc j (sub m (succ d)) (succ d)))
                      (sub m (succ d))) =>
       Bool.ind
         ((x: Bool) => Eq Bool (lt m (succ d)) x
-          -> Eq Nat (plus (mult (div_acc j (sub m (succ d)) (succ d)) (succ d))
+          -> Eq Nat (plus (multiply (div_acc j (sub m (succ d)) (succ d)) (succ d))
                           (mod_acc j (sub m (succ d)) (succ d)))
                      (sub m (succ d))
-          -> Eq Nat (plus (mult (div_step d j m x) (succ d)) (mod_step d j m x)) m)
+          -> Eq Nat (plus (multiply (div_step d j m x) (succ d)) (mod_step d j m x)) m)
         ((e: Eq Bool (lt m (succ d)) true_) =>
-          (g: Eq Nat (plus (mult (div_acc j (sub m (succ d)) (succ d)) (succ d))
+          (g: Eq Nat (plus (multiply (div_acc j (sub m (succ d)) (succ d)) (succ d))
                            (mod_acc j (sub m (succ d)) (succ d)))
                       (sub m (succ d))) => refl)
         ((e: Eq Bool (lt m (succ d)) false_) =>
-          (g: Eq Nat (plus (mult (div_acc j (sub m (succ d)) (succ d)) (succ d))
+          (g: Eq Nat (plus (multiply (div_acc j (sub m (succ d)) (succ d)) (succ d))
                            (mod_acc j (sub m (succ d)) (succ d)))
                       (sub m (succ d))) =>
             trans_e Nat
-              (plus (plus (succ d) (mult (div_acc j (sub m (succ d)) (succ d)) (succ d)))
+              (plus (plus (succ d) (multiply (div_acc j (sub m (succ d)) (succ d)) (succ d)))
                     (mod_acc j (sub m (succ d)) (succ d)))
-              (plus (succ d) (plus (mult (div_acc j (sub m (succ d)) (succ d)) (succ d))
+              (plus (succ d) (plus (multiply (div_acc j (sub m (succ d)) (succ d)) (succ d))
                                    (mod_acc j (sub m (succ d)) (succ d))))
               m
-              (plus_assoc (succ d) (mult (div_acc j (sub m (succ d)) (succ d)) (succ d))
+              (plus_assoc (succ d) (multiply (div_acc j (sub m (succ d)) (succ d)) (succ d))
                           (mod_acc j (sub m (succ d)) (succ d)))
               (trans_e Nat
-                (plus (succ d) (plus (mult (div_acc j (sub m (succ d)) (succ d)) (succ d))
+                (plus (succ d) (plus (multiply (div_acc j (sub m (succ d)) (succ d)) (succ d))
                                      (mod_acc j (sub m (succ d)) (succ d))))
                 (plus (succ d) (sub m (succ d)))
                 m
                 (cong_e Nat Nat ((t: Nat) => plus (succ d) t)
-                  (plus (mult (div_acc j (sub m (succ d)) (succ d)) (succ d))
+                  (plus (multiply (div_acc j (sub m (succ d)) (succ d)) (succ d))
                         (mod_acc j (sub m (succ d)) (succ d)))
                   (sub m (succ d))
                   g)
@@ -182,22 +182,22 @@ val div_add_mod_step: (d: Nat) -> (j: Nat) -> (m: Nat) -> (b: Bool)
         b eq ih
 
 val div_add_mod_acc: (d: Nat) -> (k: Nat) -> (m: Nat)
-  -> Eq Nat (plus (mult (div_acc k m (succ d)) (succ d)) (mod_acc k m (succ d))) m =
+  -> Eq Nat (plus (multiply (div_acc k m (succ d)) (succ d)) (mod_acc k m (succ d))) m =
   (d: Nat) => (k: Nat) => (m: Nat) => Nat.ind
-    ((j: Nat) => (m2: Nat) -> Eq Nat (plus (mult (div_acc j m2 (succ d)) (succ d)) (mod_acc j m2 (succ d))) m2)
+    ((j: Nat) => (m2: Nat) -> Eq Nat (plus (multiply (div_acc j m2 (succ d)) (succ d)) (mod_acc j m2 (succ d))) m2)
     ((m2: Nat) => refl)
-    ((j: Nat) => (ih: (m2: Nat) -> Eq Nat (plus (mult (div_acc j m2 (succ d)) (succ d)) (mod_acc j m2 (succ d))) m2) =>
+    ((j: Nat) => (ih: (m2: Nat) -> Eq Nat (plus (multiply (div_acc j m2 (succ d)) (succ d)) (mod_acc j m2 (succ d))) m2) =>
       (m2: Nat) => div_add_mod_step d j m2 (lt m2 (succ d)) (refl (lt m2 (succ d))) (ih (sub m2 (succ d))))
     k m
 
 val div_add_mod: (m: Nat) -> (n: Nat) -> Lt zero n
-  -> Eq Nat (plus (mult (div m n) n) (mod m n)) m =
+  -> Eq Nat (plus (multiply (div m n) n) (mod m n)) m =
   (m: Nat) => (n: Nat) => Nat.ind
-    ((k: Nat) => Lt zero k -> Eq Nat (plus (mult (div m k) k) (mod m k)) m)
+    ((k: Nat) => Lt zero k -> Eq Nat (plus (multiply (div m k) k) (mod m k)) m)
     ((h: Lt zero zero) => False.rec
-      ((_: False) => Eq Nat (plus (mult (div m zero) zero) (mod m zero)) m)
+      ((_: False) => Eq Nat (plus (multiply (div m zero) zero) (mod m zero)) m)
       (lt_zero_absurd h))
-    ((k: Nat) => (ih: Lt zero k -> Eq Nat (plus (mult (div m k) k) (mod m k)) m) =>
+    ((k: Nat) => (ih: Lt zero k -> Eq Nat (plus (multiply (div m k) k) (mod m k)) m) =>
       (h: Lt zero (succ k)) => div_add_mod_acc k m m)
     n
 ''';

@@ -5,5 +5,5 @@
 import "bool.doxa"
 
 typeclass Eqb[A: Type] {
-  fun eqb(x: A, y: A): Bool;
+  fun equals(x: A, y: A): Bool;
 }
