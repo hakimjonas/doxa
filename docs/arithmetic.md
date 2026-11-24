@@ -1,7 +1,7 @@
 # Arithmetic in the standard library
 
 This document specifies the arithmetic operations in `doxa_stdlib/lib/stdlib/nat.doxa` and
-`doxa_stdlib/lib/stdlib/int_base.doxa`. The kernel definitions are authoritative; the
+`doxa_stdlib/lib/stdlib/intBase.doxa`. The kernel definitions are authoritative; the
 examples below were checked with `doxa check` and `refl`. Lemmas marked
 *planned* are not proved.
 
@@ -180,8 +180,8 @@ data Int: Type {
 
 `pos n` represents `n`, `neg n` represents `-(n + 1)`, and zero is `pos zero`.
 The `neg` encoding avoids a second representation of zero. The operations in
-`int_base.doxa` are `intPlus`, `intNeg`, `intSub`, `intMult`, `intLeq`,
-`intAbs` (returning a `Nat`), and `intSign`; `int_base.doxa` stays
+`intBase.doxa` are `intPlus`, `intNeg`, `intSub`, `intMult`, `intLeq`,
+`intAbs` (returning a `Nat`), and `intSign`; `intBase.doxa` stays
 operations-only for `Rational`. `int.doxa` adds `intDiv` and `intMod`.
 
 ### Division convention

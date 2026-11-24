@@ -82,7 +82,7 @@ comparisons do not associate.
 
 ```doxa
 import "package:doxa_stdlib/stdlib/proofs.doxa"
-import "package:doxa_stdlib/stdlib/eqb_instances.doxa"
+import "package:doxa_stdlib/stdlib/eqbInstances.doxa"
 
 val two: Nat = succ (succ zero)
 

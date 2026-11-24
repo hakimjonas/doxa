@@ -13,17 +13,17 @@ https://github.com/hakimjonas/doxa#status.
 | `Nat` | `nat.doxa` (`Nat`, `plus`, `mult`, `Lt`, comparison) |
 | `Bool` | `bool.doxa` |
 | `Eq` | `eq.doxa` (`sym`, `trans`, `cong`, `subst`) |
-| `Eqb` | `eqb.doxa` (class), `eqb_instances.doxa` (instances for `Nat`, `Bool`, `List`) |
+| `Eqb` | `eqb.doxa` (class), `eqbInstances.doxa` (instances for `Nat`, `Bool`, `List`) |
 | `Algebra` | `algebra.doxa` (`AddMonoid`, `AddCommMonoid`, `AddGroup`, `Monoid`, `CommMonoid`, `Ring`; class-qualified projections such as `Ring.mul`; `Nat` and `List` instances; `AddMonoid[Int]`, `AddGroup[Int]`, and `Ring[Int]`; `sum`, `sumViaComm`, `double`, `negTwice`, `square`) |
 | `List` | `list.doxa` |
 | `Option` | `option.doxa` |
 | `Vec` | `vec.doxa` (length-indexed vectors) |
 | `Sigma` | `sigma.doxa` |
-| `Int` | `int_base.doxa`, `int.doxa` |
+| `Int` | `intBase.doxa`, `int.doxa` |
 | `Rational` | `rational.doxa` |
 | `Proofs` | `proofs.doxa` (arithmetic and equality lemmas) |
 | `Prop` | `prop.doxa` (`And`, `Or`, `Exists`, `Not`) |
-| — | `case_study.doxa` (parity lemmas and `sqrt2`) |
+| — | `caseStudy.doxa` (parity lemmas and `sqrt2`) |
 
 `prelude.doxa` is the ambient prelude source (`Eq` and `Acc`). The Doxa
 kernel embeds a copy and loads it before user code, so ordinary files do not

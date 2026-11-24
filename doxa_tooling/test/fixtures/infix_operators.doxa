@@ -4,7 +4,7 @@
 // List Nat through the `Eqb` instances, a `calc` chain whose endpoints and
 // steps use `+`, and a tactic block over the same expansion.
 import "../../../doxa_stdlib/lib/stdlib/proofs.doxa"
-import "../../../doxa_stdlib/lib/stdlib/eqb_instances.doxa"
+import "../../../doxa_stdlib/lib/stdlib/eqbInstances.doxa"
 
 val two : Nat = succ (succ zero)
 

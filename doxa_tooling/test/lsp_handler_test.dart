@@ -798,7 +798,7 @@ void main() {
     );
 
     test('returns imported constructors from their defining files', () {
-      final intBase = File('../doxa_stdlib/lib/stdlib/int_base.doxa').absolute;
+      final intBase = File('../doxa_stdlib/lib/stdlib/intBase.doxa').absolute;
       final intBaseSource = intBase.readAsStringSync();
       final intBaseUri = intBase.uri.toString();
       final consumer = File('../doxa_stdlib/lib/stdlib/int.doxa').absolute;

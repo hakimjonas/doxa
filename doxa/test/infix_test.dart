@@ -19,7 +19,7 @@ import 'package:test/test.dart';
 ///
 /// The instance bodies call top-level comparison functions. An instance body
 /// cannot resolve the instance being defined, so the recursion lives outside
-/// it, as in `doxa_stdlib/lib/stdlib/eqb_instances.doxa`.
+/// it, as in `doxa_stdlib/lib/stdlib/eqbInstances.doxa`.
 const _prologue = '''
 data Nat : Type { zero : Nat; succ : Nat -> Nat; }
 data Bool : Type { true_ : Bool; false_ : Bool; }

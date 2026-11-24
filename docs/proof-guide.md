@@ -11,7 +11,7 @@ The relevant declarations are in three files:
 
 - `doxa_stdlib/lib/stdlib/proofs.doxa` contains the arithmetic and equality lemmas,
   the accessibility proof `nat_wf` / `nat_wf_help`, and `strong_ind`.
-- `doxa_stdlib/lib/stdlib/case_study.doxa` contains the parity lemmas and `sqrt2`.
+- `doxa_stdlib/lib/stdlib/caseStudy.doxa` contains the parity lemmas and `sqrt2`.
 - `doxa_stdlib/lib/stdlib/nat.doxa` defines `Lt`.
 
 ## 1. Arithmetic lemmas (proofs.doxa)
@@ -28,7 +28,7 @@ proofs:
 `proofs.doxa` also contains list, vector, refutation, and strong-induction
 lemmas.
 
-## 2. Parity lemmas (case_study.doxa)
+## 2. Parity lemmas (caseStudy.doxa)
 
 ### even and its recurrence
 
@@ -164,7 +164,7 @@ The final case analysis is on `t`:
 
 ```sh
 dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/proofs.doxa      # 115 declarations
-dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/case_study.doxa  # 158 declarations
+dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/caseStudy.doxa  # 158 declarations
 ```
 
 Both files type-check with the current CLI.

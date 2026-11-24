@@ -1,7 +1,7 @@
 // The six surface operators, for the manual grammar walkthrough.
 // `->` is in the signature, `=>` in the match arms, `<=` and `==` in the
 // match arms, and `*` and `+` in the arithmetic expression.
-import "../../../../../doxa_stdlib/lib/stdlib/eqb_instances.doxa"
+import "../../../../../doxa_stdlib/lib/stdlib/eqbInstances.doxa"
 
 import "../../../../../doxa_stdlib/lib/stdlib/proofs.doxa"
 

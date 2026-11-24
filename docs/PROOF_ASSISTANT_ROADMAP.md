@@ -5,7 +5,7 @@
 | Task | Effort | Status |
 |------|--------|--------|
 | Fix formatter `impl` bug | 30 min | **Done**. `_visitImpl` outputs `impl Semigroup[Nat]` with square brackets; `_visitClassMethod` groups parameters as `(x: A, y: B)`. |
-| Complete sqrt2 proof | 1 session | **Done**. `case_study.doxa` proves `sqrt2` on `Nat` through `sqrt2_parity`, `even_square_implies_even`, and well-founded induction with `strong_ind` and `nat_wf`. The proof does not use `Int`, `gcd`, or coprimality. |
+| Complete sqrt2 proof | 1 session | **Done**. `caseStudy.doxa` proves `sqrt2` on `Nat` through `sqrt2_parity`, `even_square_implies_even`, and well-founded induction with `strong_ind` and `nat_wf`. The proof does not use `Int`, `gcd`, or coprimality. |
 
 ---
 
