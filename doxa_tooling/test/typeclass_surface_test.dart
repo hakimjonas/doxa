@@ -122,6 +122,21 @@ typeclass WithDefault[A: Type]: Default[A] {
       expect(r.stdout, contains('OK'));
     });
 
+    test('a block val dictionary supplies a class projection', () {
+      // SPEC's local dictionary: an ordinary `val` binding of the
+      // dictionary type, followed by a call that needs the dictionary.
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/algebra.doxa"
+fun g(x: Nat): Nat = {
+  val d : AddMonoid Nat = _impl_AddMonoid_Nat;
+  add x x
+}
+val r : Eq Nat (g (succ zero)) (succ (succ zero)) = refl (succ (succ zero))
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+
     test('an ambiguous bare method name reports the diagnostic', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/algebra.doxa"
