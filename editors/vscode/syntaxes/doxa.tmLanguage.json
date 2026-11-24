@@ -7,6 +7,7 @@
     { "include": "#strings" },
     { "include": "#numbers" },
     { "include": "#keywords" },
+    { "include": "#operators" },
     { "include": "#types" },
     { "include": "#builtins" }
   ],
@@ -44,6 +45,13 @@
       "patterns": [
         { "match": "\\b(val|fun|data|type|match|case|returning|import|and|by|opaque|rec|struct|decreases|where|as|typeclass|impl|theorem|with)\\b", "name": "keyword.control.doxa" },
         { "match": "\\b(if_|then_|else_)\\b", "name": "keyword.control.doxa" }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        { "match": "->|=>", "name": "keyword.operator.arrow.doxa" },
+        { "match": "<=|==", "name": "keyword.operator.comparison.doxa" },
+        { "match": "\\+|\\*", "name": "keyword.operator.arithmetic.doxa" }
       ]
     },
     "types": {

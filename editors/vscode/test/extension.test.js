@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const Module = require('node:module');
 const path = require('node:path');
 
@@ -117,6 +118,27 @@ function loadExtension({ serverPath, workspaceFolders }) {
 }
 
 async function main() {
+  // The grammar scopes the six surface operators, and the operator rule
+  // is included after the keyword rule so comments and strings stay first.
+  const grammar = JSON.parse(
+    fs.readFileSync(
+      path.resolve(__dirname, '..', 'syntaxes', 'doxa.tmLanguage.json'),
+      'utf8',
+    ),
+  );
+  const includes = grammar.patterns.map(entry => entry.include);
+  const keywordIndex = includes.indexOf('#keywords');
+  assert.notEqual(keywordIndex, -1);
+  assert.equal(includes.indexOf('#operators'), keywordIndex + 1);
+  const operatorMatch = new RegExp(
+    grammar.repository.operators.patterns
+      .map(pattern => pattern.match)
+      .join('|'),
+  );
+  for (const operator of ['->', '=>', '<=', '==', '+', '*']) {
+    assert.match(operator, operatorMatch);
+  }
+
   const folders = [{ uri: 'file:///workspace' }];
   const loaded = loadExtension({
     serverPath: '/opt/doxa',

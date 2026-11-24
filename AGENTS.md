@@ -149,8 +149,13 @@ dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/int.doxa
 dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/eqb_instances.doxa
 dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/algebra.doxa
 
-# 4. Doxa formatter on ALL stdlib .doxa files
-find doxa_stdlib/lib/stdlib -name '*.doxa' -exec dart run doxa_tooling/bin/doxa.dart fmt --check {} \;
+# 4. Doxa formatter on all parseable .doxa files (the same set CI uses)
+for f in $(find doxa_stdlib/lib/stdlib doxa_stdlib/example example \
+  doxa_tooling/test/programs -name '*.doxa' -type f \
+  ! -path 'doxa_tooling/test/programs/negative/block_no_result.doxa' \
+  ! -path 'doxa_tooling/test/programs/negative/parse_error.doxa'); do
+  dart run doxa_tooling/bin/doxa.dart fmt --check "$f" || exit 1
+done
 
 # 5. Kernel tests
 (cd doxa && dart test)
