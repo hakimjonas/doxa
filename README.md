@@ -26,7 +26,7 @@ Doxa requires Dart 3.7 or later.
 - The fourteen `by` steps: `intro`, `exact`, `apply`, `refl`, `rewrite`,
   `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`,
   `constructor`, and `have`, plus `calc` chains for equality proofs.
-- Infix `*`, `+`, `<=`, and `==` for `mult`, `plus`, `leq`, and `eqb`, with
+- Infix `*`, `+`, `<=`, and `==` for `multiply`, `plus`, `leq`, and `equals`, with
   `*` tighter than `+`, both tighter than the comparisons, left-associative
   arithmetic, and non-associative comparisons. The operators are monomorphic
   to those four functions and resolve like any other name.

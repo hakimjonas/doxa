@@ -10,11 +10,11 @@ https://github.com/hakimjonas/doxa#status.
 
 | Domain | Files |
 |---|---|
-| `Nat` | `nat.doxa` (`Nat`, `plus`, `mult`, `Lt`, comparison) |
+| `Nat` | `nat.doxa` (`Nat`, `plus`, `multiply`, `Lt`, comparison) |
 | `Bool` | `bool.doxa` |
 | `Eq` | `eq.doxa` (`sym`, `trans`, `cong`, `subst`) |
-| `Eqb` | `eqb.doxa` (class), `eqbInstances.doxa` (instances for `Nat`, `Bool`, `List`) |
-| `Algebra` | `algebra.doxa` (`AddMonoid`, `AddCommMonoid`, `AddGroup`, `Monoid`, `CommMonoid`, `Ring`; class-qualified projections such as `Ring.mul`; `Nat` and `List` instances; `AddMonoid[Int]`, `AddGroup[Int]`, and `Ring[Int]`; `sum`, `sumViaComm`, `double`, `negTwice`, `square`) |
+| `Eqb` | `equals.doxa` (class), `eqbInstances.doxa` (instances for `Nat`, `Bool`, `List`) |
+| `Algebra` | `algebra.doxa` (`AddMonoid`, `AddCommMonoid`, `AddGroup`, `Monoid`, `CommMonoid`, `Ring`; class-qualified projections such as `Ring.multiply`; `Nat` and `List` instances; `AddMonoid[Int]`, `AddGroup[Int]`, and `Ring[Int]`; `sum`, `sumViaComm`, `double`, `negTwice`, `square`) |
 | `List` | `list.doxa` |
 | `Option` | `option.doxa` |
 | `Vec` | `vec.doxa` (length-indexed vectors) |
@@ -100,7 +100,7 @@ The domain re-exports remain available:
 declarations.
 
 `import "package:doxa_stdlib/stdlib/Eqb/package.doxa"` brings the `Eqb`
-class and its `Nat`, `Bool`, and `List` instances, so `eqb` resolves at
+class and its `Nat`, `Bool`, and `List` instances, so `equals` resolves at
 those types without a local class.
 
 `import "package:doxa_stdlib/stdlib/Algebra/package.doxa"` brings the algebra

@@ -59,8 +59,8 @@ project is ready.
 
 **Language surface**
 
-- Added the infix operators `*`, `+`, `<=`, and `==` for `mult`, `plus`,
-  `leq`, and `eqb`. `*` binds tighter than `+`, both bind tighter than the
+- Added the infix operators `*`, `+`, `<=`, and `==` for `multiply`, `plus`,
+  `leq`, and `equals`. `*` binds tighter than `+`, both bind tighter than the
   comparisons, arithmetic associates left, comparisons do not associate, and
   each operator expands to exactly one top-level function. The formatter
   prints the operators and parenthesizes only where precedence requires.
@@ -79,8 +79,8 @@ project is ready.
   self-recursion soundness fix (#15).
 - Added `AddGroup` to the standard-library algebra module and proved
   `AddMonoid[Int]` and `AddGroup[Int]`.
-- Identified class projections by class and method (`Monoid.mul`,
-  `Ring.mul`), so two classes may declare the same field name. A bare method
+- Identified class projections by class and method (`Monoid.multiply`,
+  `Ring.multiply`), so two classes may declare the same field name. A bare method
   name resolves through a local dictionary or a unique declaring class, and an
   ambiguous name reports `AmbiguousClassMethod`. Inside a class, its law
   fields read the current class first, then its parents.
@@ -117,9 +117,9 @@ marketplace; it predates the `prime`, `gcd`, and `coprime` fixes.
 
 - Added `docs/arithmetic.md`, which specifies the `Nat` operations, the
   zero-divisor conventions (`div m zero = zero`, `mod m zero = m`), the
-  fuel-based `mod_acc`/`div_acc` bound, arbitrary precision, and the proposed
+  fuel-based `modAcc`/`divAcc` bound, arbitrary precision, and the proposed
   `Int` division conventions.
-- Proved `sub_zero`, `mod_acc_zero`, `mod_zero`, and `div_zero` in
+- Proved `subZero`, `modAccZero`, `modZero`, and `divZero` in
   `lib/stdlib/proofs.doxa`.
 - Fixed `prime` to start the divisor scan at `n - 2`, so candidates run from
   `n - 1` down to `2`; composites now return `false_`.
@@ -148,7 +148,7 @@ marketplace; it predates the `prime`, `gcd`, and `coprime` fixes.
   which also restores indexed coverage detection for a missed reachable
   constructor.
 - Parameterized `Acc` by its relation (`data Acc[A: Type, R: A -> A -> Prop]`)
-  and redefined `strong_ind_impl` as `Acc.rec` over `nat_wf` / `nat_wf_help`,
+  and redefined `strongIndImpl` as `Acc.rec` over `natWf` / `natWfHelp`,
   now in `proofs.doxa`. `lib/stdlib` no longer uses `termination_by`.
 - Kept the ambient prelude mirror in sync with `lib/stdlib/prelude.doxa`
   and added a structural sync test for the `Eq` and `Acc` declarations.
@@ -166,7 +166,7 @@ marketplace; it predates the `prime`, `gcd`, and `coprime` fixes.
   `TerminationByUnsupported`. The measure was never checked, and the
   single-parameter fuel desugaring could accept non-terminating recursion.
   The fuel path, its self-call rewriter, and `TerminationByParamNotFound`
-  are removed. Use structural recursion, or `Acc.rec` with `nat_wf`.
+  are removed. Use structural recursion, or `Acc.rec` with `natWf`.
 - Fixed leaf tactics leaving the goal unsolved: a `by { ... }` block ending
   in `refl` or `trivial` failed with "tactic block: no alternative succeeded"
   even when the produced proof term checked, because `refl` and `trivial`

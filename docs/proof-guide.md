@@ -10,20 +10,20 @@ uses parity and induction on `Nat`, without fractions or coprimality.
 The relevant declarations are in three files:
 
 - `doxa_stdlib/lib/stdlib/proofs.doxa` contains the arithmetic and equality lemmas,
-  the accessibility proof `nat_wf` / `nat_wf_help`, and `strong_ind`.
+  the accessibility proof `natWf` / `natWfHelp`, and `strongInd`.
 - `doxa_stdlib/lib/stdlib/caseStudy.doxa` contains the parity lemmas and `sqrt2`.
 - `doxa_stdlib/lib/stdlib/nat.doxa` defines `Lt`.
 
 ## 1. Arithmetic lemmas (proofs.doxa)
 
-These five lemmas extend the existing `plus_comm` and `plus_assoc`
+These five lemmas extend the existing `plusComm` and `plusAssoc`
 proofs:
 
-- mult_succ_right m n -- mult m (succ n) = plus m (mult m n)
-- mult_comm m n -- mult m n = mult n m
-- mult_2 n -- mult (succ (succ zero)) n = plus n n
-- mult_plus a b c -- mult (plus a b) c = plus (mult a c) (mult b c)
-- mult_assoc m n p -- mult (mult m n) p = mult m (mult n p)
+- multiplySuccRight m n -- multiply m (succ n) = plus m (multiply m n)
+- multiplyComm m n -- multiply m n = multiply n m
+- multiply2 n -- multiply (succ (succ zero)) n = plus n n
+- multiplyPlus a b c -- multiply (plus a b) c = plus (multiply a c) (multiply b c)
+- multiplyAssoc m n p -- multiply (multiply m n) p = multiply m (multiply n p)
 
 `proofs.doxa` also contains list, vector, refutation, and strong-induction
 lemmas.
@@ -45,7 +45,7 @@ fun even(n: Nat): Bool = match n {
 }
 ```
 
-A helper parity_flip_b expresses the recurrence:
+A helper parityFlipB expresses the recurrence:
 
 <!-- doxa: fragment -->
 ```doxa
@@ -56,14 +56,14 @@ fun parityFlipB(b: Bool): Bool = match b {
 ```
 
 The identity even (succ (succ n)) = even n is proved by induction
-using parity_flip_invol (double negation is an involution on Bool).
+using parityFlipInvol (double negation is an involution on Bool).
 
-### even_double
+### evenDouble
 
 plus n n is always even.  Proof by induction on n using
-even_succ_succ_eq_even and plus_succ.
+evenSuccSuccEqEven and plusSucc.
 
-### even_plus_parity
+### evenPlusParity
 
 The parity of a sum is determined by the parities of the summands:
 
@@ -73,22 +73,22 @@ val evenPlusParity : (a: Nat) -> (b: Nat) ->
   Eq Bool (even (plus a b)) (parityComb (even a) (even b))
 ```
 
-`parity_comb p q` is `true_` when `p` and `q` have the same value. The
+`parityComb p q` is `true_` when `p` and `q` have the same value. The
 proof uses induction on `a` and `Bool.ind` in the Boolean helper lemma.
 
-### even_square_eq
+### evenSquareEq
 
 square n has the same parity as n.  The step case uses an algebraic
-helper square_succ_algebra to expand square (succ k) into
-succ (plus (plus k k) (square k)), then applies even_plus_parity,
-even_double, and the induction hypothesis.
+helper squareSuccAlgebra to expand square (succ k) into
+succ (plus (plus k k) (square k)), then applies evenPlusParity,
+evenDouble, and the induction hypothesis.
 
 ### Corollaries
 
-- even_square_even n: if even n = true_ then even (square n) = true_
-- even_square_implies_even n: if even (square n) = true_ then even n = true_
+- evenSquareEven n: if even n = true_ then even (square n) = true_
+- evenSquareImpliesEven n: if even (square n) = true_ then even n = true_
 
-### sqrt2_parity
+### sqrt2Parity
 
 If n^2 = 2*m^2 then n is even:
 
@@ -98,9 +98,9 @@ val sqrt2Parity : (n: Nat) -> (m: Nat) ->
   Eq Nat (square n) (multiply two (square m)) -> Eq Bool (even n) true_
 ```
 
-The proof rewrites `mult two (square m)` to `plus (square m) (square m)`,
-uses `even_double`, transports along the equality hypothesis, and applies
-`even_square_implies_even`.
+The proof rewrites `multiply two (square m)` to `plus (square m) (square m)`,
+uses `evenDouble`, transports along the equality hypothesis, and applies
+`evenSquareImpliesEven`.
 
 ## 3. Lt and induction
 
@@ -115,50 +115,50 @@ data Lt : Nat -> Nat -> Prop {
 }
 ```
 
-The `nat_wf` and `nat_wf_help` definitions in `proofs.doxa` use
-mutual structural recursion. `nat_wf n` returns `Acc Nat lt_rel n`,
-where `lt_rel a b = Lt a b`; the relation is a data parameter, and
-`acc_intro` takes the value and the accessibility function. Its zero
+The `natWf` and `natWfHelp` definitions in `proofs.doxa` use
+mutual structural recursion. `natWf n` returns `Acc Nat ltRel n`,
+where `ltRel a b = Lt a b`; the relation is a data parameter, and
+`accIntro` takes the value and the accessibility function. Its zero
 case eliminates `Lt y zero`; its successor case delegates to
-`nat_wf_help`.
+`natWfHelp`.
 
-`nat_wf_help k y h` recurses structurally on `h`. In the `lt_succ` case
-it calls `nat_wf`; in the `lt_trans` case it extracts the accessibility
+`natWfHelp k y h` recurses structurally on `h`. In the `ltSucc` case
+it calls `natWf`; in the `ltTrans` case it extracts the accessibility
 continuation from the recursive result and applies it to the first
 ordering proof.
 
-The final theorem uses `strong_ind` from `proofs.doxa`.
-`strong_ind_impl` is a direct `Acc.rec` application to `nat_wf`. Its
+The final theorem uses `strongInd` from `proofs.doxa`.
+`strongIndImpl` is a direct `Acc.rec` application to `natWf`. Its
 induction step receives a proof of the theorem at every strictly smaller
 natural number.
 
 ## 4. Algebraic lemmas
 
 - half n -- floor division by 2 (structural recursion)
-- lt_succ_right n m h -- if Lt n m then Lt n (succ m) (via lt_trans)
-- mult_4_eq a -- 4*a = 2*(2*a) (via mult_assoc)
-- mult_two_succ n -- 2*(succ n) = succ (succ (2*n))
-- mult_2_inj a b h -- if 2*a = 2*b then a = b
-- square_double p -- (2*p)^2 = 4*p^2 (using mult_assoc, mult_comm)
-- lt_succ_mono a b h -- if Lt a b then Lt (succ a) (succ b)
-- even_implies_double n h -- if even n = true_ then n = 2 * half n
-- lt_succ_t_mult_two_t t -- succ t < 2 * succ t
-- lt_t_succ_k t k h -- if succ k = 2*t then t < succ k
+- ltSuccRight n m h -- if Lt n m then Lt n (succ m) (via ltTrans)
+- multiply4Eq a -- 4*a = 2*(2*a) (via multiplyAssoc)
+- multiplyTwoSucc n -- 2*(succ n) = succ (succ (2*n))
+- multiply2Inj a b h -- if 2*a = 2*b then a = b
+- squareDouble p -- (2*p)^2 = 4*p^2 (using multiplyAssoc, multiplyComm)
+- ltSuccMono a b h -- if Lt a b then Lt (succ a) (succ b)
+- evenImpliesDouble n h -- if even n = true_ then n = 2 * half n
+- ltSuccTMultiplyTwoT t -- succ t < 2 * succ t
+- ltTSuccK t k h -- if succ k = 2*t then t < succ k
 
 ## 5. sqrt2 theorem
 
-Given `h_eq: Eq Nat (square n) (mult two (square m))`, the theorem proves
-`Eq Nat n zero`. It applies `strong_ind` to `n` and first obtains
-`Eq Nat n (mult two (half n))` from `sqrt2_parity`. Writing `t = half n`
-and `u = half m`, algebraic rewriting and `mult_2_inj` derive
-`Eq Nat (square t) (mult two (square u))`.
+Given `hEq: Eq Nat (square n) (multiply two (square m))`, the theorem proves
+`Eq Nat n zero`. It applies `strongInd` to `n` and first obtains
+`Eq Nat n (multiply two (half n))` from `sqrt2Parity`. Writing `t = half n`
+and `u = half m`, algebraic rewriting and `multiply2Inj` derive
+`Eq Nat (square t) (multiply two (square u))`.
 
 The final case analysis is on `t`:
 
-- If `t = zero`, `Eq Nat n (mult two t)` yields `Eq Nat n zero`.
-- If `t = succ v`, `lt_t_succ_k` and the equation for `n` establish
+- If `t = zero`, `Eq Nat n (multiply two t)` yields `Eq Nat n zero`.
+- If `t = succ v`, `ltTSuccK` and the equation for `n` establish
   `Lt (succ v) n`. The induction hypothesis applied to the displayed
-  equality gives `Eq Nat (succ v) zero`, which `succ_ne_zero` refutes.
+  equality gives `Eq Nat (succ v) zero`, which `succNeZero` refutes.
 
 ## 6. Verification
 

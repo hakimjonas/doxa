@@ -42,20 +42,20 @@ Four infix operators stand for the standard-library operations. Each one is desu
 
 | Operator | Expands to | Associativity |
 |---|---|---|
-| `*` | `mult` | left |
+| `*` | `multiply` | left |
 | `+` | `plus` | left |
 | `<=` | `leq` | none |
-| `==` | `eqb` | none |
+| `==` | `equals` | none |
 
-`*` binds tighter than `+`, and both bind tighter than the comparisons, which share one level. Application binds tighter than every operator, and `->` binds looser than every operator. `a + b * c` parses as `plus a (mult b c)`, and `a * b + c` parses as `plus (mult a b) c`. A left-associative operator groups to the left, so `a + b + c` is `plus (plus a b) c`.
+`*` binds tighter than `+`, and both bind tighter than the comparisons, which share one level. Application binds tighter than every operator, and `->` binds looser than every operator. `a + b * c` parses as `plus a (multiply b c)`, and `a * b + c` parses as `plus (multiply a b) c`. A left-associative operator groups to the left, so `a + b + c` is `plus (plus a b) c`.
 
 The comparisons do not associate. Writing `a <= b <= c`, `a == b == c`, or `a <= b == c` is a parse error at the second operator, and the diagnostic names that operator. A parenthesized comparison is an ordinary expression, so `(a <= b) == c` parses.
 
-The operators are monomorphic. `+` expands to `plus` and to nothing else; the surface has no overloaded arithmetic, and the algebra monoids' `add` and `mul` are not reachable through `+` and `*`. `==` expands to `eqb`, whose implicit `Eqb` dictionary argument is inserted by elaboration, so instance search selects the instance: `x == y` type-checks wherever an `Eqb` instance exists, including `Nat`, `Bool`, and `List Nat`.
+The operators are monomorphic. `+` expands to `plus` and to nothing else; the surface has no overloaded arithmetic, and the algebra monoids' `add` and `multiply` are not reachable through `+` and `*`. `==` expands to `equals`, whose implicit `Eqb` dictionary argument is inserted by elaboration, so instance search selects the instance: `x == y` type-checks wherever an `Eqb` instance exists, including `Nat`, `Bool`, and `List Nat`.
 
 The expansion is a plain identifier use resolved in the scope of the use site. A local binding of `plus` shadows the standard library's `plus` for `a + b` exactly as it does for `plus a b`. An operator whose expanded name is not in scope reports an unresolved name whose span is the operator itself.
 
-`calc` endpoints and step proofs use the same expression grammar, so a chain can spell its arithmetic either way: `calc(a + b = b + a := plus_comm a b)` parses and checks like `calc(plus a b = plus b a := plus_comm a b)`. The `=` between a step's endpoints and the `:=` before its proof are relations, not the `==` operator.
+`calc` endpoints and step proofs use the same expression grammar, so a chain can spell its arithmetic either way: `calc(a + b = b + a := plusComm a b)` parses and checks like `calc(plus a b = plus b a := plusComm a b)`. The `=` between a step's endpoints and the `:=` before its proof are relations, not the `==` operator.
 
 Lambdas use `(x: A) => body` or `{x: A} => body`, and curly binders are implicit. The unannotated `(x) => body` requires an expected Pi type. Pi types use `(x: A) -> B`, `{x: A} -> B`, or `A -> B`; `A -> B -> C` associates to the right, and the non-dependent arrow has an unnamed explicit binder.
 
@@ -139,7 +139,7 @@ before the main goal, and the fact is not in scope in its own type or proof.
 
 `simp` normalises the goal by evaluation and rewrites it with
 the equality hypotheses in context; an optional bracketed list adds
-equalities, as in `simp [plus_zero, plus_succ]`. `cases x` destructs a
+equalities, as in `simp [plusZero, plusSucc]`. `cases x` destructs a
 variable into one subgoal per constructor, without induction hypotheses.
 `constructor` applies the first constructor whose result type matches the
 goal, leaving its arguments as subgoals. `auto` searches depth-bounded for
@@ -411,7 +411,7 @@ data Eqb[A: Type] : Type {
 ```
 
 together with the projection
-`Eqb.eqb : {A: Type} -> (x: A) -> (y: A) -> {inst: Eqb A} -> Bool`. A
+`Eqb.equals : {A: Type} -> (x: A) -> (y: A) -> {inst: Eqb A} -> Bool`. A
 projection binds the class parameters implicitly, then the method's explicit
 arguments, then the dictionary as an implicit binder after them; its body
 applies the dictionary field to the explicit arguments.
@@ -419,7 +419,7 @@ applies the dictionary field to the explicit arguments.
 ### Projection names
 
 The projection's name is `Class.method`, and the dictionary field keeps the
-bare method name. A dictionary value therefore still projects with `d.mul`.
+bare method name. A dictionary value therefore still projects with `d.multiply`.
 `Class.method` is usable in a term and in a type and applies like any function.
 A method inherited from a parent resolves through the class that declares it:
 `Ring.add` names the `AddMonoid.add` projection.
@@ -439,8 +439,8 @@ A bare method name resolves when it selects one projection:
   a top-level binding selects one, elaboration reports `AmbiguousClassMethod`
   and names the `Class.method` forms.
 
-`Ring`'s `mul_assoc` therefore reads `Ring.mul`, and `Ring`'s `mul_add` reads
-`Ring.mul` and the inherited `AddMonoid.add`.
+`Ring`'s `multiplyAssoc` therefore reads `Ring.multiply`, and `Ring`'s
+`multiplyAdd` reads `Ring.multiply` and the inherited `AddMonoid.add`.
 
 ```doxa
 import "package:doxa_stdlib/stdlib/algebra.doxa"
@@ -468,7 +468,7 @@ reference is a class application over the class's own type parameters.
 <!-- doxa: fragment -->
 ```doxa
 typeclass Ord[A: Type]: Eqb[A] {
-  fun cmp(x: A, y: A): Bool;
+  fun compare(x: A, y: A): Bool;
 }
 ```
 
@@ -477,12 +477,12 @@ elaborates the dictionary with the parent dictionary as its first field:
 <!-- doxa: fragment -->
 ```doxa
 data Ord[A: Type] : Type {
-  mkOrd: (_super: Eqb A) -> (cmp: (x: A) -> (y: A) -> Bool) -> Ord A;
+  mkOrd: (_super: Eqb A) -> (compare: (x: A) -> (y: A) -> Bool) -> Ord A;
 }
 ```
 
-The parent's methods remain the parent's projections, named `Eqb.eqb`; `Ord`
-adds only `Ord.cmp`. The superclass reference must apply the parent class to
+The parent's methods remain the parent's projections, named `Eqb.equals`; `Ord`
+adds only `Ord.compare`. The superclass reference must apply the parent class to
 distinct class type parameters, with every class parameter appearing once. A
 parent class with more than one parameter follows the same rule.
 
@@ -512,7 +512,7 @@ typeclass Pair[A: Type, B: Type] {
 }
 ```
 
-elaborates to `mk_Pair: (fst: (x: A) -> (y: B) -> A) -> Pair A B` and the
+elaborates to `mkPair: (fst: (x: A) -> (y: B) -> A) -> Pair A B` and the
 projection `fst : {A: Type} -> {B: Type} -> (x: A) -> (y: B) -> {inst: Pair A B} -> A`.
 
 An instance applies the class to one target per parameter. Each target
@@ -554,7 +554,7 @@ class declaration. Search does not prefer the more specific instance.
 ### Local dictionaries
 
 A local dictionary is an ordinary `val` binding of the dictionary type. The
-class constructor `mk_<Class>` builds the value, and instance search consults
+class constructor `mk<Class>` builds the value, and instance search consults
 in-scope local binders before the registered instances. The binding supplies
 the dictionary to a call in its scope when that call is checked against a
 known result type; the example annotates the intermediate result. A local

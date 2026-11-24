@@ -93,9 +93,9 @@ refinement.
 Fourteen tactic steps are available: `intro`, `exact`, `apply`, `refl`,
 `rewrite`, `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`,
 `constructor`, and `have`. `calc` chains compose equalities as named steps.
-Four infix operators, `*`, `+`, `<=`, and `==`, spell `mult`, `plus`, `leq`,
-and `eqb`; the operators are monomorphic to those functions, so the algebra
-monoids' `add` and `mul` are not reachable through them.
+Four infix operators, `*`, `+`, `<=`, and `==`, spell `multiply`, `plus`, `leq`,
+and `equals`; the operators are monomorphic to those functions, so the algebra
+monoids' `add` and `multiply` are not reachable through them.
 Typeclasses cover single-parameter classes, class-qualified projections,
 instance search, explicit type arguments, parameterised instances,
 superclasses with the derived parent dictionary, local dictionaries, and
@@ -111,7 +111,7 @@ The standard library covers arithmetic, `Nat`, `Bool`, `List`, `Vec`,
 `Option`, `Sigma`, `Int`, equality, the `sqrt2` case study, the algebra
 monoids and the additive group, and a ring, with `Nat` and `List` monoid
 instances plus `AddMonoid[Int]`, `AddGroup[Int]`, and `Ring[Int]`. `Ring`
-declares its own `mul` and `mone`; the class-qualified projections keep them
+declares its own `multiply` and `one`; the class-qualified projections keep them
 distinct from `Monoid`'s. The hierarchy stops there: there is no additive
 commutative group and no commutative ring, and `AddGroup` and `Ring` have only
 the `Int` instances. `rational.doxa` is a first cut with a constructor and no
