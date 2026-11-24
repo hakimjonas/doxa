@@ -426,18 +426,21 @@ A method inherited from a parent resolves through the class that declares it:
 
 A bare method name resolves when it selects one projection:
 
+- Inside a class declaration, the class's own law fields resolve a bare
+  method against the current class first, then its parents.
 - A local dictionary, or a constrained parameter, whose class declares the
   method selects that class. The class may reach the declaring class through
   the superclass chain.
+- Otherwise a top-level binding of that name selects the top-level function,
+  even when exactly one class declares the method. A unique declaring class
+  never overrides an explicit top-level function.
 - Otherwise a unique declaring class selects the projection.
-- When more than one class declares the name and no local dictionary selects
-  one, elaboration reports `AmbiguousClassMethod` and names the
-  `Class.method` forms.
+- When more than one class declares the name and neither a local dictionary nor
+  a top-level binding selects one, elaboration reports `AmbiguousClassMethod`
+  and names the `Class.method` forms.
 
-Inside a class declaration, the class's own law fields resolve a bare method
-against the current class first, then its parents. `Ring`'s `mul_assoc`
-therefore reads `Ring.mul`, and `Ring`'s `mul_add` reads `Ring.mul` and the
-inherited `AddMonoid.add`.
+`Ring`'s `mul_assoc` therefore reads `Ring.mul`, and `Ring`'s `mul_add` reads
+`Ring.mul` and the inherited `AddMonoid.add`.
 
 ```doxa
 import "package:doxa_stdlib/stdlib/algebra.doxa"
@@ -447,6 +450,11 @@ val product_eq : Eq Nat product (succ zero) = refl product
 val integerProduct : Int = Ring.mul (pos (succ zero)) (pos (succ zero))
 val integerProduct_eq : Eq Int integerProduct (pos (succ zero)) =
   refl integerProduct
+
+fun mul(x: Nat, y: Nat): Nat = x * y
+
+val topLevel : Nat = mul (succ zero) (succ zero)
+val qualified : Nat = Monoid.mul (succ zero) (succ zero)
 
 fun twice[A: AddMonoid](x: A): A = add x x
 fun selfMul[A: Ring](x: A): A = mul x x

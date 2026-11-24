@@ -2608,14 +2608,18 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
           }
         }
       }
-      if (state.topEnv.indexOfFromEnd(name) < 0) {
-        // Fall back to a class method projection. A bare method name is
-        // usable when the current class, a local dictionary, or a unique
-        // declaring class selects it.
-        final qualified = _resolveBareClassMethod(state, name, expr.span);
-        final classEntry =
-            qualified == null ? null : state.ctx.env.lookupTop(qualified);
-        if (qualified != null && classEntry != null) {
+      // Bare-name precedence (SPEC "Projection names"): the current class
+      // or a local dictionary's class first, then a top-level binding, then
+      // a unique declaring class.
+      final topIndex = state.topEnv.indexOfFromEnd(name);
+      final qualified =
+          _resolveLocalClassMethod(state, name, expr.span) ??
+          (topIndex < 0
+              ? _resolveUniqueClassMethod(state, name, expr.span)
+              : null);
+      if (qualified != null) {
+        final classEntry = state.ctx.env.lookupTop(qualified);
+        if (classEntry != null) {
           _recordSemInfo(
             state,
             expr.span,
@@ -2626,6 +2630,8 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
           );
           return (TTop(qualified), classEntry.type);
         }
+      }
+      if (topIndex < 0) {
         throw UnresolvedName(name, expr.span);
       }
       final topEntry = state.ctx.env.lookupTop(name);
@@ -4163,33 +4169,57 @@ bool _classHasLocalDictionary(_ElabState state, String candidate) {
   return false;
 }
 
-/// Resolve a bare class-method reference [name] to its qualified
-/// `Class.method` projection, or null when no class declares it.
+/// Resolve a bare class-method reference [name] through the current class
+/// or a local dictionary, or null when neither selects one.
 ///
 /// Inside a class declaration the current class wins, then its parents.
 /// Elsewhere a local dictionary for a declaring class (or a subclass of
-/// one) wins, then a unique declaring class. Two surviving candidates
-/// raise [AmbiguousClassMethod].
-String? _resolveBareClassMethod(_ElabState state, String name, DoxaSpan span) {
+/// one) wins. Two classes selected by local dictionaries raise
+/// [AmbiguousClassMethod].
+///
+/// This is the first step of the bare-name order in SPEC "Projection
+/// names"; a top-level binding comes next, so a rename that gives a class
+/// method and a top-level function the same name still resolves in a
+/// constrained body.
+String? _resolveLocalClassMethod(_ElabState state, String name, DoxaSpan span) {
   final registry = state.topEnv.classRegistry;
   final current = state.currentClass;
   if (current != null) {
     final declared = _declaringClass(registry, current, name);
     if (declared != null) return '$declared.$name';
   }
-  final candidates = [
+  final local = [
     for (final info in registry.values)
+      if (info.methods.any((method) => method.$1 == name) &&
+          _classHasLocalDictionary(state, info.className))
+        info.className,
+  ];
+  if (local.isEmpty) return null;
+  if (local.length == 1) return '${local.single}.$name';
+  throw AmbiguousClassMethod(name, [
+    for (final candidate in local) '$candidate.$name',
+  ], span);
+}
+
+/// Resolve a bare class-method reference [name] to a unique declaring
+/// class, or null when no class declares it.
+///
+/// Runs after the top-level lookup, so an explicit top-level function wins
+/// over a single declaring class. Several declaring classes raise
+/// [AmbiguousClassMethod] naming each `Class.method` form.
+String? _resolveUniqueClassMethod(
+  _ElabState state,
+  String name,
+  DoxaSpan span,
+) {
+  final candidates = [
+    for (final info in state.topEnv.classRegistry.values)
       if (info.methods.any((method) => method.$1 == name)) info.className,
   ];
   if (candidates.isEmpty) return null;
-  final local = [
-    for (final candidate in candidates)
-      if (_classHasLocalDictionary(state, candidate)) candidate,
-  ];
-  final pool = local.isEmpty ? candidates : local;
-  if (pool.length == 1) return '${pool.single}.$name';
+  if (candidates.length == 1) return '${candidates.single}.$name';
   throw AmbiguousClassMethod(name, [
-    for (final candidate in pool) '$candidate.$name',
+    for (final candidate in candidates) '$candidate.$name',
   ], span);
 }
 

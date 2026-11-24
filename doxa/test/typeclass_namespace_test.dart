@@ -44,6 +44,17 @@ String _ctorName(Value value) {
   return (value as VConstr).ctorName;
 }
 
+/// The number of `succ` wrappers on a `Nat` value.
+int _natDepth(Value value) {
+  var current = value;
+  var depth = 0;
+  while (current is VConstr && current.ctorName == 'succ') {
+    current = current.args.last;
+    depth += 1;
+  }
+  return depth;
+}
+
 /// Two classes with the same method name, plus their Nat instances.
 const _twoTags = '''
 typeclass Left[A: Type] {
@@ -316,5 +327,78 @@ val parent : Eq Nat zero zero = Ringy.parentLaw zero
       expect(_ctorName(_evalBinding(env, 'own')), 'refl');
       expect(_ctorName(_evalBinding(env, 'parent')), 'refl');
     });
+  });
+
+  group('top-level names and class methods', () {
+    test('a unique class does not override a top-level function', () {
+      // `only` names both the class method and a top-level function.
+      // SPEC "Projection names" puts a local dictionary or the current
+      // class first, then the top-level binding, then a unique class.
+      final env = checkProgram(
+        pp('''
+$_prelude
+typeclass Only[A: Type] {
+  fun only(x: A): A;
+}
+impl Only[Nat] {
+  fun only(x: Nat): Nat = succ x;
+}
+fun only(x: Nat): Nat = zero
+fun underOnly[A: Only](x: A): A = only x
+val top: Nat = only (succ zero)
+val viaClass: Nat = Only.only (succ zero)
+val constrained: Nat = underOnly Nat (succ zero)
+'''),
+      );
+
+      expect(_natDepth(_evalBinding(env, 'top')), 0);
+      expect(_natDepth(_evalBinding(env, 'viaClass')), 2);
+      expect(_natDepth(_evalBinding(env, 'constrained')), 2);
+    });
+
+    test('a local dictionary selects the class method over the top level', () {
+      final env = checkProgram(
+        pp('''
+$_prelude
+typeclass Only[A: Type] {
+  fun only(x: A): A;
+}
+impl Only[Nat] {
+  fun only(x: Nat): Nat = succ x;
+}
+fun only(x: Nat): Nat = zero
+fun underLocal(x: Nat): Nat = {
+  val d : Only Nat = mk_Only ((y: Nat) => succ y);
+  only x
+}
+val local: Nat = underLocal (succ zero)
+'''),
+      );
+
+      expect(_natDepth(_evalBinding(env, 'local')), 2);
+    });
+
+    test(
+      'a law body reads the current class when a top level shares the name',
+      () {
+        // The law is stated over `A`. If the body read the top-level `mark`,
+        // the `mark x y` application would not type-check at `A`.
+        final env = checkProgram(
+          pp('''
+$_prelude
+typeclass Marked[A: Type] {
+  fun mark(x: A, y: A): A;
+  fun markLaw(x: A, y: A): Eq A (mark x y) (mark x y);
+}
+fun mark(x: Nat, y: Nat): Nat = y
+'''),
+        );
+
+        expect(
+          env.bindings.where((b) => b.name == 'Marked.markLaw'),
+          hasLength(1),
+        );
+      },
+    );
   });
 }
