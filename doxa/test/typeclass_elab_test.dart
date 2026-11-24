@@ -338,7 +338,18 @@ typeclass Twice[A: Type] {
 '''),
         ),
         throwsA(
-          isA<DuplicateDeclaration>().having((e) => e.name, 'name', 'show'),
+          isA<DuplicateDeclaration>()
+              .having((e) => e.name, 'name', 'show')
+              .having(
+                (e) => e.previousSpan.start < e.span.start,
+                'previous span precedes the redeclaration',
+                isTrue,
+              )
+              .having(
+                (e) => e.previousSpan.isSynthetic || e.span.isSynthetic,
+                'both spans are source spans',
+                isFalse,
+              ),
         ),
       );
     });
