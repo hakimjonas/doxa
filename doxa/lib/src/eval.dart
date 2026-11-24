@@ -6828,6 +6828,7 @@ Ctx installMetaContext(Ctx ctx, MetaContext metas) {
   return CCons(
     c.type,
     c.value,
+    c.neutral,
     c.env,
     c.level,
     installMetaContext(c.rest, metas),

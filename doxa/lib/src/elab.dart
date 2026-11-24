@@ -4690,6 +4690,7 @@ Ctx substNVarInCtx(Ctx ctx, int scrutLevel, Value replacement) {
     case CCons(
       :final type,
       :final value,
+      :final neutral,
       :final env,
       :final level,
       :final rest,
@@ -4699,7 +4700,7 @@ Ctx substNVarInCtx(Ctx ctx, int scrutLevel, Value replacement) {
       if (identical(newType, type) && identical(newRest, rest)) {
         return ctx;
       }
-      return CCons(newType, value, env, level, newRest);
+      return CCons(newType, value, neutral, env, level, newRest);
   }
 }
 
@@ -4713,6 +4714,7 @@ Ctx _normalizeChangedCtx(Ctx ctx, int armLevel, Env armEnv) {
     case CCons(
       :final type,
       :final value,
+      :final neutral,
       :final env,
       :final level,
       :final rest,
@@ -4722,7 +4724,7 @@ Ctx _normalizeChangedCtx(Ctx ctx, int armLevel, Env armEnv) {
       if (identical(newType, type) && identical(newRest, rest)) {
         return ctx;
       }
-      return CCons(newType, value, env, level, newRest);
+      return CCons(newType, value, neutral, env, level, newRest);
   }
 }
 

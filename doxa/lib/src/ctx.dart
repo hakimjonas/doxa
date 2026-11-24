@@ -85,14 +85,53 @@ sealed class Ctx {
   /// through unchanged.
   Ctx extend(Value type) {
     final fresh = VNeutral(NVar(level));
-    return CCons(type, fresh, env.extend(fresh), level + 1, this);
+    return CCons(type, fresh, fresh, env.extend(fresh), level + 1, this);
   }
 
   /// Extend the context with [type] and a specific [value] (rather than
   /// a fresh neutral). Used by the elaborator / CLI to bind top-level
   /// definitions to their concrete values.
-  Ctx extendWith(Value type, Value value) =>
-      CCons(type, value, env.extend(value), level + 1, this);
+  ///
+  /// The binder still carries a distinct meta-neutral at its level. The
+  /// elaboration value stays [value] so a let keeps its definitional
+  /// unfolding, while metavariable spines use the neutral (see
+  /// [metaEnv]).
+  Ctx extendWith(Value type, Value value) => CCons(
+    type,
+    value,
+    VNeutral(NVar(level)),
+    env.extend(value),
+    level + 1,
+    this,
+  );
+
+  /// The evaluation environment whose binder entries are the
+  /// meta-neutrals instead of the values.
+  ///
+  /// Elaborator metavariables abstract over the context by applying the
+  /// meta to one argument per binder. Pattern unification requires those
+  /// arguments to be distinct variables. A lambda binder's value is
+  /// already its fresh neutral, but a let binder's value is the bound
+  /// expression, or an alias of an outer variable. Applying a meta to
+  /// those values gives a constant or repeated spine, which does not
+  /// unify. This environment maps each binder to its [CCons.neutral] so
+  /// the spine is distinct by construction.
+  Env get metaEnv {
+    final neutrals = <Value>[];
+    var c = this;
+    while (c is CCons) {
+      neutrals.add(c.neutral);
+      c = c.rest;
+    }
+    Env result = ENil.withRegistries(
+      dataDecls: dataDecls,
+      topBindings: env.topBindings,
+    );
+    for (var i = neutrals.length - 1; i >= 0; i--) {
+      result = result.extend(neutrals[i]);
+    }
+    return result;
+  }
 
   /// Look up the type bound at de Bruijn [index].
   ///
@@ -169,6 +208,15 @@ final class CCons extends Ctx {
   /// The value of the bound variable at index 0 in the parallel env.
   final Value value;
 
+  /// A distinct neutral at this binder's level, used to build
+  /// metavariable spines.
+  ///
+  /// For a lambda binder this is the same fresh variable as [value]. For
+  /// a let binder [value] is the bound expression and this is a fresh
+  /// variable, so a meta spine stays a list of distinct variables. Only
+  /// [Ctx.metaEnv] reads it; the kernel and evaluation read [value].
+  final Value neutral;
+
   /// The evaluation environment parallel to this context.
   @override
   final Env env;
@@ -181,7 +229,14 @@ final class CCons extends Ctx {
   final Ctx rest;
 
   /// Creates a non-empty context.
-  const CCons(this.type, this.value, this.env, this.level, this.rest);
+  const CCons(
+    this.type,
+    this.value,
+    this.neutral,
+    this.env,
+    this.level,
+    this.rest,
+  );
 
   /// The registry threaded through from the base.
   @override
