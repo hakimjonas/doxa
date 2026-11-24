@@ -36,6 +36,12 @@ project is ready.
   are checked instead of aborting with an internal error. An inferred type
   that still depends on an undetermined metavariable is reported as
   `cannot infer the type of declaration` with the annotation that fixes it.
+- Fixed a block binding before a call that needs an implicit argument. The
+  inserted metavariable was applied to each binder's value, so a `val`
+  binding gave the spine a constant or a repeated variable and pattern
+  unification could not solve it. Each binder now carries a distinct
+  meta-neutral alongside its value: evaluation and the let's definitional
+  unfolding keep the value, and metavariable spines use the neutral.
 
 **Quotients**
 
