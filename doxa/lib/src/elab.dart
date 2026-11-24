@@ -5557,10 +5557,18 @@ DeclResult _elabTypeclass(
   }
   final seenMethods = <String, DoxaSpan>{};
   for (final method in methods) {
+    // The method signature carries a source span; fall back to the class
+    // span only for a method without a type (a default-body form, which
+    // is rejected below).
+    final methodSpan = method.type?.span ?? span;
     if (seenMethods.containsKey(method.name)) {
-      throw DuplicateDeclaration(method.name, seenMethods[method.name]!, span);
+      throw DuplicateDeclaration(
+        method.name,
+        seenMethods[method.name]!,
+        methodSpan,
+      );
     }
-    seenMethods[method.name] = span;
+    seenMethods[method.name] = methodSpan;
     // Projections are class-qualified, so another class may declare the
     // same field name. Only the qualified name must be free.
     final qualifiedName = '$name.${method.name}';
