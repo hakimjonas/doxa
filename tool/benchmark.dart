@@ -18,15 +18,10 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:doxa/src/ctx.dart';
 import 'package:doxa/src/elab.dart';
-import 'package:doxa/src/env.dart';
-import 'package:doxa/src/eval.dart';
 import 'package:doxa/src/parse.dart';
 import 'package:doxa/src/prelude.dart' show loadPrelude;
 import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
-import 'package:doxa/src/term.dart';
-import 'package:doxa/src/value.dart';
 import 'package:rumil/rumil.dart';
 
 // ---------------------------------------------------------------------------
@@ -336,8 +331,6 @@ void _printTable(List<BenchResult> results) {
   );
 
   for (final entry in byCategory.entries) {
-    final cat = entry.key;
-
     for (final r in entry.value) {
       final bytes = r.workload.source.length;
       final srcCol =
@@ -391,10 +384,3 @@ String _churchDepthProgram(int depth) {
 String _read(File f) => f.readAsStringSync();
 
 String _readFull(String path) => File(path).readAsStringSync();
-
-String? _findFile(List<String> candidates) {
-  for (final c in candidates) {
-    if (File(c).existsSync()) return c;
-  }
-  return null;
-}

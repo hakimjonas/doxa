@@ -59,8 +59,6 @@ void main() {
   final r = parseProgram(src);
   if (r is Success<ParseError, SProgram>) {
     var exprCount = 0;
-    var spanBytes = 0;
-    var strBytes = 0;
 
     void walk(dynamic node, int depth) {
       if (node is SProgram) {

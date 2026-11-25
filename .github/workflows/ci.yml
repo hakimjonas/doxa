@@ -49,8 +49,14 @@ jobs:
         working-directory: ./doxa_stdlib
         run: dart analyze --no-fatal-warnings
 
+      - name: Install dependencies (root, for tool/)
+        run: dart pub get
+
+      - name: Analyze (tool harnesses)
+        run: dart analyze tool
+
       - name: Format check (Dart)
-        run: dart format --set-exit-if-changed doxa/ doxa_tooling/ doxa_stdlib/
+        run: dart format --set-exit-if-changed doxa/ doxa_tooling/ doxa_stdlib/ tool/
 
       - name: Test (doxa kernel)
         working-directory: ./doxa

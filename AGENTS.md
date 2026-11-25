@@ -135,8 +135,10 @@ Before staging or committing any change, run ALL of these from the
 repository root.  Do NOT commit if any check fails.
 
 ```sh
-# 1. Dart static analysis (all packages)
+# 1. Dart static analysis (all packages and the tool harnesses)
 (cd doxa && dart analyze)  && (cd doxa_tooling && dart analyze)  && (cd doxa_stdlib && dart analyze)
+dart pub get
+dart analyze tool
 
 # 2. Dart formatter (all packages and the root)
 dart format --set-exit-if-changed .
