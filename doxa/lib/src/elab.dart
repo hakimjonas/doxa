@@ -2315,6 +2315,7 @@ Term _elabTacticBlock(
       ];
       if (unsolved.isNotEmpty) {
         lastFail = 'unsolved metas: $unsolved';
+        lastFailSpan = metas.lookup(unsolved.first).span;
         continue;
       }
       try {
@@ -2323,6 +2324,7 @@ Term _elabTacticBlock(
         return term;
       } catch (_) {
         lastFail = 'goal meta unsolved';
+        lastFailSpan = metas.lookup(goalMetaId).span;
         continue;
       }
     }

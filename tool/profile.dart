@@ -1,8 +1,6 @@
 /// Quick profiling: run stdlib proofs and church depth 500 with breakdown.
 
-import 'dart:developer';
 import 'dart:io';
-import 'package:doxa/src/ctx.dart';
 import 'package:doxa/src/elab.dart'
     show
         checkDeclResult,
@@ -12,46 +10,21 @@ import 'package:doxa/src/elab.dart'
         TopEnv,
         TopBinding,
         DataDecl;
-import 'package:doxa/src/env.dart';
-import 'package:doxa/src/eval.dart';
 import 'package:doxa/src/parse.dart';
-import 'package:doxa/src/pretty.dart';
+import 'package:doxa/src/prelude.dart' show loadPrelude;
 import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
 import 'package:rumil/rumil.dart';
 
-const prelude = '''
-data Eq[A: Type] : A -> A -> Prop {
-  refl : (x: A) -> Eq[A] x x;
-}
-
-data Acc[A: Type] : (A -> A -> Prop) -> A -> Prop {
-  acc_intro : (R: A -> A -> Prop) -> (x: A) -> ((y: A) -> R y x -> Acc A R y) -> Acc A R x;
-}
-''';
-
 void main() {
-  // Load prelude
-  var bindings = <TopBinding>[];
-  var dataDecls = <DataDecl>[];
-  var namespaceBindings = <String, Set<String>>{};
-  for (final decl in _parseProg(prelude).decls) {
-    final p = elabDecl(
-      TopEnv(bindings, dataDecls, const {}, namespaceBindings),
-      decl,
-    );
-    final rd = [...dataDecls, ...p.dataDecls];
-    bindings = [
-      ...bindings,
-      ...checkDeclResult(TopEnv(bindings, rd, const {}, namespaceBindings), p),
-    ];
-    dataDecls = rd;
-    namespaceBindings = mergeNamespace(namespaceBindings, p.namespaceBindings);
-  }
+  final prelude = loadPrelude();
+  final bindings = prelude.bindings;
+  final dataDecls = prelude.dataDecls;
+  final namespaceBindings = prelude.namespaceBindings;
 
   // stdlib proofs
   final src = _read('doxa_stdlib/lib/stdlib/proofs.doxa');
   final sw = Stopwatch();
-  var totalParse = 0, totalElab = 0, totalCheck = 0, totalNf = 0;
+  var totalParse = 0, totalElab = 0, totalCheck = 0;
 
   // Warmup
   final importState = ImportState();

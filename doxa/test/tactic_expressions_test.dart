@@ -161,6 +161,37 @@ val apply_leftover : Nat = by {
       );
     });
 
+    test('a hidden unsolved meta reports the alternative that left it', () {
+      const source = '''
+$_nat
+fun implicit_any{A: Type}(x: Nat): Nat = x
+fun two_nats(a: Nat, b: Nat): Nat = a
+val alternative : Nat = by {
+  apply two_nats;
+  exact zero
+|
+  apply implicit_any;
+  exact zero
+}
+''';
+      final use = source.indexOf('apply implicit_any') + 'apply '.length;
+      final first = source.indexOf('apply two_nats') + 'apply '.length;
+      Object? error;
+      try {
+        _elabAndCheck(source);
+      } on Object catch (e) {
+        error = e;
+      }
+      expect(error, isA<TacticFailed>());
+      final failed = error as TacticFailed;
+      expect(failed.span, DoxaSpan(use, use + 'implicit_any'.length));
+      expect(
+        failed.span,
+        isNot(DoxaSpan(first, first + 'two_nats'.length)),
+        reason: 'the span must come from the last alternative, not the first',
+      );
+    });
+
     test('apply does not expose implicit arguments as goals', () {
       // `cong` has four implicit parameters and two explicit ones. If the
       // implicits became goals, the first `exact` would target `Type`.

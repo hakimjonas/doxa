@@ -1,13 +1,10 @@
 /// Profiling: parse vs elab vs check breakdown, plus eval/conv stress.
 
-import 'dart:developer';
-import 'package:doxa/src/ctx.dart';
 import 'package:doxa/src/elab.dart'
     show
         checkDeclResult,
         ImportState,
         elabDecl,
-        DeclResult,
         mergeNamespace,
         TopEnv,
         TopBinding,
@@ -18,31 +15,15 @@ import 'package:doxa/src/parse.dart';
 import 'package:doxa/src/surface.dart' show SProgram, SImportKind;
 import 'package:doxa/src/term.dart';
 import 'package:doxa/src/value.dart';
-import 'package:doxa/src/prelude.dart' show mergeNamespace;
+import 'package:doxa/src/prelude.dart' show loadPrelude;
 import 'package:rumil/rumil.dart';
 import 'dart:io';
-import 'dart:math';
-
-const _prelude = '''
-data Eq[A: Type] : A -> A -> Prop {
-  refl : (x: A) -> Eq[A] x x;
-}
-
-data Acc[A: Type] : (A -> A -> Prop) -> A -> Prop {
-  acc_intro : (R: A -> A -> Prop) -> (x: A) -> ((y: A) -> R y x -> Acc A R y) -> Acc A R x;
-}
-''';
 
 void main() {
-  // Seed prelude
-  var b = <TopBinding>[], d = <DataDecl>[], ns = <String, Set<String>>{};
-  for (final decl in _parse(_prelude).decls) {
-    final prod = elabDecl(TopEnv(b, d, const {}, ns), decl);
-    final rd = [...d, ...prod.dataDecls];
-    b = [...b, ...checkDeclResult(TopEnv(b, rd, const {}, ns), prod)];
-    d = rd;
-    ns = mergeNamespace(ns, prod.namespaceBindings);
-  }
+  final prelude = loadPrelude();
+  final b = prelude.bindings;
+  final d = prelude.dataDecls;
+  final ns = prelude.namespaceBindings;
 
   profileStdlib(b, d, ns);
   profileChurch(b, d, ns, 500);
@@ -277,6 +258,7 @@ void _check(
         prod,
       ),
     ];
+    d = rd;
     ns = mergeNamespace(ns, prod.namespaceBindings);
   }
 }
