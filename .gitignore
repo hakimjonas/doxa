@@ -16,6 +16,7 @@ build/
 *.iml
 .vscode/
 .claude/
+opencode.json
 
 # Internal session handover (never public)
 HANDOVER.md
