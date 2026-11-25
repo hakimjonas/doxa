@@ -62,7 +62,7 @@ typedef Workload = void Function(int depth);
 Term appChain(int depth) {
   Term t = const TBound(0);
   for (var i = 0; i < depth; i++) {
-    t = TApp(t, const TType(0));
+    t = TApp(t, const TType(LLevel(0)));
   }
   return t;
 }
@@ -71,27 +71,27 @@ Env appChainEnv() => const ENil().extend(const VNeutral(NVar(0)));
 
 // λx1. λx2. ... λxN. Type, depth-deep.
 Term nestedLams(int depth) {
-  Term t = const TType(0);
+  Term t = const TType(LLevel(0));
   for (var i = 0; i < depth; i++) {
-    t = TLam(const TType(0), t);
+    t = TLam(const TType(LLevel(0)), t);
   }
   return t;
 }
 
 // (x0: T) -> (x1: T) -> ... -> (xN: T) -> Type, depth-deep.
 Term nestedPis(int depth) {
-  Term t = const TType(0);
+  Term t = const TType(LLevel(0));
   for (var i = 0; i < depth; i++) {
-    t = TPi(const TType(0), t);
+    t = TPi(const TType(LLevel(0)), t);
   }
   return t;
 }
 
 // let x0 = Type in let x1 = Type in ... Type, depth-deep.
 Term nestedLets(int depth) {
-  Term t = const TType(0);
+  Term t = const TType(LLevel(0));
   for (var i = 0; i < depth; i++) {
-    t = TLet(const TType(1), const TType(0), t);
+    t = TLet(const TType(LLevel(1)), const TType(LLevel(0)), t);
   }
   return t;
 }
@@ -99,8 +99,8 @@ Term nestedLets(int depth) {
 // depth-deep β-reduction chain: ((λx.x) ((λx.x) ((λx.x) ... Type))).
 // Mirrors the eval_test 'deep β-reduction' workload.
 Term deepBetaReduce(int depth) {
-  const idLam = TLam(TType(0), TBound(0));
-  Term t = const TType(0);
+  const idLam = TLam(TType(LLevel(0)), TBound(0));
+  Term t = const TType(LLevel(0));
   for (var i = 0; i < depth; i++) {
     t = TApp(idLam, t);
   }
@@ -109,7 +109,7 @@ Term deepBetaReduce(int depth) {
 
 // Phase-10 deep-args TData fold.
 Term deepData(int depth) {
-  final args = List<Term>.generate(depth, (_) => const TType(0));
+  final args = List<Term>.generate(depth, (_) => const TType(LLevel(0)));
   return TData('Vec', args);
 }
 
@@ -123,11 +123,11 @@ Term deepData(int depth) {
 // per arm, which recursed into nested VMatch values. Depth was
 // bounded by Dart stack; plus_comm-style proofs blew at ~5k.
 Term nestedMatchTerm(int depth) {
-  // Innermost body: just TType(0). At each wrap, build a match
+  // Innermost body: just TType(LLevel(0)). At each wrap, build a match
   // with a single wildcard arm whose body is the prior term.
   // Scrutinee is TBound(0) which we provide as a fresh neutral in
   // the eval env. Every match is stuck on the same neutral.
-  Term t = const TType(0);
+  Term t = const TType(LLevel(0));
   for (var i = 0; i < depth; i++) {
     t = TMatch(const TBound(0), null, [
       TMatchCase('', 0, t, const <String?>[]),
@@ -226,7 +226,7 @@ final Map<String, void Function(int)> workloads = {
   'infer deep Lam': (d) => infer(_emptyCtx, nestedLams(d)),
   'check deep Pi ≤ Type 1': (d) {
     final t = nestedPis(d);
-    check(_emptyCtx, t, const VType(1));
+    check(_emptyCtx, t, const VType(LLevel(1)));
   },
   'eval deep TData': (d) => eval(deepData(d), const ENil()),
   'nf deep let': (d) => nf(nestedLets(d)),

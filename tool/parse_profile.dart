@@ -1,7 +1,5 @@
 import 'dart:io';
 import 'package:doxa/src/parse.dart';
-import 'package:doxa/src/surface.dart';
-import 'package:rumil/rumil.dart';
 
 void main() {
   // Profile: parse-only, no elaboration, no checking.
