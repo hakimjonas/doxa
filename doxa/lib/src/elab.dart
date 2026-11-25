@@ -2287,6 +2287,7 @@ Term _elabTacticBlock(
   var attemptStart = metas.length;
   var lastEst = state;
   String? lastFail;
+  DoxaSpan? lastFailSpan;
   for (final alt in kind.steps) {
     metas.restore(rootSnapshot);
     attemptStart = metas.length;
@@ -2300,6 +2301,7 @@ Term _elabTacticBlock(
     lastEst = newEst;
     if (result is TacticFail) {
       lastFail = result.message;
+      lastFailSpan = result.span;
     }
     if (result is TacticOk) {
       // The block is closed only when every meta allocated by this
@@ -2329,7 +2331,7 @@ Term _elabTacticBlock(
   throw TacticFailed(
     'tactic block: no alternative succeeded'
     '${lastFail == null ? '' : ' ($lastFail)'}',
-    span,
+    lastFailSpan ?? span,
   );
 }
 
@@ -2436,7 +2438,10 @@ List<String> _localScopeNames(_LocalScope scope) {
   if (current != null) {
     final remaining = 1 + current.pending.length;
     return (
-      TacticFail('tactic block: $remaining subgoal(s) remain'),
+      TacticFail(
+        'tactic block: $remaining subgoal(s) remain',
+        span: current.metas.lookup(current.currentMeta).span,
+      ),
       currentEst,
     );
   }
@@ -2507,7 +2512,7 @@ TacticResult _runApply(SExpr expr, TacticState tstate, _ElabState est) {
   // Infer the lemma in the tactic's real context so its implicit
   // arguments are inserted before `tacticApply` inspects the Pi chain.
   final (term, _) = _inferExpr(est, expr);
-  return tacticApply(term)(tstate);
+  return tacticApply(term)(tstate.copyWith(stepSpan: expr.span));
 }
 
 TacticResult _runRewrite(SExpr expr, TacticState tstate, _ElabState est) {

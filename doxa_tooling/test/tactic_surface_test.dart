@@ -96,6 +96,46 @@ val w : Wrap = by {
       },
     );
 
+    test('a leftover apply goal carets the apply expression', () async {
+      final directory = Directory.systemTemp.createTempSync('doxa-tac-span-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      const source = '''
+data Nat : Type {
+  zero : Nat;
+  succ : Nat -> Nat;
+}
+fun two_nats(a: Nat, b: Nat): Nat = a
+val bad : Nat = by {
+  apply two_nats;
+  exact zero
+}
+''';
+      final file = File('${directory.path}/leftover.doxa')
+        ..writeAsStringSync(source);
+      final result = await Process.run(Platform.resolvedExecutable, [
+        'run',
+        'bin/doxa.dart',
+        'check',
+        file.path,
+      ]);
+      expect(result.exitCode, 1);
+      final stderrText = result.stderr as String;
+      final lines = source.split('\n');
+      final applyLine = lines.indexWhere((l) => l.contains('apply two_nats'));
+      final applyColumn = lines[applyLine].indexOf('two_nats') + 1;
+      final declLine = lines.indexWhere((l) => l.startsWith('val bad'));
+      expect(
+        stderrText,
+        contains('${file.path}:${applyLine + 1}:$applyColumn'),
+        reason: stderrText,
+      );
+      expect(
+        stderrText,
+        isNot(contains('${file.path}:${declLine + 1}:1')),
+        reason: stderrText,
+      );
+    });
+
     test('a failed simp step restores the goal for the next step', () {
       var session = _seededSession();
       (_, session) = session.processInput(
