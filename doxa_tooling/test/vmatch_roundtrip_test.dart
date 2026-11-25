@@ -85,7 +85,7 @@ void main() {
 
     test('non-trivial env, level == depth: head reindexes correctly', () {
       // Non-trivial depth-4 env (slot1 = a nested stuck match), but
-      // level == depth (the append_nil shape).
+      // level == depth (the appendNil shape).
       final inner = stuckMatch(
         env: envOf([const VNeutral(NVar(0))]),
         scrutLevel: 0,
@@ -102,8 +102,8 @@ void main() {
       expect(consHead(quote(4, v)), const TBound(2));
     });
 
-    test('non-trivial env, level > depth: THE map_compose bug', () {
-      // map_compose env1: depth-4 [#0=NVar4 (=g), #1=VMatch, #2=NVar2,
+    test('non-trivial env, level > depth: THE mapCompose bug', () {
+      // mapCompose env1: depth-4 [#0=NVar4 (=g), #1=VMatch, #2=NVar2,
       // #3=NVar1], quoted at level 7.
       final inner = stuckMatch(
         env: envOf([const VNeutral(NVar(0))]),

@@ -113,9 +113,9 @@ typeclass WithDefault[A: Type]: Default[A] {
     });
 
     test('a ring checks the square and the qualified projections', () {
-      // The fixture imports the ring, so the module's `square_one` refl and
+      // The fixture imports the ring, so the module's `squareOne` refl and
       // the fixture's `square_two` refl are both checked, together with
-      // `Ring.mul` and the inherited `Ring.add`.
+      // `Ring.multiply` and the inherited `Ring.add`.
       final fixture = File('test/fixtures/ring_int.doxa');
       final r = runSource(fixture.readAsStringSync(), filename: fixture.path);
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
@@ -138,15 +138,31 @@ val r : Eq Nat (g (succ zero)) (succ (succ zero)) = refl (succ (succ zero))
     });
 
     test('an ambiguous bare method name reports the diagnostic', () {
+      // `one` is declared by `Monoid` and `Ring` and has no top-level
+      // binding, so the bare name stays ambiguous after the top-level step
+      // of SPEC's Projection names order.
       const src = '''
 import "../doxa_stdlib/lib/stdlib/algebra.doxa"
-val bad: Nat = mul (succ zero) (succ zero)
+val bad: Nat = one
 ''';
       final r = runSource(src);
       expect(r.code, 1);
       expect(r.stderr, contains('ambiguous class method'));
-      expect(r.stderr, contains('Monoid.mul'));
-      expect(r.stderr, contains('Ring.mul'));
+      expect(r.stderr, contains('Monoid.one'));
+      expect(r.stderr, contains('Ring.one'));
+    });
+
+    test('a top-level function wins over the class projections', () {
+      // `multiply` is declared by `Monoid` and `Ring` and by `nat.doxa`.
+      // The top-level binding selects the Nat operation, so the same bare
+      // name that reported ambiguity before the top-level step now checks.
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/algebra.doxa"
+val twice_two: Eq Nat (multiply (succ zero) (succ zero)) (succ zero) =
+  refl (succ zero)
+''';
+      final r = runSource(src);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
     test('an unknown class reports the named diagnostic', () {

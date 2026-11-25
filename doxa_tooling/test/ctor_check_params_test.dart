@@ -208,7 +208,7 @@ fun nat_wfP(n: Nat): AccP Nat ltP n = match n {
         ((a: Nat) => (b: Nat) => (_: Lt a b) => Eq Nat b zero -> False)
         y
         zero
-        ((n_: Nat) => (eq: Eq Nat (succ n_) zero) => succ_ne_zero n_ eq)
+        ((n_: Nat) => (eq: Eq Nat (succ n_) zero) => succNeZero n_ eq)
         ((n_: Nat) => (m: Nat) => (k: Nat) => (_: Lt n_ m) => (_: Lt m k) =>
           (_: Eq Nat m zero -> False) => (ih2: Eq Nat k zero -> False) =>
           (eq: Eq Nat k zero) => ih2 eq)
@@ -218,8 +218,8 @@ fun nat_wfP(n: Nat): AccP Nat ltP n = match n {
     ((y: Nat) => (h: Lt y (succ k)) => nat_wfP_help k y h)
 } and nat_wfP_help(k: Nat, y: Nat, h: Lt y (succ k)):
     AccP Nat ltP y {struct h} = match h {
-  case lt_succ y_ => nat_wfP y_
-  case lt_trans y_ m _ p1 p2 => match nat_wfP_help k m p2 {
+  case ltSucc y_ => nat_wfP y_
+  case ltTrans y_ m _ p1 p2 => match nat_wfP_help k m p2 {
     case acc_introP _ f => f y_ p1
   }
 }

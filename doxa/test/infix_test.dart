@@ -19,7 +19,7 @@ import 'package:test/test.dart';
 ///
 /// The instance bodies call top-level comparison functions. An instance body
 /// cannot resolve the instance being defined, so the recursion lives outside
-/// it, as in `doxa_stdlib/lib/stdlib/eqb_instances.doxa`.
+/// it, as in `doxa_stdlib/lib/stdlib/eqbInstances.doxa`.
 const _prologue = '''
 data Nat : Type { zero : Nat; succ : Nat -> Nat; }
 data Bool : Type { true_ : Bool; false_ : Bool; }
@@ -31,9 +31,9 @@ fun plus(m: Nat, n: Nat): Nat = match m {
   case zero => n
   case succ m_ => succ (plus m_ n)
 }
-fun mult(m: Nat, n: Nat): Nat = match m {
+fun multiply(m: Nat, n: Nat): Nat = match m {
   case zero => zero
-  case succ m_ => plus n (mult m_ n)
+  case succ m_ => plus n (multiply m_ n)
 }
 fun leq(m: Nat, n: Nat): Bool = match m {
   case zero => true_
@@ -46,18 +46,18 @@ fun and_(a: Bool, b: Bool): Bool = match a {
   case true_ => b
   case false_ => false_
 }
-typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool; }
-fun eqbNat(x: Nat, y: Nat): Bool = match x {
+typeclass Eqb[A: Type] { fun equals(x: A, y: A): Bool; }
+fun equalsNat(x: Nat, y: Nat): Bool = match x {
   case zero => match y {
     case zero => true_
     case succ _ => false_
   }
   case succ n => match y {
     case zero => false_
-    case succ m => eqbNat n m
+    case succ m => equalsNat n m
   }
 }
-fun eqbBool(x: Bool, y: Bool): Bool = match x {
+fun equalsBool(x: Bool, y: Bool): Bool = match x {
   case true_ => match y {
     case true_ => true_
     case false_ => false_
@@ -67,24 +67,24 @@ fun eqbBool(x: Bool, y: Bool): Bool = match x {
     case false_ => true_
   }
 }
-fun eqbList[A: Eqb](xs: List A, ys: List A): Bool {struct xs} = match xs {
+fun equalsList[A: Eqb](xs: List A, ys: List A): Bool {struct xs} = match xs {
   case nil => match ys {
     case nil => true_
     case cons _ _ => false_
   }
   case cons h t => match ys {
     case nil => false_
-    case cons h2 t2 => and_ (eqb h h2) (eqbList A t t2)
+    case cons h2 t2 => and_ (equals h h2) (equalsList A t t2)
   }
 }
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun equals(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 impl Eqb[Bool] {
-  fun eqb(x: Bool, y: Bool): Bool = eqbBool x y;
+  fun equals(x: Bool, y: Bool): Bool = equalsBool x y;
 }
 impl[A: Eqb] Eqb[List A] {
-  fun eqb(x: List A, y: List A): Bool = eqbList A x y;
+  fun equals(x: List A, y: List A): Bool = equalsList A x y;
 }
 ''';
 
@@ -180,16 +180,16 @@ void main() {
       expectSameTerm(_expr('a + b'), _expr('plus a b'));
     });
 
-    test('a * b is mult a b', () {
-      expectSameTerm(_expr('a * b'), _expr('mult a b'));
+    test('a * b is multiply a b', () {
+      expectSameTerm(_expr('a * b'), _expr('multiply a b'));
     });
 
     test('a <= b is leq a b', () {
       expectSameTerm(_expr('a <= b'), _expr('leq a b'));
     });
 
-    test('a == b is eqb a b', () {
-      expectSameTerm(_expr('a == b'), _expr('eqb a b'));
+    test('a == b is equals a b', () {
+      expectSameTerm(_expr('a == b'), _expr('equals a b'));
     });
 
     test('the expanded identifier carries the operator span', () {
@@ -203,11 +203,11 @@ void main() {
 
   group('precedence', () {
     test('a + b * c groups as a + (b * c)', () {
-      expectSameTerm(_expr('a + b * c'), _expr('plus a (mult b c)'));
+      expectSameTerm(_expr('a + b * c'), _expr('plus a (multiply b c)'));
     });
 
     test('a * b + c groups as (a * b) + c', () {
-      expectSameTerm(_expr('a * b + c'), _expr('plus (mult a b) c'));
+      expectSameTerm(_expr('a * b + c'), _expr('plus (multiply a b) c'));
     });
 
     test('application binds tighter than +', () {
@@ -219,11 +219,11 @@ void main() {
     });
 
     test('* binds tighter than <=', () {
-      expectSameTerm(_expr('a <= b * c'), _expr('leq a (mult b c)'));
+      expectSameTerm(_expr('a <= b * c'), _expr('leq a (multiply b c)'));
     });
 
     test('parentheses override precedence', () {
-      expectSameTerm(_expr('(a + b) * c'), _expr('mult (plus a b) c'));
+      expectSameTerm(_expr('(a + b) * c'), _expr('multiply (plus a b) c'));
     });
 
     test('the arrow is looser than the comparisons', () {
@@ -239,7 +239,7 @@ void main() {
     });
 
     test('a * b * c groups as (a * b) * c', () {
-      expectSameTerm(_expr('a * b * c'), _expr('mult (mult a b) c'));
+      expectSameTerm(_expr('a * b * c'), _expr('multiply (multiply a b) c'));
     });
 
     test('a + (b + c) keeps the parentheses', () {

@@ -135,15 +135,15 @@ data Nat: Type {
 data False: Prop {
 }
 data Lt: Nat -> Nat -> Prop {
-  lt_succ: (n: Nat) -> Lt n (succ n);
-  lt_trans: (n: Nat) -> (m: Nat) -> (k: Nat) ->
+  ltSucc: (n: Nat) -> Lt n (succ n);
+  ltTrans: (n: Nat) -> (m: Nat) -> (k: Nat) ->
     Lt n m -> Lt m k -> Lt n k;
 }
 fun isZero(n: Nat): Prop = match n {
   case zero => Eq Nat zero zero
   case succ _ => False
 }
-val succ_ne_zero: (n: Nat) -> Eq Nat (succ n) zero -> False =
+val succNeZero: (n: Nat) -> Eq Nat (succ n) zero -> False =
   (n: Nat) => (p: Eq Nat (succ n) zero) => Eq.rec
     Nat
     ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => isZero b -> isZero a)
@@ -165,7 +165,7 @@ fun nat_wfP(n: Nat): AccP Nat ltP n = match n {
         ((a: Nat) => (b: Nat) => (_: Lt a b) => Eq Nat b zero -> False)
         y
         zero
-        ((n_: Nat) => (eq: Eq Nat (succ n_) zero) => succ_ne_zero n_ eq)
+        ((n_: Nat) => (eq: Eq Nat (succ n_) zero) => succNeZero n_ eq)
         ((n_: Nat) => (m: Nat) => (k: Nat) => (_: Lt n_ m) => (_: Lt m k) =>
           (_: Eq Nat m zero -> False) => (ih2: Eq Nat k zero -> False) =>
           (eq: Eq Nat k zero) => ih2 eq)
@@ -175,8 +175,8 @@ fun nat_wfP(n: Nat): AccP Nat ltP n = match n {
     ((y: Nat) => (h: Lt y (succ k)) => nat_wfP_help k y h)
 } and nat_wfP_help(k: Nat, y: Nat, h: Lt y (succ k)):
     AccP Nat ltP y {struct h} = match h {
-  case lt_succ y_ => nat_wfP y_
-  case lt_trans y_ m _ p1 p2 => match nat_wfP_help k m p2 {
+  case ltSucc y_ => nat_wfP y_
+  case ltTrans y_ m _ p1 p2 => match nat_wfP_help k m p2 {
     case acc_introP _ f => f y_ p1
   }
 }

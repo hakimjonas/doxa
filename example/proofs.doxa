@@ -51,7 +51,7 @@ val plus_zero_right: (n: Nat) -> Eq Nat (n + zero) n =
 //   length (append xs ys) = plus (length xs) (length ys)
 // by induction on the first list.
 
-val length_append: (A: Type)
+val lengthAppend: (A: Type)
 -> (xs: List A) -> (ys: List A) -> Eq Nat (length (append xs ys)) (length xs + length ys) =
   (A: Type) => List.ind
     A
@@ -76,7 +76,7 @@ fun isZero(n: Nat): Prop = match n {
   case succ k => False
 }
 
-val succ_ne_zero: (n: Nat) -> Eq Nat (succ n) zero -> False =
+val succNeZero: (n: Nat) -> Eq Nat (succ n) zero -> False =
   (n: Nat) => (p: Eq Nat (succ n) zero) => Eq.rec
     Nat
     ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => isZero b -> isZero a)
@@ -91,7 +91,7 @@ val succ_ne_zero: (n: Nat) -> Eq Nat (succ n) zero -> False =
 // carries. The proof uses `Vec.ind`, the dependent eliminator whose
 // motive ranges over both the index and the vector.
 
-val vlength_index: (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) n =
+val vlengthIndex: (A: Type) -> (n: Nat) -> (v: Vec A n) -> Eq Nat (vlength v) n =
   (A: Type) => (n: Nat) => (v: Vec A n) => Vec.ind
     A
     ((m: Nat) => (w: Vec A m) => Eq Nat (vlength w) m)

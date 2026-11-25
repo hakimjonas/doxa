@@ -38,24 +38,24 @@ Newlines are whitespace. Line comments start with `//`; block comments use `/*` 
 
 Application is juxtaposition and associates to the left: `f x y` parses as `(f x) y`. Brackets are a postfix form on an identifier and contain one or more comma-separated expressions; `List[A]` applies `List` to `A`, and a term after a bracket form is ordinary application, so `Vec[A] n` applies the result to `n`.
 
-Four infix operators stand for the standard-library operations. Each one is desugared at parse time into an application of a top-level function, so it denotes an ordinary term: `a + b` and `plus a b` are the same term.
+Four infix operators stand for the standard-library operations. Each one is desugared at parse time into an application of the name it expands to, so it denotes an ordinary term: `a + b` and `plus a b` are the same term.
 
 | Operator | Expands to | Associativity |
 |---|---|---|
-| `*` | `mult` | left |
+| `*` | `multiply` | left |
 | `+` | `plus` | left |
 | `<=` | `leq` | none |
-| `==` | `eqb` | none |
+| `==` | `equals` | none |
 
-`*` binds tighter than `+`, and both bind tighter than the comparisons, which share one level. Application binds tighter than every operator, and `->` binds looser than every operator. `a + b * c` parses as `plus a (mult b c)`, and `a * b + c` parses as `plus (mult a b) c`. A left-associative operator groups to the left, so `a + b + c` is `plus (plus a b) c`.
+`*` binds tighter than `+`, and both bind tighter than the comparisons, which share one level. Application binds tighter than every operator, and `->` binds looser than every operator. `a + b * c` parses as `plus a (multiply b c)`, and `a * b + c` parses as `plus (multiply a b) c`. A left-associative operator groups to the left, so `a + b + c` is `plus (plus a b) c`.
 
 The comparisons do not associate. Writing `a <= b <= c`, `a == b == c`, or `a <= b == c` is a parse error at the second operator, and the diagnostic names that operator. A parenthesized comparison is an ordinary expression, so `(a <= b) == c` parses.
 
-The operators are monomorphic. `+` expands to `plus` and to nothing else; the surface has no overloaded arithmetic, and the algebra monoids' `add` and `mul` are not reachable through `+` and `*`. `==` expands to `eqb`, whose implicit `Eqb` dictionary argument is inserted by elaboration, so instance search selects the instance: `x == y` type-checks wherever an `Eqb` instance exists, including `Nat`, `Bool`, and `List Nat`.
+Each operator expands to one name; there is no type-directed overloading. `+` expands to `plus` and to nothing else, so the algebra classes' `add` is not reachable through `+`. `*` expands to `multiply`, which is also the multiplication method on `Monoid` and `Ring`: at a use site with a `Monoid` or `Ring` dictionary in scope, `x * y` selects that class's `multiply`; otherwise it selects the top-level `Nat` operation when that name is in scope. `==` expands to `equals`, whose implicit `Eqb` dictionary argument is inserted by elaboration when `equals` resolves to the `Eqb` projection, so instance search selects the instance: `x == y` type-checks wherever an `Eqb` instance exists, including `Nat`, `Bool`, and `List Nat`.
 
 The expansion is a plain identifier use resolved in the scope of the use site. A local binding of `plus` shadows the standard library's `plus` for `a + b` exactly as it does for `plus a b`. An operator whose expanded name is not in scope reports an unresolved name whose span is the operator itself.
 
-`calc` endpoints and step proofs use the same expression grammar, so a chain can spell its arithmetic either way: `calc(a + b = b + a := plus_comm a b)` parses and checks like `calc(plus a b = plus b a := plus_comm a b)`. The `=` between a step's endpoints and the `:=` before its proof are relations, not the `==` operator.
+`calc` endpoints and step proofs use the same expression grammar, so a chain can spell its arithmetic either way: `calc(a + b = b + a := plusComm a b)` parses and checks like `calc(plus a b = plus b a := plusComm a b)`. The `=` between a step's endpoints and the `:=` before its proof are relations, not the `==` operator.
 
 Lambdas use `(x: A) => body` or `{x: A} => body`, and curly binders are implicit. The unannotated `(x) => body` requires an expected Pi type. Pi types use `(x: A) -> B`, `{x: A} -> B`, or `A -> B`; `A -> B -> C` associates to the right, and the non-dependent arrow has an unnamed explicit binder.
 
@@ -78,9 +78,9 @@ import "package:doxa_stdlib/stdlib/proofs.doxa"
 val rotate : (a: Nat) -> (b: Nat) ->
     Eq Nat (plus (plus a b) zero) (plus b a) =
   (a: Nat) => (b: Nat) => calc(
-    plus (plus a b) zero = plus a (plus b zero) := plus_assoc a b zero;
-    plus a (plus b zero) = plus a b := cong ((x: Nat) => plus a x) (plus_zero b);
-    plus a b = plus b a := plus_comm a b
+    plus (plus a b) zero = plus a (plus b zero) := plusAssoc a b zero;
+    plus a (plus b zero) = plus a b := cong ((x: Nat) => plus a x) (plusZero b);
+    plus a b = plus b a := plusComm a b
   )
 ```
 
@@ -139,7 +139,7 @@ before the main goal, and the fact is not in scope in its own type or proof.
 
 `simp` normalises the goal by evaluation and rewrites it with
 the equality hypotheses in context; an optional bracketed list adds
-equalities, as in `simp [plus_zero, plus_succ]`. `cases x` destructs a
+equalities, as in `simp [plusZero, plusSucc]`. `cases x` destructs a
 variable into one subgoal per constructor, without induction hypotheses.
 `constructor` applies the first constructor whose result type matches the
 goal, leaving its arguments as subgoals. `auto` searches depth-bounded for
@@ -396,7 +396,7 @@ dictionary carries all of them and each projection binds them implicitly.
 import "package:doxa_stdlib/stdlib/bool.doxa"
 
 typeclass Eqb[A: Type] {
-  fun eqb(x: A, y: A): Bool;
+  fun equals(x: A, y: A): Bool;
 }
 ```
 
@@ -406,12 +406,12 @@ elaborates to
 import "package:doxa_stdlib/stdlib/bool.doxa"
 
 data Eqb[A: Type] : Type {
-  mk_Eqb: (eqb: (x: A) -> (y: A) -> Bool) -> Eqb A;
+  mkEqb: (equals: (x: A) -> (y: A) -> Bool) -> Eqb A;
 }
 ```
 
 together with the projection
-`Eqb.eqb : {A: Type} -> (x: A) -> (y: A) -> {inst: Eqb A} -> Bool`. A
+`Eqb.equals : {A: Type} -> (x: A) -> (y: A) -> {inst: Eqb A} -> Bool`. A
 projection binds the class parameters implicitly, then the method's explicit
 arguments, then the dictionary as an implicit binder after them; its body
 applies the dictionary field to the explicit arguments.
@@ -419,37 +419,46 @@ applies the dictionary field to the explicit arguments.
 ### Projection names
 
 The projection's name is `Class.method`, and the dictionary field keeps the
-bare method name. A dictionary value therefore still projects with `d.mul`.
+bare method name. A dictionary value therefore still projects with `d.multiply`.
 `Class.method` is usable in a term and in a type and applies like any function.
 A method inherited from a parent resolves through the class that declares it:
 `Ring.add` names the `AddMonoid.add` projection.
 
 A bare method name resolves when it selects one projection:
 
+- Inside a class declaration, the class's own law fields resolve a bare
+  method against the current class first, then its parents.
 - A local dictionary, or a constrained parameter, whose class declares the
   method selects that class. The class may reach the declaring class through
   the superclass chain.
+- Otherwise a top-level binding of that name selects the top-level function,
+  even when exactly one class declares the method. A unique declaring class
+  never overrides an explicit top-level function.
 - Otherwise a unique declaring class selects the projection.
-- When more than one class declares the name and no local dictionary selects
-  one, elaboration reports `AmbiguousClassMethod` and names the
-  `Class.method` forms.
+- When more than one class declares the name and neither a local dictionary nor
+  a top-level binding selects one, elaboration reports `AmbiguousClassMethod`
+  and names the `Class.method` forms.
 
-Inside a class declaration, the class's own law fields resolve a bare method
-against the current class first, then its parents. `Ring`'s `mul_assoc`
-therefore reads `Ring.mul`, and `Ring`'s `mul_add` reads `Ring.mul` and the
-inherited `AddMonoid.add`.
+`Ring`'s `multiplyAssoc` therefore reads `Ring.multiply`, and `Ring`'s
+`multiplyAdd` reads `Ring.multiply` and the inherited `AddMonoid.add`.
 
 ```doxa
 import "package:doxa_stdlib/stdlib/algebra.doxa"
 
-val product : Nat = Monoid.mul (succ zero) (succ zero)
+val product : Nat = Monoid.multiply (succ zero) (succ zero)
 val product_eq : Eq Nat product (succ zero) = refl product
-val integerProduct : Int = Ring.mul (pos (succ zero)) (pos (succ zero))
+val integerProduct : Int = Ring.multiply (pos (succ zero)) (pos (succ zero))
 val integerProduct_eq : Eq Int integerProduct (pos (succ zero)) =
   refl integerProduct
 
+fun add(x: Nat, y: Nat): Nat = plus x y
+
+val topLevel : Nat = add (succ zero) (succ zero)
+val qualified : Nat = Monoid.multiply (succ zero) (succ zero)
+
 fun twice[A: AddMonoid](x: A): A = add x x
-fun selfMul[A: Ring](x: A): A = mul x x
+fun selfMultiply[A: Ring](x: A): A = multiply x x
+fun starMultiply[A: Ring](x: A): A = x * x
 ```
 
 ### Superclasses
@@ -460,7 +469,7 @@ reference is a class application over the class's own type parameters.
 <!-- doxa: fragment -->
 ```doxa
 typeclass Ord[A: Type]: Eqb[A] {
-  fun cmp(x: A, y: A): Bool;
+  fun compare(x: A, y: A): Bool;
 }
 ```
 
@@ -469,12 +478,12 @@ elaborates the dictionary with the parent dictionary as its first field:
 <!-- doxa: fragment -->
 ```doxa
 data Ord[A: Type] : Type {
-  mk_Ord: (_super: Eqb A) -> (cmp: (x: A) -> (y: A) -> Bool) -> Ord A;
+  mkOrd: (_super: Eqb A) -> (compare: (x: A) -> (y: A) -> Bool) -> Ord A;
 }
 ```
 
-The parent's methods remain the parent's projections, named `Eqb.eqb`; `Ord`
-adds only `Ord.cmp`. The superclass reference must apply the parent class to
+The parent's methods remain the parent's projections, named `Eqb.equals`; `Ord`
+adds only `Ord.compare`. The superclass reference must apply the parent class to
 distinct class type parameters, with every class parameter appearing once. A
 parent class with more than one parameter follows the same rule.
 
@@ -504,7 +513,7 @@ typeclass Pair[A: Type, B: Type] {
 }
 ```
 
-elaborates to `mk_Pair: (fst: (x: A) -> (y: B) -> A) -> Pair A B` and the
+elaborates to `mkPair: (fst: (x: A) -> (y: B) -> A) -> Pair A B` and the
 projection `fst : {A: Type} -> {B: Type} -> (x: A) -> (y: B) -> {inst: Pair A B} -> A`.
 
 An instance applies the class to one target per parameter. Each target
@@ -546,7 +555,7 @@ class declaration. Search does not prefer the more specific instance.
 ### Local dictionaries
 
 A local dictionary is an ordinary `val` binding of the dictionary type. The
-class constructor `mk_<Class>` builds the value, and instance search consults
+class constructor `mk<Class>` builds the value, and instance search consults
 in-scope local binders before the registered instances. The binding supplies
 the dictionary to a call in its scope when that call is checked against a
 known result type; the example annotates the intermediate result. A local
@@ -555,10 +564,10 @@ projection for a bare method name.
 
 <!-- doxa: fragment -->
 ```doxa
-fun useEqb[A: Eqb](x: A, y: A): Bool = eqb x y
+fun useEqb[A: Eqb](x: A, y: A): Bool = equals x y
 
 fun localEq(x: Nat, y: Nat): Bool = {
-  val d : Eqb Nat = mk_Eqb eqbNat;
+  val d : Eqb Nat = mkEqb equalsNat;
   val r : Bool = useEqb Nat x y;
   r
 }
@@ -573,7 +582,7 @@ class's instance table.
 <!-- doxa: fragment -->
 ```doxa
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = ...;
+  fun equals(x: Nat, y: Nat): Bool = ...;
 }
 ```
 
@@ -588,7 +597,7 @@ explicit value parameters, so the class parameter is solved from them first.
 ```doxa
 import "package:doxa_stdlib/stdlib/eqb.doxa"
 
-fun same[A: Eqb](x: A, y: A): Bool = eqb x y
+fun same[A: Eqb](x: A, y: A): Bool = equals x y
 ```
 
 A call supplies the type argument explicitly, as with any `[...]` parameter,
@@ -614,7 +623,7 @@ parameters.
 <!-- doxa: fragment -->
 ```doxa
 impl [A: Eqb] Eqb[List A] {
-  fun eqb(x: List A, y: List A): Bool = ...;
+  fun equals(x: List A, y: List A): Bool = ...;
 }
 ```
 

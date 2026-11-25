@@ -1,0 +1,676 @@
+// Case study: sqrt(2) is irrational.
+// Full proof via parity theory, well-founded induction, and
+// equational reasoning on Nat — no coprimality required.
+import "bool.doxa"
+
+import "nat.doxa"
+
+import "proofs.doxa"
+// even(n) = true_ iff n is even
+
+fun even(n: Nat): Bool = match n {
+  case zero => true_
+  case succ n_ => match even n_ {
+    case true_ => false_
+    case false_ => true_
+  }
+}
+// Small concrete parity facts
+
+val even0: Eq Bool (even zero) true_ = refl true_
+
+val even1: Eq Bool (even (succ zero)) false_ = refl false_
+
+val even2: Eq Bool (even (succ (succ zero))) true_ = refl true_
+
+val even3: Eq Bool (even (succ (succ (succ zero)))) false_ = refl false_
+// twice n = n + n
+
+fun twice(n: Nat): Nat = n + n
+// square n = n * n
+
+fun square(n: Nat): Nat = n * n
+// evenness of squares for small n
+
+val evenSq0: Eq Bool (even (square zero)) true_ = refl true_
+
+val evenSq1: Eq Bool (even (square (succ zero))) false_ = refl false_
+
+val evenSq2: Eq Bool (even (square (succ (succ zero)))) true_ = refl true_
+
+val evenSq3: Eq Bool (even (square (succ (succ (succ zero))))) false_ = refl false_
+// A number is divisible by 2 if it is even
+
+fun divisibleBy2(n: Nat): Prop = Eq Bool (even n) true_
+// The key property: if n is not even, then n^2 is not even
+// This can be proved by induction on n (using the even function's
+// alternating behavior). For now we verify the base cases.
+// Nat aliases for small constants — surface syntax has no decimal literals.
+
+val two: Nat = succ (succ zero)
+
+val four: Nat = succ (succ (succ (succ zero)))
+// --- Parity infrastructure ------------------------------------------------
+
+fun parityFlipB(b: Bool): Bool = match b {
+  case true_ => false_
+  case false_ => true_
+}
+
+val parityFlipInvol: (b: Bool) -> Eq Bool (parityFlipB (parityFlipB b)) b =
+  Bool.ind ((b: Bool) => Eq Bool (parityFlipB (parityFlipB b)) b) (refl true_) (refl false_)
+
+val evenSuccSuccEqEven: (n: Nat) -> Eq Bool (even (succ (succ n))) (even n) =
+  Nat.ind
+    ((k: Nat) => Eq Bool (even (succ (succ k))) (even k))
+    (refl true_)
+    ((k: Nat) => (ih: Eq Bool (even (succ (succ k))) (even k)) => transE
+      Bool
+      (even (succ (succ (succ k))))
+      (parityFlipB (even (succ (succ k))))
+      (even (succ k))
+      (refl (parityFlipB (even (succ (succ k)))))
+      (congE Bool Bool parityFlipB (even (succ (succ k))) (even k) ih))
+// evenDouble: plus n n is always even
+
+val evenDouble: (n: Nat) -> Eq Bool (even (n + n)) true_ =
+  Nat.ind
+    ((k: Nat) => Eq Bool (even (k + k)) true_)
+    (refl true_)
+    ((k: Nat) => (ih: Eq Bool (even (k + k)) true_) => transE
+      Bool
+      (even (succ k + succ k))
+      (even (succ (succ (k + k))))
+      true_
+      (congE
+        Nat
+        Bool
+        even
+        (succ k + succ k)
+        (succ (succ (k + k)))
+        (cong ((x: Nat) => succ x) (plusSucc k k)))
+      (transE Bool (even (succ (succ (k + k)))) (even (k + k)) true_ (evenSuccSuccEqEven (k + k)) ih))
+
+fun parityComb(p: Bool, q: Bool): Bool = match p {
+  case true_ => q
+  case false_ => match q {
+    case true_ => false_
+    case false_ => true_
+  }
+}
+
+fun parityFlipParityCombLemma(p: Bool, q: Bool): Eq
+  Bool
+  (parityFlipB (parityComb p q))
+  (parityComb (parityFlipB p) q) =
+  Bool.ind
+    ((p: Bool) => (q: Bool) -> Eq Bool (parityFlipB (parityComb p q)) (parityComb (parityFlipB p) q))
+    ((q: Bool) => refl (parityFlipB q))
+    ((q: Bool) => parityFlipInvol q)
+    p
+    q
+
+val evenPlusParity: (a: Nat) -> (b: Nat) -> Eq Bool (even (a + b)) (parityComb (even a) (even b)) =
+  (a: Nat) => Nat.ind
+    ((k: Nat) => (b: Nat) -> Eq Bool (even (k + b)) (parityComb (even k) (even b)))
+    ((b: Nat) => refl (even b))
+    ((k: Nat) => (ih: (b: Nat) -> Eq Bool (even (k + b)) (parityComb (even k) (even b))) => (b: Nat) => transE
+      Bool
+      (even (succ k + b))
+      (parityFlipB (even (k + b)))
+      (parityComb (parityFlipB (even k)) (even b))
+      (refl (parityFlipB (even (k + b))))
+      (transE
+        Bool
+        (parityFlipB (even (k + b)))
+        (parityFlipB (parityComb (even k) (even b)))
+        (parityComb (parityFlipB (even k)) (even b))
+        (congE Bool Bool parityFlipB (even (k + b)) (parityComb (even k) (even b)) (ih b))
+        (parityFlipParityCombLemma (even k) (even b))))
+    a
+// squareSuccAlgebra: (k+1)^2 = succ (k + k + k^2)
+
+val squareSuccAlgebra: (k: Nat) -> Eq Nat (square (succ k)) (succ (k + k + square k)) =
+  (k: Nat) => transE
+    Nat
+    (square (succ k))
+    (succ k * succ k)
+    (succ (k + k + square k))
+    (refl (succ k * succ k))
+    (transE
+      Nat
+      (succ k * succ k)
+      (succ k + succ k * k)
+      (succ (k + k + square k))
+      (multiplySuccRight (succ k) k)
+      (transE
+        Nat
+        (succ k + succ k * k)
+        (succ k + k * succ k)
+        (succ (k + k + square k))
+        (congE Nat Nat ((z: Nat) => succ k + z) (succ k * k) (k * succ k) (multiplyComm (succ k) k))
+        (transE
+          Nat
+          (succ k + k * succ k)
+          (succ (k + k * succ k))
+          (succ (k + k + square k))
+          (refl (succ (k + k * succ k)))
+          (cong
+            ((x: Nat) => succ x)
+            (transE
+              Nat
+              (k + k * succ k)
+              (k + (k + k * k))
+              (k + k + square k)
+              (congE Nat Nat ((z: Nat) => k + z) (k * succ k) (k + k * k) (multiplySuccRight k k))
+              (symE Nat (k + k + k * k) (k + (k + k * k)) (plusAssoc k k (k * k))))))))
+
+fun parityCombTrue(x: Bool): Eq Bool (parityComb true_ x) x =
+  Bool.ind ((x: Bool) => Eq Bool (parityComb true_ x) x) (refl true_) (refl false_) x
+
+val evenPlusDouble: (n: Nat) -> (k: Nat) -> Eq Bool (even (k + k + n)) (even n) =
+  (n: Nat) => (k: Nat) => transE
+    Bool
+    (even (k + k + n))
+    (parityComb (even (k + k)) (even n))
+    (even n)
+    (evenPlusParity (k + k) n)
+    (transE
+      Bool
+      (parityComb (even (k + k)) (even n))
+      (parityComb true_ (even n))
+      (even n)
+      (congE Bool Bool ((x: Bool) => parityComb x (even n)) (even (k + k)) true_ (evenDouble k))
+      (parityCombTrue (even n)))
+
+val evenSquareEq: (k: Nat) -> Eq Bool (even (square k)) (even k) =
+  Nat.ind
+    ((k: Nat) => Eq Bool (even (square k)) (even k))
+    (refl true_)
+    ((k: Nat) => (ih: Eq Bool (even (square k)) (even k)) => transE
+      Bool
+      (even (square (succ k)))
+      (parityFlipB (even (square k)))
+      (even (succ k))
+      (transE
+        Bool
+        (even (square (succ k)))
+        (even (succ (k + k + square k)))
+        (parityFlipB (even (square k)))
+        (congE Nat Bool even (square (succ k)) (succ (k + k + square k)) (squareSuccAlgebra k))
+        (transE
+          Bool
+          (even (succ (k + k + square k)))
+          (parityFlipB (even (k + k + square k)))
+          (parityFlipB (even (square k)))
+          (refl (parityFlipB (even (k + k + square k))))
+          (congE
+            Bool
+            Bool
+            parityFlipB
+            (even (k + k + square k))
+            (even (square k))
+            (evenPlusDouble (square k) k))))
+      (congE Bool Bool parityFlipB (even (square k)) (even k) ih))
+
+val evenSquareEven: (n: Nat) -> Eq Bool (even n) true_ -> Eq Bool (even (square n)) true_ =
+  (n: Nat) => (h: Eq Bool (even n) true_) => transE
+    Bool
+    (even (square n))
+    (even n)
+    true_
+    (evenSquareEq n)
+    h
+
+val evenSquareImpliesEven: (n: Nat) -> Eq Bool (even (square n)) true_ -> Eq Bool (even n) true_ =
+  (n: Nat) => (h: Eq Bool (even (square n)) true_) => transE
+    Bool
+    (even n)
+    (even (square n))
+    true_
+    (symE Bool (even (square n)) (even n) (evenSquareEq n))
+    h
+
+val sqrt2Parity: (n: Nat)
+-> (m: Nat) -> Eq Nat (square n) (two * square m) -> Eq Bool (even n) true_ =
+  (n: Nat) => (m: Nat) => (hEq: Eq Nat (square n) (two * square m)) => transE
+    Bool
+    (even n)
+    (even (square n))
+    true_
+    (symE Bool (even (square n)) (even n) (evenSquareEq n))
+    (transE
+      Bool
+      (even (square n))
+      (even (two * square m))
+      true_
+      (congE Nat Bool even (square n) (two * square m) hEq)
+      (transE
+        Bool
+        (even (two * square m))
+        (even (square m + square m))
+        true_
+        (congE Nat Bool even (two * square m) (square m + square m) (multiply2 (square m)))
+        (evenDouble (square m))))
+// --- Algebraic lemmas ----------------------------------------------------
+
+fun half(n: Nat): Nat = match n {
+  case zero => zero
+  case succ n_ => match n_ {
+    case zero => zero
+    case succ n__ => succ (half n__)
+  }
+}
+
+val ltSuccRight: (n: Nat) -> (m: Nat) -> Lt n m -> Lt n (succ m) =
+  (n: Nat) => (m: Nat) => (h: Lt n m) => ltTrans n m (succ m) h (ltSucc m)
+// --- Algebraic lemmas for the sqrt2 proof --------------------------------
+// multiply4Eq: multiply 4 n = multiply 2 (multiply 2 n)
+
+val multiply4Eq: (n: Nat) -> Eq Nat (four * n) (two * (two * n)) =
+  (n: Nat) => multiplyAssoc two two n
+// --- multiplyTwoSucc: multiply two (succ n) = succ (succ (multiply two n)) ------------
+
+val multiplyTwoSucc: (n: Nat) -> Eq Nat (two * succ n) (succ (succ (two * n))) =
+  (n: Nat) => transE
+    Nat
+    (two * succ n)
+    (succ n + succ n)
+    (succ (succ (two * n)))
+    (multiply2 (succ n))
+    (transE
+      Nat
+      (succ n + succ n)
+      (succ (succ n + n))
+      (succ (succ (two * n)))
+      (plusSucc (succ n) n)
+      (transE
+        Nat
+        (succ (succ n + n))
+        (succ (n + succ n))
+        (succ (succ (two * n)))
+        (cong ((x: Nat) => succ x) (plusComm (succ n) n))
+        (transE
+          Nat
+          (succ (n + succ n))
+          (succ (succ (n + n)))
+          (succ (succ (two * n)))
+          (cong ((x: Nat) => succ x) (plusSucc n n))
+          (cong
+            ((x: Nat) => succ x)
+            (cong ((x: Nat) => succ x) (symE Nat (two * n) (n + n) (multiply2 n)))))))
+// --- multiply2Inj: multiply two is injective -----------------------------------
+
+val multiply2Inj: (a: Nat) -> (b: Nat) -> (h: Eq Nat (two * a) (two * b)) -> Eq Nat a b =
+  (a: Nat) => Nat.ind
+    ((x: Nat) => (b: Nat) -> (h: Eq Nat (two * x) (two * b)) -> Eq Nat x b)
+    ((b: Nat) => (h: Eq Nat (two * zero) (two * b)) => Nat.ind
+      ((x: Nat) => Eq Nat (two * zero) (two * x) -> Eq Nat zero x)
+      ((h0: Eq Nat (two * zero) (two * zero)) => refl zero)
+      ((x: Nat) => (_: Eq Nat (two * zero) (two * x) -> Eq Nat zero x) => (hSx: Eq
+        Nat
+        (two * zero)
+        (two * succ x)) => False.rec
+        ((_: False) => Eq Nat zero (succ x))
+        (succNeZero
+          (succ (two * x))
+          (transE
+            Nat
+            (succ (succ (two * x)))
+            (two * succ x)
+            (two * zero)
+            (symE Nat (two * succ x) (succ (succ (two * x))) (multiplyTwoSucc x))
+            (symE Nat (two * zero) (two * succ x) hSx))))
+      b
+      h)
+    ((k: Nat) => (ih: (b: Nat) -> (h: Eq Nat (two * k) (two * b)) -> Eq Nat k b) => (b: Nat) => (h: Eq
+      Nat
+      (two * succ k)
+      (two * b)) => Nat.ind
+      ((x: Nat) => Eq Nat (two * succ k) (two * x) -> Eq Nat (succ k) x)
+      ((h0: Eq Nat (two * succ k) (two * zero)) => False.rec
+        ((_: False) => Eq Nat (succ k) zero)
+        (succNeZero
+          (succ (two * k))
+          (transE
+            Nat
+            (succ (succ (two * k)))
+            (two * succ k)
+            zero
+            (symE Nat (two * succ k) (succ (succ (two * k))) (multiplyTwoSucc k))
+            (transE Nat (two * succ k) (two * zero) zero h0 (multiplyZero two)))))
+      ((x: Nat) => (_: Eq Nat (two * succ k) (two * x) -> Eq Nat (succ k) x) => (hSx: Eq
+        Nat
+        (two * succ k)
+        (two * succ x)) => congE
+        Nat
+        Nat
+        ((y: Nat) => succ y)
+        k
+        x
+        (ih
+          x
+          (succInj
+            (two * k)
+            (two * x)
+            (succInj
+              (succ (two * k))
+              (succ (two * x))
+              (transE
+                Nat
+                (succ (succ (two * k)))
+                (two * succ k)
+                (succ (succ (two * x)))
+                (symE Nat (two * succ k) (succ (succ (two * k))) (multiplyTwoSucc k))
+                (transE
+                  Nat
+                  (two * succ k)
+                  (two * succ x)
+                  (succ (succ (two * x)))
+                  hSx
+                  (multiplyTwoSucc x)))))))
+      b
+      h)
+    a
+// --- squareDouble: (2n)² = 4·n² -----------------------------------------
+
+val squareDouble: (n: Nat) -> Eq Nat (square (two * n)) (four * square n) =
+  (n: Nat) => transE
+    Nat
+    (square (two * n))
+    (two * n * (two * n))
+    (four * square n)
+    (refl (two * n * (two * n)))
+    (transE
+      Nat
+      (two * n * (two * n))
+      (two * (n * (two * n)))
+      (four * square n)
+      (multiplyAssoc two n (two * n))
+      (transE
+        Nat
+        (two * (n * (two * n)))
+        (two * (two * n * n))
+        (four * square n)
+        (congE Nat Nat (multiply two) (n * (two * n)) (two * n * n) (multiplyComm n (two * n)))
+        (transE
+          Nat
+          (two * (two * n * n))
+          (two * (two * (n * n)))
+          (four * square n)
+          (congE Nat Nat (multiply two) (two * n * n) (two * (n * n)) (multiplyAssoc two n n))
+          (transE
+            Nat
+            (two * (two * (n * n)))
+            (two * two * (n * n))
+            (four * square n)
+            (symE Nat (two * two * (n * n)) (two * (two * (n * n))) (multiplyAssoc two two (n * n)))
+            (transE
+              Nat
+              (two * two * (n * n))
+              (four * (n * n))
+              (four * square n)
+              (congE
+                Nat
+                Nat
+                ((x: Nat) => x * (n * n))
+                (two * two)
+                four
+                (transE Nat (two * two) (two + two) four (multiply2 two) (refl four)))
+              (refl (four * (n * n))))))))
+
+fun evenImpliesDouble(n: Nat, h: Eq Bool (even n) true_): Eq Nat n (two * half n) = go n h and go(n: Nat, h0: Eq
+  Bool
+  (even n)
+  true_): Eq Nat n (two * half n) =
+  Nat.ind
+    ((m: Nat) => Eq Bool (even m) true_ -> Eq Nat m (two * half m))
+    ((hz: Eq Bool (even zero) true_) => transE
+      Nat
+      zero
+      (two * zero)
+      (two * half zero)
+      (symE
+        Nat
+        (two * zero)
+        zero
+        (transE Nat (two * zero) (zero + zero) zero (multiply2 zero) (plusZero zero)))
+      (refl (two * half zero)))
+    ((k: Nat) => (ih: Eq Bool (even k) true_ -> Eq Nat k (two * half k)) => (hsk: Eq
+      Bool
+      (even (succ k))
+      true_) => Nat.ind
+      ((j: Nat) => Eq Bool (even (succ j)) true_ -> Eq Nat (succ j) (two * half (succ j)))
+      ((hsz: Eq Bool (even (succ zero)) true_) => False.rec
+        ((_: False) => Eq Nat (succ zero) (two * half (succ zero)))
+        (trueNeFalse (congE Bool Bool parityFlipB (even (succ zero)) true_ hsz)))
+      ((m: Nat) => (ihm: Eq Bool (even (succ m)) true_ -> Eq Nat (succ m) (two * half (succ m))) => (hssm: Eq
+        Bool
+        (even (succ (succ m)))
+        true_) => {
+        val evenMTrue: Eq Bool (even m) true_ = transE
+          Bool
+          (even m)
+          (even (succ (succ m)))
+          true_
+          (symE Bool (even (succ (succ m))) (even m) (evenSuccSuccEqEven m))
+          hssm;
+        val recM: Eq Nat m (two * half m) = go m evenMTrue;
+        transE
+          Nat
+          (succ (succ m))
+          (succ (succ (two * half m)))
+          (two * half (succ (succ m)))
+          (congE Nat Nat ((x: Nat) => succ (succ x)) m (two * half m) recM)
+          (symE
+            Nat
+            (two * half (succ (succ m)))
+            (succ (succ (two * half m)))
+            (multiplyTwoSucc (half m)))
+        })
+      k
+      hsk)
+    n
+    h0
+// --- ltSuccTMultiplyTwoT: succ t < 2*(succ t) -----------------------------
+
+val ltSuccTMultiplyTwoT: (t: Nat) -> Lt (succ t) (two * succ t) =
+  Nat.ind
+    ((t: Nat) => Lt (succ t) (two * succ t))
+    (ltSucc (succ zero))
+    ((u: Nat) => (ih: Lt (succ u) (two * succ u)) => {
+      val hLtSuccSs: Lt (succ (succ u)) (succ (two * succ u)) = ltSuccMono
+        (succ u)
+        (two * succ u)
+        ih;
+      val hLtSsSsmu: Lt (succ (succ u)) (succ (succ (two * succ u))) = ltSuccRight
+        (succ (succ u))
+        (succ (two * succ u))
+        hLtSuccSs;
+      Eq.rec
+        Nat
+        ((a: Nat) => (b: Nat) => (p: Eq Nat a b) => Lt (succ (succ u)) a -> Lt (succ (succ u)) b)
+        (succ (succ (two * succ u)))
+        (two * succ (succ u))
+        ((z: Nat) => (h: Lt (succ (succ u)) z) => h)
+        (symE Nat (two * succ (succ u)) (succ (succ (two * succ u))) (multiplyTwoSucc (succ u)))
+        hLtSsSsmu
+      })
+// --- ltTSuccK: if succ k = 2*t then t < succ k --------------------------
+
+fun ltTSuccK(t: Nat, k: Nat, h: Eq Nat (succ k) (two * t)): Lt t (succ k) =
+  Nat.ind
+    ((t: Nat) => (k: Nat) -> Eq Nat (succ k) (two * t) -> Lt t (succ k))
+    ((k: Nat) => (hZero: Eq Nat (succ k) (two * zero)) => False.rec
+      ((_: False) => Lt zero (succ k))
+      (succNeZero k (transE Nat (succ k) (two * zero) zero hZero (multiplyZero two))))
+    ((u: Nat) => (ih: (k: Nat) -> Eq Nat (succ k) (two * u) -> Lt u (succ k)) => (k: Nat) => (hSuccU: Eq
+      Nat
+      (succ k)
+      (two * succ u)) => Eq.rec
+      Nat
+      ((a: Nat) => (b: Nat) => (p: Eq Nat a b) => Lt (succ u) a -> Lt (succ u) b)
+      (two * succ u)
+      (succ k)
+      ((z: Nat) => (hL: Lt (succ u) z) => hL)
+      (symE Nat (succ k) (two * succ u) hSuccU)
+      (ltSuccTMultiplyTwoT u))
+    t
+    k
+    h
+// --- Strong induction on Nat via Lt ----------------------------------------
+// --- sqrt2: √2 is irrational -------------------------------------------------
+
+val sqrt2: (n: Nat) -> (m: Nat) -> Eq Nat (square n) (two * square m) -> Eq Nat n zero =
+  (n: Nat) => (m: Nat) => (h: Eq Nat (square n) (two * square m)) => strongInd
+    ((x: Nat) => (m: Nat) -> Eq Nat (square x) (two * square m) -> Eq Nat x zero)
+    ((x: Nat) => (ih: (k: Nat)
+    -> Lt k x -> (m: Nat) -> Eq Nat (square k) (two * square m) -> Eq Nat k zero) => (m: Nat) => (hX: Eq
+      Nat
+      (square x)
+      (two * square m)) => {
+      val hEven: Eq Bool (even x) true_ = sqrt2Parity x m hX;
+      val hDouble: Eq Nat x (two * half x) = evenImpliesDouble x hEven;
+      val t = half x;
+      val u = half m;
+      val hSq2t: Eq Nat (square (two * t)) (two * square m) = transE
+        Nat
+        (square (two * t))
+        (square x)
+        (two * square m)
+        (congE Nat Nat square (two * t) x (symE Nat x (two * t) hDouble))
+        hX;
+      val h4t22m2: Eq Nat (four * square t) (two * square m) = transE
+        Nat
+        (four * square t)
+        (square (two * t))
+        (two * square m)
+        (symE Nat (square (two * t)) (four * square t) (squareDouble t))
+        hSq2t;
+      val h22t22m2: Eq Nat (two * (two * square t)) (two * square m) = transE
+        Nat
+        (two * (two * square t))
+        (four * square t)
+        (two * square m)
+        (symE Nat (four * square t) (two * (two * square t)) (multiply4Eq (square t)))
+        h4t22m2;
+      val h2t2M2: Eq Nat (two * square t) (square m) = multiply2Inj
+        (two * square t)
+        (square m)
+        h22t22m2;
+      val hMSqEven: Eq Bool (even (square m)) true_ = transE
+        Bool
+        (even (square m))
+        (even (two * square t))
+        true_
+        (congE
+          Nat
+          Bool
+          even
+          (square m)
+          (two * square t)
+          (symE Nat (two * square t) (square m) h2t2M2))
+        (transE
+          Bool
+          (even (two * square t))
+          (even (square t + square t))
+          true_
+          (congE Nat Bool even (two * square t) (square t + square t) (multiply2 (square t)))
+          (evenDouble (square t)));
+      val hMEven: Eq Bool (even m) true_ = evenSquareImpliesEven m hMSqEven;
+      val hMDouble: Eq Nat m (two * u) = evenImpliesDouble m hMEven;
+      val h2t2Sq2u: Eq Nat (two * square t) (square (two * u)) = transE
+        Nat
+        (two * square t)
+        (square m)
+        (square (two * u))
+        h2t2M2
+        (congE Nat Nat square m (two * u) hMDouble);
+      val h2t24u2: Eq Nat (two * square t) (four * square u) = transE
+        Nat
+        (two * square t)
+        (square (two * u))
+        (four * square u)
+        h2t2Sq2u
+        (squareDouble u);
+      val h2t222u2: Eq Nat (two * square t) (two * (two * square u)) = transE
+        Nat
+        (two * square t)
+        (four * square u)
+        (two * (two * square u))
+        h2t24u2
+        (multiply4Eq (square u));
+      val hT22u2: Eq Nat (square t) (two * square u) = multiply2Inj
+        (square t)
+        (two * square u)
+        h2t222u2;
+      Nat.ind
+        ((t0: Nat) => Eq Nat x (two * t0) -> Eq Nat x zero)
+        ((h0: Eq Nat x (two * zero)) => transE Nat x (two * zero) zero h0 (multiplyZero two))
+        ((v: Nat) => (_: Eq Nat x (two * v) -> Eq Nat x zero) => (hSv: Eq Nat x (two * succ v)) => {
+          val k = succ (two * v);
+          val hSuccK2t: Eq Nat (succ k) (two * succ v) = symE
+            Nat
+            (two * succ v)
+            (succ k)
+            (multiplyTwoSucc v);
+          val hLtSuccK: Lt (succ v) (succ k) = ltTSuccK (succ v) k hSuccK2t;
+          val hNEqSuccK: Eq Nat x (succ k) = transE
+            Nat
+            x
+            (two * succ v)
+            (succ k)
+            hSv
+            (symE Nat (succ k) (two * succ v) hSuccK2t);
+          val hLt: Lt (succ v) x = Eq.rec
+            Nat
+            ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => Lt (succ v) a -> Lt (succ v) b)
+            (succ k)
+            x
+            ((z: Nat) => (lt: Lt (succ v) z) => lt)
+            (symE Nat x (succ k) hNEqSuccK)
+            hLtSuccK;
+          val hMultiplyTwoTEq: Eq Nat (two * t) (two * succ v) = transE
+            Nat
+            (two * t)
+            x
+            (two * succ v)
+            (symE Nat x (two * t) hDouble)
+            hSv;
+          val hTEqSv: Eq Nat t (succ v) = multiply2Inj t (succ v) hMultiplyTwoTEq;
+          val hSqSv2u2: Eq Nat (square (succ v)) (two * square u) = transE
+            Nat
+            (square (succ v))
+            (square t)
+            (two * square u)
+            (congE Nat Nat square (succ v) t (symE Nat t (succ v) hTEqSv))
+            hT22u2;
+          val hTZero: Eq Nat (succ v) zero = ih (succ v) hLt u hSqSv2u2;
+          False.rec ((_: False) => Eq Nat x zero) (succNeZero v hTZero)
+          })
+        t
+        hDouble
+      })
+    n
+    m
+    h
+// Descent algebra: square t = 2 * square u
+// Case analysis on t
+// t = 0: x = 2*0 = 0
+// t = succ v: descent
+// Transport hT22u2: square t = 2*(square u)  ->  square (succ v) = 2*(square u)
+// Apply strong IH
+// --- gcd correctness --------------------------------------------------------
+// gcdZero: gcd 0 n = n (definitional via match m { case zero => n }).
+
+val gcdZero: (n: Nat) -> Eq Nat (gcd zero n) n = (n: Nat) => refl n
+// --- Prime number lemmas -----------------------------------------------------
+// primeTwo: 2 is prime (no divisors between 2 and 1).
+
+val primeTwo: Eq Bool (prime (succ (succ zero))) true_ = refl true_
+// notPrimeZero: 0 is not prime (trial division fails immediately).
+
+val notPrimeZero: Eq Bool (prime zero) false_ = refl false_
+// notPrimeOne: 1 is not prime (divisible only by itself).
+
+val notPrimeOne: Eq Bool (prime (succ zero)) false_ = refl false_

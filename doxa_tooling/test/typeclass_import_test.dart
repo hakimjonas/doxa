@@ -36,10 +36,10 @@ void main() {
 data Nat : Type { zero : Nat; succ : Nat -> Nat; }
 data Bool : Type { true_ : Bool; false_ : Bool; }
 typeclass Eqb[A: Type] {
-  fun eqb(x: A, y: A): Bool;
+  fun equals(x: A, y: A): Bool;
 }
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = match x {
+  fun equals(x: Nat, y: Nat): Bool = match x {
     case zero => true_
     case succ n => false_
   };
@@ -47,7 +47,7 @@ impl Eqb[Nat] {
 ''');
     final mainFile = File('${directory.path}/main.doxa')..writeAsStringSync('''
 import "eqb.doxa"
-val r: Bool = eqb zero zero
+val r: Bool = equals zero zero
 ''');
 
     final source = SourceFile(
@@ -70,42 +70,42 @@ data Nat : Type { zero : Nat; succ : Nat -> Nat; }
 data Bool : Type { true_ : Bool; false_ : Bool; }
 data List[A: Type] : Type { nil : List A; cons : A -> List A -> List A; }
 typeclass Eqb[A: Type] {
-  fun eqb(x: A, y: A): Bool;
+  fun equals(x: A, y: A): Bool;
 }
 fun andb(a: Bool, b: Bool): Bool = match a {
   case true_ => b
   case false_ => false_
 }
-fun eqbNat(x: Nat, y: Nat): Bool = match x {
+fun equalsNat(x: Nat, y: Nat): Bool = match x {
   case zero => match y {
     case zero => true_
     case succ _ => false_
   }
   case succ n => match y {
     case zero => false_
-    case succ m => eqbNat n m
+    case succ m => equalsNat n m
   }
 }
-fun eqbList[A: Eqb](xs: List A, ys: List A): Bool {struct xs} = match xs {
+fun equalsList[A: Eqb](xs: List A, ys: List A): Bool {struct xs} = match xs {
   case nil => match ys {
     case nil => true_
     case cons _ _ => false_
   }
   case cons h t => match ys {
     case nil => false_
-    case cons h2 t2 => andb (eqb h h2) (eqbList A t t2)
+    case cons h2 t2 => andb (equals h h2) (equalsList A t t2)
   }
 }
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun equals(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 impl[A: Eqb] Eqb[List A] {
-  fun eqb(x: List A, y: List A): Bool = eqbList A x y;
+  fun equals(x: List A, y: List A): Bool = equalsList A x y;
 }
 ''');
     final mainFile = File('${directory.path}/main.doxa')..writeAsStringSync('''
 import "eqb.doxa"
-val r: Bool = eqb (cons zero nil) (cons zero nil)
+val r: Bool = equals (cons zero nil) (cons zero nil)
 ''');
 
     final source = SourceFile(

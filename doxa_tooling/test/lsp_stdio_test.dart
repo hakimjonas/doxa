@@ -115,7 +115,7 @@ void main() {
             '  zero : Nat;\n'
             '  succ : Nat -> Nat;\n'
             '}\n'
-            'val cong_e: (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) '
+            'val congE: (A: Type) -> (B: Type) -> (f: A -> B) -> (x: A) '
             '-> (y: A) -> Eq A x y -> Eq B (f x) (f y) =\n'
             '  (A: Type) => (B: Type) => (f: A -> B) => (x: A) => (y: A) '
             '=> (p: Eq A x y) => Eq.rec\n'
@@ -126,7 +126,7 @@ void main() {
             '    ((z: A) => refl (f z))\n'
             '    p\n'
             'val h: Eq Nat (succ zero) (succ zero) = '
-            'cong_e Nat Nat succ zero zero (refl zero)\n';
+            'congE Nat Nat succ zero zero (refl zero)\n';
 
         server.send(_didOpen('file:///workspace/ctor_value.doxa', source));
         final diagnostics = _diagnostics(

@@ -93,17 +93,18 @@ refinement.
 Fourteen tactic steps are available: `intro`, `exact`, `apply`, `refl`,
 `rewrite`, `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`,
 `constructor`, and `have`. `calc` chains compose equalities as named steps.
-Four infix operators, `*`, `+`, `<=`, and `==`, spell `mult`, `plus`, `leq`,
-and `eqb`; the operators are monomorphic to those functions, so the algebra
-monoids' `add` and `mul` are not reachable through them.
+Four infix operators, `*`, `+`, `<=`, and `==`, spell `multiply`, `plus`, `leq`,
+and `equals`; each expands to one name, and `*` reaches a `Monoid` or `Ring`
+projection when a constraint supplies the dictionary, while `+` never reaches
+the classes' `add`.
 Typeclasses cover single-parameter classes, class-qualified projections,
 instance search, explicit type arguments, parameterised instances,
 superclasses with the derived parent dictionary, local dictionaries, and
-multi-parameter classes. Default method bodies and the camelCase naming pass
-are the remaining typeclass gaps. Quotients have `mk`, `lift`, and
-`Quot.sound` over a checked relation, without a propositional eliminator;
-`decreases` checks a lexicographic measure over named value parameters, and an
-arithmetic decreasing argument such as `sub m n` is rejected.
+multi-parameter classes. Default method bodies are the remaining typeclass
+gap. Quotients have `mk`, `lift`, and `Quot.sound` over a checked relation,
+without a propositional eliminator; `decreases` checks a lexicographic measure
+over named value parameters, and an arithmetic decreasing argument such as
+`sub m n` is rejected.
 
 ### Useful
 
@@ -111,7 +112,7 @@ The standard library covers arithmetic, `Nat`, `Bool`, `List`, `Vec`,
 `Option`, `Sigma`, `Int`, equality, the `sqrt2` case study, the algebra
 monoids and the additive group, and a ring, with `Nat` and `List` monoid
 instances plus `AddMonoid[Int]`, `AddGroup[Int]`, and `Ring[Int]`. `Ring`
-declares its own `mul` and `mone`; the class-qualified projections keep them
+declares its own `multiply` and `one`; the class-qualified projections keep them
 distinct from `Monoid`'s. The hierarchy stops there: there is no additive
 commutative group and no commutative ring, and `AddGroup` and `Ring` have only
 the `Int` instances. `rational.doxa` is a first cut with a constructor and no
@@ -122,9 +123,8 @@ library.
 
 Proof ergonomics: notation for the naming surface. Then the remaining gated
 surface, a checked termination measure, and `Quot.ind` for a propositional
-eliminator. The spelling pass moves the class fields and laws to camelCase
-(`addZero`, `multiplyAssoc`, `addNegateLeft`). Then the rest of the algebraic
-hierarchy: the additive commutative group and the commutative ring.
+eliminator. Then the rest of the algebraic hierarchy: the additive commutative
+group and the commutative ring.
 
 ### Distribution
 

@@ -1,7 +1,7 @@
 # Arithmetic in the standard library
 
 This document specifies the arithmetic operations in `doxa_stdlib/lib/stdlib/nat.doxa` and
-`doxa_stdlib/lib/stdlib/int_base.doxa`. The kernel definitions are authoritative; the
+`doxa_stdlib/lib/stdlib/intBase.doxa`. The kernel definitions are authoritative; the
 examples below were checked with `doxa check` and `refl`. Lemmas marked
 *planned* are not proved.
 
@@ -13,15 +13,15 @@ unary, so there is no largest value and no overflow.
 | Operation | Definition | Behaviour |
 |---|---|---|
 | `plus m n` | recursion on `m` | `m + n` |
-| `mult m n` | recursion on `m` | `m * n` |
+| `multiply m n` | recursion on `m` | `m * n` |
 | `sub m n` | recursion on `m`, then `n` | truncated subtraction: `m - n`, or `zero` when `m < n` |
-| `div m n` | `div_acc` bounded by `m`; outer match on `n` | floor division: `m / n`; `div m zero = zero` |
-| `mod m n` | `mod_acc` bounded by `m` | remainder: `m % n`; `mod m zero = m` |
-| `gcd m n` | Euclid's algorithm through `gcd_acc`, with fuel `m + n` | greatest common divisor; `gcd zero n = n` and `gcd m zero = m` |
-| `lcm m n` | `div (mult m n) (gcd m n)` | least common multiple; `lcm m zero = zero` |
+| `div m n` | `divAcc` bounded by `m`; outer match on `n` | floor division: `m / n`; `div m zero = zero` |
+| `mod m n` | `modAcc` bounded by `m` | remainder: `m % n`; `mod m zero = m` |
+| `gcd m n` | Euclid's algorithm through `gcdAcc`, with fuel `m + n` | greatest common divisor; `gcd zero n = n` and `gcd m zero = m` |
+| `lcm m n` | `div (multiply m n) (gcd m n)` | least common multiple; `lcm m zero = zero` |
 | `coprime m n` | `and_ (leq (gcd m n) (succ zero)) (lt zero (gcd m n))` | true when the gcd is exactly one |
 | `divides d n` | `false_` for `d = zero`, otherwise `leq (mod n d) zero` | true when `d` divides `n` |
-| `prime n` | `prime_acc` | true when `n >= 2` and no `d` with `2 <= d < n` divides `n` |
+| `prime n` | `primeAcc` | true when `n >= 2` and no `d` with `2 <= d < n` divides `n` |
 
 `leq`, `lt`, `coprime`, `divides`, and `prime` return `Bool`. The relation
 `Lt` and the equality type `Eq` are `Prop`-valued and are used in theorems.
@@ -37,8 +37,8 @@ Both are proved in `doxa_stdlib/lib/stdlib/proofs.doxa`:
 
 <!-- doxa: fragment -->
 ```doxa
-div_zero : (m: Nat) -> Eq Nat (div m zero) zero
-mod_zero : (m: Nat) -> Eq Nat (mod m zero) m
+divZero : (m: Nat) -> Eq Nat (div m zero) zero
+modZero : (m: Nat) -> Eq Nat (mod m zero) m
 ```
 
 ### Positive divisors
@@ -46,11 +46,11 @@ mod_zero : (m: Nat) -> Eq Nat (mod m zero) m
 For `n > 0`, `div m n` is floor division and `mod m n` is the corresponding
 remainder:
 
-- `mod m n < n`, proved as `mod_lt`:
+- `mod m n < n`, proved as `modLt`:
   `(m: Nat) -> (n: Nat) -> Lt zero n -> Lt (mod m n) n`.
-- `plus (mult (div m n) n) (mod m n) = m`, up to commutativity of `mult`,
-  proved as `div_add_mod`:
-  `(m: Nat) -> (n: Nat) -> Lt zero n -> Eq Nat (plus (mult (div m n) n) (mod m n)) m`.
+- `plus (multiply (div m n) n) (mod m n) = m`, up to commutativity of `multiply`,
+  proved as `divAddMod`:
+  `(m: Nat) -> (n: Nat) -> Lt zero n -> Eq Nat (plus (multiply (div m n) n) (mod m n)) m`.
   Lean 4 states the same identity as `Nat.div_add_mod`.
 
 Concrete checks:
@@ -68,12 +68,12 @@ Concrete checks:
 | `div 5 0` | `0` |
 | `mod 5 0` | `5` |
 
-The `mod_lt` proof generalises the `mod_acc` case split through `Bool.ind`
+The `modLt` proof generalises the `modAcc` case split through `Bool.ind`
 with an explicit motive carrying the decision equation
 `Eq Bool (lt m (succ d)) x`. A direct `match` on `lt m n` does not refine a
 goal that mentions the scrutinee, so the equation is threaded as a hypothesis
-instead. `mod_step` and `mod_step_lt` implement the pattern: `mod_step` takes
-the branch, and `mod_step_lt` proves the bound for an arbitrary decision `b`
+instead. `modStep` and `modStepLt` implement the pattern: `modStep` takes
+the branch, and `modStepLt` proves the bound for an arbitrary decision `b`
 by eliminating `b` with the equation in the motive.
 
 ### The fuel-based implementation
@@ -83,11 +83,11 @@ by eliminating `b` with the equation in the motive.
 
 <!-- doxa: fragment -->
 ```doxa
-fun mod_acc(k: Nat, m: Nat, n: Nat): Nat
-fun div_acc(k: Nat, m: Nat, n: Nat): Nat
+fun modAcc(k: Nat, m: Nat, n: Nat): Nat
+fun divAcc(k: Nat, m: Nat, n: Nat): Nat
 ```
 
-`mod m n` calls `mod_acc m m n`, and `div m n` calls `div_acc m m n` for a
+`mod m n` calls `modAcc m m n`, and `div m n` calls `divAcc m m n` for a
 positive `n`. The fuel is the original dividend `m`.
 
 For `n > 0`, each iteration of the `false_` branch replaces `m` by
@@ -97,12 +97,12 @@ and then takes the `true_` branch. Since `q <= m` for `n >= 1`, the fuel `m`
 is sufficient for every positive divisor.
 
 For `n = zero`, `div` returns `zero` in its outer match and never calls
-`div_acc`. `mod` calls `mod_acc m m zero`; the `false_` branch subtracts
+`divAcc`. `mod` calls `modAcc m m zero`; the `false_` branch subtracts
 `zero`, so the value stays `m`, the fuel runs out after `m` iterations, and
-the `zero` case of `mod_acc` returns `m`. The fuel bound therefore also
+the `zero` case of `modAcc` returns `m`. The fuel bound therefore also
 terminates the zero-divisor case.
 
-`gcd` uses `gcd_acc (plus m n) m n`. Fuel `m` alone is insufficient when
+`gcd` uses `gcdAcc (plus m n) m n`. Fuel `m` alone is insufficient when
 `m < n`: `gcd 2 3` would return `2`. Euclid reaches a zero remainder within
 `m + n` steps, so the sum is a safe bound.
 
@@ -117,7 +117,7 @@ takes time proportional to the quotient or remainder.
 ### Primality
 
 `prime n` is `false_` for `n = zero` and `n = succ zero`. For
-`n = succ (succ n__)`, it calls `prime_acc n__ n`. Each candidate is
+`n = succ (succ n__)`, it calls `primeAcc n__ n`. Each candidate is
 `succ (succ k_)`, so the candidates run from `n - 1` down to `2`. The guard
 `lt (succ (succ k_)) n` is true for every candidate, `divides` tests each
 candidate, and the `zero` fuel case returns `true_` after the divisors run
@@ -127,7 +127,7 @@ out. The result is `true_` exactly when `n >= 2` and no `d` with
 Checks by `refl`: `prime 2`, `prime 3`, `prime 5`, `prime 7`, `prime 11`,
 and `prime 13` are `true_`; `prime 0`, `prime 1`, `prime 4`, `prime 6`,
 `prime 8`, `prime 9`, and `prime 15` are `false_`. The case study lemmas
-`prime_two`, `not_prime_zero`, and `not_prime_one` still check.
+`primeTwo`, `notPrimeZero`, and `notPrimeOne` still check.
 
 ### Coprimality
 
@@ -145,25 +145,25 @@ comparisons to the `Lt` relation and bound truncated subtraction:
 
 | Lemma | Statement | Bridges |
 |---|---|---|
-| `leq_refl` | `Eq Bool (leq n n) true_` | reflexivity of `leq` |
-| `leq_trans` | `leq a b -> leq b c -> leq a c` | transitivity of `leq` |
-| `leq_succ_right` | `leq a b -> leq a (succ b)` | monotonicity of `leq` in its right argument |
-| `leq_succ_true` | `leq m k = false_ -> leq (succ k) m` | a failed `leq` gives `leq` in the opposite direction |
-| `leq_self_plus` | `leq v (plus X v)` | a value is at most a sum with it on the right |
-| `lt_zero_succ` | `Lt zero (succ n)` | zero is below every successor |
-| `lt_succ_mono` | `Lt a b -> Lt (succ a) (succ b)` | monotonicity of `Lt` under `succ` |
-| `lt_of_leq` | `leq m n -> Lt m (succ n)` | the Boolean `leq` to `Lt` |
-| `lt_true_Lt` | `lt m n -> Lt m n` | the Boolean `lt` to `Lt` |
-| `lt_false_leq` | `lt m n = false_ -> leq n m` | a failed `lt` gives `leq` in the opposite direction |
-| `lt_leq` | `Lt m n -> leq m n` | the `Lt` relation to the Boolean `leq` |
-| `leq_sub` | `leq (sub m n) m` | truncated subtraction is at most the minuend |
-| `sub_add` | `leq n m -> plus (sub m n) n = m` | subtraction plus its subtrahend reconstructs the minuend |
-| `sub_plus_self` | `sub (plus X w) w = X` | subtracting the addend recovers the summand |
-| `plus_sub_swap` | `plus B (sub A v) = plus A (sub B v)` | swaps two bounded subtractions across a sum |
+| `leqRefl` | `Eq Bool (leq n n) true_` | reflexivity of `leq` |
+| `leqTrans` | `leq a b -> leq b c -> leq a c` | transitivity of `leq` |
+| `leqSuccRight` | `leq a b -> leq a (succ b)` | monotonicity of `leq` in its right argument |
+| `leqSuccTrue` | `leq m k = false_ -> leq (succ k) m` | a failed `leq` gives `leq` in the opposite direction |
+| `leqSelfPlus` | `leq v (plus X v)` | a value is at most a sum with it on the right |
+| `ltZeroSucc` | `Lt zero (succ n)` | zero is below every successor |
+| `ltSuccMono` | `Lt a b -> Lt (succ a) (succ b)` | monotonicity of `Lt` under `succ` |
+| `ltOfLeq` | `leq m n -> Lt m (succ n)` | the Boolean `leq` to `Lt` |
+| `ltTrueLt` | `lt m n -> Lt m n` | the Boolean `lt` to `Lt` |
+| `ltFalseLeq` | `lt m n = false_ -> leq n m` | a failed `lt` gives `leq` in the opposite direction |
+| `ltLeq` | `Lt m n -> leq m n` | the `Lt` relation to the Boolean `leq` |
+| `leqSub` | `leq (sub m n) m` | truncated subtraction is at most the minuend |
+| `subAdd` | `leq n m -> plus (sub m n) n = m` | subtraction plus its subtrahend reconstructs the minuend |
+| `subPlusSelf` | `sub (plus X w) w = X` | subtracting the addend recovers the summand |
+| `plusSubSwap` | `plus B (sub A v) = plus A (sub B v)` | swaps two bounded subtractions across a sum |
 
 The implication arrows abbreviate the full theorem types; a `leq` or `lt`
-premise is the corresponding `Eq Bool ... true_` hypothesis. `lt_succ_mono`
-and `lt_leq` are declared as `fun`s with structural recursion on the `Lt`
+premise is the corresponding `Eq Bool ... true_` hypothesis. `ltSuccMono`
+and `ltLeq` are declared as `fun`s with structural recursion on the `Lt`
 proof; the other thirteen are `val` bindings built from `Nat.ind`.
 
 ## Integers
@@ -180,8 +180,8 @@ data Int: Type {
 
 `pos n` represents `n`, `neg n` represents `-(n + 1)`, and zero is `pos zero`.
 The `neg` encoding avoids a second representation of zero. The operations in
-`int_base.doxa` are `intPlus`, `intNeg`, `intSub`, `intMult`, `intLeq`,
-`intAbs` (returning a `Nat`), and `intSign`; `int_base.doxa` stays
+`intBase.doxa` are `intPlus`, `intNegate`, `intSub`, `intMultiply`, `intLeq`,
+`intAbs` (returning a `Nat`), and `intSign`; `intBase.doxa` stays
 operations-only for `Rational`. `int.doxa` adds `intDiv` and `intMod`.
 
 ### Division convention
@@ -234,15 +234,15 @@ All rows check by `refl`.
 
 ## Open lemmas
 
-Both `mod_lt` and `div_add_mod` are proved in `doxa_stdlib/lib/stdlib/proofs.doxa`. No
+Both `modLt` and `divAddMod` are proved in `doxa_stdlib/lib/stdlib/proofs.doxa`. No
 general theorem about the `Nat` arithmetic operations remains open.
 
 For `Int`, the Euclidean identity and bound are proved for all `a` and
 `b != 0`:
 
-- `intDivMod`: `intPlus (intMult b (intDiv a b)) (intMod a b) = a`.
-- `intMod_nonneg`: `intLeq (pos zero) (intMod a b)` is `true_`.
-- `intMod_lt`:
+- `intDivMod`: `intPlus (intMultiply b (intDiv a b)) (intMod a b) = a`.
+- `intModNonneg`: `intLeq (pos zero) (intMod a b)` is `true_`.
+- `intModLt`:
   `intLeq (intPlus (intMod a b) (pos (succ zero))) (pos (intAbs b))` is
   `true_`.
 
@@ -250,12 +250,12 @@ The two bound theorems take the nonzero condition as the hypothesis
 `(Eq Int b (pos zero) -> False)`. `intDivMod` also covers `b = 0`:
 `intDiv a 0 = pos zero` and `intMod a 0 = a`.
 
-The proofs use `intMult_pos_intNeg`, `intMult_neg_pos`,
-`intPlusHelp_plus`, `intDivNeg_shift`, `intPlus_one`, and
-`intModNegR_bound`, together with the Nat helpers `leq_self_plus`,
-`lt_leq`, `sub_plus_self`, `plus_sub_swap`, `leq_succ_succ`,
-`lt_succ_leq`, and `sub_lt_succ`. The nonnegative-dividend half also uses
-`intMult_neg_intNeg` and `intNeg_pos_zero`.
+The proofs use `intMultiplyPosIntNegate`, `intMultiplyNegPos`,
+`intPlusHelpPlus`, `intDivNegShift`, `intPlusOne`, and
+`intModNegRBound`, together with the Nat helpers `leqSelfPlus`,
+`ltLeq`, `subPlusSelf`, `plusSubSwap`, `leqSuccSucc`,
+`ltSuccLeq`, and `subLtSucc`. The nonnegative-dividend half also uses
+`intMultiplyNegIntNegate` and `intNegatePosZero`.
 
 ## References
 

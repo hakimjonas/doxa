@@ -117,19 +117,19 @@ void main() {
     const body = '''
 val use_nonneg_pos: (h: Eq Int p2 (pos zero) -> False) ->
   Eq Bool (intLeq (pos zero) (intMod p7 p2)) true_ =
-  (h: Eq Int p2 (pos zero) -> False) => intMod_nonneg p7 p2 h
+  (h: Eq Int p2 (pos zero) -> False) => intModNonneg p7 p2 h
 val z_nonneg_pos: Nat = zero
 val use_lt_pos: (h: Eq Int p2 (pos zero) -> False) ->
   Eq Bool (intLeq (intPlus (intMod p7 p2) (pos (succ zero))) (pos (intAbs p2))) true_ =
-  (h: Eq Int p2 (pos zero) -> False) => intMod_lt p7 p2 h
+  (h: Eq Int p2 (pos zero) -> False) => intModLt p7 p2 h
 val z_lt_pos: Nat = zero
 val use_nonneg_neg: (h: Eq Int m2 (pos zero) -> False) ->
   Eq Bool (intLeq (pos zero) (intMod p7 m2)) true_ =
-  (h: Eq Int m2 (pos zero) -> False) => intMod_nonneg p7 m2 h
+  (h: Eq Int m2 (pos zero) -> False) => intModNonneg p7 m2 h
 val z_nonneg_neg: Nat = zero
 val use_lt_neg: (h: Eq Int m2 (pos zero) -> False) ->
   Eq Bool (intLeq (intPlus (intMod p7 m2) (pos (succ zero))) (pos (intAbs m2))) true_ =
-  (h: Eq Int m2 (pos zero) -> False) => intMod_lt p7 m2 h
+  (h: Eq Int m2 (pos zero) -> False) => intModLt p7 m2 h
 val z_lt_neg: Nat = zero
 ''';
     final r = runSource(_src(body));

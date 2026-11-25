@@ -61,7 +61,7 @@ fun plus(m: Nat, n: Nat): Nat = match m {
 ''';
 
 const _proofs = '''
-val plus_zero : (n: Nat) -> Eq Nat (plus n zero) n = by {
+val plusZero : (n: Nat) -> Eq Nat (plus n zero) n = by {
   intro n;
   induction n;
   refl;
@@ -97,7 +97,7 @@ val named_arm : (n: Nat) -> Eq Nat (plus n zero) n = by {
   intro n;
   cases n;
   refl;
-  rewrite (plus_zero a);
+  rewrite (plusZero a);
   refl
 }
 ''');
@@ -256,7 +256,7 @@ val bad : (A: Type) -> A -> A = by { intro A; intro x; auto 21 }
   });
 
   group('omega', () {
-    test('closes with plus_zero in scope', () {
+    test('closes with plusZero in scope', () {
       final env = _elabAndCheck('''
 $_nat
 $_proofs
@@ -389,7 +389,7 @@ data P: Nat -> Type {
 
 const _lt = '''
 data Lt: Nat -> Nat -> Prop {
-  lt_succ: (n: Nat) -> Lt n (succ n);
-  lt_trans: (n: Nat) -> (m: Nat) -> (k: Nat) -> Lt n m -> Lt m k -> Lt n k;
+  ltSucc: (n: Nat) -> Lt n (succ n);
+  ltTrans: (n: Nat) -> (m: Nat) -> (k: Nat) -> Lt n m -> Lt m k -> Lt n k;
 }
 ''';

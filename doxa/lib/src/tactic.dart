@@ -1278,8 +1278,8 @@ TacticResult Function(TacticState) auto({int depth = 5}) => (s) {
 ///
 /// Normalises both sides of an `Eq Nat lhs rhs` goal via `nf()` and
 /// returns `refl` if they become syntactically identical.  Handles
-/// common patterns: `plus_comm`, `plus_assoc`, `plus_zero`,
-/// `mult_zero`, etc. by trying known lemmas from the environment.
+/// common patterns: `plusComm`, `plusAssoc`, `plusZero`,
+/// `multiplyZero`, etc. by trying known lemmas from the environment.
 TacticResult omega(TacticState s) {
   final goalType = s.goalType;
   final level = s.ctx.level;
@@ -1299,19 +1299,19 @@ TacticResult omega(TacticState s) {
   // Try known lemmas for common arithmetic patterns.
   final topBindings = s.ctx.env.topBindings;
   final lemmaCandidates = [
-    'plus_comm',
-    'plus_assoc',
-    'plus_zero',
-    'plus_succ',
-    'mult_comm',
-    'mult_zero',
-    'mult_one',
-    'mult_assoc',
-    'mult_plus',
-    'mult_2',
-    'mult_4_eq',
-    'mult_succ_right',
-    'mult_2_inj',
+    'plusComm',
+    'plusAssoc',
+    'plusZero',
+    'plusSucc',
+    'multiplyComm',
+    'multiplyZero',
+    'multiplyOne',
+    'multiplyAssoc',
+    'multiplyPlus',
+    'multiply2',
+    'multiply4Eq',
+    'multiplySuccRight',
+    'multiply2Inj',
   ];
 
   for (final name in lemmaCandidates) {

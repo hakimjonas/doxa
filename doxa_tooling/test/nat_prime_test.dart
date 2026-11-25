@@ -75,7 +75,7 @@ val eight: Nat = succ (succ (succ (succ (succ (succ (succ (succ zero)))))))
 val nine: Nat = succ (succ (succ (succ (succ (succ (succ (succ (succ zero))))))))
 val eleven: Nat = plus five six
 val thirteen: Nat = plus six seven
-val fifteen: Nat = mult three five
+val fifteen: Nat = multiply three five
 ''';
 
 void main() {

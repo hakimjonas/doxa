@@ -7,7 +7,7 @@ import "package:doxa_stdlib/stdlib/nat.doxa"
 import "package:doxa_stdlib/stdlib/proofs.doxa"
 
 val two: Nat = succ (succ zero)
-// `plus_zero` states `plus n zero = n`, so its instantiation at `two` is the
+// `plusZero` states `plus n zero = n`, so its instantiation at `two` is the
 // whole proof.
 
-val two_plus_zero: Eq Nat (two + zero) two = plus_zero two
+val two_plus_zero: Eq Nat (two + zero) two = plusZero two

@@ -80,19 +80,19 @@ void main() {
         'data Bool : Type { true_ : Bool; false_ : Bool; }',
         'fun plus(m: Nat, n: Nat): Nat = match m {'
             ' case zero => n case succ m_ => succ (plus m_ n) }',
-        'fun mult(m: Nat, n: Nat): Nat = match m {'
-            ' case zero => zero case succ m_ => plus n (mult m_ n) }',
+        'fun multiply(m: Nat, n: Nat): Nat = match m {'
+            ' case zero => zero case succ m_ => plus n (multiply m_ n) }',
         'fun leq(m: Nat, n: Nat): Bool = match m {'
             ' case zero => true_'
             ' case succ m_ => match n {'
             ' case zero => false_ case succ n_ => leq m_ n_ } }',
-        'fun eqbNat(x: Nat, y: Nat): Bool = match x {'
+        'fun equalsNat(x: Nat, y: Nat): Bool = match x {'
             ' case zero => match y {'
             ' case zero => true_ case succ _ => false_ }'
             ' case succ n => match y {'
-            ' case zero => false_ case succ m => eqbNat n m } }',
-        'typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool; }',
-        'impl Eqb[Nat] { fun eqb(x: Nat, y: Nat): Bool = eqbNat x y; }',
+            ' case zero => false_ case succ m => equalsNat n m } }',
+        'typeclass Eqb[A: Type] { fun equals(x: A, y: A): Bool; }',
+        'impl Eqb[Nat] { fun equals(x: Nat, y: Nat): Bool = equalsNat x y; }',
       ]) {
         final (result, next) = session.processInput(decl);
         expect(result, isA<ReplDeclResult>(), reason: '$result');

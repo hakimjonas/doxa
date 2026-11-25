@@ -5,11 +5,11 @@
 // Additive and multiplicative structures are separate classes. The instance
 // table holds one dictionary per class and tuple of target heads, and search
 // has no specificity preference, so one class could not hold both `plus` and
-// `mult` at `Nat`. `AddMonoid` and `Monoid` give each operation its own class,
+// `multiply` at `Nat`. `AddMonoid` and `Monoid` give each operation its own class,
 // as Lean's `AddMonoid` and `Monoid` do.
 //
 // The laws are ordinary dictionary fields. A law field names the operation
-// projections declared before it, so `add_assoc` is stated over `add` and each
+// projections declared before it, so `addAssoc` is stated over `add` and each
 // instance proves it over that instance's operation. `AddCommMonoid`,
 // `AddGroup`, and `CommMonoid` embed their monoid as a superclass dictionary,
 // so a constraint `[A: AddCommMonoid]` or `[A: AddGroup]` supplies
@@ -17,13 +17,13 @@
 // a constructor of `Int` and class methods are global projections.
 //
 // `Ring` extends `AddGroup` with its own multiplicative operation and laws.
-// Projections are class-qualified, so `Ring.mul` and `Monoid.mul` are distinct
-// even though both classes declare a `mul` field. A bare `mul` resolves to a
-// local dictionary's class, or to the only declaring class when one exists.
-// The additive commutative variants, the naming pass, and default method
-// bodies are not part of this module.
+// Projections are class-qualified, so `Ring.multiply` and `Monoid.multiply`
+// are distinct even though both classes declare a `multiply` field. A bare
+// `multiply` resolves to the current class or a local dictionary's class,
+// then to a top-level binding of that name, then to a unique declaring class.
+// Default method bodies are not part of this module.
 //
-// `sum` folds a list with `add` and `azero`. `sumViaComm` takes the
+// `sum` folds a list with `add` and `addZero`. `sumViaComm` takes the
 // commutative constraint and uses the same fold through the derived parent
 // dictionary. `double` and `negTwice` take the group constraint, and `double`
 // reaches `add` through the parent dictionary. `square` multiplies a value by
@@ -34,113 +34,115 @@ import "proofs.doxa"
 
 typeclass AddMonoid[A: Type] {
   fun add(x: A, y: A): A;
-  fun azero(): A;
-  fun add_assoc(x: A, y: A, z: A): Eq A (add (add x y) z) (add x (add y z));
-  fun add_zero_left(x: A): Eq A (add azero x) x;
-  fun add_zero_right(x: A): Eq A (add x azero) x;
+  fun addZero(): A;
+  fun addAssoc(x: A, y: A, z: A): Eq A (add (add x y) z) (add x (add y z));
+  fun addZeroLeft(x: A): Eq A (add addZero x) x;
+  fun addZeroRight(x: A): Eq A (add x addZero) x;
 }
 
 typeclass AddCommMonoid[A: Type]: AddMonoid A {
-  fun add_comm(x: A, y: A): Eq A (add x y) (add y x);
+  fun addComm(x: A, y: A): Eq A (add x y) (add y x);
 }
 
 typeclass AddGroup[A: Type]: AddMonoid A {
   fun negate(x: A): A;
-  fun add_neg_left(x: A): Eq A (add (negate x) x) azero;
-  fun add_neg_right(x: A): Eq A (add x (negate x)) azero;
+  fun addNegateLeft(x: A): Eq A (add (negate x) x) addZero;
+  fun addNegateRight(x: A): Eq A (add x (negate x)) addZero;
 }
 
 typeclass Monoid[A: Type] {
-  fun mul(x: A, y: A): A;
-  fun mone(): A;
-  fun mul_assoc(x: A, y: A, z: A): Eq A (mul (mul x y) z) (mul x (mul y z));
-  fun mul_one_left(x: A): Eq A (mul mone x) x;
-  fun mul_one_right(x: A): Eq A (mul x mone) x;
+  fun multiply(x: A, y: A): A;
+  fun one(): A;
+  fun multiplyAssoc(x: A, y: A, z: A): Eq A (x * y * z) (x * (y * z));
+  fun multiplyOneLeft(x: A): Eq A (one * x) x;
+  fun multiplyOneRight(x: A): Eq A (x * one) x;
 }
 
 typeclass Ring[A: Type]: AddGroup A {
-  fun mul(x: A, y: A): A;
-  fun mone(): A;
-  fun mul_assoc(x: A, y: A, z: A): Eq A (mul (mul x y) z) (mul x (mul y z));
-  fun mul_one_left(x: A): Eq A (mul mone x) x;
-  fun mul_one_right(x: A): Eq A (mul x mone) x;
-  fun mul_add(x: A, y: A, z: A): Eq A (mul (add x y) z) (add (mul x z) (mul y z));
-  fun add_mul(x: A, y: A, z: A): Eq A (mul x (add y z)) (add (mul x y) (mul x z));
+  fun multiply(x: A, y: A): A;
+  fun one(): A;
+  fun multiplyAssoc(x: A, y: A, z: A): Eq A (x * y * z) (x * (y * z));
+  fun multiplyOneLeft(x: A): Eq A (one * x) x;
+  fun multiplyOneRight(x: A): Eq A (x * one) x;
+  fun multiplyAdd(x: A, y: A, z: A): Eq A (add x y * z) (add (x * z) (y * z));
+  fun addMultiply(x: A, y: A, z: A): Eq A (x * add y z) (add (x * y) (x * z));
 }
 
 typeclass CommMonoid[A: Type]: Monoid A {
-  fun mul_comm(x: A, y: A): Eq A (mul x y) (mul y x);
+  fun multiplyComm(x: A, y: A): Eq A (x * y) (y * x);
 }
 
 impl AddMonoid[Nat] {
   fun add(x: Nat, y: Nat): Nat = x + y;
-  fun azero(): Nat = zero;
-  fun add_assoc(x: Nat, y: Nat, z: Nat): Eq Nat (x + y + z) (x + (y + z)) = plus_assoc x y z;
-  fun add_zero_left(x: Nat): Eq Nat (zero + x) x = refl x;
-  fun add_zero_right(x: Nat): Eq Nat (x + zero) x = plus_zero x;
+  fun addZero(): Nat = zero;
+  fun addAssoc(x: Nat, y: Nat, z: Nat): Eq Nat (x + y + z) (x + (y + z)) = plusAssoc x y z;
+  fun addZeroLeft(x: Nat): Eq Nat (zero + x) x = refl x;
+  fun addZeroRight(x: Nat): Eq Nat (x + zero) x = plusZero x;
 }
 
 impl AddCommMonoid[Nat] {
-  fun add_comm(x: Nat, y: Nat): Eq Nat (x + y) (y + x) = plus_comm x y;
+  fun addComm(x: Nat, y: Nat): Eq Nat (x + y) (y + x) = plusComm x y;
 }
 
 impl Monoid[Nat] {
-  fun mul(x: Nat, y: Nat): Nat = x * y;
-  fun mone(): Nat = succ zero;
-  fun mul_assoc(x: Nat, y: Nat, z: Nat): Eq Nat (x * y * z) (x * (y * z)) = mult_assoc x y z;
-  fun mul_one_left(x: Nat): Eq Nat (succ zero * x) x = plus_zero x;
-  fun mul_one_right(x: Nat): Eq Nat (x * succ zero) x = mult_one x;
+  fun multiply(x: Nat, y: Nat): Nat = x * y;
+  fun one(): Nat = succ zero;
+  fun multiplyAssoc(x: Nat, y: Nat, z: Nat): Eq Nat (x * y * z) (x * (y * z)) = multiplyAssoc x y z;
+  fun multiplyOneLeft(x: Nat): Eq Nat (succ zero * x) x = plusZero x;
+  fun multiplyOneRight(x: Nat): Eq Nat (x * succ zero) x = multiplyOne x;
 }
 
 impl CommMonoid[Nat] {
-  fun mul_comm(x: Nat, y: Nat): Eq Nat (x * y) (y * x) = mult_comm x y;
+  fun multiplyComm(x: Nat, y: Nat): Eq Nat (x * y) (y * x) = multiplyComm x y;
 }
 
 impl [A: Type] AddMonoid[List A] {
   fun add(xs: List A, ys: List A): List A = append xs ys;
-  fun azero(): List A = nil;
-  fun add_assoc(xs: List A, ys: List A, zs: List A): Eq
+  fun addZero(): List A = nil;
+  fun addAssoc(xs: List A, ys: List A, zs: List A): Eq
     (List A)
     (append (append xs ys) zs)
-    (append xs (append ys zs)) = append_assoc A xs ys zs;
-  fun add_zero_left(xs: List A): Eq (List A) (append nil xs) xs = refl xs;
-  fun add_zero_right(xs: List A): Eq (List A) (append xs nil) xs = append_nil A xs;
+    (append xs (append ys zs)) = appendAssoc A xs ys zs;
+  fun addZeroLeft(xs: List A): Eq (List A) (append nil xs) xs = refl xs;
+  fun addZeroRight(xs: List A): Eq (List A) (append xs nil) xs = appendNil A xs;
 }
 
 impl AddMonoid[Int] {
   fun add(x: Int, y: Int): Int = intPlus x y;
-  fun azero(): Int = pos zero;
-  fun add_assoc(x: Int, y: Int, z: Int): Eq Int (intPlus (intPlus x y) z) (intPlus x (intPlus y z)) =
-    intPlus_assoc x y z;
-  fun add_zero_left(x: Int): Eq Int (intPlus (pos zero) x) x = intPlus_zero_left x;
-  fun add_zero_right(x: Int): Eq Int (intPlus x (pos zero)) x = intPlus_zero_right x;
+  fun addZero(): Int = pos zero;
+  fun addAssoc(x: Int, y: Int, z: Int): Eq Int (intPlus (intPlus x y) z) (intPlus x (intPlus y z)) =
+    intPlusAssoc x y z;
+  fun addZeroLeft(x: Int): Eq Int (intPlus (pos zero) x) x = intPlusZeroLeft x;
+  fun addZeroRight(x: Int): Eq Int (intPlus x (pos zero)) x = intPlusZeroRight x;
 }
 
 impl AddGroup[Int] {
-  fun negate(x: Int): Int = intNeg x;
-  fun add_neg_left(x: Int): Eq Int (intPlus (intNeg x) x) (pos zero) = intAdd_neg_left x;
-  fun add_neg_right(x: Int): Eq Int (intPlus x (intNeg x)) (pos zero) = intAdd_neg_right x;
+  fun negate(x: Int): Int = intNegate x;
+  fun addNegateLeft(x: Int): Eq Int (intPlus (intNegate x) x) (pos zero) = intAddNegateLeft x;
+  fun addNegateRight(x: Int): Eq Int (intPlus x (intNegate x)) (pos zero) = intAddNegateRight x;
 }
 
 impl Ring[Int] {
-  fun mul(x: Int, y: Int): Int = intMult x y;
-  fun mone(): Int = pos (succ zero);
-  fun mul_assoc(x: Int, y: Int, z: Int): Eq Int (intMult (intMult x y) z) (intMult x (intMult y z)) =
-    intMult_assoc x y z;
-  fun mul_one_left(x: Int): Eq Int (intMult (pos (succ zero)) x) x = intMult_one_left x;
-  fun mul_one_right(x: Int): Eq Int (intMult x (pos (succ zero))) x = intMult_one_right x;
-  fun mul_add(x: Int, y: Int, z: Int): Eq
+  fun multiply(x: Int, y: Int): Int = intMultiply x y;
+  fun one(): Int = pos (succ zero);
+  fun multiplyAssoc(x: Int, y: Int, z: Int): Eq
     Int
-    (intMult (intPlus x y) z)
-    (intPlus (intMult x z) (intMult y z)) = intMul_add x y z;
-  fun add_mul(x: Int, y: Int, z: Int): Eq
+    (intMultiply (intMultiply x y) z)
+    (intMultiply x (intMultiply y z)) = intMultiplyAssoc x y z;
+  fun multiplyOneLeft(x: Int): Eq Int (intMultiply (pos (succ zero)) x) x = intMultiplyOneLeft x;
+  fun multiplyOneRight(x: Int): Eq Int (intMultiply x (pos (succ zero))) x = intMultiplyOneRight x;
+  fun multiplyAdd(x: Int, y: Int, z: Int): Eq
     Int
-    (intMult x (intPlus y z))
-    (intPlus (intMult x y) (intMult x z)) = intAdd_mul x y z;
+    (intMultiply (intPlus x y) z)
+    (intPlus (intMultiply x z) (intMultiply y z)) = intMultiplyAdd x y z;
+  fun addMultiply(x: Int, y: Int, z: Int): Eq
+    Int
+    (intMultiply x (intPlus y z))
+    (intPlus (intMultiply x y) (intMultiply x z)) = intAddMultiply x y z;
 }
 
 fun sum[A: AddMonoid](xs: List A): A = match xs {
-  case nil => azero
+  case nil => addZero
   case cons x rest => add x (sum A rest)
 }
 
@@ -150,6 +152,6 @@ fun double[A: AddGroup](x: A): A = add x x
 
 fun negTwice[A: AddGroup](x: A): A = negate (negate x)
 
-fun square[A: Ring](x: A): A = mul x x
+fun square[A: Ring](x: A): A = x * x
 
-val square_one: Eq Int (square Int (pos (succ zero))) (pos (succ zero)) = refl (pos (succ zero))
+val squareOne: Eq Int (square Int (pos (succ zero))) (pos (succ zero)) = refl (pos (succ zero))

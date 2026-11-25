@@ -78,7 +78,7 @@ data Nat: Type {
 
 const _acc = '''
 data Acc[A: Type, R: A -> A -> Prop]: A -> Prop {
-  acc_intro: (x: A) ->
+  accIntro: (x: A) ->
     ((y: A) -> R y x -> Acc A R y) -> Acc A R x;
 }
 ''';
@@ -113,7 +113,7 @@ data D7[A: Type, B: Type]: Type {
     });
 
     test('Acc.rec has a closed type', () {
-      // `acc_intro`'s recursive argument is
+      // `accIntro`'s recursive argument is
       // `(y: A) -> R y x -> Acc A R y`: two Pi binders whose second
       // domain references both the first binder (`y`) and outer
       // constructor arguments (`R`, `x`). The sub-indices of the base
@@ -210,7 +210,7 @@ val acc_rect_true: (n: Nat) -> Acc Nat rel n -> Nat =
     h
 val acc_rect_iota:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
-  Eq Nat (acc_rect_true n (acc_intro n f)) zero =
+  Eq Nat (acc_rect_true n (accIntro n f)) zero =
   (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => refl zero
 ''');
       expect(_binding(env, 'acc_rect_iota').name, 'acc_rect_iota');
@@ -235,7 +235,7 @@ val observe:
   (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => Eq.rect Nat
     ((a: Nat) => (b: Nat) => (_: Eq Nat a b) => Nat)
     n n ((z: Nat) => zero)
-    (acc_true n (acc_intro n f))
+    (acc_true n (accIntro n f))
 val observe_iota:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
   Eq Nat (observe n f) zero =
@@ -329,7 +329,7 @@ val acc_expected:
 val acc_ih_iota:
   (n: Nat) -> (f: (y: Nat) -> rel y n -> Acc Nat rel y) ->
   (r: rel n n) ->
-  Eq Nat (acc_ih n (acc_intro n f) r) (acc_expected n f r) =
+  Eq Nat (acc_ih n (accIntro n f) r) (acc_expected n f r) =
   (n: Nat) => (f: (y: Nat) -> rel y n -> Acc Nat rel y) => (r: rel n n) =>
     refl (acc_expected n f r)
 ''');

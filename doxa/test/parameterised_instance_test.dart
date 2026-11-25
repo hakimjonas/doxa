@@ -29,7 +29,7 @@ data Pair[A: Type, B: Type] : Type { pair : A -> B -> Pair A B; }
 
 const _eqbClass = '''
 typeclass Eqb[A: Type] {
-  fun eqb(x: A, y: A): Bool;
+  fun equals(x: A, y: A): Bool;
 }
 ''';
 
@@ -42,47 +42,47 @@ fun andb(a: Bool, b: Bool): Bool = match a {
 
 /// Structural helper for the Nat instance.
 const _natHelper = '''
-fun eqbNat(x: Nat, y: Nat): Bool = match x {
+fun equalsNat(x: Nat, y: Nat): Bool = match x {
   case zero => match y {
     case zero => true_
     case succ _ => false_
   }
   case succ n => match y {
     case zero => false_
-    case succ m => eqbNat n m
+    case succ m => equalsNat n m
   }
 }
 ''';
 
 const _natInstance = '''
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun equals(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 ''';
 
 /// Structural helper for the List instance.
 ///
-/// The helper carries the class constraint, so `eqb` on the element type
+/// The helper carries the class constraint, so `equals` on the element type
 /// uses its dictionary. The tail call passes the explicit type argument;
 /// the structural check counts it before comparing the designated value
 /// position. The instance delegates to this function because a method body
 /// cannot resolve its own instance.
 const _listHelper = '''
-fun eqbList[A: Eqb](xs: List A, ys: List A): Bool {struct xs} = match xs {
+fun equalsList[A: Eqb](xs: List A, ys: List A): Bool {struct xs} = match xs {
   case nil => match ys {
     case nil => true_
     case cons _ _ => false_
   }
   case cons h t => match ys {
     case nil => false_
-    case cons h2 t2 => andb (eqb h h2) (eqbList A t t2)
+    case cons h2 t2 => andb (equals h h2) (equalsList A t t2)
   }
 }
 ''';
 
 const _listInstance = '''
 impl[A: Eqb] Eqb[List A] {
-  fun eqb(x: List A, y: List A): Bool = eqbList A x y;
+  fun equals(x: List A, y: List A): Bool = equalsList A x y;
 }
 ''';
 
@@ -109,7 +109,7 @@ void main() {
           _program('''
 $_natInstance
 $_listInstance
-val r: Bool = eqb (cons zero nil) (cons zero nil)
+val r: Bool = equals (cons zero nil) (cons zero nil)
 '''),
         ),
       );
@@ -145,7 +145,7 @@ val r: Bool = eqb (cons zero nil) (cons zero nil)
           _program('''
 $_natInstance
 $_listInstance
-val r: Bool = eqb (cons zero (cons zero nil)) (cons zero (cons zero nil))
+val r: Bool = equals (cons zero (cons zero nil)) (cons zero (cons zero nil))
 '''),
         ),
       );
@@ -159,7 +159,7 @@ val r: Bool = eqb (cons zero (cons zero nil)) (cons zero (cons zero nil))
           _program('''
 $_natInstance
 $_listInstance
-val r: Bool = eqb (cons (cons zero nil) nil) (cons (cons zero nil) nil)
+val r: Bool = equals (cons (cons zero nil) nil) (cons (cons zero nil) nil)
 '''),
         ),
       );
@@ -174,7 +174,7 @@ val r: Bool = eqb (cons (cons zero nil) nil) (cons (cons zero nil) nil)
             _program('''
 $_listInstance
 val xs: List Bool = nil
-val bad: Bool = eqb xs xs
+val bad: Bool = equals xs xs
 '''),
           ),
         ),
@@ -192,7 +192,7 @@ val bad: Bool = eqb xs xs
           pp(
             _program('''
 $_listInstance
-val bad: Bool = eqb zero zero
+val bad: Bool = equals zero zero
 '''),
           ),
         ),
@@ -235,7 +235,7 @@ $_listInstance
           pp(
             _program('''
 impl[A: Eqb] Eqb[A] {
-  fun eqb(x: A, y: A): Bool = true_;
+  fun equals(x: A, y: A): Bool = true_;
 }
 '''),
           ),
@@ -249,7 +249,7 @@ impl[A: Eqb] Eqb[A] {
           pp(
             _program('''
 impl Eqb[List Nat] {
-  fun eqb(x: List Nat, y: List Nat): Bool = true_;
+  fun equals(x: List Nat, y: List Nat): Bool = true_;
 }
 '''),
           ),
@@ -263,7 +263,7 @@ impl Eqb[List Nat] {
           pp(
             _program('''
 impl[A: Eqb] Eqb[Pair A A] {
-  fun eqb(x: Pair A A, y: Pair A A): Bool = true_;
+  fun equals(x: Pair A A, y: Pair A A): Bool = true_;
 }
 '''),
           ),
@@ -284,7 +284,7 @@ impl[A: Eqb] Eqb[Pair A A] {
 $_natInstance
 $_listInstance
 val deep: $deep = nil
-val bad: Bool = eqb deep deep
+val bad: Bool = equals deep deep
 '''),
           ),
         ),
@@ -303,7 +303,7 @@ val bad: Bool = eqb deep deep
           _program('''
 $_natInstance
 $_listInstance
-fun sameList[A: Eqb](xs: List A, ys: List A): Bool = eqb xs ys
+fun sameList[A: Eqb](xs: List A, ys: List A): Bool = equals xs ys
 val r: Bool = sameList Nat (cons zero nil) (cons zero nil)
 '''),
         ),

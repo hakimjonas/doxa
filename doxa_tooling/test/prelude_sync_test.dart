@@ -98,7 +98,7 @@ void main() {
     expect(acc.params, hasLength(2));
     expect(acc.indices, hasLength(1));
     expect(acc.ctors, hasLength(1));
-    expect(acc.ctors.single.name, 'acc_intro');
+    expect(acc.ctors.single.name, 'accIntro');
     expect(acc.ctors.single.args, hasLength(2));
   });
 }

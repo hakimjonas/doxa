@@ -1,4 +1,4 @@
 // Domain package for Eqb — re-exports the class and its instances.
 import "../eqb.doxa"
 
-import "../eqb_instances.doxa"
+import "../eqbInstances.doxa"

@@ -26,17 +26,17 @@ data List[A: Type] : Type {
   nil : List A;
   cons : A -> List A -> List A;
 }
-fun eqbNat(x: Nat, y: Nat): Bool = match x {
+fun equalsNat(x: Nat, y: Nat): Bool = match x {
   case zero => match y {
     case zero => true_
     case succ _ => false_
   }
   case succ n => match y {
     case zero => false_
-    case succ m => eqbNat n m
+    case succ m => equalsNat n m
   }
 }
-fun eqbBool(x: Bool, y: Bool): Bool = match x {
+fun equalsBool(x: Bool, y: Bool): Bool = match x {
   case true_ => match y {
     case true_ => true_
     case false_ => false_
@@ -46,26 +46,26 @@ fun eqbBool(x: Bool, y: Bool): Bool = match x {
     case false_ => true_
   }
 }
-typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool; }
+typeclass Eqb[A: Type] { fun equals(x: A, y: A): Bool; }
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun equals(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 impl Eqb[Bool] {
-  fun eqb(x: Bool, y: Bool): Bool = eqbBool x y;
+  fun equals(x: Bool, y: Bool): Bool = equalsBool x y;
 }
 impl[A: Eqb] Eqb[List A] {
-  fun eqb(x: List A, y: List A): Bool = match x {
+  fun equals(x: List A, y: List A): Bool = match x {
     case nil => match y {
       case nil => true_
       case cons _ _ => false_
     }
     case cons h t => match y {
       case nil => false_
-      case cons h2 t2 => eqb h h2
+      case cons h2 t2 => equals h h2
     }
   };
 }
-fun same[A: Eqb](x: A, y: A): Bool = eqb x y
+fun same[A: Eqb](x: A, y: A): Bool = equals x y
 fun const{A: Type}{B: Type}(x: A, y: B): A = x
 ''';
 
@@ -87,27 +87,27 @@ TopBinding _binding(TopEnv env, String name) =>
 void main() {
   group('inferred types with inserted implicits', () {
     test('a typeclass method application infers its result type', () {
-      final env = _checked('val q = eqb zero zero');
+      final env = _checked('val q = equals zero zero');
       final q = _binding(env, 'q');
       expect(q.type, const TData('Bool', <Term>[]));
       expect(termContainsMeta(q.type), isFalse);
     });
 
     test('the inserted dictionary is part of the stored term', () {
-      final env = _checked('val q = eqb zero zero');
+      final env = _checked('val q = equals zero zero');
       expect(
         prettyTerm(_binding(env, 'q').term),
-        'Eqb.eqb Nat zero zero _impl_Eqb_Nat',
+        'Eqb.equals Nat zero zero _impl_Eqb_Nat',
       );
     });
 
     test('the declaration is usable where its result type is expected', () {
-      final env = _checked('val q = eqb zero zero\nval r: Bool = q');
+      final env = _checked('val q = equals zero zero\nval r: Bool = q');
       expect(_binding(env, 'r').type, const TData('Bool', <Term>[]));
     });
 
     test('the same holds at Bool', () {
-      final env = _checked('val q = eqb true_ false_');
+      final env = _checked('val q = equals true_ false_');
       final q = _binding(env, 'q');
       expect(q.type, const TData('Bool', <Term>[]));
       expect(termContainsMeta(q.type), isFalse);
@@ -115,7 +115,7 @@ void main() {
     });
 
     test('the same holds at List Nat through the parameterised instance', () {
-      final env = _checked('val q = eqb (cons zero nil) (cons zero nil)');
+      final env = _checked('val q = equals (cons zero nil) (cons zero nil)');
       final q = _binding(env, 'q');
       expect(q.type, const TData('Bool', <Term>[]));
       expect(termContainsMeta(q.type), isFalse);
@@ -129,14 +129,14 @@ void main() {
     });
 
     test('a bare identifier keeps its full signature', () {
-      final env = _checked('val q = eqb');
+      final env = _checked('val q = equals');
       final q = _binding(env, 'q');
       expect(q.type, isA<TPi>());
       expect(termContainsMeta(q.type), isFalse);
     });
 
     test('a partial application keeps the explicit Pi that remains', () {
-      final env = _checked('val q = eqb zero');
+      final env = _checked('val q = equals zero');
       final q = _binding(env, 'q');
       final first = q.type as TPi;
       expect(first.name, 'y');
@@ -147,8 +147,8 @@ void main() {
     });
 
     test('the result of the annotation is unchanged', () {
-      final annotated = _checked('val q: Bool = eqb zero zero');
-      final unannotated = _checked('val q = eqb zero zero');
+      final annotated = _checked('val q: Bool = equals zero zero');
+      final unannotated = _checked('val q = equals zero zero');
       expect(_binding(annotated, 'q').type, _binding(unannotated, 'q').type);
       expect(_binding(annotated, 'q').term, _binding(unannotated, 'q').term);
     });
@@ -205,7 +205,7 @@ void main() {
       // The body here is a value rather than a type, which the alias itself
       // does not gate; what matters for this test is that the inference runs
       // under the declaration's metas instead of aborting.
-      final env = _checked('type N = eqb zero zero');
+      final env = _checked('type N = equals zero zero');
       final n = _binding(env, 'N');
       expect(termContainsMeta(n.type), isFalse);
       expect(termContainsMeta(n.term), isFalse);

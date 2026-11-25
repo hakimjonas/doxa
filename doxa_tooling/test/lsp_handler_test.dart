@@ -726,7 +726,7 @@ void main() {
         final root = File('../doxa_stdlib/lib/stdlib/prop.doxa').absolute;
         final source = root.readAsStringSync();
         final uri = root.uri.toString();
-        final notIntro = _sourcePosition(source, 'not_intro');
+        final notIntro = _sourcePosition(source, 'notIntro');
         final proofsSource =
             File('../doxa_stdlib/lib/stdlib/proofs.doxa').readAsStringSync();
         final falseDefinition = _sourcePosition(proofsSource, 'data False');
@@ -739,7 +739,7 @@ void main() {
             'textDocument/definition',
             uri,
             notIntro.line,
-            notIntro.character + 'not_intro: (A -> '.length + 1,
+            notIntro.character + 'notIntro: (A -> '.length + 1,
           ),
         );
 
@@ -763,7 +763,7 @@ void main() {
         final source = root.readAsStringSync();
         final uri = root.uri.toString();
         final andDefinition = _sourcePosition(source, 'data And');
-        final falseUse = _sourcePosition(source, 'not_intro: (A -> False');
+        final falseUse = _sourcePosition(source, 'notIntro: (A -> False');
         final handler = LspHandler();
         handler.handle(_didOpen(uri, source));
 
@@ -789,7 +789,7 @@ void main() {
           tokens,
           contains((
             line: falseUse.line,
-            character: falseUse.character + 'not_intro: (A -> '.length,
+            character: falseUse.character + 'notIntro: (A -> '.length,
             length: 'False'.length,
             type: 'type',
           )),
@@ -798,7 +798,7 @@ void main() {
     );
 
     test('returns imported constructors from their defining files', () {
-      final intBase = File('../doxa_stdlib/lib/stdlib/int_base.doxa').absolute;
+      final intBase = File('../doxa_stdlib/lib/stdlib/intBase.doxa').absolute;
       final intBaseSource = intBase.readAsStringSync();
       final intBaseUri = intBase.uri.toString();
       final consumer = File('../doxa_stdlib/lib/stdlib/int.doxa').absolute;

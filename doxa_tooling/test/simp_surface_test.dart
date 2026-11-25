@@ -30,10 +30,10 @@ void main() {
       expect(bareFormatted, contains('simp'));
       expect(formatSource(bareFormatted), equals(bareFormatted));
 
-      const listed = 'val f : Type = by { simp [h, plus_zero] }';
+      const listed = 'val f : Type = by { simp [h, plusZero] }';
       final listedFormatted = formatSource(listed);
       expect(isFormatted(listedFormatted), isTrue);
-      expect(listedFormatted, contains('simp [h, plus_zero]'));
+      expect(listedFormatted, contains('simp [h, plusZero]'));
       expect(formatSource(listedFormatted), equals(listedFormatted));
 
       final parsed = parseProgram('$_bare\n$_listed');
@@ -89,7 +89,7 @@ void main() {
       expect(text, contains('g y'));
     });
 
-    test('doxa check closes plus n zero = n with simp [plus_zero]', () async {
+    test('doxa check closes plus n zero = n with simp [plusZero]', () async {
       final proofs =
           File('../doxa_stdlib/lib/stdlib/proofs.doxa').absolute.path;
       final directory = Directory.systemTemp.createTempSync('doxa-simp-cli-');
@@ -99,7 +99,7 @@ import "$proofs"
 
 val t : (n: Nat) -> Eq Nat (plus n zero) n = by {
   intro n;
-  simp [plus_zero]
+  simp [plusZero]
 }
 ''');
       final result = await Process.run(Platform.resolvedExecutable, [
@@ -115,4 +115,4 @@ val t : (n: Nat) -> Eq Nat (plus n zero) n = by {
 }
 
 const _bare = 'val f : Type = by { simp }';
-const _listed = 'val f : Type = by { simp [h, plus_zero] }';
+const _listed = 'val f : Type = by { simp [h, plusZero] }';

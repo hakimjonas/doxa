@@ -271,9 +271,9 @@ Parser<ParseError, SExpr> _spanned(Parser<ParseError, SExprKind> p) =>
 //   app        := rule { app atom | atom }   -- direct left recursion
 //   atom       := ident | Type [n] | '(' expr ')'
 //
-// The four infix operators expand to top-level functions at parse time, so
-// they produce ordinary applications: `a + b` is `App(App(plus, a), b)`. See
-// [_expandInfix] and [doxaInfixOperators].
+// The four infix operators expand to identifier applications at parse time,
+// so they produce ordinary applications: `a + b` is `App(App(plus, a), b)`.
+// See [_expandInfix] and [doxaInfixOperators].
 //
 // `binder` and a parenthesized expression share the prefix `(`. The
 // parser tries `binder` first; Rumil's `Or` unconditionally restores
@@ -670,15 +670,16 @@ final Parser<ParseError, SExpr> _implicitBinder = position<ParseError>()
 /// comparisons, which do not chain, and true for `*` and `+`, which chain to
 /// the left. (No right-associative operator exists.)
 ///
-/// The operators are monomorphic: each expands to the named top-level
-/// function, resolved like any other identifier at the use site. `+` is
-/// always `plus`, never an overloaded arithmetic operation.
+/// Each operator expands to one named identifier, resolved like any other
+/// identifier at the use site. `+` is always `plus`, never an overloaded
+/// arithmetic operation. `*` is always `multiply`, which can resolve to a
+/// class projection when a constraint supplies the dictionary.
 const List<({String symbol, String name, int bindingPower, bool associates})>
 doxaInfixOperators = [
-  (symbol: '*', name: 'mult', bindingPower: 30, associates: true),
+  (symbol: '*', name: 'multiply', bindingPower: 30, associates: true),
   (symbol: '+', name: 'plus', bindingPower: 20, associates: true),
   (symbol: '<=', name: 'leq', bindingPower: 10, associates: false),
-  (symbol: '==', name: 'eqb', bindingPower: 10, associates: false),
+  (symbol: '==', name: 'equals', bindingPower: 10, associates: false),
 ];
 
 /// Symbol to expanded name, the lookup the parser's expansion step uses.

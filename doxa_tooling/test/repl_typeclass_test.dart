@@ -29,11 +29,11 @@ void main() {
       );
       session = _declare(
         session,
-        'typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool; }',
+        'typeclass Eqb[A: Type] { fun equals(x: A, y: A): Bool; }',
       );
       session = _declare(session, '''
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = match x {
+  fun equals(x: Nat, y: Nat): Bool = match x {
     case zero => true_
     case succ n => false_
   };
@@ -41,7 +41,7 @@ impl Eqb[Nat] {
 ''');
       session = _declare(
         session,
-        'fun same[A: Eqb](x: A, y: A): Bool = eqb x y',
+        'fun same[A: Eqb](x: A, y: A): Bool = equals x y',
       );
 
       final (typeResult, _) = session.processInput(':type same');
@@ -70,7 +70,7 @@ impl Eqb[Nat] {
       );
 
       final (result, next) = session.processInput(
-        'impl Nope[Nat] { fun eqb(x: Nat, y: Nat): Bool = true_; }',
+        'impl Nope[Nat] { fun equals(x: Nat, y: Nat): Bool = true_; }',
       );
       expect(result, isA<ReplError>());
       expect((result as ReplError).message, contains('unknown typeclass'));
@@ -93,22 +93,22 @@ impl Eqb[Nat] {
       );
       session = _declare(
         session,
-        'typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool; }',
+        'typeclass Eqb[A: Type] { fun equals(x: A, y: A): Bool; }',
       );
       session = _declare(
         session,
-        'impl Eqb[Nat] { fun eqb(x: Nat, y: Nat): Bool = true_; }',
+        'impl Eqb[Nat] { fun equals(x: Nat, y: Nat): Bool = true_; }',
       );
 
       final (result, next) = session.processInput(
-        'impl Eqb[Nat] { fun eqb(x: Nat, y: Nat): Bool = false_; }',
+        'impl Eqb[Nat] { fun equals(x: Nat, y: Nat): Bool = false_; }',
       );
       expect(result, isA<ReplError>());
       expect((result as ReplError).message, contains('overlapping instances'));
       expect(identical(next, session), isTrue);
 
       // The first instance still resolves.
-      final (ok, _) = next.processInput('val b : Bool = eqb zero zero');
+      final (ok, _) = next.processInput('val b : Bool = equals zero zero');
       expect(ok, isA<ReplDeclResult>());
     });
   });

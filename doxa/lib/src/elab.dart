@@ -1721,7 +1721,7 @@ Term elabExpr(TopEnv topEnv, SExpr expr) => elabExprWithType(topEnv, expr).term;
   final state = _shimState(topEnv, const _LocalNil(), metas: metas);
   var (term, typeValue) = _inferExpr(state, expr);
   // An application can end on a trailing implicit binder, such as the
-  // dictionary of `eqb zero zero`. Infer mode does not consume it in the
+  // dictionary of `equals zero zero`. Infer mode does not consume it in the
   // application loop, so finish it here. A bare identifier keeps its full
   // signature; a partial application keeps the explicit Pi that remains.
   if (expr.kind is SAppKind) {
@@ -2608,14 +2608,18 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
           }
         }
       }
-      if (state.topEnv.indexOfFromEnd(name) < 0) {
-        // Fall back to a class method projection. A bare method name is
-        // usable when the current class, a local dictionary, or a unique
-        // declaring class selects it.
-        final qualified = _resolveBareClassMethod(state, name, expr.span);
-        final classEntry =
-            qualified == null ? null : state.ctx.env.lookupTop(qualified);
-        if (qualified != null && classEntry != null) {
+      // Bare-name precedence (SPEC "Projection names"): the current class
+      // or a local dictionary's class first, then a top-level binding, then
+      // a unique declaring class.
+      final topIndex = state.topEnv.indexOfFromEnd(name);
+      final qualified =
+          _resolveLocalClassMethod(state, name, expr.span) ??
+          (topIndex < 0
+              ? _resolveUniqueClassMethod(state, name, expr.span)
+              : null);
+      if (qualified != null) {
+        final classEntry = state.ctx.env.lookupTop(qualified);
+        if (classEntry != null) {
           _recordSemInfo(
             state,
             expr.span,
@@ -2626,6 +2630,8 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
           );
           return (TTop(qualified), classEntry.type);
         }
+      }
+      if (topIndex < 0) {
         throw UnresolvedName(name, expr.span);
       }
       final topEntry = state.ctx.env.lookupTop(name);
@@ -4163,33 +4169,57 @@ bool _classHasLocalDictionary(_ElabState state, String candidate) {
   return false;
 }
 
-/// Resolve a bare class-method reference [name] to its qualified
-/// `Class.method` projection, or null when no class declares it.
+/// Resolve a bare class-method reference [name] through the current class
+/// or a local dictionary, or null when neither selects one.
 ///
 /// Inside a class declaration the current class wins, then its parents.
 /// Elsewhere a local dictionary for a declaring class (or a subclass of
-/// one) wins, then a unique declaring class. Two surviving candidates
-/// raise [AmbiguousClassMethod].
-String? _resolveBareClassMethod(_ElabState state, String name, DoxaSpan span) {
+/// one) wins. Two classes selected by local dictionaries raise
+/// [AmbiguousClassMethod].
+///
+/// This is the first step of the bare-name order in SPEC "Projection
+/// names"; a top-level binding comes next, so a rename that gives a class
+/// method and a top-level function the same name still resolves in a
+/// constrained body.
+String? _resolveLocalClassMethod(_ElabState state, String name, DoxaSpan span) {
   final registry = state.topEnv.classRegistry;
   final current = state.currentClass;
   if (current != null) {
     final declared = _declaringClass(registry, current, name);
     if (declared != null) return '$declared.$name';
   }
-  final candidates = [
+  final local = [
     for (final info in registry.values)
+      if (info.methods.any((method) => method.$1 == name) &&
+          _classHasLocalDictionary(state, info.className))
+        info.className,
+  ];
+  if (local.isEmpty) return null;
+  if (local.length == 1) return '${local.single}.$name';
+  throw AmbiguousClassMethod(name, [
+    for (final candidate in local) '$candidate.$name',
+  ], span);
+}
+
+/// Resolve a bare class-method reference [name] to a unique declaring
+/// class, or null when no class declares it.
+///
+/// Runs after the top-level lookup, so an explicit top-level function wins
+/// over a single declaring class. Several declaring classes raise
+/// [AmbiguousClassMethod] naming each `Class.method` form.
+String? _resolveUniqueClassMethod(
+  _ElabState state,
+  String name,
+  DoxaSpan span,
+) {
+  final candidates = [
+    for (final info in state.topEnv.classRegistry.values)
       if (info.methods.any((method) => method.$1 == name)) info.className,
   ];
   if (candidates.isEmpty) return null;
-  final local = [
-    for (final candidate in candidates)
-      if (_classHasLocalDictionary(state, candidate)) candidate,
-  ];
-  final pool = local.isEmpty ? candidates : local;
-  if (pool.length == 1) return '${pool.single}.$name';
+  if (candidates.length == 1) return '${candidates.single}.$name';
   throw AmbiguousClassMethod(name, [
-    for (final candidate in pool) '$candidate.$name',
+    for (final candidate in candidates) '$candidate.$name',
   ], span);
 }
 
@@ -4875,7 +4905,7 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
         // values.  A ctor arg gets the enriched value only when its
         // TBound reference appears as the function head of a TApp in a
         // subsequent arg type term (e.g. `R` in `R y x` inside `f`'s
-        // type for `acc_intro`).  Named data-constructor arguments
+        // type for `accIntro`).  Named data-constructor arguments
         // (`n` in `Lt n m`) keep their neutral so the pattern binder
         // retains its own de-Bruijn identity.
         //
@@ -4907,7 +4937,7 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
           }
           // WILDCARD binders (`_`) get the enriched scrutinee index
           // value (they have no pattern-identity to preserve, e.g.
-          // `acc_intro _ _ f`).  NAMED binders keep their neutral
+          // `accIntro _ _ f`).  NAMED binders keep their neutral
           // (e.g. `y_` in `lt_trans y_ ...`), since substituting the
           // scrutinee's index value would alias the pattern binder
           // with a different variable at a different de-Bruijn level.
@@ -5017,7 +5047,7 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
         if (expected != null && scrutineeData != null) {
           if (scrutineeData.indices.isEmpty) {
             // For non-indexed data, the expected type may still depend
-            // on the scrutinee variable (e.g. `Acc ... n` in nat_wf).
+            // on the scrutinee variable (e.g. `Acc ... n` in natWf).
             // Refine per arm by substituting the scrutinee NVar with
             // the ctor result value.
             final Value armExpected;
@@ -5235,7 +5265,7 @@ DeclResult _elabDecl(
         final valState = _shimState(topEnv, const _LocalNil(), metas: metas);
         var (inferredTerm, inferredType) = _inferExpr(valState, body);
         // An application can end on a trailing implicit binder, such as the
-        // dictionary of `eqb zero zero`. Infer mode does not consume it in
+        // dictionary of `equals zero zero`. Infer mode does not consume it in
         // the application loop, so finish it here, exactly as
         // [elabExprWithType] does for an inferred expression. A bare
         // identifier keeps its full signature and a partial application keeps
@@ -5483,16 +5513,16 @@ String _classRefName(SExpr ref) => switch (ref.kind) {
 /// Elaborate a `typeclass` declaration into a dictionary data type and one
 /// projection per method.
 ///
-/// `typeclass Eqb[A: Type] { fun eqb(x: A, y: A): Bool }` produces
+/// `typeclass Eqb[A: Type] { fun equals(x: A, y: A): Bool }` produces
 ///
 /// ```
 /// data Eqb[A: Type] : Type {
-///   mk_Eqb: (eqb: (x: A) -> (y: A) -> Bool) -> Eqb A;
+///   mkEqb: (equals: (x: A) -> (y: A) -> Bool) -> Eqb A;
 /// }
 /// ```
 ///
 /// plus a projection
-/// `eqb : {A: Type} -> (x: A) -> (y: A) -> {inst: Eqb A} -> Bool`
+/// `equals : {A: Type} -> (x: A) -> (y: A) -> {inst: Eqb A} -> Bool`
 /// whose body applies the dictionary field. The projections are ordinary
 /// top-level bindings, so imports and the checker treat them as such.
 ///
@@ -5615,7 +5645,7 @@ DeclResult _elabTypeclass(
       DoxaSpan.synthetic,
     );
   }
-  final ctorDecl = SCtorDecl('mk_$name', ctorType, DoxaSpan.synthetic);
+  final ctorDecl = SCtorDecl('mk$name', ctorType, DoxaSpan.synthetic);
   final sDataKind = SDataKind(
     name,
     typeParams,
@@ -5796,8 +5826,8 @@ List<_FunBinder> _implBinders(List<SFunTypeParam> typeParams) => [
 
 /// Elaborate an `impl` declaration into a dictionary value.
 ///
-/// `impl Eqb[Nat] { fun eqb(x: Nat, y: Nat): Bool = ... }` becomes a
-/// binding `_impl_Eqb_Nat : Eqb Nat` whose value is the `mk_Eqb`
+/// `impl Eqb[Nat] { fun equals(x: Nat, y: Nat): Bool = ... }` becomes a
+/// binding `_impl_Eqb_Nat : Eqb Nat` whose value is the `mkEqb`
 /// constructor applied to the class argument and the method lambdas, plus
 /// an [InstanceInfo] in the class's registry.
 ///
@@ -6119,7 +6149,7 @@ DeclResult _elabImpl(
   final implTerm = _wrapLambdas(
     implDomains,
     implBinders,
-    TConstr(className, 'mk_$className', [
+    TConstr(className, 'mk$className', [
       ...argTerms,
       if (superclassDictionary != null) superclassDictionary,
       ...methodTerms,
@@ -7527,8 +7557,8 @@ void _walkForRecursion({
         // first.  If the argument at that position is a valid sub-term,
         // use it.  Otherwise fall back to the caller's designatedIdx.
         // This allows both directions of a mutual block to pass: e.g.
-        // nat_wf → nat_wf_help k y h uses the caller's index (k is a
-        // sub-term of n), while nat_wf_help → nat_wf y_ uses the
+        // natWf → natWfHelp k y h uses the caller's index (k is a
+        // sub-term of n), while natWfHelp → natWf y_ uses the
         // callee's index (y_ is a sub-term of h).
         int daIdx;
         final calleeIdx = memberDeclIdxs[headKind.name];

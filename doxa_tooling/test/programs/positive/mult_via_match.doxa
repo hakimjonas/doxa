@@ -1,4 +1,4 @@
-// `mult` on Nat defined structurally via `match` + self-recursion on m
+// `multiply` on Nat defined structurally via `match` + self-recursion on m
 // (the match-based counterpart to nat_mult.doxa's Nat.rec version).
 data Nat: Type {
   zero: Nat;
@@ -10,7 +10,7 @@ fun plus(m: Nat, n: Nat): Nat = match m {
   case succ m_ => succ (m_ + n)
 }
 
-fun mult(m: Nat, n: Nat): Nat = match m {
+fun multiply(m: Nat, n: Nat): Nat = match m {
   case zero => zero
   case succ m_ => n + m_ * n
 }

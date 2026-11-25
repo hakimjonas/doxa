@@ -26,7 +26,7 @@ void main() {
       'proofs.doxa',
       'prelude.doxa',
       'eqb.doxa',
-      'eqb_instances.doxa',
+      'eqbInstances.doxa',
       'algebra.doxa',
     ]) {
       expect(
@@ -63,7 +63,7 @@ void main() {
     }
     for (final name in [
       'nat.doxa',
-      'eqb_instances.doxa',
+      'eqbInstances.doxa',
       'algebra.doxa',
       'Algebra/package.doxa',
     ]) {

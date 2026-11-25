@@ -144,9 +144,9 @@ dart format --set-exit-if-changed .
 # 3. Doxa checker on key stdlib files
 dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/nat.doxa
 dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/proofs.doxa
-dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/case_study.doxa
+dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/caseStudy.doxa
 dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/int.doxa
-dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/eqb_instances.doxa
+dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/eqbInstances.doxa
 dart run doxa_tooling/bin/doxa.dart check doxa_stdlib/lib/stdlib/algebra.doxa
 
 # 4. Doxa formatter on all parseable .doxa files (the same set CI uses)

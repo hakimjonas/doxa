@@ -101,7 +101,7 @@ const _zeroCases = [('p0', 'p2'), ('p0', 'm2'), ('p5', 'p0')];
 
 String _row(String a, String b, int index) =>
     'val row$index: Eq Int '
-    '(intPlus (intMult $b (intDiv $a $b)) (intMod $a $b)) $a = refl';
+    '(intPlus (intMultiply $b (intDiv $a $b)) (intMod $a $b)) $a = refl';
 
 String _build(List<(String, String)> rows, {String? use}) {
   final buffer = StringBuffer();

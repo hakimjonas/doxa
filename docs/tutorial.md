@@ -74,15 +74,15 @@ practice.
 
 ## 2b. Infix operators
 
-Four infix operators spell the standard-library operations: `*` for `mult`,
-`+` for `plus`, `<=` for `leq`, and `==` for `eqb`. Each one is shorthand for
+Four infix operators spell the standard-library operations: `*` for `multiply`,
+`+` for `plus`, `<=` for `leq`, and `==` for `equals`. Each one is shorthand for
 an ordinary application, so `a + b` and `plus a b` are the same term. `*`
 binds tighter than `+`, both bind tighter than the comparisons, and the
 comparisons do not associate.
 
 ```doxa
 import "package:doxa_stdlib/stdlib/proofs.doxa"
-import "package:doxa_stdlib/stdlib/eqb_instances.doxa"
+import "package:doxa_stdlib/stdlib/eqbInstances.doxa"
 
 val two: Nat = succ (succ zero)
 
@@ -100,9 +100,9 @@ val sameList: Bool = cons two nil == cons two nil
 
 val swap: (a: Nat) -> (b: Nat) -> Eq Nat (a + b + zero) (b + a) =
   (a: Nat) => (b: Nat) => calc(
-    a + b + zero = a + (b + zero) := plus_assoc a b zero;
-    a + (b + zero) = a + b := cong ((x: Nat) => a + x) (plus_zero b);
-    a + b = b + a := plus_comm a b
+    a + b + zero = a + (b + zero) := plusAssoc a b zero;
+    a + (b + zero) = a + b := cong ((x: Nat) => a + x) (plusZero b);
+    a + b = b + a := plusComm a b
   )
 ```
 
@@ -112,10 +112,13 @@ inside the comparison. The `==` operator takes its type from the arguments:
 it uses the `Eqb` instance for `Nat`, for `Bool`, or for `List Nat` by
 instance search.
 
-The operators are monomorphic. `+` is `plus` and nothing else, and the
-algebra monoids' `add` and `mul` are not operators. A local binding named
-`plus` shadows the standard-library `plus` for `a + b` just as it does for
-`plus a b`.
+The operators are not type-directed overloads. Each expands to one name: `+`
+is `plus` and nothing else, so the algebra classes' `add` is not reachable
+through `+`. `*` is `multiply`, which is also the multiplication method on
+`Monoid` and `Ring`: with a `Monoid` or `Ring` dictionary in scope, `a * b`
+selects that class's `multiply`; otherwise it selects the top-level `Nat`
+operation when that name is in scope. A local binding named `plus` shadows the
+standard-library `plus` for `a + b` just as it does for `plus a b`.
 
 Comparison does not chain. `a <= b <= c` is a parse error that names the
 second `<=`; parenthesize the inner comparison, as in `(a <= b) == c`.
@@ -373,7 +376,7 @@ fun plus(m: Nat, n: Nat): Nat = match m {
   case succ k => succ (plus k n)
 }
 
-theorem plus_zero : (n: Nat) -> Eq Nat (plus n zero) n = by {
+theorem plusZero : (n: Nat) -> Eq Nat (plus n zero) n = by {
   intro n;
   induction n;
   refl;
@@ -407,7 +410,7 @@ complete.
 
 Every equality hypothesis in context is a rule. Keep one out of the rewrite
 set by introducing it after `simp` runs, or by `revert`ing it first. The
-following proof uses `plus_zero` and `plus_succ` from the standard library:
+following proof uses `plusZero` and `plusSucc` from the standard library:
 
 ```doxa
 import "package:doxa_stdlib/stdlib/proofs.doxa"
@@ -416,11 +419,11 @@ val plus_nested : (m: Nat) -> (n: Nat) ->
     Eq Nat (plus (plus m (succ n)) zero) (succ (plus m n)) = by {
   intro m;
   intro n;
-  simp [plus_zero, plus_succ]
+  simp [plusZero, plusSucc]
 }
 ```
 
-`plus_zero` removes the outer `zero`, exposing the left side of `plus_succ`,
+`plusZero` removes the outer `zero`, exposing the left side of `plusSucc`,
 and the second rewrite makes the sides convertible.
 
 ### Case analysis and constructors
@@ -482,7 +485,7 @@ range 0 to 20). The search is bounded, so a larger depth costs more time and
 still does not guarantee a proof.
 
 `omega` normalises both sides of an equality and tries the arithmetic
-lemmas in scope (`plus_zero`, `plus_succ`, `plus_comm`, and related
+lemmas in scope (`plusZero`, `plusSucc`, `plusComm`, and related
 lemmas). It is a convenience for goals those lemmas close, not a decision
 procedure; when none applies it reports
 `omega: could not solve the arithmetic goal`.
@@ -568,7 +571,7 @@ import "package:doxa_stdlib/stdlib/proofs.doxa"
 theorem add_zero_step : (a: Nat) -> Eq Nat (plus a zero) a = by {
   intro a;
   have z : Eq Nat (plus a zero) a;
-  exact plus_zero a;
+  exact plusZero a;
   exact z
 }
 ```
@@ -584,8 +587,8 @@ import "package:doxa_stdlib/stdlib/proofs.doxa"
 val assoc_chain : (a: Nat) -> (b: Nat) ->
     Eq Nat (plus (plus a b) zero) (plus a b) =
   (a: Nat) => (b: Nat) => calc(
-    plus (plus a b) zero = plus a (plus b zero) := plus_assoc a b zero;
-    plus a (plus b zero) = plus a b := cong ((x: Nat) => plus a x) (plus_zero b)
+    plus (plus a b) zero = plus a (plus b zero) := plusAssoc a b zero;
+    plus a (plus b zero) = plus a b := cong ((x: Nat) => plus a x) (plusZero b)
   )
 ```
 
@@ -635,7 +638,7 @@ Goal solved. Use :qed to commit.
 ### Induction
 
 `:step induction n` splits the goal into one goal per constructor. For
-the `plus_zero` theorem from §9, after `:step intro n`:
+the `plusZero` theorem from §9, after `:step intro n`:
 
 ```
 > :step induction n
@@ -730,7 +733,7 @@ an earlier one.
 ### Simplifying
 
 `:step simp` normalises the goal and rewrites with the context's equality
-hypotheses. A bracketed list adds lemmas, as in `:step simp [plus_zero]`.
+hypotheses. A bracketed list adds lemmas, as in `:step simp [plusZero]`.
 A partial simplification displays the residual goal, so the next step can
 finish it:
 
@@ -882,24 +885,24 @@ data Bool : Type {
 }
 
 typeclass Eqb[A: Type] {
-  fun eqb(x: A, y: A): Bool;
+  fun equals(x: A, y: A): Bool;
 }
 
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = match x {
+  fun equals(x: Nat, y: Nat): Bool = match x {
     case zero => true_
     case succ n => false_
   };
 }
 
 impl Eqb[Bool] {
-  fun eqb(x: Bool, y: Bool): Bool = match x {
+  fun equals(x: Bool, y: Bool): Bool = match x {
     case true_ => y
     case false_ => false_
   };
 }
 
-fun same[A: Eqb](x: A, y: A): Bool = eqb x y
+fun same[A: Eqb](x: A, y: A): Bool = equals x y
 
 val natSame : Bool = same Nat zero zero
 val boolSame : Bool = same Bool true_ true_
@@ -907,23 +910,23 @@ val boolSame : Bool = same Bool true_ true_
 
 `typeclass Eqb[A: Type]` produces the dictionary type `Eqb[A]`, a
 single-constructor inductive with one field per method, and the projection
-`Eqb.eqb`. `impl Eqb[Nat]` registers one instance for the head `Nat`. A second
+`Eqb.equals`. `impl Eqb[Nat]` registers one instance for the head `Nat`. A second
 instance for the same class and head is rejected with
 `OverlappingInstances`.
 
 `[A: Eqb]` is an explicit type parameter with a constraint. The dictionary
 is an implicit argument placed after the value parameters, so the class
 parameter is solved from them first. The call `same Nat zero zero` supplies
-`Nat` and resolves `Eqb[Nat]` by search. Inside `same`, `eqb x y` uses the
+`Nat` and resolves `Eqb[Nat]` by search. Inside `same`, `equals x y` uses the
 dictionary parameter directly, so no search runs there.
 
 A projection's identity is its class and method, so two classes may both
-declare `mul`. Write `Monoid.mul` or `Ring.mul` to name one. A bare `mul`
-resolves when a local dictionary or constrained parameter selects its class,
-or when only one class declares the name. Otherwise elaboration reports
-`AmbiguousClassMethod` and lists the `Class.method` forms. Inside a class
-declaration, the class's own law fields read the current class first, then its
-parents.
+declare `multiply`. Write `Monoid.multiply` or `Ring.multiply` to name one. A
+bare `multiply` resolves to the current class or a local dictionary's class
+first, then to a top-level binding of that name, then to the only class that
+declares it. Otherwise elaboration reports `AmbiguousClassMethod` and lists the
+`Class.method` forms. Inside a class declaration, the class's own law fields
+read the current class first, then its parents.
 
 ### Parameterised instances
 
@@ -944,11 +947,11 @@ data Bool : Type {
 }
 
 typeclass Eqb[A: Type] {
-  fun eqb(x: A, y: A): Bool;
+  fun equals(x: A, y: A): Bool;
 }
 
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = match x {
+  fun equals(x: Nat, y: Nat): Bool = match x {
     case zero => true_
     case succ n => false_
   };
@@ -964,33 +967,33 @@ fun andb(a: Bool, b: Bool): Bool = match a {
   case false_ => false_
 }
 
-fun eqbList[A: Eqb](xs: List A, ys: List A): Bool {struct xs} = match xs {
+fun equalsList[A: Eqb](xs: List A, ys: List A): Bool {struct xs} = match xs {
   case nil => match ys {
     case nil => true_
     case cons _ _ => false_
   }
   case cons h t => match ys {
     case nil => false_
-    case cons h2 t2 => andb (eqb h h2) (eqbList A t t2)
+    case cons h2 t2 => andb (equals h h2) (equalsList A t t2)
   }
 }
 
 impl[A: Eqb] Eqb[List A] {
-  fun eqb(x: List A, y: List A): Bool = eqbList A x y;
+  fun equals(x: List A, y: List A): Bool = equalsList A x y;
 }
 
-val listSame : Bool = eqb (cons zero nil) (cons zero nil)
+val listSame : Bool = equals (cons zero nil) (cons zero nil)
 ```
 
 `impl[A: Eqb] Eqb[List A]` elaborates to a binding
 `(A: Type) -> (inst: Eqb A) -> Eqb (List A)` with explicit binders. The
-method body runs with `A` and `inst` in scope. The call `eqbList A x y`
-passes `inst` as the helper's `Eqb A` dictionary, so `eqb h h2` in the helper
+method body runs with `A` and `inst` in scope. The call `equalsList A x y`
+passes `inst` as the helper's `Eqb A` dictionary, so `equals h h2` in the helper
 compares elements through `inst`.
 
 An instance method body does not see the instance being defined, so the
 recursive comparison is a top-level `fun`; the structural-recursion check
-applies to `eqbList`, whose tail call `eqbList A t t2` passes a strict
+applies to `equalsList`, whose tail call `equalsList A t t2` passes a strict
 sub-term. The checker counts the explicit type argument before comparing the
 designated value position.
 
@@ -1000,8 +1003,8 @@ The standard library ships the class and instances for `Nat`, `Bool`, and
 ```doxa
 import "package:doxa_stdlib/stdlib/Eqb/package.doxa"
 
-val natSame : Bool = eqb zero zero
-val listSame : Bool = eqb (cons zero nil) (cons zero nil)
+val natSame : Bool = equals zero zero
+val listSame : Bool = equals (cons zero nil) (cons zero nil)
 ```
 
 Search for a goal `C T` takes the head of `T`, selects the instance
@@ -1011,7 +1014,7 @@ the matched type with the depth counter decremented. At `List (List Nat)`,
 search uses the List instance twice and reaches the `Eqb Nat` instance.
 
 A failed inner discharge names the inner class and type. With no `Eqb Bool`,
-`eqb` at `List Bool` reports `NoInstanceFound` for `Eqb` at `Bool`, not for
+`equals` at `List Bool` reports `NoInstanceFound` for `Eqb` at `Bool`, not for
 `List Bool`.
 
 ### Superclasses
@@ -1034,38 +1037,38 @@ data Bool : Type {
 }
 
 typeclass Eqb[A: Type] {
-  fun eqb(x: A, y: A): Bool;
+  fun equals(x: A, y: A): Bool;
 }
 
 typeclass Ord[A: Type]: Eqb[A] {
-  fun cmp(x: A, y: A): Bool;
+  fun compare(x: A, y: A): Bool;
 }
 
-fun eqbNat(x: Nat, y: Nat): Bool = match x {
+fun equalsNat(x: Nat, y: Nat): Bool = match x {
   case zero => match y {
     case zero => true_
     case succ _ => false_
   }
   case succ n => match y {
     case zero => false_
-    case succ m => eqbNat n m
+    case succ m => equalsNat n m
   }
 }
 
 impl Eqb[Nat] {
-  fun eqb(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun equals(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 
 impl Ord[Nat] {
-  fun cmp(x: Nat, y: Nat): Bool = eqbNat x y;
+  fun compare(x: Nat, y: Nat): Bool = equalsNat x y;
 }
 
-fun eqViaOrd[A: Ord](x: A, y: A): Bool = eqb x y
+fun eqViaOrd[A: Ord](x: A, y: A): Bool = equals x y
 
 val throughParent : Bool = eqViaOrd Nat zero zero
 ```
 
-The parent's methods stay the parent's projections. `Ord` adds only `cmp`.
+The parent's methods stay the parent's projections. `Ord` adds only `compare`.
 Search prefers a direct instance; when none matches, it searches a direct
 subclass and projects the embedded parent dictionary. Two subclasses
 providing the same parent report `OverlappingInstances`.
@@ -1116,8 +1119,8 @@ This slice has these limits:
 - Coherence is global: one instance per class and tuple of target heads.
 - Methods become top-level projections under their `Class.method` names, so
   two classes may declare the same field name. A bare name that two classes
-  could supply and no local dictionary selects is rejected with
-  `AmbiguousClassMethod`.
+  could supply and no local dictionary or top-level binding selects is rejected
+  with `AmbiguousClassMethod`.
 - Method default bodies are not implemented. Every instance supplies every
   method, and a missing method is rejected with `MissingInstanceMethod`.
 - For a single-parameter class, a target is a bare type constructor or a type
@@ -1143,7 +1146,7 @@ The standard library ships monoids, commutative monoids, the additive group,
 and a ring. `AddCommMonoid`, `CommMonoid`, `AddGroup`, and `Ring` embed their
 parent as a superclass dictionary, so an `AddCommMonoid` dictionary also
 supplies `AddMonoid` and a `Ring` dictionary also supplies `AddGroup`. `sum`
-folds a list with `add` and `azero`, and `sumViaComm` takes the commutative
+folds a list with `add` and `addZero`, and `sumViaComm` takes the commutative
 constraint:
 
 ```doxa
@@ -1162,7 +1165,7 @@ instances by search. `sumViaComm` reaches `AddMonoid` through the
 `AddCommMonoid` dictionary's parent field.
 
 `AddGroup` extends `AddMonoid` with `negate` and the two inverse laws
-`add_neg_left` and `add_neg_right`. `AddMonoid[Int]` and `AddGroup[Int]`
+`addNegateLeft` and `addNegateRight`. `AddMonoid[Int]` and `AddGroup[Int]`
 register the `Int` operations and the proofs of those laws, and `double` and
 `negTwice` take the group constraint:
 
@@ -1179,8 +1182,8 @@ A projection binds the class parameter implicitly, so `negate` takes the
 value alone; `sum` and `double` declare their parameter explicitly in `[...]`,
 so they take `Nat` or `Int` before the value.
 
-`Ring` extends `AddGroup` with its own `mul`, `mone`, and the multiplication
-laws. `Ring.mul` and `Monoid.mul` are distinct projections with the same field
+`Ring` extends `AddGroup` with its own `multiply`, `one`, and the multiplication
+laws. `Ring.multiply` and `Monoid.multiply` are distinct projections with the same field
 name. `Ring[Int]` proves the laws from the lemmas in `int.doxa`, and `square`
 multiplies a value by itself under a `Ring` constraint:
 
@@ -1190,16 +1193,15 @@ import "package:doxa_stdlib/stdlib/algebra.doxa"
 val square_two : Eq Int (square Int (pos (succ (succ zero))))
   (pos (succ (succ (succ (succ zero))))) =
   refl (pos (succ (succ (succ (succ zero)))))
-val ringProduct : Int = Ring.mul (pos (succ zero)) (pos (succ zero))
+val ringProduct : Int = Ring.multiply (pos (succ zero)) (pos (succ zero))
 val ringProduct_eq : Eq Int ringProduct (pos (succ zero)) = refl ringProduct
-val monoidProduct : Nat = Monoid.mul (succ zero) (succ zero)
+val monoidProduct : Nat = Monoid.multiply (succ zero) (succ zero)
 val monoidProduct_eq : Eq Nat monoidProduct (succ zero) = refl monoidProduct
 ```
 
-The `square` law `square_one` is proved in the module. The additive
-commutative variants (`AddCommGroup`, `CommRing`), the naming pass that moves
-the class fields and laws to camelCase, and default method bodies are not
-present.
+The `square` law `squareOne` is proved in the module. The additive
+commutative variants (`AddCommGroup`, `CommRing`) and default method bodies are
+not present.
 
 A class that is not passed as a constraint can still be used as an ordinary
 record type. A user-defined record is an explicit dictionary:
@@ -1353,6 +1355,6 @@ of identity proofs is not derivable, and it is not even statable since
 - The [standard library sources](../doxa_stdlib/lib/stdlib/) contain `Nat`, `List`,
   `Vec`, `Bool`, `Option`, and the `Eq` lemmas.
 - The [proof example](../example/proofs.doxa) proves `plus_zero_left`,
-  `plus_zero_right`, `length_append`, `succ_ne_zero`, and `vlength_index`.
+  `plus_zero_right`, `lengthAppend`, `succNeZero`, and `vlengthIndex`.
 - The [interactive proof mode](#9b-interactive-proof-mode) lets you
   construct proofs step by step in the REPL.
