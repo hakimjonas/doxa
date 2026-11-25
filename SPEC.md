@@ -458,6 +458,7 @@ val qualified : Nat = Monoid.multiply (succ zero) (succ zero)
 
 fun twice[A: AddMonoid](x: A): A = add x x
 fun selfMultiply[A: Ring](x: A): A = multiply x x
+fun starMultiply[A: Ring](x: A): A = x * x
 ```
 
 ### Superclasses

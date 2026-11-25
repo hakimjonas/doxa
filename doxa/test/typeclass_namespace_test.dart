@@ -418,8 +418,11 @@ impl Mult[Nat] {
   fun multiplyLaw(x: Nat, y: Nat): Eq Nat (plus x y) (plus x y) = refl (plus x y);
 }
 fun square[A: Mult](x: A): A = multiply x x
+fun starSquare[A: Mult](x: A): A = x * x
 val topLevel : Eq Nat (multiply (succ zero) (succ zero)) zero = refl zero
 val classUse : Eq Nat (square Nat (succ zero)) (succ (succ zero)) =
+  refl (succ (succ zero))
+val starUse : Eq Nat (starSquare Nat (succ zero)) (succ (succ zero)) =
   refl (succ (succ zero))
 val qualified : Eq Nat (Mult.multiply (succ zero) (succ zero)) (succ (succ zero)) =
   refl (succ (succ zero))
@@ -428,6 +431,7 @@ val qualified : Eq Nat (Mult.multiply (succ zero) (succ zero)) (succ (succ zero)
 
       expect(_ctorName(_evalBinding(env, 'topLevel')), 'refl');
       expect(_ctorName(_evalBinding(env, 'classUse')), 'refl');
+      expect(_ctorName(_evalBinding(env, 'starUse')), 'refl');
       expect(_ctorName(_evalBinding(env, 'qualified')), 'refl');
     });
   });
