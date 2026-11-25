@@ -168,7 +168,7 @@ void main() {
       expect(indeterminate.span.start, greaterThan(0));
     });
 
-    test('the declaration span is the reported position', () {
+    test('the application span is the reported position', () {
       const body = 'val q = const zero';
       const source = '$_prologue\n$body\n';
       Object? error;
@@ -178,12 +178,8 @@ void main() {
         error = e;
       }
       final span = (error as UnannotatedDeclIndeterminate).span;
-      expect(span.start, source.indexOf(body));
-      expect(
-        span.end - span.start,
-        greaterThanOrEqualTo(body.length),
-        reason: 'the span covers the declaration',
-      );
+      final use = source.indexOf('const zero');
+      expect(span, DoxaSpan(use, use + 'const zero'.length));
     });
 
     test('annotating the declaration resolves it', () {

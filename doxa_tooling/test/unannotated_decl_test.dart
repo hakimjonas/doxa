@@ -57,7 +57,7 @@ void main() {
       contains('error: cannot infer the type of declaration "q"'),
       reason: r.err,
     );
-    expect(r.err, contains('unannotated.doxa:13:1'), reason: r.err);
+    expect(r.err, contains('unannotated.doxa:13:9'), reason: r.err);
     expect(
       r.err,
       contains('The body leaves an implicit argument undetermined'),

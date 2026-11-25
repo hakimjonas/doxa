@@ -4042,7 +4042,7 @@ Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
     // only solve to closed terms and implicit inference fails for
     // any function whose solution references a surrounding binder.
     final closedType = closeValueOverCtx(pi.domain, state.ctx);
-    final metaId = metas.freshTermMeta(closedType, state.ctx);
+    final metaId = metas.freshTermMeta(closedType, state.ctx, span: span);
     // Build the meta applied to every outer bound variable. At this
     // depth, TBound(k) for k in [0, state.ctx.level) references
     // each binder in scope (innermost at TBound(0)). The term keeps the
@@ -5225,8 +5225,11 @@ Term _inferredTypeTerm(
   required DoxaSpan span,
 }) {
   final inlined = inlineSolvedMetas(type, metas);
-  if (termContainsMeta(inlined)) {
-    throw UnannotatedDeclIndeterminate(name, span);
+  final metaId = firstMetaIdIn(inlined);
+  if (metaId != null) {
+    final metaSpan = metas.lookup(metaId).span;
+    final useSpan = metaSpan != null && !metaSpan.isSynthetic ? metaSpan : span;
+    throw UnannotatedDeclIndeterminate(name, useSpan);
   }
   return inlined;
 }

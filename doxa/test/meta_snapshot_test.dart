@@ -3,6 +3,7 @@ library;
 
 import 'package:doxa/src/ctx.dart';
 import 'package:doxa/src/meta.dart';
+import 'package:doxa/src/surface.dart';
 import 'package:doxa/src/term.dart';
 import 'package:doxa/src/value.dart';
 import 'package:test/test.dart';
@@ -101,6 +102,25 @@ void main() {
       expect(mc.isSolved(1), isTrue);
       expect(mc.solutionOf(1), const TType(LLevel(0)));
       expect(mc.isSolved(2), isFalse);
+    });
+
+    test('a meta span survives solve and restore', () {
+      final mc = MetaContext();
+      const span = DoxaSpan(4, 14);
+      final id = mc.freshTermMeta(
+        const VType(LLevel(0)),
+        const CNil(),
+        span: span,
+      );
+      expect(mc.lookup(id).span, span);
+
+      final snap = mc.snapshot();
+      mc.solve(id, const TType(LLevel(0)));
+      expect(mc.lookup(id).span, span);
+
+      mc.restore(snap);
+      expect(mc.isSolved(id), isFalse);
+      expect(mc.lookup(id).span, span);
     });
   });
 }
