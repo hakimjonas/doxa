@@ -474,10 +474,7 @@ impl C[Nat, Bool] {
         1,
       );
 
-      expect(
-        () => checkProgram(
-          pp(
-            _program('''
+      final source = _program('''
 typeclass C[A: Type, B: Type] {
   fun f(x: A, y: B): B;
 }
@@ -491,9 +488,10 @@ impl C[Nat, Bool] {
 }
 
 val r : Bool = f zero true_
-'''),
-          ),
-        ),
+''');
+      final use = source.indexOf('f zero true_');
+      expect(
+        () => checkProgram(pp(source)),
         throwsA(
           isA<OverlappingInstances>()
               .having((e) => e.className, 'className', 'C')
@@ -507,6 +505,11 @@ val r : Bool = f zero true_
                 (e) => e.instanceNames,
                 'instanceNames',
                 contains('_impl_C_Nat_Bool'),
+              )
+              .having(
+                (e) => e.span,
+                'span',
+                DoxaSpan(use, use + 'f zero true_'.length),
               ),
         ),
       );

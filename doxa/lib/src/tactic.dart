@@ -24,6 +24,7 @@ import 'eval.dart';
 import 'eval.dart' as kernel_eval;
 import 'meta.dart';
 import 'registry.dart';
+import 'surface.dart';
 import 'term.dart';
 import 'value.dart';
 
@@ -96,6 +97,13 @@ final class TacticState {
   /// it is committed.
   final Ctx? closedGoalOverCtx;
 
+  /// The source span of the tactic step that created the current goal,
+  /// when one was recorded.
+  ///
+  /// `apply` sets it to the lemma expression's span so a goal it leaves
+  /// open points at the `apply` step rather than the whole `by` block.
+  final DoxaSpan? stepSpan;
+
   /// Creates a tactic state.
   const TacticState(
     this.metas,
@@ -105,6 +113,7 @@ final class TacticState {
     this.pending = const [],
     this.goalTypeOverride,
     this.closedGoalOverCtx,
+    this.stepSpan,
   ]);
 
   /// Copy with a replacement field.
@@ -116,6 +125,7 @@ final class TacticState {
     List<TacticGoal>? pending,
     Value? goalTypeOverride,
     Ctx? closedGoalOverCtx,
+    DoxaSpan? stepSpan,
   }) => TacticState(
     metas ?? this.metas,
     ctx ?? this.ctx,
@@ -124,6 +134,7 @@ final class TacticState {
     pending ?? this.pending,
     goalTypeOverride ?? this.goalTypeOverride,
     closedGoalOverCtx ?? this.closedGoalOverCtx,
+    stepSpan ?? this.stepSpan,
   );
 
   /// The type of the current goal.
@@ -221,8 +232,15 @@ final class TacticFail extends TacticResult {
   /// Human-readable failure message.
   final String message;
 
+  /// The source span the failure should be reported at, when known.
+  ///
+  /// A failure raised because goals remain carries the first open goal's
+  /// meta span, so the diagnostic points at the step that created it
+  /// rather than the enclosing `by` block.
+  final DoxaSpan? span;
+
   /// Creates a failure result.
-  const TacticFail(this.message);
+  const TacticFail(this.message, {this.span});
 }
 
 // ---------------------------------------------------------------------------
@@ -500,7 +518,11 @@ TacticFn Function(Term) tacticApply =
           // `_insertImplicits` uses) so a solution may reference the
           // local binders, and apply the meta to them.
           final closedType = closeValueOverCtx(pi.domain, s.ctx);
-          final metaId = s.metas.freshTermMeta(closedType, s.ctx);
+          final metaId = s.metas.freshTermMeta(
+            closedType,
+            s.ctx,
+            span: s.stepSpan,
+          );
           var metaTerm = TMeta(metaId) as Term;
           for (var k = s.ctx.level - 1; k >= 0; k--) {
             metaTerm = TApp(metaTerm, TBound(k));
@@ -518,7 +540,11 @@ TacticFn Function(Term) tacticApply =
           // and applied to it. The user sees the open argument type and
           // their proof is lifted to the closed λ-chain on solve.
           final closedType = closeValueOverCtx(pi.domain, s.ctx);
-          final metaId = s.metas.freshTermMeta(closedType, s.ctx);
+          final metaId = s.metas.freshTermMeta(
+            closedType,
+            s.ctx,
+            span: s.stepSpan,
+          );
           var metaTerm = TMeta(metaId) as Term;
           for (var k = s.ctx.level - 1; k >= 0; k--) {
             metaTerm = TApp(metaTerm, TBound(k));

@@ -165,6 +165,22 @@ val twice_two: Eq Nat (multiply (succ zero) (succ zero)) (succ zero) =
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
 
+    test('a missing instance carets the call site, not the class', () {
+      const src = '''
+import "../doxa_stdlib/lib/stdlib/nat.doxa"
+typeclass Eqb[A: Type] {
+  fun equals(x: A, y: A): Bool;
+}
+data Color : Type { red : Color; blue : Color; }
+val bad: Bool = equals red red
+''';
+      final r = runSource(src);
+      expect(r.code, 1);
+      expect(r.stderr, contains('no instance found'));
+      expect(r.stderr, contains('test.doxa:6:17'));
+      expect(r.stderr, isNot(contains('test.doxa:2:')));
+    });
+
     test('an unknown class reports the named diagnostic', () {
       const src = '''
 import "../doxa_stdlib/lib/stdlib/nat.doxa"

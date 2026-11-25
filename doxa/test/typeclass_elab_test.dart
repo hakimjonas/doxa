@@ -197,23 +197,22 @@ val c : Nat = id zero
     });
 
     test('a second instance for the same class and head is rejected', () {
-      expect(
-        () => checkProgram(
-          pp(
-            _program('''
+      final source = _program('''
 impl Eqb[Nat] {
   fun equals(x: Nat, y: Nat): Bool = true_;
 }
 impl Eqb[Nat] {
   fun equals(x: Nat, y: Nat): Bool = false_;
 }
-'''),
-          ),
-        ),
+''');
+      final second = source.lastIndexOf('impl Eqb[Nat]');
+      expect(
+        () => checkProgram(pp(source)),
         throwsA(
           isA<OverlappingInstances>()
               .having((e) => e.className, 'className', 'Eqb')
-              .having((e) => e.targetType, 'targetType', 'Nat'),
+              .having((e) => e.targetType, 'targetType', 'Nat')
+              .having((e) => e.span, 'span', DoxaSpan(second, source.length)),
         ),
       );
     });
@@ -234,6 +233,27 @@ val bad: Bool = equals red red
           isA<NoInstanceFound>()
               .having((e) => e.className, 'className', 'Eqb')
               .having((e) => e.targetType, 'targetType', 'Color'),
+        ),
+      );
+    });
+
+    test('a missing instance points the span at the use site', () {
+      final source = _program('''
+data Color : Type { red : Color; blue : Color; }
+val bad: Bool = equals red red
+''');
+      final use = source.indexOf('equals red red');
+      expect(
+        () => checkProgram(pp(source)),
+        throwsA(
+          isA<NoInstanceFound>()
+              .having((e) => e.className, 'className', 'Eqb')
+              .having((e) => e.targetType, 'targetType', 'Color')
+              .having(
+                (e) => e.span,
+                'span',
+                DoxaSpan(use, use + 'equals red red'.length),
+              ),
         ),
       );
     });

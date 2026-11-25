@@ -138,6 +138,29 @@ val apply_two : Nat = by {
       expect(_binding(env, 'apply_two').name, 'apply_two');
     });
 
+    test('a leftover apply goal reports the apply expression span', () {
+      const source = '''
+$_nat
+fun two_nats(a: Nat, b: Nat): Nat = a
+val apply_leftover : Nat = by {
+  apply two_nats;
+  exact zero
+}
+''';
+      final use = source.indexOf('apply two_nats') + 'apply '.length;
+      Object? error;
+      try {
+        _elabAndCheck(source);
+      } on Object catch (e) {
+        error = e;
+      }
+      expect(error, isA<TacticFailed>());
+      expect(
+        (error as TacticFailed).span,
+        DoxaSpan(use, use + 'two_nats'.length),
+      );
+    });
+
     test('apply does not expose implicit arguments as goals', () {
       // `cong` has four implicit parameters and two explicit ones. If the
       // implicits became goals, the first `exact` would target `Type`.

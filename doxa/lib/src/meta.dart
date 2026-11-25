@@ -29,6 +29,7 @@ library;
 
 import 'ctx.dart';
 import 'proof_state.dart';
+import 'surface.dart';
 import 'sem_info.dart';
 import 'term.dart';
 import 'value.dart';
@@ -40,8 +41,17 @@ import 'value.dart';
 /// dance. Each variant carries the minimum data needed for the
 /// unifier to decide whether a solve is well-typed + well-scoped.
 sealed class MetaEntry {
+  /// The source span of the construct that allocated this meta, when one
+  /// was recorded.
+  ///
+  /// The elaborator sets it for an implicit argument it inserts at an
+  /// application site, so a diagnostic about the undetermined meta can
+  /// point at the use rather than the enclosing declaration. Internal
+  /// allocations leave it null.
+  final DoxaSpan? span;
+
   /// Base constructor.
-  const MetaEntry();
+  const MetaEntry({this.span});
 
   /// True iff this meta has been assigned a solution.
   bool get isSolved;
@@ -66,7 +76,7 @@ final class TermMetaUnsolved extends MetaEntry {
   final Ctx localCtx;
 
   /// Creates an unsolved term-meta entry.
-  const TermMetaUnsolved(this.typeExpected, this.localCtx);
+  const TermMetaUnsolved(this.typeExpected, this.localCtx, {super.span});
 
   @override
   bool get isSolved => false;
@@ -114,7 +124,12 @@ final class TermMetaSolved extends MetaEntry {
   final Ctx localCtx;
 
   /// Creates a solved term-meta entry.
-  const TermMetaSolved(this.solution, this.typeExpected, this.localCtx);
+  const TermMetaSolved(
+    this.solution,
+    this.typeExpected,
+    this.localCtx, {
+    super.span,
+  });
 
   @override
   bool get isSolved => true;
@@ -162,9 +177,9 @@ final class MetaContext {
   int get length => _entries.length;
 
   /// Allocate a fresh unsolved term-meta and return its id.
-  int freshTermMeta(Value typeExpected, Ctx localCtx) {
+  int freshTermMeta(Value typeExpected, Ctx localCtx, {DoxaSpan? span}) {
     final id = _entries.length;
-    _entries.add(TermMetaUnsolved(typeExpected, localCtx));
+    _entries.add(TermMetaUnsolved(typeExpected, localCtx, span: span));
     return id;
   }
 
@@ -204,7 +219,12 @@ final class MetaContext {
         'MetaContext.solve($id): already solved (entry: $entry)',
       );
     }
-    _entries[id] = TermMetaSolved(term, entry.typeExpected, entry.localCtx);
+    _entries[id] = TermMetaSolved(
+      term,
+      entry.typeExpected,
+      entry.localCtx,
+      span: entry.span,
+    );
   }
 
   @override
@@ -242,9 +262,14 @@ final class MetaContext {
           snap.solved[i]!,
           unsolved.typeExpected,
           unsolved.localCtx,
+          span: unsolved.span,
         );
       } else if (!wasSolved && entry is TermMetaSolved) {
-        _entries[i] = TermMetaUnsolved(entry.typeExpected, entry.localCtx);
+        _entries[i] = TermMetaUnsolved(
+          entry.typeExpected,
+          entry.localCtx,
+          span: entry.span,
+        );
       }
     }
   }
@@ -564,13 +589,23 @@ Term inlineSolvedMetas(Term term, MetaContext metas, {int outerDepth = 0}) {
 ///
 /// Iterative walk via an explicit stack, so depth does not consume Dart
 /// call frames (SPEC §4.5).
-bool termContainsMeta(Term term) {
+bool termContainsMeta(Term term) => firstMetaIdIn(term) != null;
+
+/// The id of the first `TMeta(id)` in [term], or null when the term
+/// mentions none.
+///
+/// Walks the term with the same fixed child order as [termContainsMeta],
+/// so the result is deterministic. After [inlineSolvedMetas], the id found
+/// is an unsolved metavariable; the elaborator uses its recorded span to
+/// point an undetermined-declaration diagnostic at the application that
+/// left it unsolved.
+int? firstMetaIdIn(Term term) {
   final stack = <Term>[term];
   while (stack.isNotEmpty) {
     final cur = stack.removeLast();
     switch (cur) {
-      case TMeta():
-        return true;
+      case TMeta(:final id):
+        return id;
       case TType():
       case TUnknown():
       case TProp():
@@ -619,7 +654,7 @@ bool termContainsMeta(Term term) {
         stack.add(expr);
     }
   }
-  return false;
+  return null;
 }
 
 /// Whether [solution] has a free de Bruijn index, i.e. one not bound by a

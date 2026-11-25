@@ -277,21 +277,24 @@ impl[A: Eqb] Eqb[Pair A A] {
       for (var i = 0; i < 9; i++) {
         deep = 'List ($deep)';
       }
-      expect(
-        () => checkProgram(
-          pp(
-            _program('''
+      final source = _program('''
 $_natInstance
 $_listInstance
 val deep: $deep = nil
 val bad: Bool = equals deep deep
-'''),
-          ),
-        ),
+''');
+      final use = source.indexOf('equals deep deep');
+      expect(
+        () => checkProgram(pp(source)),
         throwsA(
           isA<InstanceSearchDepthExceeded>()
               .having((e) => e.className, 'className', 'Eqb')
-              .having((e) => e.depth, 'depth', 8),
+              .having((e) => e.depth, 'depth', 8)
+              .having(
+                (e) => e.span,
+                'span',
+                DoxaSpan(use, use + 'equals deep deep'.length),
+              ),
         ),
       );
     }, timeout: const Timeout(Duration(seconds: 5)));

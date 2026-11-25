@@ -1725,7 +1725,7 @@ Term elabExpr(TopEnv topEnv, SExpr expr) => elabExprWithType(topEnv, expr).term;
   // application loop, so finish it here. A bare identifier keeps its full
   // signature; a partial application keeps the explicit Pi that remains.
   if (expr.kind is SAppKind) {
-    (term, typeValue) = _insertImplicits(state, term, typeValue);
+    (term, typeValue) = _insertImplicits(state, term, typeValue, expr.span);
   }
   final level = state.ctx.level;
   final type = quote(level, typeValue);
@@ -2287,6 +2287,7 @@ Term _elabTacticBlock(
   var attemptStart = metas.length;
   var lastEst = state;
   String? lastFail;
+  DoxaSpan? lastFailSpan;
   for (final alt in kind.steps) {
     metas.restore(rootSnapshot);
     attemptStart = metas.length;
@@ -2300,6 +2301,7 @@ Term _elabTacticBlock(
     lastEst = newEst;
     if (result is TacticFail) {
       lastFail = result.message;
+      lastFailSpan = result.span;
     }
     if (result is TacticOk) {
       // The block is closed only when every meta allocated by this
@@ -2329,7 +2331,7 @@ Term _elabTacticBlock(
   throw TacticFailed(
     'tactic block: no alternative succeeded'
     '${lastFail == null ? '' : ' ($lastFail)'}',
-    span,
+    lastFailSpan ?? span,
   );
 }
 
@@ -2436,7 +2438,10 @@ List<String> _localScopeNames(_LocalScope scope) {
   if (current != null) {
     final remaining = 1 + current.pending.length;
     return (
-      TacticFail('tactic block: $remaining subgoal(s) remain'),
+      TacticFail(
+        'tactic block: $remaining subgoal(s) remain',
+        span: current.metas.lookup(current.currentMeta).span,
+      ),
       currentEst,
     );
   }
@@ -2507,7 +2512,7 @@ TacticResult _runApply(SExpr expr, TacticState tstate, _ElabState est) {
   // Infer the lemma in the tactic's real context so its implicit
   // arguments are inserted before `tacticApply` inspects the Pi chain.
   final (term, _) = _inferExpr(est, expr);
-  return tacticApply(term)(tstate);
+  return tacticApply(term)(tstate.copyWith(stepSpan: expr.span));
 }
 
 TacticResult _runRewrite(SExpr expr, TacticState tstate, _ElabState est) {
@@ -3031,12 +3036,17 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
         if (i == fns.length - 1 || !followFn[i]) {
           // Innermost or right-deep: infer the fn expression.
           final (rawFT, rawFV) = _inferExpr(state, fns[i]);
-          final (impT, impV) = _insertImplicits(state, rawFT, rawFV);
+          final (impT, impV) = _insertImplicits(state, rawFT, rawFV, expr.span);
           headT = impT;
           headV = impV;
         } else {
           // Left-deep non-innermost: the fn is the previous result.
-          final (impT, impV) = _insertImplicits(state, resultT!, resultV!);
+          final (impT, impV) = _insertImplicits(
+            state,
+            resultT!,
+            resultV!,
+            expr.span,
+          );
           headT = impT;
           headV = impV;
         }
@@ -3077,6 +3087,7 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
             state,
             resultT!,
             resultV!,
+            expr.span,
           );
           if (headVAsPi != null) {
             final sr = subtype(
@@ -3571,7 +3582,7 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
   final (term, inferred) =
       expected is VPi && expected.icit == Icit.implicit
           ? (rawTerm, rawInferred)
-          : _insertImplicits(state, rawTerm, rawInferred);
+          : _insertImplicits(state, rawTerm, rawInferred, expr.span);
   // Check mode accepts a subtype: `inferred ≤ expected` (cumulative on
   // universes), not strict equality, matching the kernel's `_Check`
   // fallback. Using strict conv here would reject e.g.
@@ -3796,7 +3807,7 @@ Term? _checkCtorApp(
   if (metas == null) return null;
   final bareT = TConstr(dataDecl.name, ctorDecl.name, const <Term>[]);
   final sigV = eval(ctorSignatureTerm(dataDecl, ctorDecl), state.ctx.env);
-  final (headT, headV) = _insertImplicits(state, bareT, sigV);
+  final (headT, headV) = _insertImplicits(state, bareT, sigV, head.span);
   if (headT is! TConstr) return null;
   if (headT.args.length != dataDecl.params.length) return null;
 
@@ -3957,7 +3968,12 @@ Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
 /// params explicitly (no `{A}` on `data`), so the TData/TConstr
 /// branches are forward-compat substrate, not hit by current
 /// programs.
-(Term, Value) _insertImplicits(_ElabState state, Term fT, Value fV) {
+(Term, Value) _insertImplicits(
+  _ElabState state,
+  Term fT,
+  Value fV,
+  DoxaSpan span,
+) {
   final metas = state.ctx.metas;
   if (metas == null) return (fT, fV);
   var curT = fT;
@@ -3997,6 +4013,7 @@ Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
           classInfo,
           target,
           _instanceSearchDepth,
+          span,
         );
         // A failed search is reported, never deferred through a fresh
         // metavariable: a dictionary inserted without an instance would
@@ -4005,7 +4022,7 @@ Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
           throw NoInstanceFound(
             className,
             _renderInstanceGoal(state, target),
-            state.topEnv.spanOf(className) ?? DoxaSpan.synthetic,
+            span,
           );
         }
         dictionary = found;
@@ -4030,7 +4047,7 @@ Term ctorSignatureTerm(DataDecl d, CtorDecl c) {
     // only solve to closed terms and implicit inference fails for
     // any function whose solution references a surrounding binder.
     final closedType = closeValueOverCtx(pi.domain, state.ctx);
-    final metaId = metas.freshTermMeta(closedType, state.ctx);
+    final metaId = metas.freshTermMeta(closedType, state.ctx, span: span);
     // Build the meta applied to every outer bound variable. At this
     // depth, TBound(k) for k in [0, state.ctx.level) references
     // each binder in scope (innermost at TBound(0)). The term keeps the
@@ -4302,6 +4319,7 @@ Term? _selectInstance(
   _InstanceMatch match,
   VData goal,
   int depth,
+  DoxaSpan span,
 ) {
   final instance = match.instance;
   final substitution = match.substitution;
@@ -4312,7 +4330,7 @@ Term? _selectInstance(
         info.className,
         _renderInstanceGoal(state, goal),
         _instanceSearchDepth,
-        state.topEnv.spanOf(info.className) ?? DoxaSpan.synthetic,
+        span,
       );
     }
     for (final constraint in instance.constraints) {
@@ -4324,6 +4342,7 @@ Term? _selectInstance(
           constraint.className,
           VData(constraint.className, [parameterType]),
           depth - 1,
+          span,
         ),
       );
     }
@@ -4360,6 +4379,7 @@ Term? _searchInstance(
   ClassInfo info,
   Value target,
   int depth,
+  DoxaSpan span,
 ) {
   if (target is! VData || target.name != info.className) return null;
   final direct = _matchingInstances(state, info, target);
@@ -4368,24 +4388,30 @@ Term? _searchInstance(
       info.className,
       _renderInstanceGoal(state, target),
       [for (final match in direct) match.instance.bindingName],
-      state.topEnv.spanOf(info.className) ?? DoxaSpan.synthetic,
+      span,
     );
   }
   if (direct.length == 1) {
-    return _selectInstance(state, info, direct.single, target, depth);
+    return _selectInstance(state, info, direct.single, target, depth, span);
   }
-  return _derivedSearch(state, info, target, depth);
+  return _derivedSearch(state, info, target, depth, span);
 }
 
 /// Search direct subclasses of [info] for a dictionary that embeds the
 /// requested parent dictionary.
-Term? _derivedSearch(_ElabState state, ClassInfo info, VData goal, int depth) {
+Term? _derivedSearch(
+  _ElabState state,
+  ClassInfo info,
+  VData goal,
+  int depth,
+  DoxaSpan span,
+) {
   if (depth <= 0) {
     throw InstanceSearchDepthExceeded(
       info.className,
       _renderInstanceGoal(state, goal),
       _instanceSearchDepth,
-      state.topEnv.spanOf(info.className) ?? DoxaSpan.synthetic,
+      span,
     );
   }
   final providers = <({String name, Term term})>[];
@@ -4414,7 +4440,7 @@ Term? _derivedSearch(_ElabState state, ClassInfo info, VData goal, int depth) {
       continue;
     }
     try {
-      final found = _searchInstance(state, subclass, subGoal, depth - 1);
+      final found = _searchInstance(state, subclass, subGoal, depth - 1, span);
       if (found != null) {
         providers.add((
           name: subclass.className,
@@ -4430,7 +4456,7 @@ Term? _derivedSearch(_ElabState state, ClassInfo info, VData goal, int depth) {
       info.className,
       _renderInstanceGoal(state, goal),
       [for (final provider in providers) provider.name],
-      state.topEnv.spanOf(info.className) ?? DoxaSpan.synthetic,
+      span,
     );
   }
   if (providers.length == 1) return providers.single.term;
@@ -4461,18 +4487,16 @@ Term _findInstanceDictionary(
   String className,
   Value goal,
   int depth,
+  DoxaSpan span,
 ) {
   final local =
       goal is VData ? _localDictionaryIndex(state, className, goal) : null;
   if (local != null) return TBound(local);
   final info = state.topEnv.classRegistry[className];
-  final found = info == null ? null : _searchInstance(state, info, goal, depth);
+  final found =
+      info == null ? null : _searchInstance(state, info, goal, depth, span);
   if (found == null) {
-    throw NoInstanceFound(
-      className,
-      _renderInstanceGoal(state, goal),
-      state.topEnv.spanOf(className) ?? DoxaSpan.synthetic,
-    );
+    throw NoInstanceFound(className, _renderInstanceGoal(state, goal), span);
   }
   return found;
 }
@@ -5206,8 +5230,11 @@ Term _inferredTypeTerm(
   required DoxaSpan span,
 }) {
   final inlined = inlineSolvedMetas(type, metas);
-  if (termContainsMeta(inlined)) {
-    throw UnannotatedDeclIndeterminate(name, span);
+  final metaId = firstMetaIdIn(inlined);
+  if (metaId != null) {
+    final metaSpan = metas.lookup(metaId).span;
+    final useSpan = metaSpan != null && !metaSpan.isSynthetic ? metaSpan : span;
+    throw UnannotatedDeclIndeterminate(name, useSpan);
   }
   return inlined;
 }
@@ -5275,6 +5302,7 @@ DeclResult _elabDecl(
             valState,
             inferredTerm,
             inferredType,
+            body.span,
           );
         }
         bodyTerm = inferredTerm;
@@ -6074,6 +6102,7 @@ DeclResult _elabImpl(
       superclassName,
       VData(superclassName, parentArgs),
       _instanceSearchDepth,
+      typeclassRef.span,
     );
   }
 
