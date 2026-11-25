@@ -4905,7 +4905,7 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
         // values.  A ctor arg gets the enriched value only when its
         // TBound reference appears as the function head of a TApp in a
         // subsequent arg type term (e.g. `R` in `R y x` inside `f`'s
-        // type for `acc_intro`).  Named data-constructor arguments
+        // type for `accIntro`).  Named data-constructor arguments
         // (`n` in `Lt n m`) keep their neutral so the pattern binder
         // retains its own de-Bruijn identity.
         //
@@ -4937,7 +4937,7 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
           }
           // WILDCARD binders (`_`) get the enriched scrutinee index
           // value (they have no pattern-identity to preserve, e.g.
-          // `acc_intro _ _ f`).  NAMED binders keep their neutral
+          // `accIntro _ _ f`).  NAMED binders keep their neutral
           // (e.g. `y_` in `lt_trans y_ ...`), since substituting the
           // scrutinee's index value would alias the pattern binder
           // with a different variable at a different de-Bruijn level.
@@ -5047,7 +5047,7 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
         if (expected != null && scrutineeData != null) {
           if (scrutineeData.indices.isEmpty) {
             // For non-indexed data, the expected type may still depend
-            // on the scrutinee variable (e.g. `Acc ... n` in nat_wf).
+            // on the scrutinee variable (e.g. `Acc ... n` in natWf).
             // Refine per arm by substituting the scrutinee NVar with
             // the ctor result value.
             final Value armExpected;
@@ -5522,7 +5522,7 @@ String _classRefName(SExpr ref) => switch (ref.kind) {
 /// ```
 ///
 /// plus a projection
-/// `eqb : {A: Type} -> (x: A) -> (y: A) -> {inst: Eqb A} -> Bool`
+/// `equals : {A: Type} -> (x: A) -> (y: A) -> {inst: Eqb A} -> Bool`
 /// whose body applies the dictionary field. The projections are ordinary
 /// top-level bindings, so imports and the checker treat them as such.
 ///
@@ -7557,8 +7557,8 @@ void _walkForRecursion({
         // first.  If the argument at that position is a valid sub-term,
         // use it.  Otherwise fall back to the caller's designatedIdx.
         // This allows both directions of a mutual block to pass: e.g.
-        // nat_wf → nat_wf_help k y h uses the caller's index (k is a
-        // sub-term of n), while nat_wf_help → nat_wf y_ uses the
+        // natWf → natWfHelp k y h uses the caller's index (k is a
+        // sub-term of n), while natWfHelp → natWf y_ uses the
         // callee's index (y_ is a sub-term of h).
         int daIdx;
         final calleeIdx = memberDeclIdxs[headKind.name];

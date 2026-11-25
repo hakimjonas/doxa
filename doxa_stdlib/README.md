@@ -13,7 +13,7 @@ https://github.com/hakimjonas/doxa#status.
 | `Nat` | `nat.doxa` (`Nat`, `plus`, `multiply`, `Lt`, comparison) |
 | `Bool` | `bool.doxa` |
 | `Eq` | `eq.doxa` (`sym`, `trans`, `cong`, `subst`) |
-| `Eqb` | `equals.doxa` (class), `eqbInstances.doxa` (instances for `Nat`, `Bool`, `List`) |
+| `Eqb` | `eqb.doxa` (class), `eqbInstances.doxa` (instances for `Nat`, `Bool`, `List`) |
 | `Algebra` | `algebra.doxa` (`AddMonoid`, `AddCommMonoid`, `AddGroup`, `Monoid`, `CommMonoid`, `Ring`; class-qualified projections such as `Ring.multiply`; `Nat` and `List` instances; `AddMonoid[Int]`, `AddGroup[Int]`, and `Ring[Int]`; `sum`, `sumViaComm`, `double`, `negTwice`, `square`) |
 | `List` | `list.doxa` |
 | `Option` | `option.doxa` |

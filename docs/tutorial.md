@@ -112,10 +112,13 @@ inside the comparison. The `==` operator takes its type from the arguments:
 it uses the `Eqb` instance for `Nat`, for `Bool`, or for `List Nat` by
 instance search.
 
-The operators are monomorphic. `+` is `plus` and nothing else, and the
-algebra monoids' `add` and `multiply` are not operators. A local binding named
-`plus` shadows the standard-library `plus` for `a + b` just as it does for
-`plus a b`.
+The operators are not type-directed overloads. Each expands to one name: `+`
+is `plus` and nothing else, so the algebra classes' `add` is not reachable
+through `+`. `*` is `multiply`, which is also the multiplication method on
+`Monoid` and `Ring`: with a `Monoid` or `Ring` dictionary in scope, `a * b`
+selects that class's `multiply`; otherwise it selects the top-level `Nat`
+operation when that name is in scope. A local binding named `plus` shadows the
+standard-library `plus` for `a + b` just as it does for `plus a b`.
 
 Comparison does not chain. `a <= b <= c` is a parse error that names the
 second `<=`; parenthesize the inner comparison, as in `(a <= b) == c`.
@@ -918,12 +921,12 @@ parameter is solved from them first. The call `same Nat zero zero` supplies
 dictionary parameter directly, so no search runs there.
 
 A projection's identity is its class and method, so two classes may both
-declare `multiply`. Write `Monoid.multiply` or `Ring.multiply` to name one. A bare `multiply`
-resolves when a local dictionary or constrained parameter selects its class,
-or when only one class declares the name. Otherwise elaboration reports
-`AmbiguousClassMethod` and lists the `Class.method` forms. Inside a class
-declaration, the class's own law fields read the current class first, then its
-parents.
+declare `multiply`. Write `Monoid.multiply` or `Ring.multiply` to name one. A
+bare `multiply` resolves to the current class or a local dictionary's class
+first, then to a top-level binding of that name, then to the only class that
+declares it. Otherwise elaboration reports `AmbiguousClassMethod` and lists the
+`Class.method` forms. Inside a class declaration, the class's own law fields
+read the current class first, then its parents.
 
 ### Parameterised instances
 
@@ -1116,8 +1119,8 @@ This slice has these limits:
 - Coherence is global: one instance per class and tuple of target heads.
 - Methods become top-level projections under their `Class.method` names, so
   two classes may declare the same field name. A bare name that two classes
-  could supply and no local dictionary selects is rejected with
-  `AmbiguousClassMethod`.
+  could supply and no local dictionary or top-level binding selects is rejected
+  with `AmbiguousClassMethod`.
 - Method default bodies are not implemented. Every instance supplies every
   method, and a missing method is rejected with `MissingInstanceMethod`.
 - For a single-parameter class, a target is a bare type constructor or a type
@@ -1197,9 +1200,8 @@ val monoidProduct_eq : Eq Nat monoidProduct (succ zero) = refl monoidProduct
 ```
 
 The `square` law `squareOne` is proved in the module. The additive
-commutative variants (`AddCommGroup`, `CommRing`), the naming pass that moves
-the class fields and laws to camelCase, and default method bodies are not
-present.
+commutative variants (`AddCommGroup`, `CommRing`) and default method bodies are
+not present.
 
 A class that is not passed as a constraint can still be used as an ordinary
 record type. A user-defined record is an explicit dictionary:

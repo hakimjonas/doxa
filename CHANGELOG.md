@@ -62,8 +62,9 @@ project is ready.
 - Added the infix operators `*`, `+`, `<=`, and `==` for `multiply`, `plus`,
   `leq`, and `equals`. `*` binds tighter than `+`, both bind tighter than the
   comparisons, arithmetic associates left, comparisons do not associate, and
-  each operator expands to exactly one top-level function. The formatter
-  prints the operators and parenthesizes only where precedence requires.
+  each operator expands to exactly one name, resolved at the use site. The
+  formatter prints the operators and parenthesizes only where precedence
+  requires.
 
 **Standard library and package imports**
 
@@ -81,12 +82,12 @@ project is ready.
   `AddMonoid[Int]` and `AddGroup[Int]`.
 - Identified class projections by class and method (`Monoid.multiply`,
   `Ring.multiply`), so two classes may declare the same field name. A bare method
-  name resolves through a local dictionary or a unique declaring class, and an
+  name resolves through the current class or a local dictionary's class, then a
+  top-level binding of that name, then a unique declaring class, and an
   ambiguous name reports `AmbiguousClassMethod`. Inside a class, its law
   fields read the current class first, then its parents.
 - Added `Ring` beside `Monoid`, with the `Ring[Int]` instance and the `square`
-  exercise. The additive commutative variants, the camelCase naming pass, and
-  default method bodies are not present.
+  exercise. Default method bodies are not present.
 
 **Records and projections**
 

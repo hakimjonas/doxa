@@ -94,16 +94,17 @@ Fourteen tactic steps are available: `intro`, `exact`, `apply`, `refl`,
 `rewrite`, `induction`, `cases`, `revert`, `trivial`, `simp`, `auto`, `omega`,
 `constructor`, and `have`. `calc` chains compose equalities as named steps.
 Four infix operators, `*`, `+`, `<=`, and `==`, spell `multiply`, `plus`, `leq`,
-and `equals`; the operators are monomorphic to those functions, so the algebra
-monoids' `add` and `multiply` are not reachable through them.
+and `equals`; each expands to one name, and `*` reaches a `Monoid` or `Ring`
+projection when a constraint supplies the dictionary, while `+` never reaches
+the classes' `add`.
 Typeclasses cover single-parameter classes, class-qualified projections,
 instance search, explicit type arguments, parameterised instances,
 superclasses with the derived parent dictionary, local dictionaries, and
-multi-parameter classes. Default method bodies and the camelCase naming pass
-are the remaining typeclass gaps. Quotients have `mk`, `lift`, and
-`Quot.sound` over a checked relation, without a propositional eliminator;
-`decreases` checks a lexicographic measure over named value parameters, and an
-arithmetic decreasing argument such as `sub m n` is rejected.
+multi-parameter classes. Default method bodies are the remaining typeclass
+gap. Quotients have `mk`, `lift`, and `Quot.sound` over a checked relation,
+without a propositional eliminator; `decreases` checks a lexicographic measure
+over named value parameters, and an arithmetic decreasing argument such as
+`sub m n` is rejected.
 
 ### Useful
 
@@ -122,9 +123,8 @@ library.
 
 Proof ergonomics: notation for the naming surface. Then the remaining gated
 surface, a checked termination measure, and `Quot.ind` for a propositional
-eliminator. The spelling pass moves the class fields and laws to camelCase
-(`addZero`, `multiplyAssoc`, `addNegateLeft`). Then the rest of the algebraic
-hierarchy: the additive commutative group and the commutative ring.
+eliminator. Then the rest of the algebraic hierarchy: the additive commutative
+group and the commutative ring.
 
 ### Distribution
 

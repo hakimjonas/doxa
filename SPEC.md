@@ -38,7 +38,7 @@ Newlines are whitespace. Line comments start with `//`; block comments use `/*` 
 
 Application is juxtaposition and associates to the left: `f x y` parses as `(f x) y`. Brackets are a postfix form on an identifier and contain one or more comma-separated expressions; `List[A]` applies `List` to `A`, and a term after a bracket form is ordinary application, so `Vec[A] n` applies the result to `n`.
 
-Four infix operators stand for the standard-library operations. Each one is desugared at parse time into an application of a top-level function, so it denotes an ordinary term: `a + b` and `plus a b` are the same term.
+Four infix operators stand for the standard-library operations. Each one is desugared at parse time into an application of the name it expands to, so it denotes an ordinary term: `a + b` and `plus a b` are the same term.
 
 | Operator | Expands to | Associativity |
 |---|---|---|
@@ -51,7 +51,7 @@ Four infix operators stand for the standard-library operations. Each one is desu
 
 The comparisons do not associate. Writing `a <= b <= c`, `a == b == c`, or `a <= b == c` is a parse error at the second operator, and the diagnostic names that operator. A parenthesized comparison is an ordinary expression, so `(a <= b) == c` parses.
 
-The operators are monomorphic. `+` expands to `plus` and to nothing else; the surface has no overloaded arithmetic, and the algebra monoids' `add` and `multiply` are not reachable through `+` and `*`. `==` expands to `equals`, whose implicit `Eqb` dictionary argument is inserted by elaboration, so instance search selects the instance: `x == y` type-checks wherever an `Eqb` instance exists, including `Nat`, `Bool`, and `List Nat`.
+Each operator expands to one name; there is no type-directed overloading. `+` expands to `plus` and to nothing else, so the algebra classes' `add` is not reachable through `+`. `*` expands to `multiply`, which is also the multiplication method on `Monoid` and `Ring`: at a use site with a `Monoid` or `Ring` dictionary in scope, `x * y` selects that class's `multiply`; otherwise it selects the top-level `Nat` operation when that name is in scope. `==` expands to `equals`, whose implicit `Eqb` dictionary argument is inserted by elaboration when `equals` resolves to the `Eqb` projection, so instance search selects the instance: `x == y` type-checks wherever an `Eqb` instance exists, including `Nat`, `Bool`, and `List Nat`.
 
 The expansion is a plain identifier use resolved in the scope of the use site. A local binding of `plus` shadows the standard library's `plus` for `a + b` exactly as it does for `plus a b`. An operator whose expanded name is not in scope reports an unresolved name whose span is the operator itself.
 

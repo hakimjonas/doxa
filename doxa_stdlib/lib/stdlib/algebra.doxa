@@ -17,11 +17,11 @@
 // a constructor of `Int` and class methods are global projections.
 //
 // `Ring` extends `AddGroup` with its own multiplicative operation and laws.
-// Projections are class-qualified, so `Ring.multiply` and `Monoid.multiply` are distinct
-// even though both classes declare a `multiply` field. A bare `multiply` resolves to a
-// local dictionary's class, or to the only declaring class when one exists.
-// The additive commutative variants, the naming pass, and default method
-// bodies are not part of this module.
+// Projections are class-qualified, so `Ring.multiply` and `Monoid.multiply`
+// are distinct even though both classes declare a `multiply` field. A bare
+// `multiply` resolves to the current class or a local dictionary's class,
+// then to a top-level binding of that name, then to a unique declaring class.
+// Default method bodies are not part of this module.
 //
 // `sum` folds a list with `add` and `addZero`. `sumViaComm` takes the
 // commutative constraint and uses the same fold through the derived parent

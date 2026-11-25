@@ -171,8 +171,9 @@ These are design non-goals, not omissions:
   targets. Coherence is one instance per class and head.
 - **Typeclass method names**: each method becomes a top-level projection
   identified by its class and method, so two classes may declare the same
-  field name. A bare name resolves through a local dictionary or a unique
-  declaring class; otherwise it reports `AmbiguousClassMethod`.
+  field name. A bare name resolves through the current class or a local
+  dictionary's class, then a top-level binding, then a unique declaring class;
+  otherwise it reports `AmbiguousClassMethod`.
 - **Typeclass scope**: a method with a default body is rejected with
   `TypeclassUnsupported`, so every instance supplies every method. An
   instance method body does not see the instance being defined; recursion is
