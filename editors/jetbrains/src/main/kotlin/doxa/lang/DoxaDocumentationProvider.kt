@@ -61,11 +61,6 @@ private class DoxaDocumentationTarget(
             is Map<*, *> -> contents["value"] as? String
             else -> null
         } ?: return@Supplier null
-        DocumentationResult.documentation("<pre>${escapeHtml(value)}</pre>")
+        DocumentationResult.documentation(renderHoverMarkdown(value))
     })
-
-    private fun escapeHtml(value: String): String = value
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
 }
