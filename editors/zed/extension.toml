@@ -8,7 +8,7 @@ repository = "https://github.com/hakimjonas/doxa"
 
 [grammars.doxa]
 repository = "https://github.com/hakimjonas/tree-sitter-doxa"
-rev = "05c6852acd25517b966a47cb4b306c30e9fda73d"
+rev = "08f512a12df39c64eecd7f6e38c027de1899dc42"
 
 [language_servers.doxa-lsp]
 name = "Doxa Language Server"
