@@ -10,31 +10,30 @@ dependently typed proof checker.
   [tree-sitter-doxa](https://github.com/hakimjonas/tree-sitter-doxa)
   grammar (generated from the declarative grammar IR in the Doxa
   repository).
-- Diagnostics, hover, go-to-definition, completion, references, and
-  formatting through the Doxa language server (`doxa lsp`).
+- Diagnostics, hover, go-to-definition, completion, references, rename,
+  document symbols, signature help, formatting, folding ranges, and
+  semantic tokens through the Doxa language server (`doxa lsp`).
 
 ## Installing the language server
 
 Zed resolves extension language-server commands relative to the extension
-work directory, so the extension locates the `doxa` binary itself, in this
-order:
+work directory. The extension looks for `doxa` on the worktree's `PATH` and
+does not read outside its own extension directory, so the directory
+containing `doxa` must be on `PATH`.
 
-1. The worktree's `PATH`, as Zed sees it.
-2. `$HOME/.local/bin/doxa`, for binaries you place there manually or with
-   an install script.
-3. `$HOME/.pub-cache/bin/doxa`, where `dart pub global activate` installs
-   executables.
+Install `doxa` with one of:
 
-If none of these exists, the extension reports an error naming the install
-options:
-
-- Download a native binary from the
+- A native binary from the
   [doxa releases](https://github.com/hakimjonas/doxa/releases)
-  (linux-x64, linux-arm64, macos-arm64, macos-x64, windows-x64), or
-- Run `dart pub global activate doxa_tooling` (requires the Dart SDK),
-  or
-- Build from source: `dart compile exe bin/doxa.dart` in the
-  `doxa_tooling` directory of the Doxa repository.
+  (linux-x64, linux-arm64, macos-arm64, macos-x64, windows-x64), placed in
+  `~/.local/bin` or another directory on `PATH`.
+- `dart pub global activate doxa_tooling` (requires the Dart SDK). The
+  executable is in `~/.pub-cache/bin`, which must be on `PATH`.
+- Build from source: `dart compile exe bin/doxa.dart` in `doxa_tooling`,
+  then put the binary's directory on `PATH`.
+
+If `doxa` is not on `PATH`, the extension reports an error naming these
+options.
 
 ## Semantic highlighting
 
@@ -56,3 +55,7 @@ tokens only when enabled; add this to your Zed settings:
 The tree-sitter grammar is pinned by `rev` in `extension.toml`. To
 update it, regenerate the grammar (`tool/grammar/generate.sh` in the
 Doxa repository), push tree-sitter-doxa, and update the `rev`.
+
+## License
+
+GPL-3.0-or-later. See [LICENSE](LICENSE).
