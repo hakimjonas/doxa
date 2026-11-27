@@ -120,8 +120,8 @@ separate from `AddCommGroup`, so `sumViaComm` takes the monoid form.
 `AddGroup`, `AddCommGroup`, `Ring`, and `CommRing` have only the `Int`
 instances. `Rat` is a normalized pair with `ratNorm`, `ratZero`, `ratOne`,
 `ratOfInt`, `ratAdd`, `ratNegate`, `ratSub`, and `ratMultiply`, the
-cross-multiplication tests `ratEqb` and `ratLeq`, `Eqb[Rat]`, and the `refl`
-lemmas `ratNormZeroDenom`, `ratEqbRefl`, and `ratLeqRefl`. The normalization
+cross-multiplication tests `ratEqb` and `ratLeq`, `Eqb[Rat]`, and the lemmas
+`ratNormZeroDenom`, `ratEqbRefl`, and `ratLeqRefl`. The normalization
 invariant and the ring laws are not proved yet. Others can instantiate the
 classes and extend the library.
 

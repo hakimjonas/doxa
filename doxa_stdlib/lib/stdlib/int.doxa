@@ -172,6 +172,8 @@ fun intAbsPos(n: Nat): Eq Nat (intAbs (pos n)) n = refl n
 
 fun intAbsNeg(n: Nat): Eq Nat (intAbs (neg n)) (succ n) = refl (succ n)
 // intLeqRefl: a <= a
+// The match form refines only one of the two `a` occurrences in
+// `intLeq a a`, so the recursor carries the motive.
 
 fun intLeqRefl(a: Int): Eq Bool (intLeq a a) true_ =
   Int.ind ((x: Int) => Eq Bool (intLeq x x) true_) ((n: Nat) => leqRefl n) ((n: Nat) => leqRefl n) a
