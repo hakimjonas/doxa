@@ -308,7 +308,10 @@ additional motive and reachability checks for indexed-family matches.
 A block expression has zero or more local `val` bindings, each followed by
 `;`, and a final result expression. A local binding can use `val rec`. The type
 on a non-recursive local `val` may be omitted. A block used as an application
-argument must be parenthesized, as in `f ({ val x = y; x })`.
+argument must be parenthesized, as in `f ({ val x = y; x })`. When a block
+appears where its type is known, the result expression is checked against that
+type, so a check-mode form such as `mk` or a match without `returning` can be
+the result.
 
 ```doxa
 val block: Type 2 = { val x: Type 1 = Type; x }
