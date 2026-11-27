@@ -2,6 +2,7 @@
 library;
 
 import 'package:doxa/src/check.dart';
+import 'package:doxa/src/ctx.dart';
 import 'package:doxa/src/elab.dart';
 import 'package:doxa/src/env.dart';
 import 'package:doxa/src/eval.dart';
@@ -167,6 +168,69 @@ void main() {
       // No throw = success.
       check(ctx, b.term, eval(b.type, ctx.env));
     });
+
+    test('a checked block tail takes its motive from the result type', () {
+      final env = checkProgram(
+        parseProgramOk('''
+data Bool : Type { true_ : Bool; false_ : Bool; }
+fun f(b: Bool): Bool = {
+  val k : Bool = true_;
+  match b {
+    case true_ => true_
+    case false_ => false_
+  }
+}
+'''),
+      );
+      expect(env.bindings.map((b) => b.name), contains('f'));
+    });
+  });
+
+  group('Kernel let check rule', () {
+    test('a checked let body takes the motive from the expected type', () {
+      // The check rule is load-bearing: the body is a TMatch with no
+      // motive, which infer mode rejects. The expected type supplies the
+      // constant motive for the arm checks.
+      final env = elabProgram(
+        parseProgramOk('data Bool : Type { true_ : Bool; false_ : Bool; }'),
+      );
+      final ctx = env.toCtx();
+      const match = TMatch(TBound(0), null, [
+        TMatchCase('true_', 0, TConstr('Bool', 'true_', []), []),
+        TMatchCase('false_', 0, TConstr('Bool', 'false_', []), []),
+      ]);
+      const letTerm = TLet(
+        TData('Bool', []),
+        TConstr('Bool', 'true_', []),
+        match,
+      );
+      check(ctx, letTerm, const VData('Bool', []));
+    });
+
+    test('an ill-typed checked let body still throws', () {
+      // The surface rejects a wrong arm type at elaboration, so forge the
+      // term to exercise the kernel rule directly.
+      final env = elabProgram(
+        parseProgramOk('''
+data Bool : Type { true_ : Bool; false_ : Bool; }
+data Nat : Type { zero : Nat; }
+'''),
+      );
+      final ctx = env.toCtx();
+      const match = TMatch(TBound(0), null, [
+        TMatchCase('true_', 0, TConstr('Nat', 'zero', []), []),
+        TMatchCase('false_', 0, TConstr('Nat', 'zero', []), []),
+      ]);
+      const letTerm = TLet(
+        TData('Bool', []),
+        TConstr('Bool', 'true_', []),
+        match,
+      );
+      expect(
+        () => check(ctx, letTerm, const VData('Bool', [])),
+        throwsA(isA<TypeMismatch>()),
+      );
+    });
   });
 
   group('Stack safety of blocks', () {
@@ -181,6 +245,19 @@ void main() {
       final v = eval(inner, const ENil());
       expect(v, isA<VType>());
       expect((v as VType).level, const LLevel(0));
+    });
+
+    test('10,000-deep checked binding completes without blowing stack', () {
+      // The check rule's frames are tail-style too: the body check for
+      // each level is scheduled after the level's frame fires, so the
+      // driver does not recurse on the Dart stack.
+      const depth = 10000;
+      Term inner = const TBound(0);
+      for (var i = 0; i < depth; i++) {
+        inner = TLet(const TType(LLevel(1)), const TType(LLevel(0)), inner);
+      }
+      final v = check(const CNil(), inner, const VType(LLevel(1)));
+      expect(v, isA<VType>());
     });
   });
 

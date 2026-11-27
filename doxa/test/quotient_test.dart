@@ -352,6 +352,17 @@ void main() {
       );
     });
 
+    test('a checked block tail can be mk', () {
+      // The TLet check rule checks its body against the expected type, so
+      // the check-only `mk` form is usable as the result expression.
+      const letTerm = TLet(
+        TData('Nat', <Term>[]),
+        TConstr('Nat', 'zero', []),
+        TQuotMk(TConstr('Nat', 'zero', [])),
+      );
+      expect(check(_natEqCtx(), letTerm, _natQuot()), isA<VQuot>());
+    });
+
     test('TQuotMk against a non-quotient expected type is rejected', () {
       expect(
         () => check(
