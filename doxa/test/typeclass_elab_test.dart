@@ -258,6 +258,30 @@ val bad: Bool = equals red red
       );
     });
 
+    test('a missing instance in a block tail points the span at the call', () {
+      final source = _program('''
+fun useEqb[A: Eqb](x: A, y: A): Bool = equals x y
+fun f(x: Nat, y: Nat): Bool = {
+  val k : Bool = true_;
+  useEqb Nat x y
+}
+''');
+      final use = source.indexOf('useEqb Nat x y');
+      expect(
+        () => checkProgram(pp(source)),
+        throwsA(
+          isA<NoInstanceFound>()
+              .having((e) => e.className, 'className', 'Eqb')
+              .having((e) => e.targetType, 'targetType', 'Nat')
+              .having(
+                (e) => e.span,
+                'span',
+                DoxaSpan(use, use + 'useEqb Nat x y'.length),
+              ),
+        ),
+      );
+    });
+
     test('a missing instance inside a by-checked declaration is reported', () {
       expect(
         () => checkProgram(

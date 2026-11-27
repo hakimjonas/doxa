@@ -657,6 +657,47 @@ val r : Bool = localOrd zero zero
       expect(_ctorName(_evalBinding(env, 'r')), 'true_');
     });
 
+    test('a local dictionary supplies the block tail', () {
+      final env = checkProgram(
+        pp(
+          _program('''
+fun useEqb[A: Eqb](x: A, y: A): Bool = equals x y
+
+fun localEq(x: Nat, y: Nat): Bool = {
+  val d : Eqb Nat = mkEqb equalsNat;
+  useEqb Nat x y
+}
+
+val r : Bool = localEq zero zero
+'''),
+        ),
+      );
+      expect(_ctorName(_evalBinding(env, 'r')), 'true_');
+    });
+
+    test('a local subclass dictionary supplies the block tail', () {
+      final env = checkProgram(
+        pp(
+          _program('''
+typeclass Ord[A: Type]: Eqb[A] {
+  fun cmp(x: A, y: A): Bool;
+}
+
+fun cmpNat(x: Nat, y: Nat): Bool = true_
+fun useEqb[A: Eqb](x: A, y: A): Bool = equals x y
+
+fun localOrd(x: Nat, y: Nat): Bool = {
+  val d : Ord Nat = mkOrd (mkEqb equalsNat) cmpNat;
+  useEqb Nat x y
+}
+
+val r : Bool = localOrd zero zero
+'''),
+        ),
+      );
+      expect(_ctorName(_evalBinding(env, 'r')), 'true_');
+    });
+
     test('a local dictionary does not escape its binding', () {
       expect(
         () => checkProgram(
