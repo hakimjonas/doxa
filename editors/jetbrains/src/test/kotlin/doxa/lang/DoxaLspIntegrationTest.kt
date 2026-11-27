@@ -1,9 +1,13 @@
 package doxa.lang
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.find.findUsages.FindUsagesOptions
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.psi.PsiManager
+import com.intellij.usageView.UsageInfo
+import com.intellij.util.Processor
 import com.intellij.util.ui.UIUtil
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -193,6 +197,85 @@ class DoxaLspIntegrationTest : BasePlatformTestCase() {
         assertCachedGotoTarget(handler, psiFile, source.indexOf("zero"), nat)
         assertCachedGotoTarget(handler, psiFile, source.indexOf("bool.doxa") + 1, bool)
         service.stopServer()
+    }
+
+    fun testRealServerSuppliesReferences() {
+        val file = directory.resolve("references.doxa")
+        val source = """
+            val identity : Type 1 = Prop
+            val value : Type 1 = identity
+        """.trimIndent()
+        Files.writeString(file, source)
+        val uri = file.toUri().toString()
+        connector.didOpen(uri, source)
+        requestSemanticTokens(uri)
+        val declaration = source.indexOf("identity")
+        val use = source.lastIndexOf("identity")
+        val declarationRefs = connector.sendRequestBlocking(
+            "textDocument/references",
+            referenceParams(uri, source, declaration),
+        ) as? List<*>
+        val useRefs = connector.sendRequestBlocking(
+            "textDocument/references",
+            referenceParams(uri, source, use),
+        ) as? List<*>
+
+        assertEquals(2, declarationRefs?.size)
+        assertEquals(2, useRefs?.size)
+        val starts = declarationRefs!!.map { referenceStart(it, source) }.toSet()
+        assertTrue(starts.contains(declaration))
+        assertTrue(starts.contains(use))
+    }
+
+    fun testFindUsagesHandlerCollectsServerReferences() {
+        val file = directory.resolve("find_usages.doxa")
+        val source = """
+            val identity : Type 1 = Prop
+            val value : Type 1 = identity
+        """.trimIndent()
+        Files.writeString(file, source)
+        val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(file)!!
+        val psiFile = PsiManager.getInstance(project).findFile(virtualFile)!!
+        val service = DoxaLspService.getInstance(project)
+        service.stopServer()
+        service.startServer()
+        waitFor("project Doxa language server to initialize") { service.connector.isRunning }
+        service.connector.didOpen(virtualFile.url, source)
+        service.connector.sendRequestBlocking(
+            "textDocument/semanticTokens/full",
+            mapOf("textDocument" to mapOf("uri" to virtualFile.url)),
+        )
+        val declaration = source.indexOf("identity")
+        val use = source.lastIndexOf("identity")
+        val element = psiFile.findElementAt(declaration)!!
+        val factory = DoxaFindUsagesHandlerFactory()
+        assertTrue(factory.canFindUsages(element))
+        val handler = factory.createFindUsagesHandler(element, false)!!
+        val usages = mutableListOf<UsageInfo>()
+        val processor = object : Processor<UsageInfo> {
+            override fun process(usage: UsageInfo): Boolean {
+                usages.add(usage)
+                return true
+            }
+        }
+        handler.processElementUsages(element, processor, FindUsagesOptions(project))
+
+        assertEquals(2, usages.size)
+        assertTrue(usages.any { it.navigationOffset == declaration })
+        assertTrue(usages.any { it.navigationOffset == use })
+        service.stopServer()
+    }
+
+    private fun referenceParams(uri: String, text: String, offset: Int): Map<String, Any> =
+        positionParams(uri, text, offset) +
+            mapOf("context" to mapOf("includeDeclaration" to true))
+
+    private fun referenceStart(location: Any?, text: String): Int {
+        val range = (location as Map<*, *>)["range"] as Map<*, *>
+        val start = range["start"] as Map<*, *>
+        val line = (start["line"] as Number).toInt()
+        val character = (start["character"] as Number).toInt()
+        return text.lineSequence().take(line).sumOf { it.length + 1 } + character
     }
 
     private fun positionParams(uri: String, text: String, offset: Int): Map<String, Any> {

@@ -140,6 +140,26 @@ class DoxaLspService(val project: Project) : Disposable {
         )
     }
 
+    /**
+     * Ask the language server for every reference to the symbol at [offset].
+     *
+     * The server owns the reference set; this returns its locations unchanged
+     * so [DoxaFindUsagesHandler] can translate them into IDE usages.
+     */
+    fun referencesAt(
+        uri: String,
+        text: String,
+        offset: Int,
+        includeDeclaration: Boolean = true,
+    ): List<Map<*, *>> {
+        connector.ensureFileSent(uri, text)
+        val params =
+            positionParams(uri, text, offset) +
+                mapOf("context" to mapOf("includeDeclaration" to includeDeclaration))
+        val result = connector.sendRequestBlocking("textDocument/references", params, 10L)
+        return (result as? List<*>)?.filterIsInstance<Map<*, *>>() ?: emptyList()
+    }
+
     private fun syncFile(file: VirtualFile) {
         if (file.extension != "doxa") return
         val document = FileDocumentManager.getInstance().getDocument(file) ?: return
