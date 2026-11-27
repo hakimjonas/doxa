@@ -124,10 +124,10 @@ library.
 
 ### Next
 
-Proof ergonomics: notation for the naming surface. Then the remaining gated
-surface, a checked termination measure, and `Quot.ind` for a propositional
-eliminator. Then the `Rational` library: `rational.doxa` is a first cut with a
-constructor and needs operations and lemmas.
+The `Rational` library: `rational.doxa` is a first cut with a constructor and
+needs operations and lemmas. Then proof ergonomics: notation for the naming
+surface, the remaining gated surface, a checked termination measure, and
+`Quot.ind` for a propositional eliminator.
 
 ### Distribution
 

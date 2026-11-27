@@ -62,7 +62,7 @@ the reason is noted in the gaps section.
 | Typeclasses | A class's law fields read the current class first, then its parents | `doxa/test/typeclass_namespace_test.dart`, `doxa/test/typeclass_laws_test.dart` | "a law reads its own method, then a parent method", "a law field names an operation declared earlier", "a law that references a later method is rejected", "the commutative laws name the parent operations", "the instance fields reduce through the dictionaries" | Yes |
 | Typeclasses | `Ring`, `AddCommMonoid`, `AddCommGroup`, and `CommRing` with the `Int` instances and the `square` exercise | `doxa_stdlib/lib/stdlib/algebra.doxa`, `doxa_tooling/test/typeclass_surface_test.dart`, `doxa_tooling/test/fixtures/comm_ring_int.doxa` | "a ring checks the square and the qualified projections", "a commutative ring checks the commutative reductions" | Yes |
 | Typeclasses | Unsupported class forms report their named diagnostics | `doxa/test/typeclass_elab_test.dart`, `doxa_tooling/test/typeclass_surface_test.dart` | "superclasses are rejected with the class and parent names", "a partial instance is rejected naming the missing method", "an unknown method is rejected", "an unknown class is rejected" | Yes |
-| Documentation blocks | Every unmarked `doxa` block in `SPEC.md` and `README.md` is a checked program | `doxa_tooling/test/doc_blocks_test.dart` | "doxa blocks in the normative documents check" | Yes |
+| Documentation blocks | Every unmarked `doxa` block in the normative documents (`SPEC.md`, `README.md`, `docs/tutorial.md`, `docs/proof-guide.md`, `docs/arithmetic.md`) is a checked program | `doxa_tooling/test/doc_blocks_test.dart` | "doxa blocks in the normative documents check" | Yes |
 
 ## Metatheoretic claims
 

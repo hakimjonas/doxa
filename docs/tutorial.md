@@ -1230,8 +1230,9 @@ val ringMultiplyLaw : Eq Int (pos (succ zero)) (pos (succ zero)) =
   CommRing.multiplyComm (pos (succ zero)) (pos (succ zero))
 ```
 
-The three law values take their values from the instance fields, which reduce
-to the `int.doxa` lemmas at one. Default method bodies are not present.
+The three law values take their values from the instance fields; the two
+additive laws reduce at two and the multiply law at one. Default method bodies
+are not present.
 
 A class that is not passed as a constraint can still be used as an ordinary
 record type. A user-defined record is an explicit dictionary:
