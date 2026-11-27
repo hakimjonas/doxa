@@ -557,10 +557,9 @@ class declaration. Search does not prefer the more specific instance.
 A local dictionary is an ordinary `val` binding of the dictionary type. The
 class constructor `mk<Class>` builds the value, and instance search consults
 in-scope local binders before the registered instances. The binding supplies
-the dictionary to a call in its scope when that call is checked against a
-known result type; the example annotates the intermediate result. A local
-dictionary or constrained parameter of a class also selects that class's
-projection for a bare method name.
+the dictionary to any call in its scope, including the block's tail
+expression. A local dictionary or constrained parameter of a class also
+selects that class's projection for a bare method name.
 
 <!-- doxa: fragment -->
 ```doxa
@@ -568,8 +567,7 @@ fun useEqb[A: Eqb](x: A, y: A): Bool = equals x y
 
 fun localEq(x: Nat, y: Nat): Bool = {
   val d : Eqb Nat = mkEqb equalsNat;
-  val r : Bool = useEqb Nat x y;
-  r
+  useEqb Nat x y
 }
 ```
 

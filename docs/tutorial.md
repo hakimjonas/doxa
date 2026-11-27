@@ -1114,8 +1114,8 @@ This slice has these limits:
   parameters, with each class parameter appearing once. A repeated or missing
   parameter is rejected with `TypeclassUnsupported`.
 - Local dictionaries are ordinary `val` bindings of the dictionary type, not
-  a separate instance declaration. The binding supplies the dictionary to a
-  call in its scope when the call is checked against a known result type.
+  a separate instance declaration, so they are visible only to calls inside
+  the block that binds them.
 - Coherence is global: one instance per class and tuple of target heads.
 - Methods become top-level projections under their `Class.method` names, so
   two classes may declare the same field name. A bare name that two classes

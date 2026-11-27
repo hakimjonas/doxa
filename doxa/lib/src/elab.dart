@@ -2851,106 +2851,8 @@ TacticResult _runInduction(String name, TacticState tstate, _ElabState est) {
       final resultV = _computePiSort(domSort, codSort) ?? const VUnknown();
       return (TPi(domT, codT, name: param, icit: icit), resultV);
 
-    case SLetKind(
-      :final param,
-      :final paramSpan,
-      :final domain,
-      :final bound,
-      :final body,
-      :final isRec,
-    ):
-      if (isRec) {
-        // Recursive local binding `val rec f(x: T): R = body; result`.
-        // The domain is a Pi type built by the parser, and the bound is
-        // a lambda chain. Self-references inside the lambda body are NOT
-        // supported (use a top-level `fun` for full recursion). The
-        // result body CAN reference the function via the TLet binder.
-        // At eval time, the TLet wraps the bound in a VFun guard.
-        final (piTerm, _) = _inferExpr(state, domain!);
-        final piV = eval(piTerm, state.ctx.env);
-
-        // Extract params and inner body from the lambda chain bound.
-        final List<SExpr> paramDomains = [];
-        final List<String> paramNames = [];
-        final List<DoxaSpan> paramSpans = [];
-        SExpr innerBody = bound;
-        var extracting = true;
-        while (extracting) {
-          switch (innerBody.kind) {
-            case SLamKind(
-              :final param,
-              :final paramSpan,
-              :final domain,
-              :final body,
-            ):
-              paramNames.add(param);
-              paramDomains.add(domain!);
-              paramSpans.add(paramSpan);
-              innerBody = body;
-            default:
-              extracting = false;
-          }
-        }
-
-        // Elaborate param domains and build the TLam chain.
-        // The lambda body is elaborated WITHOUT the rec name in scope.
-        var funState = state;
-        final domainTerms = <Term>[];
-        for (var i = 0; i < paramNames.length; i++) {
-          final (domT, _) = _inferExpr(funState, paramDomains[i]);
-          final domV = eval(domT, funState.ctx.env);
-          domainTerms.add(domT);
-          funState = funState.push(paramNames[i], domV, paramSpans[i]);
-        }
-        Term funcBody = _inferExpr(funState, innerBody).$1;
-        for (var i = paramNames.length - 1; i >= 0; i--) {
-          funcBody = TLam(domainTerms[i], funcBody, name: paramNames[i]);
-        }
-        final boundV = eval(funcBody, state.ctx.env);
-        // Build TLet with isRec: the body elaborates under pushWith
-        // so TBound(0) resolves to the VFun at eval time.
-        const decreasingArg = 0;
-        final arity = paramNames.length;
-        final (bodyTerm, bodyV) = _inferExpr(
-          state.pushWith(param, piV, boundV, paramSpan),
-          body,
-        );
-        return (
-          TLet(
-            piTerm,
-            funcBody,
-            bodyTerm,
-            name: param,
-            isRec: true,
-            recDecreasingArg: decreasingArg,
-            recArity: arity,
-          ),
-          bodyV,
-        );
-      }
-      // Non-recursive let-binding.
-      final Term domainTerm;
-      final Term boundTerm;
-      if (domain == null) {
-        // Inferred binder: synthesize the bound expr's type and quote
-        // it back to a domain term in the current scope.
-        final (inferredBound, boundType) = _inferExpr(state, bound);
-        boundTerm = inferredBound;
-        domainTerm = quote(state.ctx.level, boundType);
-      } else {
-        // Annotated binder: elaborate domain, then check bound against it.
-        final (annTerm, _) = _inferExpr(state, domain);
-        domainTerm = annTerm;
-        final domainV = eval(domainTerm, state.ctx.env);
-        boundTerm = _checkExpr(state, bound, domainV);
-      }
-      final domainV = eval(domainTerm, state.ctx.env);
-      final boundV = eval(boundTerm, state.ctx.env);
-      final (bodyTerm, bodyV) = _inferExpr(
-        state.pushWith(param, domainV, boundV, paramSpan),
-        body,
-      );
-      return (TLet(domainTerm, boundTerm, bodyTerm, name: param), bodyV);
+    case final SLetKind letKind:
+      return _elabLet(state, letKind, elabBody: _inferExpr);
 
     case SLamKind(
       :final param,
@@ -3328,6 +3230,117 @@ Term _checkExpr(_ElabState state, SExpr expr, Value expected) {
   }
 }
 
+/// Elaborate a let-binding, shared by infer mode and check mode.
+///
+/// [elabBody] elaborates the body under [state] extended with the
+/// binding. Infer mode passes `_inferExpr`; check mode passes a callback
+/// that checks the body against the expected type. Binder elaboration,
+/// the emitted `TLet`, and its `recDecreasingArg`/`recArity` metadata are
+/// the same in both modes; only the body elaboration differs.
+(Term, Value) _elabLet(
+  _ElabState state,
+  SLetKind kind, {
+  required (Term, Value) Function(_ElabState, SExpr) elabBody,
+}) {
+  final param = kind.param;
+  final paramSpan = kind.paramSpan;
+  final domain = kind.domain;
+  final bound = kind.bound;
+  final body = kind.body;
+  if (kind.isRec) {
+    // Recursive local binding `val rec f(x: T): R = body; result`.
+    // The domain is a Pi type built by the parser, and the bound is
+    // a lambda chain. Self-references inside the lambda body are NOT
+    // supported (use a top-level `fun` for full recursion). The
+    // result body CAN reference the function via the TLet binder.
+    // At eval time, the TLet wraps the bound in a VFun guard.
+    final (piTerm, _) = _inferExpr(state, domain!);
+    final piV = eval(piTerm, state.ctx.env);
+
+    // Extract params and inner body from the lambda chain bound.
+    final List<SExpr> paramDomains = [];
+    final List<String> paramNames = [];
+    final List<DoxaSpan> paramSpans = [];
+    SExpr innerBody = bound;
+    var extracting = true;
+    while (extracting) {
+      switch (innerBody.kind) {
+        case SLamKind(
+          :final param,
+          :final paramSpan,
+          :final domain,
+          :final body,
+        ):
+          paramNames.add(param);
+          paramDomains.add(domain!);
+          paramSpans.add(paramSpan);
+          innerBody = body;
+        default:
+          extracting = false;
+      }
+    }
+
+    // Elaborate param domains and build the TLam chain.
+    // The lambda body is elaborated WITHOUT the rec name in scope.
+    var funState = state;
+    final domainTerms = <Term>[];
+    for (var i = 0; i < paramNames.length; i++) {
+      final (domT, _) = _inferExpr(funState, paramDomains[i]);
+      final domV = eval(domT, funState.ctx.env);
+      domainTerms.add(domT);
+      funState = funState.push(paramNames[i], domV, paramSpans[i]);
+    }
+    Term funcBody = _inferExpr(funState, innerBody).$1;
+    for (var i = paramNames.length - 1; i >= 0; i--) {
+      funcBody = TLam(domainTerms[i], funcBody, name: paramNames[i]);
+    }
+    final boundV = eval(funcBody, state.ctx.env);
+    // Build TLet with isRec: the body elaborates under pushWith
+    // so TBound(0) resolves to the VFun at eval time.
+    const decreasingArg = 0;
+    final arity = paramNames.length;
+    final (bodyTerm, bodyV) = elabBody(
+      state.pushWith(param, piV, boundV, paramSpan),
+      body,
+    );
+    return (
+      TLet(
+        piTerm,
+        funcBody,
+        bodyTerm,
+        name: param,
+        isRec: true,
+        recDecreasingArg: decreasingArg,
+        recArity: arity,
+      ),
+      bodyV,
+    );
+  }
+  // Non-recursive let-binding.
+  final Term domainTerm;
+  final Term boundTerm;
+  if (domain == null) {
+    // Inferred binder: synthesize the bound expr's type and quote
+    // it back to a domain term in the current scope.
+    final (inferredBound, boundType) = _inferExpr(state, bound);
+    boundTerm = inferredBound;
+    domainTerm = quote(state.ctx.level, boundType);
+  } else {
+    // Annotated binder: elaborate domain, then check bound against it.
+    final (annTerm, _) = _inferExpr(state, domain);
+    domainTerm = annTerm;
+    final domainV = eval(domainTerm, state.ctx.env);
+    boundTerm = _checkExpr(state, bound, domainV);
+  }
+  final domainV = eval(domainTerm, state.ctx.env);
+  final boundV = eval(boundTerm, state.ctx.env);
+  final (bodyTerm, bodyV) = elabBody(
+    state.pushWith(param, domainV, boundV, paramSpan),
+    body,
+  );
+  return (TLet(domainTerm, boundTerm, bodyTerm, name: param), bodyV);
+}
+
 Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
   // 0. Auto-`refl`. A bare `refl` (a plain identifier resolving to the
   // prelude's `Eq.refl`) checked against `Eq[A] x y` is sugar for
@@ -3569,6 +3582,20 @@ Term _checkExprInner(_ElabState state, SExpr expr, Value expected) {
         if (checked != null) return checked;
       }
     }
+  }
+
+  // 3.7. SLetKind. A block checked against a result type elaborates its
+  //    tail expression in the block's scope, so a `val` binding of a
+  //    dictionary type supplies the trailing implicit of a call in tail
+  //    position. Binder and bound-expression handling is shared with infer
+  //    mode; only the body is checked against [expected].
+  if (kind is SLetKind) {
+    return _elabLet(
+      state,
+      kind,
+      elabBody:
+          (pushed, body) => (_checkExpr(pushed, body, expected), expected),
+    ).$1;
   }
 
   // 4. Infer-then-conv fallback.
