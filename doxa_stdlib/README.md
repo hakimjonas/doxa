@@ -20,7 +20,7 @@ https://github.com/hakimjonas/doxa#status.
 | `Vec` | `vec.doxa` (length-indexed vectors) |
 | `Sigma` | `sigma.doxa` |
 | `Int` | `intBase.doxa`, `int.doxa` |
-| `Rational` | `rational.doxa` |
+| `Rational` | `rational.doxa` (`Rat` normalized pairs; `ratNorm`, `ratZero`, `ratOne`, `ratOfInt`, `ratAdd`, `ratNegate`, `ratSub`, `ratMultiply`, `ratEqb`, `ratLeq`; `Eqb[Rat]`; `ratNormZeroDenom`, `ratEqbRefl`, `ratLeqRefl`) |
 | `Proofs` | `proofs.doxa` (arithmetic and equality lemmas) |
 | `Prop` | `prop.doxa` (`And`, `Or`, `Exists`, `Not`) |
 | — | `caseStudy.doxa` (parity lemmas and `sqrt2`) |

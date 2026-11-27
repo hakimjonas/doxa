@@ -1,0 +1,38 @@
+// Consumer of the stdlib rational arithmetic. Every equation is a
+// concrete computation that normalizes to the written pair.
+import "../../../doxa_stdlib/lib/stdlib/rational.doxa"
+
+val oneHalf: Rat = ratNorm (pos (succ zero)) (succ (succ zero))
+
+val one: Rat = ratOfInt (pos (succ zero))
+
+val threeHalves: Rat = ratNorm (pos (succ (succ (succ zero)))) (succ (succ zero))
+
+val sum: Eq Rat (ratAdd oneHalf one) threeHalves = refl threeHalves
+
+val product: Eq
+  Rat
+  (ratMultiply oneHalf oneHalf)
+  (Rat.mk (pos (succ zero)) (succ (succ (succ (succ zero))))) =
+  refl (Rat.mk (pos (succ zero)) (succ (succ (succ (succ zero)))))
+
+val eqb: Eq
+  Bool
+  (ratEqb oneHalf (ratNorm (pos (succ (succ zero))) (succ (succ (succ (succ zero))))))
+  true_ = refl true_
+
+val leqHalf: Eq Bool (ratLeq oneHalf one) true_ = refl true_
+
+val negHalf: Eq Rat (ratNegate oneHalf) (Rat.mk (neg zero) (succ (succ zero))) =
+  refl (Rat.mk (neg zero) (succ (succ zero)))
+
+val minusThree: Int = neg (succ (succ zero))
+
+val six: Nat = succ (succ (succ (succ (succ (succ zero)))))
+
+val negThreeSixths: Eq Rat (ratNorm minusThree six) (Rat.mk (neg zero) (succ (succ zero))) =
+  refl (Rat.mk (neg zero) (succ (succ zero)))
+
+fun same[A: Eqb](x: A, y: A): Bool = x == y
+
+val sameHalf: Eq Bool (same Rat oneHalf oneHalf) true_ = refl true_

@@ -1,7 +1,83 @@
-// Rational numbers: Rat = numerator (Int) / denominator (Nat, non-zero).
-// This is a first cut using normalized pairs (no quotient types).
-import "intBase.doxa"
+// Rational numbers as normalized pairs of a numerator and a nonzero
+// denominator.
+//
+// `Rat.mk a b` is the raw constructor; bare `mk` is the quotient
+// injection, so the raw constructor is written qualified. `ratNorm`,
+// `ratOfInt`, `ratZero`, `ratOne`, and the operations produce canonical
+// pairs: a nonzero denominator, the sign in the numerator, and the pair
+// reduced by `gcd`. `ratEqb` and `ratLeq` compare by cross-multiplication
+// and assume a nonzero denominator.
+//
+// The normalization invariant and the ring laws are not proved in this
+// slice. `ratNormZero` needs `div (succ d_) (succ d_) = succ zero` for a
+// variable `d_`, which is stuck, so it belongs to the gcd/canonicality
+// slice.
+import "int.doxa"
+
+import "eqb.doxa"
 
 data Rat: Type {
   mk: Int -> Nat -> Rat;
+}
+
+val ratZero: Rat = Rat.mk (pos zero) (succ zero)
+
+val ratOne: Rat = Rat.mk (pos (succ zero)) (succ zero)
+
+fun ratOfInt(a: Int): Rat = Rat.mk a (succ zero)
+
+fun ratNorm(a: Int, d: Nat): Rat = match d {
+  case zero => ratZero
+  case succ d_ => {
+    val g: Nat = gcd (intAbs a) (succ d_);
+    Rat.mk (intDiv a (pos g)) (div (succ d_) g)
+    }
+}
+
+fun ratAdd(x: Rat, y: Rat): Rat = match x {
+  case mk a b => match y {
+    case mk c d => ratNorm (intPlus (intMultiply a (pos d)) (intMultiply c (pos b))) (b * d)
+  }
+}
+
+fun ratNegate(x: Rat): Rat = match x {
+  case mk a b => ratNorm (intNegate a) b
+}
+
+fun ratSub(x: Rat, y: Rat): Rat = ratAdd x (ratNegate y)
+
+fun ratMultiply(x: Rat, y: Rat): Rat = match x {
+  case mk a b => match y {
+    case mk c d => ratNorm (intMultiply a c) (b * d)
+  }
+}
+
+fun ratEqb(x: Rat, y: Rat): Bool = match x {
+  case mk a b => match y {
+    case mk c d => intEqb (intMultiply a (pos d)) (intMultiply c (pos b))
+  }
+}
+
+fun ratLeq(x: Rat, y: Rat): Bool = match x {
+  case mk a b => match y {
+    case mk c d => intLeq (intMultiply a (pos d)) (intMultiply c (pos b))
+  }
+}
+
+fun ratNormZeroDenom(a: Int): Eq Rat (ratNorm a zero) ratZero = refl ratZero
+
+fun ratEqbRefl(x: Rat): Eq Bool (ratEqb x x) true_ =
+  Rat.ind
+    ((r: Rat) => Eq Bool (ratEqb r r) true_)
+    ((a: Int) => (b: Nat) => intEqbRefl (intMultiply a (pos b)))
+    x
+
+fun ratLeqRefl(x: Rat): Eq Bool (ratLeq x x) true_ =
+  Rat.ind
+    ((r: Rat) => Eq Bool (ratLeq r r) true_)
+    ((a: Int) => (b: Nat) => intLeqRefl (intMultiply a (pos b)))
+    x
+
+impl Eqb[Rat] {
+  fun equals(x: Rat, y: Rat): Bool = ratEqb x y;
 }

@@ -182,7 +182,8 @@ data Int: Type {
 The `neg` encoding avoids a second representation of zero. The operations in
 `intBase.doxa` are `intPlus`, `intNegate`, `intSub`, `intMultiply`, `intLeq`,
 `intAbs` (returning a `Nat`), and `intSign`; `intBase.doxa` stays
-operations-only for `Rational`. `int.doxa` adds `intDiv` and `intMod`.
+operations-only. `int.doxa` adds `intDiv`, `intMod`, and the algebraic lemmas,
+and `rational.doxa` imports `int.doxa` for the division and the lemmas.
 
 ### Division convention
 
