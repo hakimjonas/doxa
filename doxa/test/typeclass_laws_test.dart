@@ -187,4 +187,98 @@ val r : Unit = useComm Unit unit
       expect(_ctorName(_evalBinding(env, 'r')), 'unit');
     });
   });
+
+  group('commutative class fields', () {
+    const classes = '''
+typeclass AddMonoid[A: Type] {
+  fun add(x: A, y: A): A;
+}
+typeclass AddGroup[A: Type]: AddMonoid A {
+  fun negate(x: A): A;
+}
+typeclass AddCommGroup[A: Type]: AddGroup A {
+  fun addComm(x: A, y: A): Eq A (add x y) (add y x);
+}
+typeclass Ring[A: Type]: AddGroup A {
+  fun multiply(x: A, y: A): A;
+}
+typeclass CommRing[A: Type]: Ring A {
+  fun addComm(x: A, y: A): Eq A (add x y) (add y x);
+  fun multiplyComm(x: A, y: A): Eq A (x * y) (y * x);
+}
+''';
+
+    test('the commutative laws name the parent operations', () {
+      // `AddCommGroup.addComm` reads `add` from its `AddGroup` parent.
+      // `CommRing.addComm` reads `add` through `Ring`'s `AddGroup` parent,
+      // and `CommRing.multiplyComm` reads `multiply` from `Ring`.
+      final env = checkProgram(pp('$_prelude\n$classes'));
+
+      expect(
+        env.bindings.where((b) => b.name == 'AddCommGroup.addComm'),
+        hasLength(1),
+      );
+      expect(
+        env.bindings.where((b) => b.name == 'CommRing.addComm'),
+        hasLength(1),
+      );
+      expect(
+        env.bindings.where((b) => b.name == 'CommRing.multiplyComm'),
+        hasLength(1),
+      );
+      expect(env.bindings.where((b) => b.name == 'addComm'), isEmpty);
+      expect(env.bindings.where((b) => b.name == 'multiplyComm'), isEmpty);
+
+      // The elaborated law types name the resolved projections: `add` is
+      // `AddMonoid.add` reached through the group parents, and `multiply` is
+      // `Ring.multiply`.
+      final groupAdd = env.bindings.firstWhere(
+        (b) => b.name == 'AddCommGroup.addComm',
+      );
+      final ringAdd = env.bindings.firstWhere(
+        (b) => b.name == 'CommRing.addComm',
+      );
+      final ringMultiply = env.bindings.firstWhere(
+        (b) => b.name == 'CommRing.multiplyComm',
+      );
+      expect(groupAdd.type.toString(), contains('TTop(AddMonoid.add)'));
+      expect(ringAdd.type.toString(), contains('TTop(AddMonoid.add)'));
+      expect(ringMultiply.type.toString(), contains('TTop(Ring.multiply)'));
+    });
+
+    test('the instance fields reduce through the dictionaries', () {
+      // `add` is constant zero, so each law's type reduces to `Eq Nat zero
+      // zero` and closes by `refl`. The field type also pins the operation:
+      // a law that read a different `add` would not reduce to zero.
+      final env = checkProgram(
+        pp('''
+$_prelude
+$classes
+impl AddMonoid[Nat] {
+  fun add(x: Nat, y: Nat): Nat = zero;
+}
+impl AddGroup[Nat] {
+  fun negate(x: Nat): Nat = zero;
+}
+impl AddCommGroup[Nat] {
+  fun addComm(x: Nat, y: Nat): Eq Nat zero zero = refl zero;
+}
+impl Ring[Nat] {
+  fun multiply(x: Nat, y: Nat): Nat = zero;
+}
+impl CommRing[Nat] {
+  fun addComm(x: Nat, y: Nat): Eq Nat zero zero = refl zero;
+  fun multiplyComm(x: Nat, y: Nat): Eq Nat zero zero = refl zero;
+}
+val groupLaw : Eq Nat zero zero = AddCommGroup.addComm zero zero
+val ringAddLaw : Eq Nat zero zero = CommRing.addComm zero zero
+val ringMultiplyLaw : Eq Nat zero zero = CommRing.multiplyComm zero zero
+'''),
+      );
+
+      expect(_ctorName(_evalBinding(env, 'groupLaw')), 'refl');
+      expect(_ctorName(_evalBinding(env, 'ringAddLaw')), 'refl');
+      expect(_ctorName(_evalBinding(env, 'ringMultiplyLaw')), 'refl');
+    });
+  });
 }

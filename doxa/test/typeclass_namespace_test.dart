@@ -435,4 +435,190 @@ val qualified : Eq Nat (Mult.multiply (succ zero) (succ zero)) (succ (succ zero)
       expect(_ctorName(_evalBinding(env, 'qualified')), 'refl');
     });
   });
+
+  group('commutative dictionaries', () {
+    const classes = '''
+typeclass AddMonoid[A: Type] {
+  fun add(x: A, y: A): A;
+}
+typeclass AddGroup[A: Type]: AddMonoid A {
+  fun negate(x: A): A;
+}
+typeclass AddCommMonoid[A: Type]: AddMonoid A {
+  fun addComm(x: A, y: A): Eq A (add x y) (add y x);
+}
+typeclass AddCommGroup[A: Type]: AddGroup A {
+  fun addComm(x: A, y: A): Eq A (add x y) (add y x);
+}
+typeclass Ring[A: Type]: AddGroup A {
+  fun multiply(x: A, y: A): A;
+}
+typeclass CommRing[A: Type]: Ring A {
+  fun addComm(x: A, y: A): Eq A (add x y) (add y x);
+  fun multiplyComm(x: A, y: A): Eq A (x * y) (y * x);
+}
+''';
+
+    test('a local dictionary selects its class addComm', () {
+      // Each block has one local dictionary, and only that class has an
+      // instance. A bare `addComm` that resolved to another declaring class
+      // would therefore fail its implicit dictionary, so the successful
+      // check pins the local dictionary's class.
+      final monoid = checkProgram(
+        pp('''
+$_prelude
+$classes
+impl AddMonoid[Nat] {
+  fun add(x: Nat, y: Nat): Nat = zero;
+}
+impl AddCommMonoid[Nat] {
+  fun addComm(x: Nat, y: Nat): Eq Nat zero zero = refl zero;
+}
+fun viaMonoid(x: Nat): Eq Nat zero zero = {
+  val d : AddCommMonoid Nat =
+    mkAddCommMonoid
+      (mkAddMonoid ((y: Nat) => (z: Nat) => zero))
+      ((y: Nat) => (z: Nat) => refl zero);
+  addComm x x
+}
+val localMonoid : Eq Nat zero zero = viaMonoid zero
+'''),
+      );
+      expect(_ctorName(_evalBinding(monoid, 'localMonoid')), 'refl');
+
+      final group = checkProgram(
+        pp('''
+$_prelude
+$classes
+impl AddMonoid[Nat] {
+  fun add(x: Nat, y: Nat): Nat = zero;
+}
+impl AddGroup[Nat] {
+  fun negate(x: Nat): Nat = zero;
+}
+impl AddCommGroup[Nat] {
+  fun addComm(x: Nat, y: Nat): Eq Nat zero zero = refl zero;
+}
+fun viaGroup(x: Nat): Eq Nat zero zero = {
+  val d : AddCommGroup Nat =
+    mkAddCommGroup
+      (mkAddGroup (mkAddMonoid ((y: Nat) => (z: Nat) => zero)) ((y: Nat) => y))
+      ((y: Nat) => (z: Nat) => refl zero);
+  addComm x x
+}
+val localGroup : Eq Nat zero zero = viaGroup zero
+'''),
+      );
+      expect(_ctorName(_evalBinding(group, 'localGroup')), 'refl');
+
+      final ring = checkProgram(
+        pp('''
+$_prelude
+$classes
+impl AddMonoid[Nat] {
+  fun add(x: Nat, y: Nat): Nat = zero;
+}
+impl AddGroup[Nat] {
+  fun negate(x: Nat): Nat = zero;
+}
+impl Ring[Nat] {
+  fun multiply(x: Nat, y: Nat): Nat = zero;
+}
+impl CommRing[Nat] {
+  fun addComm(x: Nat, y: Nat): Eq Nat zero zero = refl zero;
+  fun multiplyComm(x: Nat, y: Nat): Eq Nat zero zero = refl zero;
+}
+fun viaRing(x: Nat): Eq Nat zero zero = {
+  val d : CommRing Nat =
+    mkCommRing
+      (mkRing
+        (mkAddGroup (mkAddMonoid ((y: Nat) => (z: Nat) => zero)) ((y: Nat) => y))
+        ((y: Nat) => (z: Nat) => zero))
+      ((y: Nat) => (z: Nat) => refl zero)
+      ((y: Nat) => (z: Nat) => refl zero);
+  addComm x x
+}
+fun multiplyViaRing(x: Nat): Eq Nat zero zero = {
+  val d : CommRing Nat =
+    mkCommRing
+      (mkRing
+        (mkAddGroup (mkAddMonoid ((y: Nat) => (z: Nat) => zero)) ((y: Nat) => y))
+        ((y: Nat) => (z: Nat) => zero))
+      ((y: Nat) => (z: Nat) => refl zero)
+      ((y: Nat) => (z: Nat) => refl zero);
+  multiplyComm x x
+}
+val localRing : Eq Nat zero zero = viaRing zero
+val localMultiply : Eq Nat zero zero = multiplyViaRing zero
+'''),
+      );
+      expect(_ctorName(_evalBinding(ring, 'localRing')), 'refl');
+      expect(_ctorName(_evalBinding(ring, 'localMultiply')), 'refl');
+    });
+
+    test('the bare addComm is ambiguous across the declaring classes', () {
+      // `AddCommMonoid`, `AddCommGroup`, and `CommRing` each declare
+      // `addComm`. With no local dictionary and no top-level binding, the
+      // bare name reports every candidate.
+      expect(
+        () => checkProgram(
+          pp('''
+$_prelude
+$classes
+val bad: Eq Nat zero zero = addComm zero zero
+'''),
+        ),
+        throwsA(
+          isA<AmbiguousClassMethod>()
+              .having((e) => e.methodName, 'methodName', 'addComm')
+              .having(
+                (e) => e.candidates,
+                'candidates',
+                containsAll(<String>[
+                  'AddCommMonoid.addComm',
+                  'AddCommGroup.addComm',
+                  'CommRing.addComm',
+                ]),
+              ),
+        ),
+      );
+    });
+
+    test('the class-qualified addComm and multiplyComm resolve', () {
+      final env = checkProgram(
+        pp('''
+$_prelude
+$classes
+impl AddMonoid[Nat] {
+  fun add(x: Nat, y: Nat): Nat = zero;
+}
+impl AddGroup[Nat] {
+  fun negate(x: Nat): Nat = zero;
+}
+impl Ring[Nat] {
+  fun multiply(x: Nat, y: Nat): Nat = zero;
+}
+impl AddCommMonoid[Nat] {
+  fun addComm(x: Nat, y: Nat): Eq Nat zero zero = refl zero;
+}
+impl AddCommGroup[Nat] {
+  fun addComm(x: Nat, y: Nat): Eq Nat zero zero = refl zero;
+}
+impl CommRing[Nat] {
+  fun addComm(x: Nat, y: Nat): Eq Nat zero zero = refl zero;
+  fun multiplyComm(x: Nat, y: Nat): Eq Nat zero zero = refl zero;
+}
+val monoidQualified : Eq Nat zero zero = AddCommMonoid.addComm zero zero
+val groupQualified : Eq Nat zero zero = AddCommGroup.addComm zero zero
+val ringAddQualified : Eq Nat zero zero = CommRing.addComm zero zero
+val ringMultiplyQualified : Eq Nat zero zero = CommRing.multiplyComm zero zero
+'''),
+      );
+
+      expect(_ctorName(_evalBinding(env, 'monoidQualified')), 'refl');
+      expect(_ctorName(_evalBinding(env, 'groupQualified')), 'refl');
+      expect(_ctorName(_evalBinding(env, 'ringAddQualified')), 'refl');
+      expect(_ctorName(_evalBinding(env, 'ringMultiplyQualified')), 'refl');
+    });
+  });
 }

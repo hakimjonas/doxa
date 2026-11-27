@@ -75,11 +75,13 @@ and `package:` usage.
   linear targets, constrained parameters with trailing dictionary arguments,
   and depth-bounded instance search. The standard library provides `Eqb`
   instances for `Nat`, `Bool`, and `List`, and the algebra classes
-  `AddMonoid`, `AddCommMonoid`, `AddGroup`, `Monoid`, `CommMonoid`, and
-  `Ring` with `Nat` and `List` instances, `AddMonoid[Int]`, `AddGroup[Int]`,
-  and `Ring[Int]`, plus `sum`, `sumViaComm`, `double`, `negTwice`, and
-  `square`. There is no additive commutative group and no commutative ring.
-  Default method bodies are not supported;
+  `AddMonoid`, `AddCommMonoid`, `AddGroup`, `AddCommGroup`, `Monoid`,
+  `CommMonoid`, `Ring`, and `CommRing` with `Nat` and `List` instances,
+  `AddMonoid[Int]`, `AddCommMonoid[Int]`, `AddGroup[Int]`, `AddCommGroup[Int]`,
+  `Ring[Int]`, and `CommRing[Int]`, plus `sum`, `sumViaComm`, `double`,
+  `negTwice`, and `square`. A class has one superclass, so `CommRing` is a
+  `Ring` and not an `AddCommGroup`, and `AddCommMonoid` is separate from
+  `AddCommGroup`. Default method bodies are not supported;
   see [`SPEC.md`](../SPEC.md#typeclasses).
 - Block expressions with `val` bindings
 - Tactics: `by { ... }` with `intro`, `exact`, `apply`, `refl`, `rewrite`,
@@ -106,7 +108,7 @@ and `package:` usage.
 - Stack-safety regression tests at depths up to 10,000 binder/β-redex layers
 - stdlib files type-checked on every commit
 - Documentation `doxa` blocks are checked by
-  `doxa_tooling/test/doc_blocks_test.dart`; the current run checks 48 blocks
+  `doxa_tooling/test/doc_blocks_test.dart`; the current run checks 52 blocks
   and skips 19 marked fragments
 
 ## Recursion measures

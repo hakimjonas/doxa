@@ -122,6 +122,18 @@ typeclass WithDefault[A: Type]: Default[A] {
       expect(r.stdout, contains('OK'));
     });
 
+    test('a commutative ring checks the commutative reductions', () {
+      // The fixture imports the algebra module, so the `AddCommMonoid[Int]`,
+      // `AddCommGroup[Int]`, and `CommRing[Int]` instances, their derived
+      // parents, and the `addComm`/`multiplyComm` reductions are all
+      // elaborated. `sumViaComm Int` and the `CommRing` constraint
+      // exercises for `square`, `double`, `negTwice`, and `sum` follow.
+      final fixture = File('test/fixtures/comm_ring_int.doxa');
+      final r = runSource(fixture.readAsStringSync(), filename: fixture.path);
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+      expect(r.stdout, contains('OK'));
+    });
+
     test('a block val dictionary supplies a class projection', () {
       // SPEC's local dictionary: an ordinary `val` binding of the
       // dictionary type, followed by a call that needs the dictionary.

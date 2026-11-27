@@ -515,4 +515,76 @@ val gz: Nat = g zero (succ zero)
       expect(_ctorName(_evalBinding(env, 'gz')), 'succ');
     });
   });
+
+  group('commutative class dictionaries', () {
+    const eqData = '''
+data Eq[A: Type]: A -> A -> Prop {
+  refl: (x: A) -> Eq A x x;
+}
+''';
+
+    const classes = '''
+typeclass AddMonoid[A: Type] {
+  fun add(x: A, y: A): A;
+}
+typeclass AddGroup[A: Type]: AddMonoid A {
+  fun negate(x: A): A;
+}
+typeclass AddCommGroup[A: Type]: AddGroup A {
+  fun addComm(x: A, y: A): Eq A (add x y) (add y x);
+}
+typeclass Ring[A: Type]: AddGroup A {
+  fun multiply(x: A, y: A): A;
+}
+typeclass CommRing[A: Type]: Ring A {
+  fun addComm(x: A, y: A): Eq A (add x y) (add y x);
+  fun multiplyComm(x: A, y: A): Eq A (x * y) (y * x);
+}
+''';
+
+    test('the constructors put the parent first and the laws in order', () {
+      final env = checkProgram(pp('$_prelude\n$eqData\n$classes'));
+
+      expect(env.classRegistry['AddCommGroup']!.superclassName, 'AddGroup');
+      final groupData = env.lookupData('AddCommGroup')!;
+      final groupCtor = groupData.ctors.single;
+      expect(groupCtor.name, 'mkAddCommGroup');
+      expect(groupCtor.args.map((a) => a.name).toList(), ['_super', 'addComm']);
+
+      expect(env.classRegistry['CommRing']!.superclassName, 'Ring');
+      final ringData = env.lookupData('CommRing')!;
+      final ringCtor = ringData.ctors.single;
+      expect(ringCtor.name, 'mkCommRing');
+      expect(ringCtor.args.map((a) => a.name).toList(), [
+        '_super',
+        'addComm',
+        'multiplyComm',
+      ]);
+    });
+
+    test('a CommRing dictionary constructs through mkCommRing', () {
+      // The law field types name the parent `add` and `Ring`'s `multiply`.
+      // A constant-zero `AddMonoid Nat` reduces both laws to
+      // `Eq Nat zero zero`, so `refl` fills the two fields.
+      final env = checkProgram(
+        pp('''
+$_prelude
+$eqData
+$classes
+impl AddMonoid[Nat] {
+  fun add(x: Nat, y: Nat): Nat = zero;
+}
+val d : CommRing Nat =
+  mkCommRing
+    (mkRing
+      (mkAddGroup (mkAddMonoid ((y: Nat) => (z: Nat) => zero)) ((y: Nat) => y))
+      ((y: Nat) => (z: Nat) => zero))
+    ((y: Nat) => (z: Nat) => refl zero)
+    ((y: Nat) => (z: Nat) => refl zero)
+'''),
+      );
+
+      expect(_ctorName(_evalBinding(env, 'd')), 'mkCommRing');
+    });
+  });
 }

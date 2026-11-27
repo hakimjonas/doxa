@@ -682,4 +682,62 @@ fun leak(x: Nat, y: Nat): Bool = useEqb Nat x y
       );
     });
   });
+
+  group('commutative constructors', () {
+    const eqData = '''
+data Eq[A: Type]: A -> A -> Prop {
+  refl: (x: A) -> Eq A x x;
+}
+''';
+
+    const classes = '''
+typeclass AddMonoid[A: Type] {
+  fun add(x: A, y: A): A;
+}
+typeclass AddGroup[A: Type]: AddMonoid A {
+  fun negate(x: A): A;
+}
+typeclass AddCommGroup[A: Type]: AddGroup A {
+  fun addComm(x: A, y: A): Eq A (add x y) (add y x);
+}
+typeclass Ring[A: Type]: AddGroup A {
+  fun multiply(x: A, y: A): A;
+}
+typeclass CommRing[A: Type]: Ring A {
+  fun addComm(x: A, y: A): Eq A (add x y) (add y x);
+  fun multiplyComm(x: A, y: A): Eq A (x * y) (y * x);
+}
+''';
+
+    test('the commutative constructors take the parent and the laws', () {
+      // Both constructors embed their superclass dictionary as the first
+      // field. `AddCommGroup` takes `addComm`; `CommRing` takes `addComm`
+      // and then `multiplyComm`. A constant-zero `AddMonoid Nat` reduces
+      // each law to `Eq Nat zero zero`.
+      final env = checkProgram(
+        pp('''
+$_prelude
+$eqData
+$classes
+impl AddMonoid[Nat] {
+  fun add(x: Nat, y: Nat): Nat = zero;
+}
+val group : AddCommGroup Nat =
+  mkAddCommGroup
+    (mkAddGroup (mkAddMonoid ((y: Nat) => (z: Nat) => zero)) ((y: Nat) => y))
+    ((y: Nat) => (z: Nat) => refl zero)
+val ring : CommRing Nat =
+  mkCommRing
+    (mkRing
+      (mkAddGroup (mkAddMonoid ((y: Nat) => (z: Nat) => zero)) ((y: Nat) => y))
+      ((y: Nat) => (z: Nat) => zero))
+    ((y: Nat) => (z: Nat) => refl zero)
+    ((y: Nat) => (z: Nat) => refl zero)
+'''),
+      );
+
+      expect(_ctorName(_evalBinding(env, 'group')), 'mkAddCommGroup');
+      expect(_ctorName(_evalBinding(env, 'ring')), 'mkCommRing');
+    });
+  });
 }

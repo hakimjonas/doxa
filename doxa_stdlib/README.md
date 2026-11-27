@@ -14,7 +14,7 @@ https://github.com/hakimjonas/doxa#status.
 | `Bool` | `bool.doxa` |
 | `Eq` | `eq.doxa` (`sym`, `trans`, `cong`, `subst`) |
 | `Eqb` | `eqb.doxa` (class), `eqbInstances.doxa` (instances for `Nat`, `Bool`, `List`) |
-| `Algebra` | `algebra.doxa` (`AddMonoid`, `AddCommMonoid`, `AddGroup`, `Monoid`, `CommMonoid`, `Ring`; class-qualified projections such as `Ring.multiply`; `Nat` and `List` instances; `AddMonoid[Int]`, `AddGroup[Int]`, and `Ring[Int]`; `sum`, `sumViaComm`, `double`, `negTwice`, `square`) |
+| `Algebra` | `algebra.doxa` (`AddMonoid`, `AddCommMonoid`, `AddGroup`, `AddCommGroup`, `Monoid`, `CommMonoid`, `Ring`, `CommRing`; class-qualified projections such as `Ring.multiply` and `CommRing.addComm`; `Nat` and `List` instances; `AddMonoid[Int]`, `AddCommMonoid[Int]`, `AddGroup[Int]`, `AddCommGroup[Int]`, `Ring[Int]`, and `CommRing[Int]`; `sum`, `sumViaComm`, `double`, `negTwice`, `square`) |
 | `List` | `list.doxa` |
 | `Option` | `option.doxa` |
 | `Vec` | `vec.doxa` (length-indexed vectors) |

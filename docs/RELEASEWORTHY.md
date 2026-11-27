@@ -110,21 +110,24 @@ over named value parameters, and an arithmetic decreasing argument such as
 
 The standard library covers arithmetic, `Nat`, `Bool`, `List`, `Vec`,
 `Option`, `Sigma`, `Int`, equality, the `sqrt2` case study, the algebra
-monoids and the additive group, and a ring, with `Nat` and `List` monoid
-instances plus `AddMonoid[Int]`, `AddGroup[Int]`, and `Ring[Int]`. `Ring`
-declares its own `multiply` and `one`; the class-qualified projections keep them
-distinct from `Monoid`'s. The hierarchy stops there: there is no additive
-commutative group and no commutative ring, and `AddGroup` and `Ring` have only
-the `Int` instances. `rational.doxa` is a first cut with a constructor and no
+monoids, additive groups, and rings with their commutative forms, with `Nat`
+and `List` monoid instances plus `AddMonoid[Int]`, `AddCommMonoid[Int]`,
+`AddGroup[Int]`, `AddCommGroup[Int]`, `Ring[Int]`, and `CommRing[Int]`. `Ring`
+declares its own `multiply` and `one`; the class-qualified projections keep
+them distinct from `Monoid`'s. `CommRing` is a `Ring` and not an
+`AddCommGroup` because a class has one superclass, and `AddCommMonoid` is
+separate from `AddCommGroup`, so `sumViaComm` takes the monoid form.
+`AddGroup`, `AddCommGroup`, `Ring`, and `CommRing` have only the `Int`
+instances. `rational.doxa` is a first cut with a constructor and no
 operations or lemmas. Others can instantiate the classes and extend the
 library.
 
 ### Next
 
-Proof ergonomics: notation for the naming surface. Then the remaining gated
-surface, a checked termination measure, and `Quot.ind` for a propositional
-eliminator. Then the rest of the algebraic hierarchy: the additive commutative
-group and the commutative ring.
+The `Rational` library: `rational.doxa` is a first cut with a constructor and
+needs operations and lemmas. Then proof ergonomics: notation for the naming
+surface, the remaining gated surface, a checked termination measure, and
+`Quot.ind` for a propositional eliminator.
 
 ### Distribution
 

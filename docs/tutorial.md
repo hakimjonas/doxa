@@ -1142,12 +1142,13 @@ This slice has these limits:
 
 ### The algebra library
 
-The standard library ships monoids, commutative monoids, the additive group,
-and a ring. `AddCommMonoid`, `CommMonoid`, `AddGroup`, and `Ring` embed their
+The standard library ships monoids, commutative monoids, additive groups,
+additive commutative groups, rings, and commutative rings. `AddCommMonoid`,
+`AddGroup`, `AddCommGroup`, `CommMonoid`, `Ring`, and `CommRing` embed their
 parent as a superclass dictionary, so an `AddCommMonoid` dictionary also
-supplies `AddMonoid` and a `Ring` dictionary also supplies `AddGroup`. `sum`
-folds a list with `add` and `addZero`, and `sumViaComm` takes the commutative
-constraint:
+supplies `AddMonoid` and a `CommRing` dictionary also supplies `Ring`,
+`AddGroup`, and `AddMonoid`. `sum` folds a list with `add` and `addZero`, and
+`sumViaComm` takes the commutative constraint:
 
 ```doxa
 import "package:doxa_stdlib/stdlib/algebra.doxa"
@@ -1199,9 +1200,39 @@ val monoidProduct : Nat = Monoid.multiply (succ zero) (succ zero)
 val monoidProduct_eq : Eq Nat monoidProduct (succ zero) = refl monoidProduct
 ```
 
-The `square` law `squareOne` is proved in the module. The additive
-commutative variants (`AddCommGroup`, `CommRing`) and default method bodies are
-not present.
+The `square` law `squareOne` is proved in the module.
+
+`AddCommGroup` extends `AddGroup` with `addComm`, and `CommRing` extends
+`Ring` with `addComm` and `multiplyComm`. A class has one superclass, so
+`CommRing` is a `Ring` and not an `AddCommGroup`. A `CommRing` dictionary
+supplies `add` through `Ring`'s `AddGroup` parent, but it is not an
+`AddCommGroup` dictionary. `AddCommMonoid` is separate from `AddCommGroup`
+for the same reason, and `sumViaComm` takes the monoid form.
+`AddCommMonoid[Int]`, `AddCommGroup[Int]`, and `CommRing[Int]` register the
+`Int` operations; the `addComm` fields read `add` from their parent, and
+`CommRing.multiplyComm` reads `multiply` from `Ring`. The `addComm` field name
+is declared by `AddCommMonoid`, `AddCommGroup`, and `CommRing`, and
+`multiplyComm` by `CommMonoid` and `CommRing`, so the bare names are ambiguous
+outside a class or a local dictionary. The class-qualified forms select one:
+
+```doxa
+import "package:doxa_stdlib/stdlib/algebra.doxa"
+
+val commAdd : Eq Int (AddCommGroup.add (pos (succ zero)) (pos (succ zero)))
+  (pos (succ (succ zero))) = refl (pos (succ (succ zero)))
+val commMul : Eq Int (CommRing.multiply (pos (succ zero)) (pos (succ zero)))
+  (pos (succ zero)) = refl (pos (succ zero))
+val groupCommLaw : Eq Int (pos (succ (succ zero))) (pos (succ (succ zero))) =
+  AddCommGroup.addComm (pos (succ zero)) (pos (succ zero))
+val ringAddLaw : Eq Int (pos (succ (succ zero))) (pos (succ (succ zero))) =
+  CommRing.addComm (pos (succ zero)) (pos (succ zero))
+val ringMultiplyLaw : Eq Int (pos (succ zero)) (pos (succ zero)) =
+  CommRing.multiplyComm (pos (succ zero)) (pos (succ zero))
+```
+
+The three law values take their values from the instance fields; the two
+additive laws reduce at two and the multiply law at one. Default method bodies
+are not present.
 
 A class that is not passed as a constraint can still be used as an ordinary
 record type. A user-defined record is an explicit dictionary:
