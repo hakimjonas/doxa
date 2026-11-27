@@ -1,0 +1,41 @@
+// Consumer of the stdlib commutative classes. `AddCommMonoid[Int]`,
+// `AddCommGroup[Int]`, and `CommRing[Int]` derive their parent dictionaries.
+// Each `addComm`/`multiplyComm` projection reduces to the `int.doxa` lemma at
+// two, so the concrete equations hold. `sumViaComm` takes the monoid form,
+// and `square`, `double`, `negTwice`, and `sum` reach their parents through a
+// `CommRing` constraint.
+import "../../../doxa_stdlib/lib/stdlib/algebra.doxa"
+
+val two: Int = pos (succ (succ zero))
+
+val four: Int = pos (succ (succ (succ (succ zero))))
+
+val addComm_monoid: Eq Int four four = AddCommMonoid.addComm two two
+
+val addComm_group: Eq Int four four = AddCommGroup.addComm two two
+
+val addComm_ring: Eq Int four four = CommRing.addComm two two
+
+val multiplyComm_ring: Eq Int four four = CommRing.multiplyComm two two
+
+fun addCommViaGroup[A: AddCommGroup](x: A, y: A): Eq A (add x y) (add y x) = addComm x y
+
+val group_law: Eq Int four four = addCommViaGroup Int two two
+
+fun squareViaCommRing[A: CommRing](x: A): A = square A x
+
+fun doubleViaCommRing[A: CommRing](x: A): A = double A x
+
+fun negTwiceViaCommRing[A: CommRing](x: A): A = negTwice A x
+
+fun sumViaCommRing[A: CommRing](xs: List A): A = sum A xs
+
+val square_via: Eq Int (squareViaCommRing Int two) four = refl four
+
+val double_via: Eq Int (doubleViaCommRing Int two) four = refl four
+
+val negTwice_via: Eq Int (negTwiceViaCommRing Int two) two = refl two
+
+val sum_via: Eq Int (sumViaCommRing Int (cons two (cons two nil))) four = refl four
+
+val sum_via_comm: Eq Int (sumViaComm Int (cons two (cons two nil))) four = refl four

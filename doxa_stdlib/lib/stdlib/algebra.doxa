@@ -1,6 +1,6 @@
-// Monoids, commutative monoids, and additive groups, with instances for `Nat`
-// (addition and multiplication), `List` (append), and `Int` (addition and
-// negation).
+// Monoids, commutative monoids, additive groups, rings, and their commutative
+// forms, with instances for `Nat` (addition and multiplication), `List`
+// (append), and `Int` (addition, negation, and multiplication).
 //
 // Additive and multiplicative structures are separate classes. The instance
 // table holds one dictionary per class and tuple of target heads, and search
@@ -11,10 +11,11 @@
 // The laws are ordinary dictionary fields. A law field names the operation
 // projections declared before it, so `addAssoc` is stated over `add` and each
 // instance proves it over that instance's operation. `AddCommMonoid`,
-// `AddGroup`, and `CommMonoid` embed their monoid as a superclass dictionary,
-// so a constraint `[A: AddCommMonoid]` or `[A: AddGroup]` supplies
-// `AddMonoid A` by projection. The inverse field is `negate` because `neg` is
-// a constructor of `Int` and class methods are global projections.
+// `AddGroup`, `AddCommGroup`, `CommMonoid`, `Ring`, and `CommRing` embed their
+// parent as a superclass dictionary, so a constraint `[A: AddCommMonoid]` or
+// `[A: AddGroup]` supplies `AddMonoid A` by projection. The inverse field is
+// `negate` because `neg` is a constructor of `Int` and class methods are
+// global projections.
 //
 // `Ring` extends `AddGroup` with its own multiplicative operation and laws.
 // Projections are class-qualified, so `Ring.multiply` and `Monoid.multiply`
@@ -23,11 +24,25 @@
 // then to a top-level binding of that name, then to a unique declaring class.
 // Default method bodies are not part of this module.
 //
+// `AddCommGroup` extends `AddGroup` with `addComm`, and `CommRing` extends
+// `Ring` with `addComm` and `multiplyComm`. A class has at most one
+// superclass, so `CommRing` is a `Ring` and not an `AddCommGroup`. A
+// `CommRing` dictionary supplies `add` through `Ring`'s `AddGroup` parent, but
+// it is not itself an `AddCommGroup` dictionary. `AddCommMonoid` is likewise a
+// separate class from `AddCommGroup`; `sumViaComm` takes the monoid form.
+//
+// The `addComm` field name is declared by `AddCommMonoid`, `AddCommGroup`, and
+// `CommRing`, and `multiplyComm` by `CommMonoid` and `CommRing`. Outside a
+// class or a local dictionary the bare names are ambiguous; write
+// `AddCommGroup.addComm`, `CommRing.addComm`, or `CommRing.multiplyComm`.
+//
 // `sum` folds a list with `add` and `addZero`. `sumViaComm` takes the
 // commutative constraint and uses the same fold through the derived parent
 // dictionary. `double` and `negTwice` take the group constraint, and `double`
 // reaches `add` through the parent dictionary. `square` multiplies a value by
-// itself under a `Ring` constraint.
+// itself under a `Ring` constraint. The `Int` instances are `AddMonoid[Int]`,
+// `AddCommMonoid[Int]`, `AddGroup[Int]`, `AddCommGroup[Int]`, `Ring[Int]`, and
+// `CommRing[Int]`.
 import "int.doxa"
 
 import "proofs.doxa"
@@ -50,6 +65,10 @@ typeclass AddGroup[A: Type]: AddMonoid A {
   fun addNegateRight(x: A): Eq A (add x (negate x)) addZero;
 }
 
+typeclass AddCommGroup[A: Type]: AddGroup A {
+  fun addComm(x: A, y: A): Eq A (add x y) (add y x);
+}
+
 typeclass Monoid[A: Type] {
   fun multiply(x: A, y: A): A;
   fun one(): A;
@@ -69,6 +88,11 @@ typeclass Ring[A: Type]: AddGroup A {
 }
 
 typeclass CommMonoid[A: Type]: Monoid A {
+  fun multiplyComm(x: A, y: A): Eq A (x * y) (y * x);
+}
+
+typeclass CommRing[A: Type]: Ring A {
+  fun addComm(x: A, y: A): Eq A (add x y) (add y x);
   fun multiplyComm(x: A, y: A): Eq A (x * y) (y * x);
 }
 
@@ -116,10 +140,18 @@ impl AddMonoid[Int] {
   fun addZeroRight(x: Int): Eq Int (intPlus x (pos zero)) x = intPlusZeroRight x;
 }
 
+impl AddCommMonoid[Int] {
+  fun addComm(x: Int, y: Int): Eq Int (intPlus x y) (intPlus y x) = intPlusComm x y;
+}
+
 impl AddGroup[Int] {
   fun negate(x: Int): Int = intNegate x;
   fun addNegateLeft(x: Int): Eq Int (intPlus (intNegate x) x) (pos zero) = intAddNegateLeft x;
   fun addNegateRight(x: Int): Eq Int (intPlus x (intNegate x)) (pos zero) = intAddNegateRight x;
+}
+
+impl AddCommGroup[Int] {
+  fun addComm(x: Int, y: Int): Eq Int (intPlus x y) (intPlus y x) = intPlusComm x y;
 }
 
 impl Ring[Int] {
@@ -139,6 +171,11 @@ impl Ring[Int] {
     Int
     (intMultiply x (intPlus y z))
     (intPlus (intMultiply x y) (intMultiply x z)) = intAddMultiply x y z;
+}
+
+impl CommRing[Int] {
+  fun addComm(x: Int, y: Int): Eq Int (intPlus x y) (intPlus y x) = intPlusComm x y;
+  fun multiplyComm(x: Int, y: Int): Eq Int (intMultiply x y) (intMultiply y x) = intMultiplyComm x y;
 }
 
 fun sum[A: AddMonoid](xs: List A): A = match xs {

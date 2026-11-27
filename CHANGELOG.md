@@ -88,6 +88,12 @@ project is ready.
   fields read the current class first, then its parents.
 - Added `Ring` beside `Monoid`, with the `Ring[Int]` instance and the `square`
   exercise. Default method bodies are not present.
+- Added `AddCommGroup` and `CommRing` to the standard-library algebra module,
+  with `AddCommMonoid[Int]`, `AddCommGroup[Int]`, and `CommRing[Int]`. A class
+  has one superclass, so `CommRing` is a `Ring` and not an `AddCommGroup`, and
+  `AddCommMonoid` is separate from `AddCommGroup`. `addComm` is declared by
+  `AddCommMonoid`, `AddCommGroup`, and `CommRing`, and `multiplyComm` by
+  `CommMonoid` and `CommRing`; the class-qualified forms disambiguate.
 
 **Records and projections**
 
