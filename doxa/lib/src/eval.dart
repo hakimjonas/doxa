@@ -659,59 +659,76 @@ final class _InferLamHaveBodyTerm extends _Frame {
   const _InferLamHaveBodyTerm(this.env, this.domV, this.nameHint);
 }
 
-// --- let inference frames ---
+// --- let sequencing frames (infer and check) ---
 
 /// After inferring the domain's type on a TLet: require VType/VProp,
 /// then evaluate the domain to a value.
-final class _InferLetHaveDomType extends _Frame {
+///
+/// [checkExpected] is null when the let is being inferred and the
+/// expected type when the let is being checked. It is carried through
+/// the chain to choose the body's mode in [_LetHaveBoundV].
+final class _LetHaveDomType extends _Frame {
   final Ctx ctx;
   final Term domain;
   final Term bound;
   final Term body;
   final String? nameHint;
-  const _InferLetHaveDomType(
+  final Value? checkExpected;
+  const _LetHaveDomType(
     this.ctx,
     this.domain,
     this.bound,
     this.body,
     this.nameHint,
+    this.checkExpected,
   );
 }
 
 /// After evaluating the domain of a TLet: check the bound expression
 /// against it, then evaluate the bound expression to a value.
-final class _InferLetHaveDomV extends _Frame {
+final class _LetHaveDomV extends _Frame {
   final Ctx ctx;
   final Term bound;
   final Term body;
   final String? nameHint;
-  const _InferLetHaveDomV(this.ctx, this.bound, this.body, this.nameHint);
+  final Value? checkExpected;
+  const _LetHaveDomV(
+    this.ctx,
+    this.bound,
+    this.body,
+    this.nameHint,
+    this.checkExpected,
+  );
 }
 
 /// After `check(ctx, bound, domainV)` succeeds: evaluate the bound
 /// expression to a value so we can bind it in the ctx.
-final class _InferLetHaveCheck extends _Frame {
+final class _LetHaveCheck extends _Frame {
   final Ctx ctx;
   final Term bound;
   final Term body;
   final Value domainV;
   final String? nameHint;
-  const _InferLetHaveCheck(
+  final Value? checkExpected;
+  const _LetHaveCheck(
     this.ctx,
     this.bound,
     this.body,
     this.domainV,
     this.nameHint,
+    this.checkExpected,
   );
 }
 
 /// After evaluating the bound expression of a TLet: extend the ctx
-/// with (domainV, boundV) and infer the body's type.
-final class _InferLetHaveBoundV extends _Frame {
+/// with (domainV, boundV) and elaborate the body. Infer the body's type
+/// when [checkExpected] is null; otherwise check the body against it.
+final class _LetHaveBoundV extends _Frame {
   final Ctx ctx;
   final Term body;
   final Value domainV;
-  const _InferLetHaveBoundV(this.ctx, this.body, this.domainV);
+  final Value? checkExpected;
+  const _LetHaveBoundV(this.ctx, this.body, this.domainV, this.checkExpected);
 }
 
 // --- infer(TData) / infer(TConstr) sequencing ---
@@ -2471,7 +2488,7 @@ Object _drive(
             step = _Infer(ctx, domain);
 
           case TLet(:final domain, :final bound, :final body, :final name):
-            stack.add(_InferLetHaveDomType(ctx, domain, bound, body, name));
+            stack.add(_LetHaveDomType(ctx, domain, bound, body, name, null));
             step = _Infer(ctx, domain);
 
           case TData(:final name, :final args):
@@ -2856,6 +2873,29 @@ Object _drive(
               term.body,
               expected.domain,
               expected.codomain,
+              expected,
+            ),
+          );
+          step = _Infer(ctx, term.domain);
+        } else if (term is TLet) {
+          // Check a let by checking its bound against the domain, then
+          // checking its body against `expected` under the extended ctx.
+          // The sequencing is the infer rule's, shared through the
+          // `_Let*` frames; the frame carries `expected` so the last
+          // step checks the body instead of inferring it. A check-mode
+          // form in the body, such as a motive-less match, therefore
+          // takes its type from the result type.
+          //
+          // The body check yields `expected` itself, the sentinel the
+          // outer _Check must produce, so no success-yield frame is
+          // needed.
+          stack.add(
+            _LetHaveDomType(
+              ctx,
+              term.domain,
+              term.bound,
+              term.body,
+              term.name,
               expected,
             ),
           );
@@ -3745,46 +3785,61 @@ Object _drive(
             stack.add(_InferLamHaveBodyTerm(env, domV, nameHint));
             step = _Quote(value, bodyLevel);
 
-          // --- infer(TLet) sequencing ---
+          // --- TLet sequencing (infer and check) ---
 
-          case _InferLetHaveDomType(
+          case _LetHaveDomType(
             :final ctx,
             :final domain,
             :final bound,
             :final body,
             :final nameHint,
+            :final checkExpected,
           ):
             // `value` is the domain's type. Require sort.
             if (_asSort(value) == null) throw NotAType(value);
-            stack.add(_InferLetHaveDomV(ctx, bound, body, nameHint));
+            stack.add(_LetHaveDomV(ctx, bound, body, nameHint, checkExpected));
             step = _Eval(domain, ctx.env);
 
-          case _InferLetHaveDomV(
+          case _LetHaveDomV(
             :final ctx,
             :final bound,
             :final body,
             :final nameHint,
+            :final checkExpected,
           ):
             // `value` is the evaluated domain. Check that the bound
             // expression has this type.
-            stack.add(_InferLetHaveCheck(ctx, bound, body, value, nameHint));
+            stack.add(
+              _LetHaveCheck(ctx, bound, body, value, nameHint, checkExpected),
+            );
             step = _Check(ctx, bound, value);
 
-          case _InferLetHaveCheck(
+          case _LetHaveCheck(
             :final ctx,
             :final bound,
             :final body,
             :final domainV,
+            :final checkExpected,
           ):
             // `value` is the check-success sentinel (= domainV). Eval
             // the bound expression to get its value for the ctx.
-            stack.add(_InferLetHaveBoundV(ctx, body, domainV));
+            stack.add(_LetHaveBoundV(ctx, body, domainV, checkExpected));
             step = _Eval(bound, ctx.env);
 
-          case _InferLetHaveBoundV(:final ctx, :final body, :final domainV):
+          case _LetHaveBoundV(
+            :final ctx,
+            :final body,
+            :final domainV,
+            :final checkExpected,
+          ):
             // `value` is the evaluated bound expression. Extend the
-            // ctx with (domainV, boundV) and infer the body.
-            step = _Infer(ctx.extendWith(domainV, value), body);
+            // ctx with (domainV, boundV) and elaborate the body in the
+            // mode the frame was started in.
+            final extended = ctx.extendWith(domainV, value);
+            step =
+                checkExpected == null
+                    ? _Infer(extended, body)
+                    : _Check(extended, body, checkExpected);
 
           // --- ι-reduction apply-chain sequencing ---
 
@@ -4669,10 +4724,10 @@ Object _drive(
           case _InferLamHaveDomType():
           case _InferLamHaveDomV():
           case _InferLamHaveBodyType():
-          case _InferLetHaveDomType():
-          case _InferLetHaveDomV():
-          case _InferLetHaveCheck():
-          case _InferLetHaveBoundV():
+          case _LetHaveDomType():
+          case _LetHaveDomV():
+          case _LetHaveCheck():
+          case _LetHaveBoundV():
           case _InferIndAfterCheck():
           case _InferIndAfterEval():
           case _ApplyChain():
@@ -4832,10 +4887,10 @@ Object _drive(
           case _InferLamHaveDomV():
           case _InferLamHaveBodyType():
           case _InferLamHaveBodyTerm():
-          case _InferLetHaveDomType():
-          case _InferLetHaveDomV():
-          case _InferLetHaveCheck():
-          case _InferLetHaveBoundV():
+          case _LetHaveDomType():
+          case _LetHaveDomV():
+          case _LetHaveCheck():
+          case _LetHaveBoundV():
           case _InferIndAfterCheck():
           case _InferIndAfterEval():
           case _ApplyChain():

@@ -46,6 +46,10 @@ project is ready.
   in the block's scope. A `val`-bound local dictionary previously could not
   supply the trailing dictionary argument of a call in tail position, and the
   failure pointed at the whole block.
+- Added a check rule for `TLet`, so a block checked against a result type
+  checks its result expression against that type. A motive-less `match`, `mk`,
+  `lift`, and `Quot.sound` can now be a block's result expression. Infer mode
+  is unchanged.
 
 **Quotients**
 
