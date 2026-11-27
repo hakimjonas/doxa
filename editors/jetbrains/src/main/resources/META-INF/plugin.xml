@@ -58,6 +58,9 @@
         language="Doxa"
         implementationClass="doxa.lang.DoxaFindUsagesProvider"/>
 
+    <findUsagesHandlerFactory
+        implementation="doxa.lang.DoxaFindUsagesHandlerFactory"/>
+
     <formattingService
         implementation="doxa.lang.DoxaFormattingService"/>
 
