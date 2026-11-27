@@ -76,6 +76,8 @@ fun intLeq(a: Int, b: Int): Bool = match a {
   }
 }
 
+fun intEqb(a: Int, b: Int): Bool = and_ (intLeq a b) (intLeq b a)
+
 fun intAbs(a: Int): Nat = match a {
   case pos n => n
   case neg n => succ n
@@ -169,6 +171,20 @@ fun intAbsPos(n: Nat): Eq Nat (intAbs (pos n)) n = refl n
 // intAbsNeg: abs of negative is succ n
 
 fun intAbsNeg(n: Nat): Eq Nat (intAbs (neg n)) (succ n) = refl (succ n)
+// intLeqRefl: a <= a
+
+fun intLeqRefl(a: Int): Eq Bool (intLeq a a) true_ =
+  Int.ind ((x: Int) => Eq Bool (intLeq x x) true_) ((n: Nat) => leqRefl n) ((n: Nat) => leqRefl n) a
+// intEqbRefl: intEqb a a
+
+fun intEqbRefl(a: Int): Eq Bool (intEqb a a) true_ =
+  transE
+    Bool
+    (and_ (intLeq a a) (intLeq a a))
+    (and_ true_ true_)
+    true_
+    (cong2 and_ (intLeqRefl a) (intLeqRefl a))
+    (refl true_)
 
 val intNegatePosZero: Eq Int (intNegate (pos zero)) (pos zero) = refl (pos zero)
 

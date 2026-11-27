@@ -28,6 +28,7 @@ void main() {
       'eqb.doxa',
       'eqbInstances.doxa',
       'algebra.doxa',
+      'rational.doxa',
     ]) {
       expect(
         File('$stdlibRootPath/$name').existsSync(),
@@ -50,6 +51,11 @@ void main() {
       isTrue,
       reason: 'missing Algebra/package.doxa re-export',
     );
+    expect(
+      File('$stdlibRootPath/Rational/package.doxa').existsSync(),
+      isTrue,
+      reason: 'missing Rational/package.doxa re-export',
+    );
   });
 
   test('the checker accepts a stdlib file through the packaged root', () async {
@@ -66,6 +72,8 @@ void main() {
       'eqbInstances.doxa',
       'algebra.doxa',
       'Algebra/package.doxa',
+      'rational.doxa',
+      'Rational/package.doxa',
     ]) {
       final target = '$stdlibRootPath/$name';
       final result = await Process.run(Platform.resolvedExecutable, [
