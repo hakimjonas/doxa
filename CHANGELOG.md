@@ -42,6 +42,10 @@ project is ready.
   unification could not solve it. Each binder now carries a distinct
   meta-neutral alongside its value: evaluation and the let's definitional
   unfolding keep the value, and metavariable spines use the neutral.
+- A block body checked against a result type now checks its tail expression
+  in the block's scope. A `val`-bound local dictionary previously could not
+  supply the trailing dictionary argument of a call in tail position, and the
+  failure pointed at the whole block.
 
 **Quotients**
 
