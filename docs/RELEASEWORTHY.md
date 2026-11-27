@@ -118,14 +118,19 @@ them distinct from `Monoid`'s. `CommRing` is a `Ring` and not an
 `AddCommGroup` because a class has one superclass, and `AddCommMonoid` is
 separate from `AddCommGroup`, so `sumViaComm` takes the monoid form.
 `AddGroup`, `AddCommGroup`, `Ring`, and `CommRing` have only the `Int`
-instances. `rational.doxa` is a first cut with a constructor and no
-operations or lemmas. Others can instantiate the classes and extend the
-library.
+instances. `Rat` is a normalized pair with `ratNorm`, `ratZero`, `ratOne`,
+`ratOfInt`, `ratAdd`, `ratNegate`, `ratSub`, and `ratMultiply`, the
+cross-multiplication tests `ratEqb` and `ratLeq`, `Eqb[Rat]`, and the `refl`
+lemmas `ratNormZeroDenom`, `ratEqbRefl`, and `ratLeqRefl`. The normalization
+invariant and the ring laws are not proved yet. Others can instantiate the
+classes and extend the library.
 
 ### Next
 
-The `Rational` library: `rational.doxa` is a first cut with a constructor and
-needs operations and lemmas. Then proof ergonomics: notation for the naming
+The `Rational` normalization invariant and ring laws: prove `ratNorm` produces
+a coprime pair with a nonzero denominator, that `ratEqb` decides that
+equality, then the additive and multiplicative laws, with `AddGroup[Rat]` and
+`CommRing[Rat]` as the capstone. Then proof ergonomics: notation for the naming
 surface, the remaining gated surface, a checked termination measure, and
 `Quot.ind` for a propositional eliminator.
 
