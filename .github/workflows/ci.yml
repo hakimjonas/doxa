@@ -189,9 +189,12 @@ jobs:
         with:
           targets: wasm32-wasip2
 
-      - name: Check the extension crate
+      - name: Build the extension crate
         working-directory: ./editors/zed
-        run: cargo check --target wasm32-wasip2
+        run: cargo build --target wasm32-wasip2 --release
+
+      - name: Check the extension license
+        run: test -s editors/zed/LICENSE
 
       - uses: actions/setup-node@v7
         with:
