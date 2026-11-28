@@ -231,4 +231,37 @@ val dl: Eq Bool (two <= six) true_ = dividesLe one six (ltZeroSucc five) (refl t
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
   });
+
+  group('Nat fuel stability', () {
+    test('concrete applications check', () {
+      final r = runSource('''
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
+
+val one: Nat = succ zero
+val two: Nat = succ (succ zero)
+val three: Nat = succ (succ (succ zero))
+val four: Nat = succ (succ (succ (succ zero)))
+val five: Nat = succ (succ (succ (succ (succ zero))))
+
+val mf: Eq Nat (modAcc (three + four) four two) (modAcc four four two) =
+  modAccFuel three four two
+val df: Eq Nat (divAcc (three + four) four two) (divAcc four four two) =
+  divAccFuel one three four
+val ma: Eq Nat (mod (four + two) four) (mod two four) =
+  modAddSelf four two (ltZeroSucc three)
+val da: Eq Nat (div (four + two) four) (succ (div two four)) =
+  divAddSelf four two (ltZeroSucc three)
+
+val ml: Eq Nat (modAcc three two five) (modAcc four two five) =
+  modAccFuelLe three four two five (refl true_) (refl true_)
+val dl: Eq Nat (divAcc three two two) (divAcc four two two) =
+  divAccFuelLe one three four two (refl true_) (refl true_)
+val mz: Eq Nat (modAcc three zero two) (modAcc four zero two) =
+  modAccFuelLe three four zero two (refl true_) (refl true_)
+val dz: Eq Nat (divAcc three zero two) (divAcc four zero two) =
+  divAccFuelLe one three four zero (refl true_) (refl true_)
+''');
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+  });
 }

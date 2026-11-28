@@ -113,12 +113,13 @@ facts `subAddRight`, `leqSuccAddFalse`, and `ltAddFalse` unfold the first
 `modAcc`/`divAcc` step at a sum. The boundary and successor-order helpers
 `modAccZeroValue`, `leqSuccCases`, and `eqSuccOfLeq` are proved. The
 step-branch congruences `modStepTrueEq`, `modStepFalseEq`, `divStepTrueEq`,
-and `divStepFalseEq` are proved as well. The fuel-stability facts and the
-sum forms are planned; `divAcc` at a zero divisor returns its fuel, so a
-stability statement for `divAcc` needs a positive divisor. The
-common-divisor half of gcd correctness (any common divisor of `m` and `n`
-divides `gcd m n`), the fuel bound, and the greatest-divisor property are
-planned.
+and `divStepFalseEq` are proved as well. The fuel-stability facts
+`modAccFuelLe`, `divAccFuelLe`, `modAccFuel`, and `divAccFuel` are proved,
+and so are the sum forms `modAddSelf` and `divAddSelf`. The `divAcc`
+statements fix a positive divisor, because `divAcc` at a zero divisor returns
+its fuel. The common-divisor half of gcd correctness (any common divisor of
+`m` and `n` divides `gcd m n`), the fuel bound, and the greatest-divisor
+property are planned.
 
 ### Arbitrary precision
 
