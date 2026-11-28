@@ -1097,6 +1097,43 @@ val eqSuccOfLeq: (N: Nat)
       N
       (leqSuccCases N i hS hN))
     m
+// --- Nat step-branch congruences -----------------------------------------
+
+val modStepTrueEq: (d: Nat)
+-> (F: Nat) -> (G: Nat) -> (m: Nat) -> Eq Nat (modStep d F m true_) (modStep d G m true_) =
+  (d: Nat) => (F: Nat) => (G: Nat) => (m: Nat) => refl m
+
+val modStepFalseEq: (d: Nat)
+-> (F: Nat)
+  -> (G: Nat)
+    -> (m: Nat)
+      -> Eq Nat (modAcc F (sub m (succ d)) (succ d)) (modAcc G (sub m (succ d)) (succ d))
+        -> Eq Nat (modStep d F m false_) (modStep d G m false_) =
+  (d: Nat) => (F: Nat) => (G: Nat) => (m: Nat) => (ih: Eq
+    Nat
+    (modAcc F (sub m (succ d)) (succ d))
+    (modAcc G (sub m (succ d)) (succ d))) => ih
+
+val divStepTrueEq: (d: Nat)
+-> (F: Nat) -> (G: Nat) -> (m: Nat) -> Eq Nat (divStep d F m true_) (divStep d G m true_) =
+  (d: Nat) => (F: Nat) => (G: Nat) => (m: Nat) => refl zero
+
+val divStepFalseEq: (d: Nat)
+-> (F: Nat)
+  -> (G: Nat)
+    -> (m: Nat)
+      -> Eq Nat (divAcc F (sub m (succ d)) (succ d)) (divAcc G (sub m (succ d)) (succ d))
+        -> Eq Nat (divStep d F m false_) (divStep d G m false_) =
+  (d: Nat) => (F: Nat) => (G: Nat) => (m: Nat) => (ih: Eq
+    Nat
+    (divAcc F (sub m (succ d)) (succ d))
+    (divAcc G (sub m (succ d)) (succ d))) => congE
+    Nat
+    Nat
+    ((q: Nat) => succ q)
+    (divAcc F (sub m (succ d)) (succ d))
+    (divAcc G (sub m (succ d)) (succ d))
+    ih
 // --- Well-founded accessibility for Nat -----------------------------------
 //
 // `Acc` takes the relation as a parameter, so accessibility is stated as

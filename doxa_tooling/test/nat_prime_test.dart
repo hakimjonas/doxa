@@ -151,6 +151,30 @@ val l23: Eq Nat (lcm two three) six = refl six
     });
   });
 
+  group('Nat step-branch congruences', () {
+    test('concrete applications check', () {
+      final r = runSource('''
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
+
+val one: Nat = succ zero
+val two: Nat = succ (succ zero)
+val three: Nat = succ (succ (succ zero))
+val four: Nat = succ (succ (succ (succ zero)))
+val five: Nat = succ (succ (succ (succ (succ zero))))
+
+val mt: Eq Nat (modStep two three four true_) (modStep two five four true_) =
+  modStepTrueEq two three five four
+val dt: Eq Nat (divStep two three four true_) (divStep two five four true_) =
+  divStepTrueEq two three five four
+val mf: Eq Nat (modStep two three four false_) (modStep two five four false_) =
+  modStepFalseEq two three five four (refl one)
+val df: Eq Nat (divStep two three four false_) (divStep two five four false_) =
+  divStepFalseEq two three five four (refl zero)
+''');
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+  });
+
   group('Nat fuel boundary helpers', () {
     test('concrete applications check', () {
       final r = runSource('''
