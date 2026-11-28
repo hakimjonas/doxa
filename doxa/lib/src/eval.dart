@@ -8701,6 +8701,8 @@ Value substNVarAt(
       case NVar(level: final nvLevel):
         return nvLevel == scrutLevel ? replacement : value;
       case NApp(:final fn, :final arg):
+        // The function head is a neutral function, not the scrutinee (a
+        // data value), so only the argument can contain the scrutinee.
         final newArg = substNVarAt(arg, scrutLevel, replacement, level, env);
         if (identical(newArg, arg)) return value;
         return VNeutral(NApp(fn, newArg));
@@ -8736,7 +8738,12 @@ Value substNVarAt(
       env.extend(VNeutral(NVar(level))),
     );
     final body = quote(level + 1, subbed);
-    return VPi(nd, Closure(env, body), name: value.name, icit: value.icit);
+    return VPi(
+      nd,
+      Closure(env, body, bodyIsNormal: true),
+      name: value.name,
+      icit: value.icit,
+    );
   }
   if (value is VData) {
     final newArgs = <Value>[];
