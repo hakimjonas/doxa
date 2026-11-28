@@ -1042,6 +1042,61 @@ val ltAddFalse: (b: Nat) -> (a: Nat) -> Eq Bool (lt (b + a) b) false_ =
     ((a: Nat) => refl false_)
     ((k: Nat) => (_: (a: Nat) -> Eq Bool (lt (k + a) k) false_) => (a: Nat) => leqSuccAddFalse k a)
     b
+// --- Nat fuel boundary and successor-order helpers -----------------------
+
+val modAccZeroValue: (k: Nat) -> (n: Nat) -> Eq Nat (modAcc k zero n) zero =
+  (k: Nat) => (n: Nat) => Nat.ind
+    ((i: Nat) => Eq Nat (modAcc k zero i) zero)
+    (modAccZero k zero)
+    ((d: Nat) => (_: Eq Nat (modAcc k zero d) zero) => modAccZeroSucc k d)
+    n
+
+val leqSuccCases: (N: Nat)
+-> (m: Nat) -> Eq Bool (m <= N) true_ -> Eq Bool (succ m <= N) false_ -> Eq Nat m N =
+  (N: Nat) => Nat.ind
+    ((k: Nat) => (m: Nat) -> Eq Bool (m <= k) true_ -> Eq Bool (succ m <= k) false_ -> Eq Nat m k)
+    ((m: Nat) => (h: Eq Bool (m <= zero) true_) => (_: Eq Bool (succ m <= zero) false_) => leqZeroEq
+      m
+      h)
+    ((k: Nat) => (ih: (m: Nat)
+    -> Eq Bool (m <= k) true_ -> Eq Bool (succ m <= k) false_ -> Eq Nat m k) => (m: Nat) => Nat.ind
+      ((i: Nat) => Eq Bool (i <= succ k) true_
+      -> Eq Bool (succ i <= succ k) false_ -> Eq Nat i (succ k))
+      ((_: Eq Bool (zero <= succ k) true_) => (hnot: Eq Bool (succ zero <= succ k) false_) => False.rec
+        ((_: False) => Eq Nat zero (succ k))
+        (trueNeFalse hnot))
+      ((i: Nat) => (_: Eq Bool (i <= succ k) true_
+      -> Eq Bool (succ i <= succ k) false_ -> Eq Nat i (succ k)) => (h: Eq
+        Bool
+        (succ i <= succ k)
+        true_) => (hnot: Eq Bool (succ (succ i) <= succ k) false_) => congE
+        Nat
+        Nat
+        ((q: Nat) => succ q)
+        i
+        k
+        (ih i h hnot))
+      m)
+    N
+
+val eqSuccOfLeq: (N: Nat)
+-> (m: Nat) -> Eq Bool (m <= succ N) true_ -> Eq Bool (m <= N) false_ -> Eq Nat m (succ N) =
+  (N: Nat) => (m: Nat) => Nat.ind
+    ((i: Nat) => Eq Bool (i <= succ N) true_ -> Eq Bool (i <= N) false_ -> Eq Nat i (succ N))
+    ((_: Eq Bool (zero <= succ N) true_) => (hN: Eq Bool (zero <= N) false_) => False.rec
+      ((_: False) => Eq Nat zero (succ N))
+      (trueNeFalse hN))
+    ((i: Nat) => (_: Eq Bool (i <= succ N) true_ -> Eq Bool (i <= N) false_ -> Eq Nat i (succ N)) => (hS: Eq
+      Bool
+      (succ i <= succ N)
+      true_) => (hN: Eq Bool (succ i <= N) false_) => congE
+      Nat
+      Nat
+      ((q: Nat) => succ q)
+      i
+      N
+      (leqSuccCases N i hS hN))
+    m
 // --- Well-founded accessibility for Nat -----------------------------------
 //
 // `Acc` takes the relation as a parameter, so accessibility is stated as
