@@ -289,7 +289,7 @@ There is no `record` keyword.
 
 A module declares at most one product-form record: every product-form declaration desugars to a constructor named `mk`, and a second `mk` in the same module is rejected as a duplicate declaration. Declare additional records with named constructor arguments, as in `data Segment: Type { seg: (start: Point) -> (end: Point) -> Segment; }`. The qualified constructor `Segment.seg` projects through `start` and `end`.
 
-`match` examines an inductive value. A constructor arm introduces one binder per constructor argument; a constructor pattern is a constructor name followed by zero or more binders. `case _ => body` is a wildcard arm. Arms do not need a separator, and `returning` supplies an optional motive. A match used as an application argument must be parenthesized, as in `(match n returning T { ... }) x`.
+`match` examines an inductive value. A constructor arm introduces one binder per constructor argument; a constructor pattern is a constructor name followed by zero or more binders. `case _ => body` is a wildcard arm. Arms do not need a separator, and `returning` supplies an optional motive. A match on a local variable refines the goal and the types of local hypotheses that mention the scrutinee in each arm; when `returning` is a function type, its body is refined at the arm's binder. A match used as an application argument must be parenthesized, as in `(match n returning T { ... }) x`.
 
 ```doxa
 data Nat: Type { zero: Nat; succ: Nat -> Nat; }

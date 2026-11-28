@@ -5116,7 +5116,13 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
                 ctor.name,
                 ctorArgs,
               );
-              final rawV = substNVar(expected, scrutLevel, ctorResultV);
+              final rawV = substNVarAt(
+                expected,
+                scrutLevel,
+                ctorResultV,
+                armState.ctx.level,
+                armState.ctx.env,
+              );
               // Normalize stuck function applications by quoting at the
               // arm context level and evaluating in the arm env. This
               // handles NVars from both the original and arm contexts.
