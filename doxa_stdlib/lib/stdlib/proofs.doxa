@@ -1475,3 +1475,412 @@ val strongInd: (P: Nat -> Prop)
     n
     P
     step
+// --- Nat multiples, divisibility closure, and the gcd common-divisor half ---
+//
+// `modMulZero` and `divMul` are the multiple facts: a product `q * n`
+// with a positive divisor is congruent to zero and divides back to `q`.
+// The closure lemmas `dividesAdd`, `dividesSub`, and `dividesMod` show
+// that the multiples of a fixed positive divisor are closed under
+// addition, truncated subtraction, and remainder. `gcdAccCommonDivisor`
+// and `gcdCommonDivisor` are the common-divisor half of gcd correctness:
+// every common divisor of the arguments divides the gcd.
+//
+// `gcdAccCommonDivisor` is a `fun` recursive on the fuel. The guarded delta
+// rule keeps a recursive body folded while its decreasing argument is
+// neutral, and the LSP normal-form budget needs that: inlining the same
+// induction as a `val` exceeds the budget when `gcdCommonDivisor` applies it
+// at a successor fuel.
+
+val divEqOfModZero: (a: Nat)
+-> (n: Nat) -> Lt zero n -> Eq Nat (mod a n) zero -> Eq Nat a (div a n * n) =
+  (a: Nat) => (n: Nat) => (hpos: Lt zero n) => (h: Eq Nat (mod a n) zero) => transE
+    Nat
+    a
+    (div a n * n + mod a n)
+    (div a n * n)
+    (symE Nat (div a n * n + mod a n) a (divAddMod a n hpos))
+    (transE
+      Nat
+      (div a n * n + mod a n)
+      (div a n * n + zero)
+      (div a n * n)
+      (congE Nat Nat ((t: Nat) => div a n * n + t) (mod a n) zero h)
+      (plusZero (div a n * n)))
+
+val modMulZero: (q: Nat) -> (n: Nat) -> Lt zero n -> Eq Nat (mod (q * n) n) zero =
+  (q: Nat) => Nat.ind
+    ((k: Nat) => (n: Nat) -> Lt zero n -> Eq Nat (mod (k * n) n) zero)
+    ((n: Nat) => (_: Lt zero n) => refl zero)
+    ((k: Nat) => (ih: (n: Nat) -> Lt zero n -> Eq Nat (mod (k * n) n) zero) => (n: Nat) => (h: Lt
+      zero
+      n) => transE Nat (mod (succ k * n) n) (mod (k * n) n) zero (modAddSelf n (k * n) h) (ih n h))
+    q
+
+val divMul: (q: Nat) -> (n: Nat) -> Lt zero n -> Eq Nat (div (q * n) n) q =
+  (q: Nat) => Nat.ind
+    ((k: Nat) => (n: Nat) -> Lt zero n -> Eq Nat (div (k * n) n) k)
+    ((n: Nat) => Nat.ind
+      ((j: Nat) => Lt zero j -> Eq Nat (div (zero * j) j) zero)
+      ((h0: Lt zero zero) => False.rec
+        ((_: False) => Eq Nat (div (zero * zero) zero) zero)
+        (ltZeroAbsurd h0))
+      ((j: Nat) => (_: Lt zero j -> Eq Nat (div (zero * j) j) zero) => (_: Lt zero (succ j)) => refl
+        zero)
+      n)
+    ((k: Nat) => (ih: (n: Nat) -> Lt zero n -> Eq Nat (div (k * n) n) k) => (n: Nat) => (h: Lt
+      zero
+      n) => transE
+      Nat
+      (div (succ k * n) n)
+      (succ (div (k * n) n))
+      (succ k)
+      (divAddSelf n (k * n) h)
+      (cong ((x: Nat) => succ x) (ih n h)))
+    q
+
+val subPlusPlus: (n: Nat) -> (x: Nat) -> (y: Nat) -> Eq Nat (sub (n + x) (n + y)) (sub x y) =
+  (n: Nat) => Nat.ind
+    ((k: Nat) => (x: Nat) -> (y: Nat) -> Eq Nat (sub (k + x) (k + y)) (sub x y))
+    ((x: Nat) => (y: Nat) => refl (sub x y))
+    ((k: Nat) => (ih: (x: Nat) -> (y: Nat) -> Eq Nat (sub (k + x) (k + y)) (sub x y)) => (x: Nat) => (y: Nat) => ih
+      x
+      y)
+    n
+
+val leqAddLeft: (n: Nat)
+-> (x: Nat) -> (y: Nat) -> Eq Bool (n + x <= n + y) true_ -> Eq Bool (x <= y) true_ =
+  (n: Nat) => Nat.ind
+    ((k: Nat) => (x: Nat) -> (y: Nat) -> Eq Bool (k + x <= k + y) true_ -> Eq Bool (x <= y) true_)
+    ((x: Nat) => (y: Nat) => (h: Eq Bool (zero + x <= zero + y) true_) => h)
+    ((k: Nat) => (ih: (x: Nat)
+    -> (y: Nat) -> Eq Bool (k + x <= k + y) true_ -> Eq Bool (x <= y) true_) => (x: Nat) => (y: Nat) => (h: Eq
+      Bool
+      (succ k + x <= succ k + y)
+      true_) => ih x y h)
+    n
+
+val leqCong: (x: Nat)
+-> (y: Nat)
+  -> (u: Nat)
+    -> (v: Nat) -> Eq Nat x y -> Eq Nat u v -> Eq Bool (x <= u) true_ -> Eq Bool (y <= v) true_ =
+  (x: Nat) => (y: Nat) => (u: Nat) => (v: Nat) => (p: Eq Nat x y) => (q: Eq Nat u v) => (h: Eq
+    Bool
+    (x <= u)
+    true_) => transE
+    Bool
+    (y <= v)
+    (y <= u)
+    true_
+    (symE Bool (y <= u) (y <= v) (congE Nat Bool ((t: Nat) => y <= t) u v q))
+    (transE
+      Bool
+      (y <= u)
+      (x <= u)
+      true_
+      (symE Bool (x <= u) (y <= u) (congE Nat Bool ((t: Nat) => t <= u) x y p))
+      h)
+
+val leqSelfAdd: (v: Nat) -> (X: Nat) -> Eq Bool (v <= v + X) true_ =
+  (v: Nat) => (X: Nat) => leqCong v v (X + v) (v + X) (refl v) (plusComm X v) (leqSelfPlus v X)
+
+val multiplySub: (m: Nat)
+-> (k: Nat) -> (n: Nat) -> Eq Bool (k <= m) true_ -> Eq Nat (sub (m * n) (k * n)) (sub m k * n) =
+  (m: Nat) => Nat.ind
+    ((j: Nat) => (k: Nat)
+    -> (n: Nat) -> Eq Bool (k <= j) true_ -> Eq Nat (sub (j * n) (k * n)) (sub j k * n))
+    ((k: Nat) => (n: Nat) => (_: Eq Bool (k <= zero) true_) => refl zero)
+    ((j: Nat) => (ih: (k: Nat)
+    -> (n: Nat) -> Eq Bool (k <= j) true_ -> Eq Nat (sub (j * n) (k * n)) (sub j k * n)) => (k: Nat) => Nat.ind
+      ((i: Nat) => (n: Nat)
+      -> Eq Bool (i <= succ j) true_ -> Eq Nat (sub (succ j * n) (i * n)) (sub (succ j) i * n))
+      ((n: Nat) => (_: Eq Bool (zero <= succ j) true_) => subZero (succ j * n))
+      ((i: Nat) => (_: (n: Nat)
+      -> Eq Bool (i <= succ j) true_ -> Eq Nat (sub (succ j * n) (i * n)) (sub (succ j) i * n)) => (n: Nat) => (h: Eq
+        Bool
+        (succ i <= succ j)
+        true_) => transE
+        Nat
+        (sub (succ j * n) (succ i * n))
+        (sub (j * n) (i * n))
+        (sub (succ j) (succ i) * n)
+        (subPlusPlus n (j * n) (i * n))
+        (ih i n h))
+      k)
+    m
+
+val leqMulCancel: (a: Nat)
+-> (b: Nat) -> (k: Nat) -> Eq Bool (a * succ k <= b * succ k) true_ -> Eq Bool (a <= b) true_ =
+  (a: Nat) => Nat.ind
+    ((j: Nat) => (b: Nat)
+    -> (k: Nat) -> Eq Bool (j * succ k <= b * succ k) true_ -> Eq Bool (j <= b) true_)
+    ((b: Nat) => (k: Nat) => (_: Eq Bool (zero * succ k <= b * succ k) true_) => refl true_)
+    ((j: Nat) => (ih: (b: Nat)
+    -> (k: Nat) -> Eq Bool (j * succ k <= b * succ k) true_ -> Eq Bool (j <= b) true_) => (b: Nat) => Nat.ind
+      ((i: Nat) => (k: Nat)
+      -> Eq Bool (succ j * succ k <= i * succ k) true_ -> Eq Bool (succ j <= i) true_)
+      ((k: Nat) => (h: Eq Bool (succ j * succ k <= zero * succ k) true_) => False.rec
+        ((_: False) => Eq Bool (succ j <= zero) true_)
+        (trueNeFalse (symE Bool false_ true_ h)))
+      ((i: Nat) => (_: (k: Nat)
+      -> Eq Bool (succ j * succ k <= i * succ k) true_ -> Eq Bool (succ j <= i) true_) => (k: Nat) => (h: Eq
+        Bool
+        (succ j * succ k <= succ i * succ k)
+        true_) => leqSuccSucc j i (ih i k (leqAddLeft k (j * succ k) (i * succ k) h)))
+      b)
+    a
+
+val dividesAdd: (d: Nat)
+-> (a: Nat)
+  -> (b: Nat)
+    -> Eq Nat (mod a (succ d)) zero
+      -> Eq Nat (mod b (succ d)) zero -> Eq Nat (mod (a + b) (succ d)) zero =
+  (d: Nat) => (a: Nat) => (b: Nat) => (h1: Eq Nat (mod a (succ d)) zero) => (h2: Eq
+    Nat
+    (mod b (succ d))
+    zero) => transE
+    Nat
+    (mod (a + b) (succ d))
+    (mod ((div a (succ d) + div b (succ d)) * succ d) (succ d))
+    zero
+    (congE
+      Nat
+      Nat
+      ((t: Nat) => mod t (succ d))
+      (a + b)
+      ((div a (succ d) + div b (succ d)) * succ d)
+      (transE
+        Nat
+        (a + b)
+        (div a (succ d) * succ d + b)
+        ((div a (succ d) + div b (succ d)) * succ d)
+        (congE
+          Nat
+          Nat
+          ((t: Nat) => t + b)
+          a
+          (div a (succ d) * succ d)
+          (divEqOfModZero a (succ d) (ltZeroSucc d) h1))
+        (transE
+          Nat
+          (div a (succ d) * succ d + b)
+          (div a (succ d) * succ d + div b (succ d) * succ d)
+          ((div a (succ d) + div b (succ d)) * succ d)
+          (congE
+            Nat
+            Nat
+            ((t: Nat) => div a (succ d) * succ d + t)
+            b
+            (div b (succ d) * succ d)
+            (divEqOfModZero b (succ d) (ltZeroSucc d) h2))
+          (symE
+            Nat
+            ((div a (succ d) + div b (succ d)) * succ d)
+            (div a (succ d) * succ d + div b (succ d) * succ d)
+            (multiplyPlus (div a (succ d)) (div b (succ d)) (succ d))))))
+    (modMulZero (div a (succ d) + div b (succ d)) (succ d) (ltZeroSucc d))
+
+val dividesSub: (d: Nat)
+-> (a: Nat)
+  -> (b: Nat)
+    -> Eq Bool (b <= a) true_
+      -> Eq Nat (mod a (succ d)) zero
+        -> Eq Nat (mod b (succ d)) zero -> Eq Nat (mod (sub a b) (succ d)) zero =
+  (d: Nat) => (a: Nat) => (b: Nat) => (hba: Eq Bool (b <= a) true_) => (h1: Eq
+    Nat
+    (mod a (succ d))
+    zero) => (h2: Eq Nat (mod b (succ d)) zero) => transE
+    Nat
+    (mod (sub a b) (succ d))
+    (mod (sub (div a (succ d)) (div b (succ d)) * succ d) (succ d))
+    zero
+    (congE
+      Nat
+      Nat
+      ((t: Nat) => mod t (succ d))
+      (sub a b)
+      (sub (div a (succ d)) (div b (succ d)) * succ d)
+      (transE
+        Nat
+        (sub a b)
+        (sub (div a (succ d) * succ d) b)
+        (sub (div a (succ d)) (div b (succ d)) * succ d)
+        (congE
+          Nat
+          Nat
+          ((t: Nat) => sub t b)
+          a
+          (div a (succ d) * succ d)
+          (divEqOfModZero a (succ d) (ltZeroSucc d) h1))
+        (transE
+          Nat
+          (sub (div a (succ d) * succ d) b)
+          (sub (div a (succ d) * succ d) (div b (succ d) * succ d))
+          (sub (div a (succ d)) (div b (succ d)) * succ d)
+          (congE
+            Nat
+            Nat
+            ((t: Nat) => sub (div a (succ d) * succ d) t)
+            b
+            (div b (succ d) * succ d)
+            (divEqOfModZero b (succ d) (ltZeroSucc d) h2))
+          (multiplySub
+            (div a (succ d))
+            (div b (succ d))
+            (succ d)
+            (leqMulCancel
+              (div b (succ d))
+              (div a (succ d))
+              d
+              (leqCong
+                b
+                (div b (succ d) * succ d)
+                a
+                (div a (succ d) * succ d)
+                (divEqOfModZero b (succ d) (ltZeroSucc d) h2)
+                (divEqOfModZero a (succ d) (ltZeroSucc d) h1)
+                hba))))))
+    (modMulZero (sub (div a (succ d)) (div b (succ d))) (succ d) (ltZeroSucc d))
+
+val dividesMod: (d: Nat)
+-> (m: Nat)
+  -> (n: Nat)
+    -> Eq Nat (mod m (succ d)) zero
+      -> Eq Nat (mod n (succ d)) zero -> Eq Nat (mod (mod m n) (succ d)) zero =
+  (d: Nat) => (m: Nat) => (n: Nat) => (h1: Eq Nat (mod m (succ d)) zero) => (h2: Eq
+    Nat
+    (mod n (succ d))
+    zero) => Nat.ind
+    ((j: Nat) => Eq Nat (mod j (succ d)) zero -> Eq Nat (mod (mod m j) (succ d)) zero)
+    ((_: Eq Nat (mod zero (succ d)) zero) => transE
+      Nat
+      (mod (mod m zero) (succ d))
+      (mod m (succ d))
+      zero
+      (congE Nat Nat ((t: Nat) => mod t (succ d)) (mod m zero) m (modZero m))
+      h1)
+    ((j: Nat) => (_: Eq Nat (mod j (succ d)) zero -> Eq Nat (mod (mod m j) (succ d)) zero) => (h2j: Eq
+      Nat
+      (mod (succ j) (succ d))
+      zero) => transE
+      Nat
+      (mod (mod m (succ j)) (succ d))
+      (mod (sub m (div m (succ j) * succ j)) (succ d))
+      zero
+      (symE
+        Nat
+        (mod (sub m (div m (succ j) * succ j)) (succ d))
+        (mod (mod m (succ j)) (succ d))
+        (congE
+          Nat
+          Nat
+          ((t: Nat) => mod t (succ d))
+          (sub m (div m (succ j) * succ j))
+          (mod m (succ j))
+          (transE
+            Nat
+            (sub m (div m (succ j) * succ j))
+            (sub (div m (succ j) * succ j + mod m (succ j)) (div m (succ j) * succ j))
+            (mod m (succ j))
+            (congE
+              Nat
+              Nat
+              ((t: Nat) => sub t (div m (succ j) * succ j))
+              m
+              (div m (succ j) * succ j + mod m (succ j))
+              (symE
+                Nat
+                (div m (succ j) * succ j + mod m (succ j))
+                m
+                (divAddMod m (succ j) (ltZeroSucc j))))
+            (subAddRight (div m (succ j) * succ j) (mod m (succ j))))))
+      (dividesSub
+        d
+        m
+        (div m (succ j) * succ j)
+        (leqCong
+          (div m (succ j) * succ j)
+          (div m (succ j) * succ j)
+          (div m (succ j) * succ j + mod m (succ j))
+          m
+          (refl (div m (succ j) * succ j))
+          (divAddMod m (succ j) (ltZeroSucc j))
+          (leqSelfAdd (div m (succ j) * succ j) (mod m (succ j))))
+        h1
+        (transE
+          Nat
+          (mod (div m (succ j) * succ j) (succ d))
+          (mod (div m (succ j) * div (succ j) (succ d) * succ d) (succ d))
+          zero
+          (congE
+            Nat
+            Nat
+            ((t: Nat) => mod t (succ d))
+            (div m (succ j) * succ j)
+            (div m (succ j) * div (succ j) (succ d) * succ d)
+            (transE
+              Nat
+              (div m (succ j) * succ j)
+              (div m (succ j) * (div (succ j) (succ d) * succ d))
+              (div m (succ j) * div (succ j) (succ d) * succ d)
+              (congE
+                Nat
+                Nat
+                ((t: Nat) => div m (succ j) * t)
+                (succ j)
+                (div (succ j) (succ d) * succ d)
+                (divEqOfModZero (succ j) (succ d) (ltZeroSucc d) h2j))
+              (symE
+                Nat
+                (div m (succ j) * div (succ j) (succ d) * succ d)
+                (div m (succ j) * (div (succ j) (succ d) * succ d))
+                (multiplyAssoc (div m (succ j)) (div (succ j) (succ d)) (succ d)))))
+          (modMulZero (div m (succ j) * div (succ j) (succ d)) (succ d) (ltZeroSucc d)))))
+    n
+    h2
+
+fun gcdAccCommonDivisor(d: Nat, k: Nat, m: Nat, n: Nat, h1: Eq Nat (mod m (succ d)) zero, h2: Eq
+  Nat
+  (mod n (succ d))
+  zero): Eq Nat (mod (gcdAcc k m n) (succ d)) zero {struct k} = match k {
+  case zero => h1
+  case succ k_ => Nat.ind
+    ((j: Nat) => Eq Nat (mod j (succ d)) zero -> Eq Nat (mod (gcdAcc (succ k_) m j) (succ d)) zero)
+    ((_: Eq Nat (mod zero (succ d)) zero) => h1)
+    ((j: Nat) => (_: Eq Nat (mod j (succ d)) zero
+    -> Eq Nat (mod (gcdAcc (succ k_) m j) (succ d)) zero) => (h2j: Eq
+      Nat
+      (mod (succ j) (succ d))
+      zero) => gcdAccCommonDivisor
+      d
+      k_
+      (succ j)
+      (mod m (succ j))
+      h2j
+      (dividesMod d m (succ j) h1 h2j))
+    n
+    h2
+}
+
+val gcdCommonDivisor: (d: Nat)
+-> (m: Nat)
+  -> (n: Nat)
+    -> Eq Nat (mod m (succ d)) zero
+      -> Eq Nat (mod n (succ d)) zero -> Eq Nat (mod (gcd m n) (succ d)) zero =
+  (d: Nat) => (m: Nat) => Nat.ind
+    ((f: Nat) => (n: Nat)
+    -> Eq Nat (mod f (succ d)) zero
+      -> Eq Nat (mod n (succ d)) zero -> Eq Nat (mod (gcd f n) (succ d)) zero)
+    ((n: Nat) => (_: Eq Nat (mod zero (succ d)) zero) => (h2: Eq Nat (mod n (succ d)) zero) => h2)
+    ((f: Nat) => (_: (n: Nat)
+    -> Eq Nat (mod f (succ d)) zero
+      -> Eq Nat (mod n (succ d)) zero -> Eq Nat (mod (gcd f n) (succ d)) zero) => (n: Nat) => (h1: Eq
+      Nat
+      (mod (succ f) (succ d))
+      zero) => (h2: Eq Nat (mod n (succ d)) zero) => gcdAccCommonDivisor
+      d
+      (succ f + n)
+      (succ f)
+      n
+      h1
+      h2)
+    m

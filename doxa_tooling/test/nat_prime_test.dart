@@ -264,4 +264,32 @@ val dz: Eq Nat (divAcc three zero two) (divAcc four zero two) =
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
   });
+
+  group('Nat gcd common-divisor half', () {
+    test('concrete applications check', () {
+      final r = runSource('''
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
+
+val one: Nat = succ zero
+val two: Nat = succ (succ zero)
+val three: Nat = succ (succ (succ zero))
+val four: Nat = succ (succ (succ (succ zero)))
+val six: Nat = succ (succ (succ (succ (succ (succ zero)))))
+
+val mm: Eq Nat (mod (three * four) four) zero =
+  modMulZero three four (ltZeroSucc three)
+val dm: Eq Nat (div (three * four) four) three =
+  divMul three four (ltZeroSucc three)
+val da: Eq Nat (mod (six + four) two) zero =
+  dividesAdd one six four (refl zero) (refl zero)
+val ds: Eq Nat (mod (sub six four) two) zero =
+  dividesSub one six four (refl true_) (refl zero) (refl zero)
+val dmo: Eq Nat (mod (mod six four) two) zero =
+  dividesMod one six four (refl zero) (refl zero)
+val gc: Eq Nat (mod (gcd six four) two) zero =
+  gcdCommonDivisor one six four (refl zero) (refl zero)
+''');
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+  });
 }

@@ -21,7 +21,7 @@ https://github.com/hakimjonas/doxa#status.
 | `Sigma` | `sigma.doxa` |
 | `Int` | `intBase.doxa`, `int.doxa` |
 | `Rational` | `rational.doxa` (`Rat` normalized pairs; `ratNorm`, `ratZero`, `ratOne`, `ratOfInt`, `ratAdd`, `ratNegate`, `ratSub`, `ratMultiply`, `ratEqb`, `ratLeq`; `Eqb[Rat]`; `ratNormZeroDenom`, `ratEqbRefl`, `ratLeqRefl`) |
-| `Proofs` | `proofs.doxa` (arithmetic and equality lemmas; division and divisibility facts) |
+| `Proofs` | `proofs.doxa` (arithmetic and equality lemmas; division, divisibility, and gcd facts) |
 | `Prop` | `prop.doxa` (`And`, `Or`, `Exists`, `Not`) |
 | — | `caseStudy.doxa` (parity lemmas and `sqrt2`) |
 
