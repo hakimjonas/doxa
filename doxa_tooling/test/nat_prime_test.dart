@@ -151,6 +151,24 @@ val l23: Eq Nat (lcm two three) six = refl six
     });
   });
 
+  group('Nat fuel boundary helpers', () {
+    test('concrete applications check', () {
+      final r = runSource('''
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
+
+val two: Nat = succ (succ zero)
+val three: Nat = succ (succ (succ zero))
+val four: Nat = succ (succ (succ (succ zero)))
+val five: Nat = succ (succ (succ (succ (succ zero))))
+
+val mz: Eq Nat (modAcc three zero two) zero = modAccZeroValue three two
+val ls: Eq Nat four four = leqSuccCases four four (refl true_) (refl false_)
+val es: Eq Nat five (succ four) = eqSuccOfLeq four five (refl true_) (refl false_)
+''');
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+  });
+
   group('Nat division unfolding facts', () {
     test('sum order and the first step check', () {
       final r = runSource('''

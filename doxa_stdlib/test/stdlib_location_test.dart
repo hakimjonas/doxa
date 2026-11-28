@@ -90,5 +90,5 @@ void main() {
             'stderr:\n${result.stderr}',
       );
     }
-  });
+  }, timeout: const Timeout(Duration(minutes: 2)));
 }
