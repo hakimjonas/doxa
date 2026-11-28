@@ -117,9 +117,17 @@ and `divStepFalseEq` are proved as well. The fuel-stability facts
 `modAccFuelLe`, `divAccFuelLe`, `modAccFuel`, and `divAccFuel` are proved,
 and so are the sum forms `modAddSelf` and `divAddSelf`. The `divAcc`
 statements fix a positive divisor, because `divAcc` at a zero divisor returns
-its fuel. The common-divisor half of gcd correctness (any common divisor of
-`m` and `n` divides `gcd m n`), the fuel bound, and the greatest-divisor
-property are planned.
+its fuel.
+
+The multiple facts `modMulZero` and `divMul` are proved: for a positive `n`,
+`mod (q * n) n = zero` and `div (q * n) n = q`. The closure lemmas
+`dividesAdd`, `dividesSub`, and `dividesMod` are proved as well: the multiples
+of a positive divisor are closed under addition, truncated subtraction, and
+reduction modulo a second multiple. `dividesSub` uses the cancellation lemma
+`leqMulCancel` and the difference lemma `multiplySub`. The common-divisor
+half of gcd correctness is proved as `gcdAccCommonDivisor` and
+`gcdCommonDivisor`: any common divisor of `m` and `n` divides `gcd m n`. The
+gcd fuel bound and the greatest-divisor property are planned.
 
 ### Arbitrary precision
 
@@ -250,8 +258,8 @@ All rows check by `refl`.
 
 ## Open lemmas
 
-Both `modLt` and `divAddMod` are proved in `doxa_stdlib/lib/stdlib/proofs.doxa`. No
-general theorem about the `Nat` arithmetic operations remains open.
+Both `modLt` and `divAddMod` are proved in `doxa_stdlib/lib/stdlib/proofs.doxa`. The
+open `Nat` results are the gcd fuel bound and the greatest-divisor property.
 
 For `Int`, the Euclidean identity and bound are proved for all `a` and
 `b != 0`:
