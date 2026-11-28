@@ -85,10 +85,12 @@ project is ready.
   `leqSuccAddFalse`, and `ltAddFalse`, the boundary and successor-order
   helpers `modAccZeroValue`, `leqSuccCases`, and `eqSuccOfLeq`, and the
   step-branch congruences `modStepTrueEq`, `modStepFalseEq`,
-  `divStepTrueEq`, and `divStepFalseEq`. The fuel-stability facts and the
-  sum forms are planned; `divAcc` at a zero divisor returns its fuel, so its
-  stability statement needs a positive divisor. The gcd common-divisor
-  argument, the fuel bound, and the greatest-divisor property are planned.
+  `divStepTrueEq`, and `divStepFalseEq`. The gcd common-divisor argument,
+  the fuel bound, and the greatest-divisor property are planned.
+- Added Nat fuel-stability facts `modAccFuelLe`, `divAccFuelLe`,
+  `modAccFuel`, and `divAccFuel`, and the sum forms `modAddSelf` and
+  `divAddSelf`. The `divAcc` statements fix a positive divisor, because
+  `divAcc` at a zero divisor returns its fuel.
 - Added rational arithmetic on normalized pairs: `ratNorm`, `ratZero`,
   `ratOne`, `ratOfInt`, the operations `ratAdd`, `ratNegate`, `ratSub`, and
   `ratMultiply`, the cross-multiplication tests `ratEqb` and `ratLeq`, and
