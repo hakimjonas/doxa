@@ -52,6 +52,34 @@ fun f(m: Nat): (h: Eq Nat m m) -> Eq Nat m m =
       expect(env.bindings.map((b) => b.name), contains('f'));
     });
 
+    test('a Pi-typed hypothesis is refined with the scrutinee', () {
+      final env = checkProgram(
+        pp('''
+$_prelude
+fun f(m: Nat, h: (x: Nat) -> Eq Nat m x): (x: Nat) -> Eq Nat m x =
+  match m returning ((x: Nat) -> Eq Nat m x) {
+    case zero => (x: Nat) => h x
+    case succ k => (x: Nat) => h x
+  }
+'''),
+      );
+      expect(env.bindings.map((b) => b.name), contains('f'));
+    });
+
+    test('a nested-Pi hypothesis is refined with the scrutinee', () {
+      final env = checkProgram(
+        pp('''
+$_prelude
+fun f(m: Nat, h: (x: Nat) -> (y: Nat) -> Eq Nat m y): (x: Nat) -> (y: Nat) -> Eq Nat m y =
+  match m returning ((x: Nat) -> (y: Nat) -> Eq Nat m y) {
+    case zero => (x: Nat) => (y: Nat) => h x y
+    case succ k => (x: Nat) => (y: Nat) => h x y
+  }
+'''),
+      );
+      expect(env.bindings.map((b) => b.name), contains('f'));
+    });
+
     test('the fuel skeleton G/hG shape checks', () {
       final env = checkProgram(
         pp('''

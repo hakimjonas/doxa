@@ -4772,7 +4772,19 @@ Term _elabExpr(
 /// Substitute [scrutLevel] with [replacement] in all binder types within
 /// [ctx]. Walks the immutable CCons chain and creates new nodes for
 /// binders whose types changed; unchanged nodes are shared.
-Ctx substNVarInCtx(Ctx ctx, int scrutLevel, Value replacement) {
+///
+/// Each binder type is refined with `substNVarAt` at the arm context's
+/// [armLevel] and [armEnv]. The refined type is used at the arm, where its
+/// Pi binders open at the arm level and the constructor-argument neutrals
+/// are in scope; refining at the binder's original prefix level would
+/// close over an environment the refined body may no longer fit.
+Ctx substNVarInCtx(
+  Ctx ctx,
+  int scrutLevel,
+  Value replacement,
+  int armLevel,
+  Env armEnv,
+) {
   switch (ctx) {
     case CNil():
       return ctx;
@@ -4784,32 +4796,20 @@ Ctx substNVarInCtx(Ctx ctx, int scrutLevel, Value replacement) {
       :final level,
       :final rest,
     ):
-      final newType = substNVar(type, scrutLevel, replacement);
-      final newRest = substNVarInCtx(rest, scrutLevel, replacement);
-      if (identical(newType, type) && identical(newRest, rest)) {
-        return ctx;
-      }
-      return CCons(newType, value, neutral, env, level, newRest);
-  }
-}
-
-/// Walk [ctx] and re-evaluate each binder type at [armLevel] in [armEnv].
-/// This reduces stuck VMatch values whose scrutinee became a VConstr
-/// after hypothesis refinement substitution.
-Ctx _normalizeChangedCtx(Ctx ctx, int armLevel, Env armEnv) {
-  switch (ctx) {
-    case CNil():
-      return ctx;
-    case CCons(
-      :final type,
-      :final value,
-      :final neutral,
-      :final env,
-      :final level,
-      :final rest,
-    ):
-      final newRest = _normalizeChangedCtx(rest, armLevel, armEnv);
-      final newType = eval(quote(armLevel, type), armEnv);
+      final newType = substNVarAt(
+        type,
+        scrutLevel,
+        replacement,
+        armLevel,
+        armEnv,
+      );
+      final newRest = substNVarInCtx(
+        rest,
+        scrutLevel,
+        replacement,
+        armLevel,
+        armEnv,
+      );
       if (identical(newType, type) && identical(newRest, rest)) {
         return ctx;
       }
@@ -5061,15 +5061,12 @@ Term _elabMatch(_ElabState state, SExpr expr, {Value? expected}) {
               armState.ctx,
               scrutLevel,
               ctorResultV,
+              armState.ctx.level,
+              armState.ctx.env,
             );
-            // Re-evaluate changed binder types by quoting at the arm
-            // context level and evaluating in the arm env. This reduces
-            // stuck VMatch values whose scrutinee became a VConstr.
-            final armLevel = armState.ctx.level;
-            final armEnv = armState.ctx.env;
             armState = _ElabState(
               armState.topEnv,
-              _normalizeChangedCtx(substitutedCtx, armLevel, armEnv),
+              substitutedCtx,
               armState.names,
             );
           }

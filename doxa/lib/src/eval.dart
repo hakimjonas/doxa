@@ -7557,7 +7557,13 @@ _Step _checkMatchArmStep(
         armCtx.level,
         armCtx.env,
       );
-      refinedArmCtx = _substNVarInCtx(armCtx, scrutLevel, ctorResultV);
+      refinedArmCtx = _substNVarInCtx(
+        armCtx,
+        scrutLevel,
+        ctorResultV,
+        armCtx.level,
+        armCtx.env,
+      );
     }
   }
   return _Check(refinedArmCtx, arm.body, armExpectedFinal);
@@ -8679,9 +8685,9 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
 /// value, so a plain value substitution cannot reach it. This variant opens
 /// the codomain at [level], substitutes in the opened body, quotes it back
 /// at `level + 1`, and rebuilds the closure over [env]. The same treatment
-/// applies to nested `VPi`s and to `VPi`s nested in `VData`, `VConstr`, and
-/// the quotient forms. `VNeutral`, `VFun`, and `VMatch` fall back to
-/// [substNVar]; a `VPi` inside an `NApp` argument is not reached.
+/// applies to nested `VPi`s, to `VPi`s nested in `VData`, `VConstr`, and the
+/// quotient forms, and to `VPi`s inside `NApp`/`NProj`/`NStuck` arguments.
+/// `VFun` and `VMatch` fall back to [substNVar].
 Value substNVarAt(
   Value value,
   int scrutLevel,
@@ -8689,6 +8695,33 @@ Value substNVarAt(
   int level,
   Env env,
 ) {
+  if (value is VNeutral) {
+    final n = value.neutral;
+    switch (n) {
+      case NVar(level: final nvLevel):
+        return nvLevel == scrutLevel ? replacement : value;
+      case NApp(:final fn, :final arg):
+        final newArg = substNVarAt(arg, scrutLevel, replacement, level, env);
+        if (identical(newArg, arg)) return value;
+        return VNeutral(NApp(fn, newArg));
+      case NProj(:final expr, :final fieldName):
+        final newExpr = substNVarAt(expr, scrutLevel, replacement, level, env);
+        if (identical(newExpr, expr)) return value;
+        return VNeutral(NProj(newExpr, fieldName));
+      case NStuck():
+        final newStuck = substNVarAt(
+          n.value,
+          scrutLevel,
+          replacement,
+          level,
+          env,
+        );
+        if (identical(newStuck, n.value)) return value;
+        return VNeutral(NStuck(newStuck));
+      default:
+        return value;
+    }
+  }
   if (value is VPi) {
     final nd = substNVarAt(value.domain, scrutLevel, replacement, level, env);
     final opened = eval(
@@ -8769,12 +8802,22 @@ Value substNVarAt(
   return substNVar(value, scrutLevel, replacement);
 }
 
-/// Rebuild [ctx] with `substNVar` applied to each binder type.
+/// Rebuild [ctx] with `substNVarAt` applied to each binder type at the arm
+/// context's [armLevel] and [armEnv].
 ///
 /// Mirrors the elaborator's `substNVarInCtx` (`elab.dart`): the type of a
 /// binder that mentions the scrutinee is refined, while its value, neutral,
-/// environment, and level are preserved. Unchanged nodes are shared.
-Ctx _substNVarInCtx(Ctx ctx, int scrutLevel, Value replacement) {
+/// environment, and level are preserved. Unchanged nodes are shared. The
+/// arm level is used because the refined type is consulted at the arm, where
+/// its Pi binders open at that level and the constructor-argument neutrals
+/// are in scope.
+Ctx _substNVarInCtx(
+  Ctx ctx,
+  int scrutLevel,
+  Value replacement,
+  int armLevel,
+  Env armEnv,
+) {
   switch (ctx) {
     case CNil():
       return ctx;
@@ -8786,8 +8829,20 @@ Ctx _substNVarInCtx(Ctx ctx, int scrutLevel, Value replacement) {
       :final level,
       :final rest,
     ):
-      final newType = substNVar(type, scrutLevel, replacement);
-      final newRest = _substNVarInCtx(rest, scrutLevel, replacement);
+      final newType = substNVarAt(
+        type,
+        scrutLevel,
+        replacement,
+        armLevel,
+        armEnv,
+      );
+      final newRest = _substNVarInCtx(
+        rest,
+        scrutLevel,
+        replacement,
+        armLevel,
+        armEnv,
+      );
       if (identical(newType, type) && identical(newRest, rest)) {
         return ctx;
       }
