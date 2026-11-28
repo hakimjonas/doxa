@@ -440,9 +440,10 @@ final class Closure {
   /// When true, `quote(VPi(_, this), level)` can reuse [body] directly
   /// as the Pi's codomain term at `level` instead of re-running the
   /// open → eval → quote round-trip (that round-trip is identity on
-  /// terms already in normal form). Set at the single construction
-  /// site where the invariant is locally true, `_InferLamHaveBodyTerm`,
-  /// and read only from `_Quote(VPi)`.
+  /// terms already in normal form). Set at construction sites where the
+  /// invariant is locally true: the inferred-lambda path
+  /// `_InferLamHaveBodyTerm`, and `substNVarAt`'s rebuilt Pi codomain,
+  /// whose body is produced by `quote`. Read only from `_Quote(VPi)`.
   ///
   /// Safe default is `false`: a closure whose body came from a raw
   /// surface term (the common case via `_Eval(TPi|TLam)`) has no such

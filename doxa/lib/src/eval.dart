@@ -7532,7 +7532,15 @@ _Step _checkMatchArmStep(
   // the ctor result (e.g. `Acc Nat rel zero` for the `zero` arm
   // when matching on `n`). Do the same substitution here so the
   // checker agrees with the elaborator's per-arm type.
+  //
+  // The substitution also rebuilds the outer binder types, so a local
+  // hypothesis whose type mentions the scrutinee is usable at the arm's
+  // refined type (`h: Eq Nat m m` becomes `Eq Nat zero zero` in the `zero`
+  // arm). It refines Pi codomain closures through `substNVarAt`, so a
+  // Pi-returning expected type has its body refined at the arm's binder
+  // level.
   var armExpectedFinal = armExpected;
+  var refinedArmCtx = armCtx;
   if (indicesV.isEmpty) {
     final scrutineeV = eval(matchTerm.scrutinee, ctx.env);
     if (scrutineeV is VNeutral && scrutineeV.neutral is NVar) {
@@ -7542,10 +7550,23 @@ _Step _checkMatchArmStep(
           VNeutral(NVar(armCtx.level - arm.nBinders + k)),
       ];
       final ctorResultV = VConstr(dataDecl.name, arm.ctorName, ctorArgs);
-      armExpectedFinal = substNVar(armExpected, scrutLevel, ctorResultV);
+      armExpectedFinal = substNVarAt(
+        armExpected,
+        scrutLevel,
+        ctorResultV,
+        armCtx.level,
+        armCtx.env,
+      );
+      refinedArmCtx = _substNVarInCtx(
+        armCtx,
+        scrutLevel,
+        ctorResultV,
+        armCtx.level,
+        armCtx.env,
+      );
     }
   }
-  return _Check(armCtx, arm.body, armExpectedFinal);
+  return _Check(refinedArmCtx, arm.body, armExpectedFinal);
 }
 
 /// Public entry to the kernel's per-arm first-order index refinement.
@@ -8653,6 +8674,187 @@ Term _synthMethodType(DataDecl d, int ctorIndex) {
   }
 
   return result;
+}
+
+/// Substitute every occurrence of `VNeutral(NVar(scrutLevel))` in [value]
+/// with [replacement], refining `VPi` codomain closures at context
+/// [level] under [env].
+///
+/// `substNVar` replaces the domain of a `VPi` but leaves its codomain
+/// closure untouched: the closure is a `Term` over the captured env, not a
+/// value, so a plain value substitution cannot reach it. This variant opens
+/// the codomain at [level], substitutes in the opened body, quotes it back
+/// at `level + 1`, and rebuilds the closure over [env]. The same treatment
+/// applies to nested `VPi`s, to `VPi`s nested in `VData`, `VConstr`, and the
+/// quotient forms, and to `VPi`s inside `NApp`/`NProj`/`NStuck` arguments.
+/// `VFun` and `VMatch` fall back to [substNVar].
+Value substNVarAt(
+  Value value,
+  int scrutLevel,
+  Value replacement,
+  int level,
+  Env env,
+) {
+  if (value is VNeutral) {
+    final n = value.neutral;
+    switch (n) {
+      case NVar(level: final nvLevel):
+        return nvLevel == scrutLevel ? replacement : value;
+      case NApp(:final fn, :final arg):
+        // The function head is a neutral function, not the scrutinee (a
+        // data value), so only the argument can contain the scrutinee.
+        final newArg = substNVarAt(arg, scrutLevel, replacement, level, env);
+        if (identical(newArg, arg)) return value;
+        return VNeutral(NApp(fn, newArg));
+      case NProj(:final expr, :final fieldName):
+        final newExpr = substNVarAt(expr, scrutLevel, replacement, level, env);
+        if (identical(newExpr, expr)) return value;
+        return VNeutral(NProj(newExpr, fieldName));
+      case NStuck():
+        final newStuck = substNVarAt(
+          n.value,
+          scrutLevel,
+          replacement,
+          level,
+          env,
+        );
+        if (identical(newStuck, n.value)) return value;
+        return VNeutral(NStuck(newStuck));
+      default:
+        return value;
+    }
+  }
+  if (value is VPi) {
+    final nd = substNVarAt(value.domain, scrutLevel, replacement, level, env);
+    final opened = eval(
+      value.codomain.body,
+      value.codomain.env.extend(VNeutral(NVar(level))),
+    );
+    final subbed = substNVarAt(
+      opened,
+      scrutLevel,
+      replacement,
+      level + 1,
+      env.extend(VNeutral(NVar(level))),
+    );
+    final body = quote(level + 1, subbed);
+    return VPi(
+      nd,
+      Closure(env, body, bodyIsNormal: true),
+      name: value.name,
+      icit: value.icit,
+    );
+  }
+  if (value is VData) {
+    final newArgs = <Value>[];
+    var changed = false;
+    for (final a in value.args) {
+      final na = substNVarAt(a, scrutLevel, replacement, level, env);
+      newArgs.add(na);
+      if (!identical(na, a)) changed = true;
+    }
+    return changed ? VData(value.name, newArgs) : value;
+  }
+  if (value is VConstr) {
+    final newArgs = <Value>[];
+    var changed = false;
+    for (final a in value.args) {
+      final na = substNVarAt(a, scrutLevel, replacement, level, env);
+      newArgs.add(na);
+      if (!identical(na, a)) changed = true;
+    }
+    return changed ? VConstr(value.dataName, value.ctorName, newArgs) : value;
+  }
+  if (value is VQuot) {
+    final carrier = substNVarAt(
+      value.carrier,
+      scrutLevel,
+      replacement,
+      level,
+      env,
+    );
+    final relation = substNVarAt(
+      value.relation,
+      scrutLevel,
+      replacement,
+      level,
+      env,
+    );
+    return identical(carrier, value.carrier) &&
+            identical(relation, value.relation)
+        ? value
+        : VQuot(carrier, relation);
+  }
+  if (value is VQuotMk) {
+    final arg = substNVarAt(value.arg, scrutLevel, replacement, level, env);
+    return identical(arg, value.arg) ? value : VQuotMk(arg);
+  }
+  if (value is VQuotLift) {
+    final fn = substNVarAt(value.fn, scrutLevel, replacement, level, env);
+    final proof = substNVarAt(value.proof, scrutLevel, replacement, level, env);
+    return identical(fn, value.fn) && identical(proof, value.proof)
+        ? value
+        : VQuotLift(fn, proof);
+  }
+  if (value is VQuotSound) {
+    final lhs = substNVarAt(value.lhs, scrutLevel, replacement, level, env);
+    final rhs = substNVarAt(value.rhs, scrutLevel, replacement, level, env);
+    final proof = substNVarAt(value.proof, scrutLevel, replacement, level, env);
+    return identical(lhs, value.lhs) &&
+            identical(rhs, value.rhs) &&
+            identical(proof, value.proof)
+        ? value
+        : VQuotSound(lhs, rhs, proof);
+  }
+  return substNVar(value, scrutLevel, replacement);
+}
+
+/// Rebuild [ctx] with `substNVarAt` applied to each binder type at the arm
+/// context's [armLevel] and [armEnv].
+///
+/// Mirrors the elaborator's `substNVarInCtx` (`elab.dart`): the type of a
+/// binder that mentions the scrutinee is refined, while its value, neutral,
+/// environment, and level are preserved. Unchanged nodes are shared. The
+/// arm level is used because the refined type is consulted at the arm, where
+/// its Pi binders open at that level and the constructor-argument neutrals
+/// are in scope.
+Ctx _substNVarInCtx(
+  Ctx ctx,
+  int scrutLevel,
+  Value replacement,
+  int armLevel,
+  Env armEnv,
+) {
+  switch (ctx) {
+    case CNil():
+      return ctx;
+    case CCons(
+      :final type,
+      :final value,
+      :final neutral,
+      :final env,
+      :final level,
+      :final rest,
+    ):
+      final newType = substNVarAt(
+        type,
+        scrutLevel,
+        replacement,
+        armLevel,
+        armEnv,
+      );
+      final newRest = _substNVarInCtx(
+        rest,
+        scrutLevel,
+        replacement,
+        armLevel,
+        armEnv,
+      );
+      if (identical(newType, type) && identical(newRest, rest)) {
+        return ctx;
+      }
+      return CCons(newType, value, neutral, env, level, newRest);
+  }
 }
 
 /// Substitute every occurrence of `VNeutral(NVar(scrutLevel))` in [value]
