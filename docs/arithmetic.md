@@ -108,10 +108,13 @@ terminates the zero-divisor case.
 
 The division, subtraction, and divisibility facts the gcd common-divisor
 argument needs are proved: `subSelf`, `ltSelfFalse`, `leqZeroEq`, `modSelf`,
-`divSelf`, `dividesToMod`, `modToDivides`, and `dividesLe`. The
-common-divisor half of gcd correctness (any common divisor of `m` and `n`
-divides `gcd m n`), the fuel bound, and the greatest-divisor property are
-planned.
+`divSelf`, `dividesToMod`, `modToDivides`, and `dividesLe`. The sum-order
+facts `subAddRight`, `leqSuccAddFalse`, and `ltAddFalse` unfold the first
+`modAcc`/`divAcc` step at a sum. The fuel-stability facts and the sum forms
+are planned; `divAcc` at a zero divisor returns its fuel, so a stability
+statement for `divAcc` needs a positive divisor. The common-divisor half of
+gcd correctness (any common divisor of `m` and `n` divides `gcd m n`), the
+fuel bound, and the greatest-divisor property are planned.
 
 ### Arbitrary precision
 
