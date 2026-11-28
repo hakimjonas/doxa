@@ -106,6 +106,13 @@ terminates the zero-divisor case.
 `m < n`: `gcd 2 3` would return `2`. Euclid reaches a zero remainder within
 `m + n` steps, so the sum is a safe bound.
 
+The division, subtraction, and divisibility facts the gcd common-divisor
+argument needs are proved: `subSelf`, `ltSelfFalse`, `leqZeroEq`, `modSelf`,
+`divSelf`, `dividesToMod`, `modToDivides`, and `dividesLe`. The
+common-divisor half of gcd correctness (any common divisor of `m` and `n`
+divides `gcd m n`), the fuel bound, and the greatest-divisor property are
+planned.
+
 ### Arbitrary precision
 
 `Nat` and `Int` are inductive types, so their values have no fixed width.

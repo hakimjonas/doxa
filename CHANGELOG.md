@@ -79,6 +79,10 @@ project is ready.
 - Packaged the standard library as `doxa_stdlib` and resolved `package:`
   imports through the project configuration (#11).
 - Added `Eqb` instances for `Nat`, `Bool`, and `List` (#17).
+- Added Nat division, subtraction, and divisibility facts: `subSelf`,
+  `ltSelfFalse`, `leqZeroEq`, `modSelf`, `divSelf`, `dividesToMod`,
+  `modToDivides`, and `dividesLe`. The gcd common-divisor argument, the fuel
+  bound, and the greatest-divisor property are planned.
 - Added rational arithmetic on normalized pairs: `ratNorm`, `ratZero`,
   `ratOne`, `ratOfInt`, the operations `ratAdd`, `ratNegate`, `ratSub`, and
   `ratMultiply`, the cross-multiplication tests `ratEqb` and `ratLeq`, and
