@@ -151,6 +151,22 @@ val l23: Eq Nat (lcm two three) six = refl six
     });
   });
 
+  group('Nat division unfolding facts', () {
+    test('sum order and the first step check', () {
+      final r = runSource('''
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
+
+val two: Nat = succ (succ zero)
+val four: Nat = succ (succ (succ (succ zero)))
+
+val sa: Eq Nat (sub (four + two) four) two = subAddRight four two
+val la: Eq Bool (lt (four + two) four) false_ = ltAddFalse four two
+val ls: Eq Bool (succ (four + two) <= four) false_ = leqSuccAddFalse four two
+''');
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+  });
+
   group('Nat division and divisibility facts', () {
     test('concrete applications check', () {
       final r = runSource('''
