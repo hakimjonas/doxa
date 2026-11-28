@@ -1020,6 +1020,28 @@ val dividesLe: (d: Nat)
     n
     hpos
     h
+// --- Nat sum order and the first division unfolded step ------------------
+
+val subAddRight: (d: Nat) -> (x: Nat) -> Eq Nat (sub (d + x) d) x =
+  (d: Nat) => Nat.ind
+    ((k: Nat) => (x: Nat) -> Eq Nat (sub (k + x) k) x)
+    ((x: Nat) => subZero x)
+    ((k: Nat) => (ih: (x: Nat) -> Eq Nat (sub (k + x) k) x) => (x: Nat) => ih x)
+    d
+
+val leqSuccAddFalse: (b: Nat) -> (a: Nat) -> Eq Bool (succ (b + a) <= b) false_ =
+  (b: Nat) => Nat.ind
+    ((k: Nat) => (a: Nat) -> Eq Bool (succ (k + a) <= k) false_)
+    ((a: Nat) => refl false_)
+    ((k: Nat) => (ih: (a: Nat) -> Eq Bool (succ (k + a) <= k) false_) => (a: Nat) => ih a)
+    b
+
+val ltAddFalse: (b: Nat) -> (a: Nat) -> Eq Bool (lt (b + a) b) false_ =
+  (b: Nat) => Nat.ind
+    ((k: Nat) => (a: Nat) -> Eq Bool (lt (k + a) k) false_)
+    ((a: Nat) => refl false_)
+    ((k: Nat) => (_: (a: Nat) -> Eq Bool (lt (k + a) k) false_) => (a: Nat) => leqSuccAddFalse k a)
+    b
 // --- Well-founded accessibility for Nat -----------------------------------
 //
 // `Acc` takes the relation as a parameter, so accessibility is stated as
