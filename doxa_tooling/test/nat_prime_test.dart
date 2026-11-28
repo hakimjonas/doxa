@@ -150,4 +150,27 @@ val l23: Eq Nat (lcm two three) six = refl six
       expect(r.code, 0, reason: 'stderr: ${r.stderr}');
     });
   });
+
+  group('Nat division and divisibility facts', () {
+    test('concrete applications check', () {
+      final r = runSource('''
+import "../doxa_stdlib/lib/stdlib/proofs.doxa"
+
+val one: Nat = succ zero
+val two: Nat = succ (succ zero)
+val five: Nat = succ (succ (succ (succ (succ zero))))
+val six: Nat = succ (succ (succ (succ (succ (succ zero)))))
+
+val ss: Eq Nat (sub six six) zero = subSelf six
+val lf: Eq Bool (lt six six) false_ = ltSelfFalse six
+val zq: Eq Nat (sub six six) zero = leqZeroEq (sub six six) (refl true_)
+val ms: Eq Nat (mod six six) zero = modSelf six (ltZeroSucc five)
+val ds: Eq Nat (div six six) (succ zero) = divSelf six (ltZeroSucc five)
+val d2m: Eq Nat (mod six two) zero = dividesToMod one six (refl true_)
+val m2d: Eq Bool (divides two six) true_ = modToDivides one six (refl zero)
+val dl: Eq Bool (two <= six) true_ = dividesLe one six (ltZeroSucc five) (refl true_)
+''');
+      expect(r.code, 0, reason: 'stderr: ${r.stderr}');
+    });
+  });
 }
